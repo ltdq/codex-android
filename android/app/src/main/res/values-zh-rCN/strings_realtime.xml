@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 实时语音页面：会话控制、字幕、音色、文字注入与麦克风卡片（chatwidget/realtime.kt）。 -->
+    <string name="realtime_page_title">语音会话</string>
+    <string name="realtime_page_subtitle">实时音频、字幕与文字输入</string>
+    <string name="realtime_page_back">返回</string>
+
+    <string name="realtime_session_title">会话</string>
+    <string name="realtime_session_thread">会话 ID</string>
+    <string name="realtime_session_state_idle">未请求</string>
+    <string name="realtime_session_state_requested">已请求</string>
+    <string name="realtime_session_transport_note">启动会为该会话发送 thread/realtime/start。能做 WebRTC 的客户端会附带一个由 peer connection 生成的 SDP offer，其上已经挂好实时事件数据通道；本构建不创建 peer connection，因此不发送 offer，由服务器套用自己的传输方式。</string>
+    <string name="realtime_session_idle_note">这一页还没有请求过任何会话。会话是否真的在运行，要看 thread/realtime/started、thread/realtime/closed 和 thread/realtime/error 通知，而这些通知在这里没有被读取——所以这是本页自己的状态，不是服务器的状态。</string>
+    <string name="realtime_session_requested_note">这里只记录「请求已发出」。会话是否建立由 thread/realtime/started 确认、由 thread/realtime/error 拒绝；两者都没有折叠进这一页，所以按钮显示的状态可能与服务器不一致。</string>
+    <string name="realtime_session_start">启动会话</string>
+    <string name="realtime_session_stop">停止会话</string>
+
+    <string name="realtime_transcript_title">字幕</string>
+    <string name="realtime_transcript_empty">这一页没有字幕</string>
+    <string name="realtime_transcript_empty_detail">字幕来自 thread/realtime/transcript/delta、thread/realtime/transcript/done 和 thread/realtime/item/transcript/delta，走的是应用层 reducer 持有的事件流——转写本来就该放在那里，因为它必须活得比这一页更久。本构建还没有折叠这些通知，而这一页也拿不到 client，所以实时字幕显示在转写界面上，不在这里。</string>
+
+    <string name="realtime_voices_title">音色</string>
+    <string name="realtime_voices_refresh">重新加载音色</string>
+    <string name="realtime_voices_refresh_detail">thread/realtime/listVoices</string>
+    <string name="realtime_voices_empty">没有列出任何音色</string>
+    <string name="realtime_voices_empty_detail">thread/realtime/listVoices 还没有从这台服务器得到答复，或者它不提供音色。点上面的重新加载可以再问一次。</string>
+    <string name="realtime_voices_selected">已选音色</string>
+    <string name="realtime_voices_selection_note">音色在启动会话时选定，之后没有接口能改：thread/realtime/listVoices 只负责枚举。点一行只会移动本页的勾选标记，不会发送任何东西。</string>
+
+    <string name="realtime_inject_title">向会话发送文字</string>
+    <string name="realtime_inject_text_label">作为用户输入的文字</string>
+    <string name="realtime_inject_text_placeholder">把本来要说的话打出来</string>
+    <string name="realtime_inject_text_send">发送</string>
+    <string name="realtime_inject_text_note">thread/realtime/appendText 会往实时会话里加一条对话项。按协议的默认角色，这就是用户在打字而不是说话，所以它是模型要回答的输入。</string>
+    <string name="realtime_inject_speech_label">要朗读的文字</string>
+    <string name="realtime_inject_speech_placeholder">交给服务器朗读的文字</string>
+    <string name="realtime_inject_speech_send">朗读</string>
+    <string name="realtime_inject_speech_note">thread/realtime/appendSpeech 把本客户端生成的文字交给服务器，请它朗读出来。这不是用户的一轮发言，模型不会回应它，它也不会被转写回来。</string>
+
+    <string name="realtime_mic_title">麦克风</string>
+    <string name="realtime_mic_state_off">关闭</string>
+    <string name="realtime_mic_state_on">标记已打开</string>
+    <string name="realtime_mic_format_note">音频通过 thread/realtime/appendAudio 以 ThreadRealtimeAudioChunk 逐块送入会话：base64 的 PCM 采样数据、声道数、采样率，以及可选地标明这段音频属于哪条转写项。</string>
+    <string name="realtime_mic_sample_rate">采样率</string>
+    <string name="realtime_mic_sample_rate_value">%1$d Hz</string>
+    <string name="realtime_mic_channels">声道数</string>
+    <string name="realtime_mic_item_id">转写项 id</string>
+    <string name="realtime_mic_start">开始采集</string>
+    <string name="realtime_mic_stop">停止采集</string>
+    <string name="realtime_mic_idle_note">本构建没有绑定录音器：没有任何地方构造 AudioRecord，因此读不到一帧，也永远不会构造音频块。真正可用的采集会读取 PCM 帧并作为音频块推送；在这里，这个按钮只切换本页自己的标记。</string>
+    <string name="realtime_mic_capturing_note">标记已打开，但并没有在采集：背后没有 AudioRecord，就没有帧、没有音频块，也不会调用 thread/realtime/appendAudio。没有任何东西可指示时，采集指示器只能说这句话。</string>
+</resources>

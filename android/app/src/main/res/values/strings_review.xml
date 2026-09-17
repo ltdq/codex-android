@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- chatwidget/review_popups.kt -->
+    <string name="review_screen_title">Start a review</string>
+    <string name="review_screen_back">Back</string>
+    <string name="review_screen_section">What to review</string>
+
+    <string name="review_target_uncommitted">Uncommitted changes</string>
+    <string name="review_target_uncommitted_detail">Everything in the working tree, staged or not</string>
+    <string name="review_target_base_branch">Against a base branch</string>
+    <string name="review_target_base_branch_detail">The changes this branch introduced since its base</string>
+    <string name="review_target_commit">One commit</string>
+    <string name="review_target_commit_detail">A single commit, named by its sha</string>
+    <string name="review_target_custom">Custom instructions</string>
+    <string name="review_target_custom_detail">Free-form instructions instead of a diff range</string>
+
+    <string name="review_field_branch">Base branch</string>
+    <string name="review_field_branch_placeholder">main</string>
+    <string name="review_field_sha">Commit</string>
+    <string name="review_field_sha_placeholder">3f2a1c9</string>
+    <string name="review_field_commit_title">Title (optional)</string>
+    <string name="review_field_commit_title_placeholder">Fix the queue panel</string>
+    <string name="review_field_instructions">Instructions</string>
+    <string name="review_field_instructions_placeholder">Look for missing tests around the queue panel.</string>
+
+    <string name="review_start">Start review</string>
+    <string name="review_footnote">A review is a turn: the instruction is injected into the thread, and the findings arrive in the transcript rather than on this page.</string>
+    <string name="review_selected">Selected</string>
+</resources>

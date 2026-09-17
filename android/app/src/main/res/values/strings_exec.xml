@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- bottom_pane/exec_command_view.kt: the one-shot exec and long-lived process page. -->
+    <string name="exec_command_title">Command</string>
+    <string name="exec_command_subtitle">Run argv once, or keep a pty alive</string>
+    <string name="exec_command_back">Back</string>
+
+    <string name="exec_command_form_title">Command</string>
+    <string name="exec_command_form_note">One field per argument. The protocol takes argv, never a shell line, so a quoted string would have to be re-split here.</string>
+    <string name="exec_command_arg_label">Argument %1$d</string>
+    <string name="exec_command_arg_placeholder">--flag</string>
+    <string name="exec_command_arg_add">Add an argument</string>
+    <string name="exec_command_arg_remove">Remove</string>
+    <string name="exec_command_cwd_label">Directory</string>
+    <string name="exec_command_cwd_placeholder">Leave blank for the session directory</string>
+    <string name="exec_command_timeout_label">Timeout ms</string>
+    <string name="exec_command_timeout_placeholder">No limit</string>
+    <string name="exec_command_process_label">Process id</string>
+    <string name="exec_command_process_placeholder">Blank starts a new one</string>
+    <string name="exec_command_run">Run</string>
+
+    <string name="exec_command_output_title">Output</string>
+    <string name="exec_command_state_label">State</string>
+    <string name="exec_command_state_idle">Nothing has run yet</string>
+    <string name="exec_command_state_running">Running</string>
+    <string name="exec_command_state_finished">Exited · %1$d</string>
+    <string name="exec_command_state_failed">Refused</string>
+    <string name="exec_command_exit_label">Exit code</string>
+    <string name="exec_command_duration_label">Duration</string>
+    <string name="exec_command_duration_running">%1$d ms</string>
+    <string name="exec_command_duration_value">%1$d ms</string>
+    <string name="exec_command_process_row_label">Process</string>
+    <string name="exec_command_process_attached">Started by the server</string>
+    <string name="exec_command_process_done">Finished</string>
+    <string name="exec_command_cap_reached">The server stopped buffering: this output is truncated.</string>
+
+    <string name="exec_command_stdin_label">Standard input</string>
+    <string name="exec_command_stdin_placeholder">One line, sent with a trailing newline</string>
+    <string name="exec_command_stdin_send">Send</string>
+    <string name="exec_command_stdin_close">Close stdin</string>
+    <string name="exec_command_rows_label">Rows</string>
+    <string name="exec_command_cols_label">Columns</string>
+    <string name="exec_command_resize">Resize</string>
+    <string name="exec_command_terminate">Terminate</string>
+
+    <string name="exec_command_terminal_title">Long-lived terminal</string>
+    <string name="exec_command_terminal_note">A pty stays alive across turns and keeps its own scrollback. A thread lists the ones it leaves behind, which is where a terminal started here shows up.</string>
+    <string name="exec_command_terminal_start_label">Start with</string>
+    <string name="exec_command_terminal_start_placeholder">bash -l</string>
+    <string name="exec_command_terminal_cwd_label">Directory</string>
+    <string name="exec_command_terminal_spawn">Open terminal</string>
+    <string name="exec_command_terminal_process_label">Process</string>
+    <string name="exec_command_terminal_live">Live</string>
+    <string name="exec_command_terminal_exited">Exited</string>
+    <string name="exec_command_terminal_kill">Kill</string>
+    <string name="exec_command_terminal_hint">The standard input and resize controls above act on this terminal while it is the live one.</string>
+
+    <!-- bottom_pane/unified_exec_footer.kt: the background terminals of one thread. -->
+    <string name="exec_terminals_title">Background terminals</string>
+    <string name="exec_terminals_subtitle">%1$d running</string>
+    <string name="exec_terminals_back">Back</string>
+    <string name="exec_terminals_terminate_all">Terminate all</string>
+    <string name="exec_terminals_section">Still running</string>
+    <string name="exec_terminals_empty">No terminal is running</string>
+    <string name="exec_terminals_empty_detail">A terminal lands here when a session starts a long-running command — a dev server, a watcher, a log tail — and leaves it going after the turn that started it ends.</string>
+    <string name="exec_terminals_command_unknown">The server did not report a command</string>
+    <string name="exec_terminals_cwd_unknown">Directory unknown</string>
+    <string name="exec_terminals_row_meta">%1$s · %2$s</string>
+    <string name="exec_terminals_terminate">Terminate</string>
+    <string name="exec_terminals_read_failed">The server could not answer</string>
+    <string name="exec_terminals_retry">Read again</string>
+    <string name="exec_terminals_reading">Reading…</string>
+
+    <!-- bottom_pane/unified_exec_footer.kt: how long ago a terminal was started. -->
+    <string name="exec_terminals_age_unknown">Started at an unknown time</string>
+    <string name="exec_terminals_age_now">Just started</string>
+    <string name="exec_terminals_age_minutes">%1$d min ago</string>
+    <string name="exec_terminals_age_hours">%1$d h ago</string>
+    <string name="exec_terminals_age_days">%1$d d ago</string>
+    <string name="exec_terminals_age_weeks">%1$d w ago</string>
+    <string name="exec_command_terminal_stdin_label">Send to the process</string>
+    <string name="exec_command_terminal_stdin_placeholder">One line, sent with a trailing newline</string>
+    <string name="exec_command_terminal_stdin_send">Send</string>
+    <string name="exec_command_terminal_stdin_eof">Close stdin</string>
+    <string name="exec_command_terminal_rows">Rows</string>
+    <string name="exec_command_terminal_cols">Columns</string>
+    <string name="exec_command_terminal_resize">Resize</string>
+</resources>

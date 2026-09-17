@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- SessionListScreen.kt -->
+    <string name="session_list_title">会话</string>
+    <string name="session_list_subtitle">%1$d 个会话</string>
+    <string name="session_list_back">返回对话</string>
+    <string name="session_list_filter_archived">含已归档</string>
+    <string name="session_list_filter_active">仅活跃</string>
+    <string name="session_list_no_preview">（无预览）</string>
+    <string name="session_list_current">当前</string>
+    <string name="session_list_archived">已归档</string>
+    <string name="session_list_branch">分支 %1$s</string>
+    <string name="session_list_meta_separator">"  ·  "</string>
+    <string name="session_list_save">保存</string>
+    <string name="session_list_rename">重命名</string>
+    <string name="session_list_fork">派生</string>
+    <string name="session_list_unarchive">取消归档</string>
+    <string name="session_list_archive">归档</string>
+    <string name="session_list_delete">删除</string>
+
+    <!-- components.kt -->
+    <string name="components_collapse">收起%1$s</string>
+    <string name="components_expand">展开%1$s</string>
+    <string name="components_sheet_close">关闭</string>
+
+    <!-- blocks.kt -->
+    <string name="blocks_lines_omitted">… 其余 %1$d 行已省略</string>
+    <string name="blocks_collapse_diff">收起改动</string>
+    <string name="blocks_view_diff">查看改动</string>
+    <string name="blocks_collapse">收起%1$s</string>
+    <string name="blocks_expand">展开%1$s</string>
+    <string name="blocks_stat_added">+%1$d</string>
+    <string name="blocks_stat_removed">−%1$d</string>
+    <string name="blocks_sign_added">+</string>
+    <string name="blocks_sign_removed">−</string>
+
+    <!-- markdown_render.kt -->
+    <string name="markdown_render_code">代码</string>
+    <string name="markdown_render_generating">生成中…</string>
+    <string name="markdown_render_bullet">•</string>
+    <string name="markdown_render_numbered">%1$d.</string>
+
+    <!-- chatwidget.kt: the notices DiagnosticCell renders from SessionDiagnostic.code -->
+    <string name="chatwidget_diagnostic_thread_load_failed">会话载入失败</string>
+    <string name="chatwidget_diagnostic_new_thread_failed">新建会话失败</string>
+    <string name="chatwidget_diagnostic_send_failed">发送失败</string>
+    <string name="chatwidget_diagnostic_interrupt_failed">中断失败</string>
+    <string name="chatwidget_diagnostic_turn_interrupted">本轮已中断</string>
+    <string name="chatwidget_diagnostic_turn_failed">本轮失败</string>
+    <string name="chatwidget_diagnostic_turn_finished">本轮结束：%1$s</string>
+    <string name="chatwidget_diagnostic_model_switched">模型已切换为 %1$s</string>
+    <string name="chatwidget_diagnostic_world_writable">%1$s 对机器上所有用户可写（另有 %2$d 处）</string>
+    <string name="chatwidget_diagnostic_strict_review">本轮需要先经过严格审查才能继续。</string>
+    <string name="chatwidget_diagnostic_hook_failed">钩子 %1$s 执行失败</string>
+    <string name="chatwidget_diagnostic_mcp_login_failed">MCP 服务 %1$s 登录失败</string>
+    <string name="shell_request_failed">服务器拒绝了这次请求</string>
+</resources>

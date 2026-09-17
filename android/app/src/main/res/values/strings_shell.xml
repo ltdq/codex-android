@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- CodexScreen.kt -->
+    <!-- A filesystem path, not copy: it is the workspace picker's starting directory. -->
+
+    <!-- SessionListScreen.kt -->
+    <string name="session_list_title">Sessions</string>
+    <string name="session_list_subtitle">%1$d sessions</string>
+    <string name="session_list_back">Back to conversation</string>
+    <string name="session_list_filter_archived">Archived</string>
+    <string name="session_list_filter_active">Active</string>
+    <string name="session_list_no_preview">No preview</string>
+    <string name="session_list_current">Current</string>
+    <string name="session_list_archived">Archived</string>
+    <string name="session_list_branch">Branch %1$s</string>
+    <string name="session_list_meta_separator">"  ·  "</string>
+    <string name="session_list_save">Save</string>
+    <string name="session_list_rename">Rename</string>
+    <string name="session_list_fork">Fork</string>
+    <string name="session_list_unarchive">Restore</string>
+    <string name="session_list_archive">Archive</string>
+    <string name="session_list_delete">Delete</string>
+
+    <!-- components.kt -->
+    <string name="components_collapse">Collapse %1$s</string>
+    <string name="components_expand">Expand %1$s</string>
+    <string name="components_sheet_close">Close</string>
+
+    <!-- blocks.kt -->
+    <string name="blocks_lines_omitted">… +%1$d lines</string>
+    <string name="blocks_collapse_diff">Collapse changes</string>
+    <string name="blocks_view_diff">View changes</string>
+    <string name="blocks_collapse">Collapse %1$s</string>
+    <string name="blocks_expand">Expand %1$s</string>
+    <string name="blocks_stat_added">+%1$d</string>
+    <string name="blocks_stat_removed">−%1$d</string>
+    <string name="blocks_sign_added">+</string>
+    <string name="blocks_sign_removed">−</string>
+
+    <!-- markdown_render.kt -->
+    <string name="markdown_render_code">Code</string>
+    <string name="markdown_render_generating">Generating…</string>
+    <string name="markdown_render_bullet">•</string>
+    <string name="markdown_render_numbered">%1$d.</string>
+
+    <!-- chatwidget.kt: the notices DiagnosticCell renders from SessionDiagnostic.code -->
+    <string name="chatwidget_diagnostic_thread_load_failed">Failed to resume session</string>
+    <string name="chatwidget_diagnostic_new_thread_failed">Failed to start a fresh session</string>
+    <string name="chatwidget_diagnostic_send_failed">Failed to start turn</string>
+    <string name="chatwidget_diagnostic_interrupt_failed">Failed to interrupt turn</string>
+    <string name="chatwidget_diagnostic_turn_interrupted">Conversation interrupted - tell the model what to do differently.</string>
+    <string name="chatwidget_diagnostic_turn_failed">Turn failed</string>
+    <string name="chatwidget_diagnostic_turn_finished">Turn finished: %1$s</string>
+    <string name="chatwidget_diagnostic_model_switched">Automatically switched to %1$s</string>
+    <string name="chatwidget_diagnostic_world_writable">%1$s is writable by every user on this machine (%2$d more like it)</string>
+    <string name="chatwidget_diagnostic_strict_review">This turn needs a strict review before it can continue.</string>
+    <string name="chatwidget_diagnostic_hook_failed">Hook %1$s failed</string>
+    <string name="chatwidget_diagnostic_mcp_login_failed">Sign-in for MCP server %1$s failed</string>
+    <string name="shell_request_failed">The server rejected that request</string>
+</resources>

@@ -1,0 +1,192 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Strings for the full-screen surfaces (app/src/main/kotlin/com/cy/codexui/ui/surfaces).
+
+    Default locale: values/strings_surfaces.xml.
+-->
+<resources>
+    <!-- AccountScreen -->
+    <string name="account_screen_title">账户</string>
+    <string name="account_screen_not_signed_in">未登录</string>
+    <string name="account_screen_refresh">刷新账户信息</string>
+    <string name="account_screen_sign_in_status">登录状态</string>
+    <string name="account_screen_signed_in">已登录</string>
+    <string name="account_screen_email_unbound">未绑定邮箱</string>
+    <string name="account_screen_plan_none">未订阅</string>
+    <string name="account_screen_online">在线</string>
+    <string name="account_screen_offline">离线</string>
+    <string name="account_screen_organization">组织</string>
+    <string name="account_screen_personal_workspace">个人工作区</string>
+    <string name="account_screen_plan">计划</string>
+    <string name="account_screen_plan_chatgpt">ChatGPT</string>
+    <string name="account_screen_rate_limits">用量限额</string>
+    <string name="account_screen_rate_limits_empty">暂时读不到限额窗口。</string>
+    <string name="account_screen_credits">剩余额度</string>
+    <string name="account_screen_credits_value">%1$d 点</string>
+    <string name="account_screen_rate_limit_note">达到 100% 后会排队等待窗口重置。</string>
+    <string name="account_screen_resets_at">重置于 %1$s</string>
+    <string name="account_screen_reset_format">M月d日 HH:mm</string>
+    <string name="account_screen_percent">%1$d%%</string>
+    <string name="account_screen_usage">用量趋势</string>
+    <string name="account_screen_usage_empty">还没有用量记录。</string>
+    <string name="account_screen_usage_peak">峰值 %1$s · 共 %2$d 天</string>
+    <string name="account_screen_credentials">会话凭据</string>
+    <string name="account_screen_sign_out">退出登录</string>
+    <string name="account_screen_remove_credentials">移除本机凭据</string>
+    <string name="account_screen_back">返回</string>
+
+    <!-- AppsScreen -->
+    <string name="apps_screen_title">App</string>
+    <string name="apps_screen_subtitle">%1$d 个已安装 · %2$d 个可安装</string>
+    <string name="apps_screen_empty">账户还没有暴露任何 App。</string>
+    <string name="apps_screen_installed">已安装</string>
+    <string name="apps_screen_marketplace">市场</string>
+    <string name="apps_screen_installed_empty">还没有连接任何 App。</string>
+    <string name="apps_screen_marketplace_empty">市场里暂时没有新的 App。</string>
+    <string name="apps_screen_install">安装</string>
+    <string name="apps_screen_back">返回</string>
+
+    <!-- HooksScreen -->
+    <string name="hooks_screen_title">Hook</string>
+    <string name="hooks_screen_subtitle">%1$d 个 · %2$d 个已启用</string>
+    <string name="hooks_screen_section">生命周期 Hook</string>
+    <string name="hooks_screen_empty">还没有配置 Hook。</string>
+    <string name="hooks_screen_note">Hook 由项目配置提供，改动会写回 config；当前客户端只读。</string>
+    <string name="hooks_screen_back">返回</string>
+
+    <!-- McpScreen -->
+    <string name="mcp_screen_title">MCP 服务器</string>
+    <string name="mcp_screen_subtitle">%1$d 个服务器 · %2$d 个已连接</string>
+    <string name="mcp_screen_section_servers">服务器</string>
+    <string name="mcp_screen_empty">还没有配置 MCP 服务器。</string>
+    <string name="mcp_screen_tools_resources">%1$d 个工具 · %2$d 个资源</string>
+    <string name="mcp_screen_add_server">添加服务器</string>
+    <string name="mcp_screen_not_connected">尚未接通</string>
+    <string name="mcp_screen_back">返回</string>
+
+    <!-- PluginsScreen -->
+    <string name="plugins_screen_title">插件</string>
+    <string name="plugins_screen_subtitle">%1$d 个已安装 · %2$d 个可安装</string>
+    <string name="plugins_screen_empty">还没有可用的插件。</string>
+    <string name="plugins_screen_installed">已安装</string>
+    <string name="plugins_screen_marketplace">市场</string>
+    <string name="plugins_screen_installed_empty">还没有安装任何插件。</string>
+    <string name="plugins_screen_marketplace_empty">市场里暂时没有新的插件。</string>
+    <string name="plugins_screen_no_version">—</string>
+    <string name="plugins_screen_local">本地</string>
+    <string name="plugins_screen_install">安装</string>
+    <string name="plugins_screen_back">返回</string>
+
+    <!-- SettingsScreen -->
+    <string name="settings_screen_title">设置</string>
+    <string name="settings_tab_general">通用</string>
+    <string name="settings_tab_model">模型</string>
+    <string name="settings_tab_approval">权限</string>
+    <string name="settings_tab_session">会话</string>
+    <string name="settings_tab_library">更多</string>
+    <string name="settings_group_workspace">工作目录</string>
+    <string name="settings_screen_current_directory">当前目录</string>
+    <string name="settings_screen_no_directory">（未选择）</string>
+    <string name="settings_screen_no_writable_roots">没有额外的可写根目录</string>
+    <string name="settings_screen_writable">可写</string>
+    <string name="settings_group_config_sources">配置来源</string>
+    <string name="settings_screen_no_config_layers">没有返回任何配置层。</string>
+    <string name="settings_screen_config_active">生效</string>
+    <string name="settings_screen_config_disabled">已停用</string>
+    <string name="settings_group_experimental">实验特性</string>
+    <string name="settings_screen_experimental_empty">暂无可用的实验功能。</string>
+    <string name="settings_group_model">模型</string>
+    <string name="settings_screen_models_empty">还没有可用模型，等待 model/list 返回。</string>
+    <string name="settings_screen_model_context">上下文 %1$s</string>
+    <string name="settings_screen_model_default">默认</string>
+    <string name="settings_group_effort">思考强度</string>
+    <string name="settings_screen_effort_title">思考强度</string>
+    <string name="settings_screen_effort_summary">模型在回答前可以花多少思考预算</string>
+    <string name="settings_group_approval">审批策略</string>
+    <string name="settings_screen_sandbox_mode">沙箱模式</string>
+    <string name="settings_screen_network_access">网络访问</string>
+    <string name="settings_screen_network_allowed">允许</string>
+    <string name="settings_screen_network_ask">询问后允许</string>
+    <string name="settings_group_granular">逐项审批</string>
+    <string name="settings_screen_granular_sandbox">沙箱越界</string>
+    <string name="settings_screen_granular_rules">规则命中</string>
+    <string name="settings_screen_granular_skills">Skill 调用</string>
+    <string name="settings_screen_granular_permissions">额外权限</string>
+    <string name="settings_screen_granular_mcp">MCP 表单</string>
+    <string name="settings_screen_granular_ask">需要询问</string>
+    <string name="settings_screen_granular_auto">自动通过</string>
+    <string name="settings_group_permissions">权限档位</string>
+    <string name="settings_screen_permissions_empty">还没有权限档位，等待 permissionProfile/list 返回。</string>
+    <string name="settings_group_session">会话</string>
+    <string name="settings_screen_session_id">会话 ID</string>
+    <string name="settings_screen_session_not_started">（未开始）</string>
+    <string name="settings_screen_branch">分支</string>
+    <string name="settings_screen_no_git">（不在 git 仓库中）</string>
+    <string name="settings_group_instructions">指令来源</string>
+    <string name="settings_screen_no_agents_md">本次会话没有加载 AGENTS.md</string>
+    <string name="settings_group_context">上下文</string>
+    <string name="settings_screen_context_window">上下文窗口</string>
+    <string name="settings_screen_context_usage">%1$s / %2$s · %3$d%%</string>
+    <string name="settings_screen_io_cached">输入 / 输出 / 缓存</string>
+    <string name="settings_group_library">库与集成</string>
+    <string name="settings_screen_back">返回</string>
+
+    <!-- SkillsScreen -->
+    <string name="skills_screen_title">Skill</string>
+    <string name="skills_screen_subtitle">%1$d 个 · %2$d 个已启用</string>
+    <string name="skills_screen_empty">还没有安装 Skill。把 SKILL.md 放进 .codex/skills 后重新加载。</string>
+    <string name="skills_screen_enabled">已启用</string>
+    <string name="skills_screen_disabled">已禁用</string>
+    <string name="skills_screen_back">返回</string>
+
+    <!-- SubAgentScreen -->
+    <string name="sub_agent_screen_fallback_name">子代理 · %1$s</string>
+    <string name="sub_agent_screen_missing">已不在本会话的代理列表中</string>
+    <string name="sub_agent_section_task">任务</string>
+    <string name="sub_agent_screen_task_empty">这次协作调用没有带任务描述。</string>
+    <string name="sub_agent_section_run">运行信息</string>
+    <string name="sub_agent_screen_not_found">未找到</string>
+    <string name="sub_agent_screen_role_badge">%1$s代理</string>
+    <string name="sub_agent_screen_agent_thread">代理线程</string>
+    <string name="sub_agent_screen_main_thread">主线程</string>
+    <string name="sub_agent_screen_model">模型</string>
+    <string name="sub_agent_screen_effort">思考强度</string>
+    <string name="sub_agent_screen_source_item">来源条目</string>
+    <string name="sub_agent_section_activity">活动记录</string>
+    <string name="sub_agent_screen_activity_count">%1$d 条</string>
+    <string name="sub_agent_screen_activity_empty">父会话里没有提到这个代理的条目。</string>
+    <string name="sub_agent_screen_collab_call">协作调用 · %1$s</string>
+    <string name="sub_agent_screen_started">已开始</string>
+    <string name="sub_agent_screen_interacted">已交互</string>
+    <string name="sub_agent_screen_interrupted">已中断</string>
+    <string name="sub_agent_screen_completed">已完成</string>
+    <string name="sub_agent_screen_back">返回</string>
+
+    <!-- WorkspacePickerScreen -->
+    <string name="workspace_picker_title">选择工作目录</string>
+    <string name="workspace_picker_read_error">无法读取该目录</string>
+    <string name="workspace_picker_reading">正在读取 %1$s …</string>
+    <string name="workspace_picker_parent">上一级</string>
+    <string name="workspace_picker_empty">此目录没有子目录或文件。</string>
+    <string name="workspace_picker_footer">将以此目录作为会话工作区</string>
+    <string name="workspace_picker_confirm">选择当前目录</string>
+    <string name="workspace_picker_back">返回</string>
+    <!-- SubAgentThreadScreen.kt: a subagent's own conversation. -->
+    <string name="sub_agent_thread_fallback_title">子代理会话</string>
+    <string name="sub_agent_thread_subtitle">该代理自己的会话，与派生出它的会话并列查看</string>
+    <string name="sub_agent_thread_empty">这个代理的会话还没有条目。</string>
+    <string name="sub_agent_thread_assistant">子代理</string>
+    <string name="session_list_sections">分组</string>
+    <string name="session_list_section_new">新建分组</string>
+    <string name="session_list_section_new_detail">按用途给会话分组，而不只是按目录</string>
+    <string name="session_list_section_name">分组名称</string>
+    <string name="session_list_section_create">创建</string>
+    <string name="session_list_section_move">移动到：</string>
+    <string name="session_list_section_none">不分组</string>
+    <string name="session_list_section_cancel">取消</string>
+    <string name="apps_screen_installed_only">只看已安装</string>
+    <string name="apps_screen_installed_only_detail">改用 app/installed 查询，而不是 app/list</string>
+    <string name="apps_screen_reread">写入后的重新读取</string>
+    <string name="apps_screen_reread_one">重新读取</string>
+    <string name="apps_screen_not_installed">未安装</string>
+</resources>

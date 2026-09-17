@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- ChatScreen.kt -->
+    <string name="chat_empty_title">Codex</string>
+    <string name="chat_empty_hint">Pick a session on the left, or start a new conversation</string>
+    <string name="chat_empty_slash_hint">Type / to see slash commands</string>
+    <string name="chat_loading_history">Loading session history…</string>
+    <string name="chat_transcript_assistant_label">Codex</string>
+    <string name="chat_composer_hint_open">Ask Codex to do anything</string>
+    <string name="chat_composer_hint_empty">Select a session to start</string>
+
+    <!-- SidebarPanel.kt -->
+    <string name="sidebar_title">Codex</string>
+    <string name="sidebar_collapse">Collapse sidebar</string>
+    <string name="sidebar_expand">Expand sidebar</string>
+    <string name="sidebar_open_settings">Open settings</string>
+    <string name="sidebar_projects_header">Projects</string>
+    <string name="sidebar_expand_section">Expand %1$s</string>
+    <string name="sidebar_collapse_section">Collapse %1$s</string>
+    <string name="sidebar_expand_project">Expand %1$s</string>
+    <string name="sidebar_collapse_project">Collapse %1$s</string>
+
+    <!-- SidebarModel.kt -->
+    <string name="sidebar_add_workspace">Add workspace</string>
+    <string name="sidebar_library_all_sessions">All sessions</string>
+    <string name="sidebar_library_mcp_servers">MCP servers</string>
+    <string name="sidebar_library_skills">Skills</string>
+    <string name="sidebar_library_plugins">Plugins</string>
+    <string name="sidebar_library_hooks">Hooks</string>
+    <string name="sidebar_library_apps">Apps</string>
+    <string name="sidebar_library_account">Account</string>
+    <string name="sidebar_library_archived">Archived sessions</string>
+    <string name="sidebar_time_now">now</string>
+    <string name="sidebar_time_minutes">%1$dm ago</string>
+    <string name="sidebar_time_hours">%1$dh ago</string>
+    <string name="sidebar_time_days">%1$dd ago</string>
+    <string name="sidebar_time_weeks">%1$dw ago</string>
+
+    <!-- StatusCard.kt -->
+    <string name="status_card_agents_files_summary">%1$d agents · %2$d files changed</string>
+    <string name="status_card_agents_overview">Agents overview</string>
+    <string name="status_card_context_title">Context</string>
+    <string name="status_card_usage_percent">%1$d%%</string>
+    <string name="status_card_tokens_millions">%1$sM</string>
+    <string name="status_card_tokens_thousands">%1$sK</string>
+    <string name="status_card_tokens_rounded">%1$dK</string>
+    <string name="status_card_usage_tokens">Input %1$s · Output %2$s · Cached %3$s</string>
+    <string name="status_card_usage_of_total">/ %1$s</string>
+    <string name="status_card_compacted_note">Context compacted</string>
+    <string name="status_card_compact_action">Compact</string>
+    <string name="status_card_compacted_action">Compacted</string>
+    <string name="status_card_model_title">Model and reasoning</string>
+    <string name="status_card_model_label">Model</string>
+    <string name="status_card_reasoning_label">Reasoning effort</string>
+    <string name="status_card_approval_label">Approval</string>
+    <string name="status_card_plan_title">Plan</string>
+    <string name="status_card_agents_title">Agents</string>
+    <string name="status_card_agents_count">%1$d</string>
+    <string name="status_card_files_title">Files changed</string>
+    <string name="status_card_files_count">%1$d</string>
+    <string name="status_card_files_empty">No changes this turn</string>
+    <string name="status_card_option_selected">Selected</string>
+    <string name="status_card_open_agent_session">Open %1$s\'s session</string>
+    <string name="status_card_agent_details">Show details for %1$s</string>
+    <string name="status_card_open_agent">Open %1$s</string>
+    <string name="status_card_agent_main_badge">Main</string>
+    <string name="status_card_diff_expand">View diff</string>
+    <string name="status_card_diff_collapse">Hide diff</string>
+    <string name="status_card_diff_position">%1$d/%2$d</string>
+    <string name="status_card_expand_panel">Expand status panel</string>
+    <string name="status_card_collapse_panel">Collapse status panel</string>
+    <string name="status_card_back">Back</string>
+    <string name="status_card_agent_status_completed">Done</string>
+    <string name="status_card_agent_status_interrupted">Interrupted</string>
+    <string name="status_card_agent_status_interacting">Interacting</string>
+    <string name="status_card_agent_status_running">Running</string>
+    <string name="status_card_agent_status_failed">Failed</string>
+    <string name="status_card_agent_status_starting">Starting</string>
+    <string name="status_card_agent_status_idle">Idle</string>
+    <string name="sidebar_library_projects">Projects</string>
+    <string name="sidebar_library_history">History</string>
+    <string name="sidebar_library_files">Files</string>
+    <string name="sidebar_library_exec">Run a command</string>
+    <string name="sidebar_library_terminals">Background terminals</string>
+    <string name="sidebar_library_review">Review changes</string>
+    <string name="sidebar_library_realtime">Voice session</string>
+    <string name="sidebar_library_shares">Plugin shares</string>
+    <string name="sidebar_library_memories">Memory</string>
+    <string name="sidebar_library_remote">Remote control</string>
+    <string name="sidebar_library_verification">User verification</string>
+    <string name="sidebar_library_migration">Import another agent</string>
+    <string name="sidebar_library_bedrock">Amazon Bedrock</string>
+    <string name="sidebar_library_sandbox">Windows sandbox</string>
+    <string name="sidebar_library_diagnostics">Diagnostics</string>
+    <string name="plugins_screen_search">Search published plugins</string>
+    <string name="plugins_screen_installed_only">Installed only</string>
+    <string name="plugins_screen_installed_only_detail">Ask plugin/installed instead of plugin/list, which drops every plugin you have not installed</string>
+    <string name="plugins_detail_facts">Manifest</string>
+    <string name="plugins_detail_id">Id</string>
+    <string name="plugins_detail_marketplace">Marketplace</string>
+    <string name="plugins_detail_author">Author</string>
+    <string name="plugins_detail_homepage">Homepage</string>
+    <string name="plugins_detail_skills">Skills</string>
+    <string name="plugins_detail_mcp">MCP servers</string>
+    <string name="plugins_detail_apps">Apps</string>
+    <string name="plugins_detail_skill_loading">Reading…</string>
+    <string name="plugins_detail_skill_failed">The plugin did not return this skill.</string>
+</resources>

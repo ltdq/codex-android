@@ -1,0 +1,90 @@
+package com.cy.codexui.protocol.protocol.v2
+
+/**
+ * Policies and profiles that decide how much the agent may do without asking.
+ *
+ * Mirrors `AskForApproval`, `SandboxMode`, `CollaborationMode`, `Personality` and
+ * `ActivePermissionProfile` from the generated bindings.
+ */
+enum class AskForApproval(val wire: String) {
+    UnlessTrusted(wire = "untrusted"),
+    OnRequest(wire = "on-request"),
+    Granular(wire = "granular"),
+    Never(wire = "never"),
+    ;
+
+    companion object {
+        fun fromWire(value: String): AskForApproval =
+            entries.firstOrNull { it.wire == value } ?: OnRequest
+    }
+}
+
+/** Fine-grained switches behind [AskForApproval.Granular]. */
+data class GranularApprovalConfig(
+    val sandboxApproval: Boolean = true,
+    val rules: Boolean = true,
+    val skillApproval: Boolean = false,
+    val requestPermissions: Boolean = true,
+    val mcpElicitations: Boolean = true,
+)
+
+enum class SandboxMode(val wire: String) {
+    ReadOnly("read-only"),
+    WorkspaceWrite("workspace-write"),
+    DangerFullAccess("danger-full-access"),
+    ;
+
+    companion object {
+        fun fromWire(value: String): SandboxMode =
+            entries.firstOrNull { it.wire == value } ?: WorkspaceWrite
+    }
+}
+
+data class SandboxPolicy(
+    val mode: SandboxMode = SandboxMode.WorkspaceWrite,
+    val writableRoots: List<String> = emptyList(),
+    val networkAccess: Boolean = false,
+    val excludeTmpdirEnvVar: Boolean = false,
+    val excludeSlashTmp: Boolean = false,
+)
+
+enum class CollaborationMode(val wire: String) {
+    Default("default"),
+    Plan("plan"),
+    Goal("goal"),
+}
+
+enum class Personality(val wire: String) {
+    Pragmatic("pragmatic"),
+    Friendly("friendly"),
+    None("none"),
+}
+
+/**
+ * Everything the status card and the settings page need to describe one session.
+ *
+ * Mirrors `ThreadSessionState` in `codex-rs/tui/src/session_state.rs`: the single internal shape
+ * that app orchestration and widgets read from, filled from app-server responses.
+ */
+data class ThreadSessionState(
+    val threadId: String,
+    val forkedFromId: String? = null,
+    val threadName: String? = null,
+    val model: String = "",
+    val modelDisplayName: String = "",
+    val modelProviderId: String = "openai",
+    val reasoningEffort: ReasoningEffort = ReasoningEffort.High,
+    val approvalPolicy: AskForApproval = AskForApproval.OnRequest,
+    val granularApproval: GranularApprovalConfig = GranularApprovalConfig(),
+    val sandboxPolicy: SandboxPolicy = SandboxPolicy(),
+    val activePermissionProfile: PermissionProfileEntry? = null,
+    val collaborationMode: CollaborationMode = CollaborationMode.Default,
+    val personality: Personality = Personality.None,
+    val cwd: String = "",
+    val workspaceRoots: List<String> = emptyList(),
+    val instructionSourcePaths: List<String> = emptyList(),
+    val gitBranch: String? = null,
+    val rolloutPath: String? = null,
+) {
+    val displayName: String get() = threadName ?: cwd.substringAfterLast('/').ifEmpty { threadId }
+}

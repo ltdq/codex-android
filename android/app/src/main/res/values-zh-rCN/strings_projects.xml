@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- ProjectEntry, EnvironmentInfo, and the pages that read them (app/projects.kt). -->
+    <string name="projects_screen_title">项目</string>
+    <string name="projects_screen_subtitle">%1$d 个项目 · %2$d 个执行环境</string>
+    <string name="projects_screen_back">返回</string>
+    <string name="projects_screen_new">新建项目</string>
+    <string name="projects_screen_edit">编辑项目</string>
+    <string name="projects_screen_import">导入目录</string>
+    <string name="projects_screen_import_detail">把一个已有的检出登记为项目</string>
+    <string name="projects_screen_path_label">目录</string>
+    <string name="projects_screen_projects">已保存的项目</string>
+    <string name="projects_screen_empty">还没有项目</string>
+    <string name="projects_screen_empty_detail">项目是你反复回来的那个检出；侧栏本来就会按目录把会话分组。</string>
+    <string name="projects_screen_thread_count">%1$d 个会话</string>
+    <string name="projects_screen_move_up">上移</string>
+    <string name="projects_screen_move_down">下移</string>
+    <string name="projects_screen_delete">删除</string>
+    <string name="projects_screen_environments">执行环境</string>
+    <string name="projects_screen_no_environments">还不知道任何执行环境</string>
+    <string name="projects_screen_no_environments_detail">协议里没有列出执行环境的接口。会话连上某个环境、或你在下面手动添加之后，它才会出现在这里。</string>
+    <string name="projects_screen_environment_detail">Shell、默认目录与连接状态</string>
+    <string name="projects_screen_add_environment">添加执行环境</string>
+    <string name="projects_screen_add_environment_detail">执行环境是远端的 exec server，不是一个本地目录</string>
+
+    <string name="environment_detail_loading">读取中…</string>
+    <string name="environment_detail_state">连接</string>
+    <string name="environment_detail_status">状态</string>
+    <string name="environment_detail_unknown">未配置</string>
+    <string name="environment_detail_error">说明</string>
+    <string name="environment_detail_shell">Shell</string>
+    <string name="environment_detail_shell_name">名称</string>
+    <string name="environment_detail_shell_path">可执行文件</string>
+    <string name="environment_detail_cwd">默认目录</string>
+    <string name="environment_detail_unreachable">服务器没有响应</string>
+    <string name="environment_detail_recheck">重新检测</string>
+
+    <string name="form_field_required">这一项不能为空</string>
+    <string name="projects_form_name">名称</string>
+    <string name="projects_form_name_placeholder">项目名称</string>
+    <string name="projects_form_path">目录</string>
+    <string name="projects_form_path_placeholder">工作区目录</string>
+    <string name="projects_form_path_help">服务器在这个绝对路径下运行会话。</string>
+    <string name="projects_form_save">保存</string>
+    <string name="environment_form_id">执行环境 id</string>
+    <string name="environment_form_id_placeholder">build-box</string>
+    <string name="environment_form_url">exec server 地址</string>
+    <string name="environment_form_url_placeholder">ws://build-box:8787</string>
+    <string name="environment_form_url_help">服务器主动拨这个地址去连那台机器；连接超时留空则用它自己的默认值。</string>
+    <string name="environment_form_add">添加</string>
+    <string name="projects_screen_recheck">重新读取</string>
+    <string name="projects_screen_rechecked">%1$s 的最新状态</string>
+    <string name="projects_screen_thread_count_label">会话数</string>
+</resources>

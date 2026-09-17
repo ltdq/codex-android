@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- PluginShareEntry, MarketplaceEntry, and the page that acts on them (chatwidget/plugins.kt). -->
+    <string name="plugin_shares_screen_title">Plugin sharing</string>
+    <string name="plugin_shares_screen_subtitle">%1$d shares · %2$d marketplaces</string>
+    <string name="plugin_shares_screen_back">Back</string>
+    <string name="plugin_shares_screen_refresh">Reload shares and marketplaces</string>
+
+    <string name="plugin_shares_shares_title">Published shares</string>
+    <string name="plugin_shares_shares_empty">Nothing published yet</string>
+    <string name="plugin_shares_shares_empty_detail">Publishing uploads a copy of a local plugin to the account. The plugin itself stays on disk.</string>
+    <string name="plugin_shares_row_targets">%1$s · %2$s</string>
+    <string name="plugin_shares_discoverability_private">Private</string>
+    <string name="plugin_shares_discoverability_workspace">Workspace</string>
+    <string name="plugin_shares_discoverability_public">Public</string>
+    <string name="plugin_shares_update_targets">Update targets</string>
+    <string name="plugin_shares_checkout">Check out</string>
+    <string name="plugin_shares_delete">Delete share</string>
+    <string name="plugin_shares_targets_title">Share targets</string>
+    <string name="plugin_shares_targets_label">Targets</string>
+    <string name="plugin_shares_targets_placeholder">team-a, team-b</string>
+    <string name="plugin_shares_targets_help">Comma-separated workspace or account names. Leave it empty to share with nobody.</string>
+    <string name="plugin_shares_targets_confirm">Save targets</string>
+
+    <string name="plugin_shares_publish_title">Publish a plugin</string>
+    <string name="plugin_shares_publish_row">Publish a local plugin</string>
+    <string name="plugin_shares_publish_row_detail">Creates a new share. The targets of an existing share are edited from its own row.</string>
+    <string name="plugin_shares_publish_label">Plugin directory</string>
+    <string name="plugin_shares_publish_help">Absolute path of the plugin to upload. The local copy is left alone.</string>
+    <string name="plugin_shares_publish_confirm">Publish</string>
+
+    <string name="plugin_shares_marketplaces_title">Marketplaces</string>
+    <string name="plugin_shares_marketplaces_empty">No marketplace yet</string>
+    <string name="plugin_shares_marketplaces_empty_detail">A marketplace is a git repository of plugins. Adding one makes the plugins in it installable.</string>
+    <string name="plugin_shares_marketplace_add">Add a marketplace</string>
+    <string name="plugin_shares_marketplace_add_detail">Cloned by the server from a source, optionally at a ref</string>
+    <string name="plugin_shares_marketplace_remove">Remove</string>
+    <string name="plugin_shares_marketplace_plugin_count">%1$d plugins</string>
+    <string name="plugin_shares_marketplace_source">Source</string>
+    <string name="plugin_shares_marketplace_source_placeholder">https://github.com/example/plugins</string>
+    <string name="plugin_shares_marketplace_ref">Ref</string>
+    <string name="plugin_shares_marketplace_ref_placeholder">main</string>
+    <string name="plugin_shares_marketplace_ref_help">Branch, tag or commit to check out; blank follows the source default.</string>
+    <string name="plugin_shares_marketplace_add_confirm">Add</string>
+    <string name="plugin_shares_upgrade_all">Upgrade all</string>
+
+    <string name="plugin_shares_reconcile">Reconcile plugins</string>
+    <string name="plugin_shares_last_run_title">Last run</string>
+    <string name="plugin_shares_last_run_reconciled">Plugins rewritten</string>
+    <string name="plugin_shares_last_run_upgraded">Marketplaces upgraded</string>
+</resources>

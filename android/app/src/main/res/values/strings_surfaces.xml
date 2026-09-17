@@ -1,0 +1,193 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Strings for the full-screen surfaces (app/src/main/kotlin/com/cy/codexui/ui/surfaces).
+
+    English wording follows `codex-rs/tui/src` where the TUI has the same concept; the Chinese
+    values live in values-zh-rCN/strings_surfaces.xml.
+-->
+<resources>
+    <!-- AccountScreen -->
+    <string name="account_screen_title">Account</string>
+    <string name="account_screen_not_signed_in">Not signed in</string>
+    <string name="account_screen_refresh">Refresh account</string>
+    <string name="account_screen_sign_in_status">Account</string>
+    <string name="account_screen_signed_in">Signed in</string>
+    <string name="account_screen_email_unbound">No email</string>
+    <string name="account_screen_plan_none">Unknown</string>
+    <string name="account_screen_online">Online</string>
+    <string name="account_screen_offline">Offline</string>
+    <string name="account_screen_organization">Organization</string>
+    <string name="account_screen_personal_workspace">Personal workspace</string>
+    <string name="account_screen_plan">Plan</string>
+    <string name="account_screen_plan_chatgpt">ChatGPT</string>
+    <string name="account_screen_rate_limits">Limits</string>
+    <string name="account_screen_rate_limits_empty">Data not available yet</string>
+    <string name="account_screen_credits">Credits</string>
+    <string name="account_screen_credits_value">%1$d credits</string>
+    <string name="account_screen_rate_limit_note">Once a window reaches 100%, requests queue until it resets.</string>
+    <string name="account_screen_resets_at">Resets %1$s</string>
+    <string name="account_screen_reset_format">MMM d, HH:mm</string>
+    <string name="account_screen_percent">%1$d%%</string>
+    <string name="account_screen_usage">Token activity</string>
+    <string name="account_screen_usage_empty">No token activity yet.</string>
+    <string name="account_screen_usage_peak">Peak %1$s · %2$d days</string>
+    <string name="account_screen_credentials">Credentials</string>
+    <string name="account_screen_sign_out">Log out</string>
+    <string name="account_screen_remove_credentials">Remove local credentials</string>
+    <string name="account_screen_back">Back</string>
+
+    <!-- AppsScreen -->
+    <string name="apps_screen_title">Apps</string>
+    <string name="apps_screen_subtitle">Installed %1$d of %2$d available apps.</string>
+    <string name="apps_screen_empty">No apps available.</string>
+    <string name="apps_screen_installed">Installed</string>
+    <string name="apps_screen_marketplace">Marketplace</string>
+    <string name="apps_screen_installed_empty">No apps installed.</string>
+    <string name="apps_screen_marketplace_empty">No new apps in the marketplace.</string>
+    <string name="apps_screen_install">Install</string>
+    <string name="apps_screen_back">Back</string>
+
+    <!-- HooksScreen -->
+    <string name="hooks_screen_title">Hooks</string>
+    <string name="hooks_screen_subtitle">%1$d hooks · %2$d enabled</string>
+    <string name="hooks_screen_section">Lifecycle hooks</string>
+    <string name="hooks_screen_empty">No hooks configured.</string>
+    <string name="hooks_screen_note">Hooks come from the project config, and changes are written back to config; this client is read-only.</string>
+    <string name="hooks_screen_back">Back</string>
+
+    <!-- McpScreen -->
+    <string name="mcp_screen_title">MCP servers</string>
+    <string name="mcp_screen_subtitle">%1$d servers · %2$d connected</string>
+    <string name="mcp_screen_section_servers">Servers</string>
+    <string name="mcp_screen_empty">No MCP servers configured.</string>
+    <string name="mcp_screen_tools_resources">%1$d tools · %2$d resources</string>
+    <string name="mcp_screen_add_server">Add server</string>
+    <string name="mcp_screen_not_connected">Not available yet</string>
+    <string name="mcp_screen_back">Back</string>
+
+    <!-- PluginsScreen -->
+    <string name="plugins_screen_title">Plugins</string>
+    <string name="plugins_screen_subtitle">Installed %1$d of %2$d available plugins.</string>
+    <string name="plugins_screen_empty">No marketplace plugins available.</string>
+    <string name="plugins_screen_installed">Installed</string>
+    <string name="plugins_screen_marketplace">Marketplace</string>
+    <string name="plugins_screen_installed_empty">No installed plugins.</string>
+    <string name="plugins_screen_marketplace_empty">No plugins available in this marketplace.</string>
+    <string name="plugins_screen_no_version">—</string>
+    <string name="plugins_screen_local">Local</string>
+    <string name="plugins_screen_install">Install</string>
+    <string name="plugins_screen_back">Back</string>
+
+    <!-- SettingsScreen -->
+    <string name="settings_screen_title">Settings</string>
+    <string name="settings_tab_general">General</string>
+    <string name="settings_tab_model">Model</string>
+    <string name="settings_tab_approval">Permissions</string>
+    <string name="settings_tab_session">Session</string>
+    <string name="settings_tab_library">More</string>
+    <string name="settings_group_workspace">Working directory</string>
+    <string name="settings_screen_current_directory">Directory</string>
+    <string name="settings_screen_no_directory">&lt;none&gt;</string>
+    <string name="settings_screen_no_writable_roots">No additional writable roots</string>
+    <string name="settings_screen_writable">Writable</string>
+    <string name="settings_group_config_sources">Config sources</string>
+    <string name="settings_screen_no_config_layers">No config layers were returned.</string>
+    <string name="settings_screen_config_active">Effective</string>
+    <string name="settings_screen_config_disabled">Disabled</string>
+    <string name="settings_group_experimental">Experimental features</string>
+    <string name="settings_screen_experimental_empty">No server experiments available.</string>
+    <string name="settings_group_model">Model</string>
+    <string name="settings_screen_models_empty">No models are available right now.</string>
+    <string name="settings_screen_model_context">%1$s window</string>
+    <string name="settings_screen_model_default">(default)</string>
+    <string name="settings_group_effort">Reasoning effort</string>
+    <string name="settings_screen_effort_title">Reasoning effort</string>
+    <string name="settings_screen_effort_summary">How much thinking budget the model may spend before answering.</string>
+    <string name="settings_group_approval">Approval policy</string>
+    <string name="settings_screen_sandbox_mode">Sandbox mode</string>
+    <string name="settings_screen_network_access">Network access</string>
+    <string name="settings_screen_network_allowed">Enabled</string>
+    <string name="settings_screen_network_ask">Approval required</string>
+    <string name="settings_group_granular">Granular approval</string>
+    <string name="settings_screen_granular_sandbox">Sandbox approval</string>
+    <string name="settings_screen_granular_rules">Rules</string>
+    <string name="settings_screen_granular_skills">Skill calls</string>
+    <string name="settings_screen_granular_permissions">Additional permissions</string>
+    <string name="settings_screen_granular_mcp">MCP forms</string>
+    <string name="settings_screen_granular_ask">Asks for approval</string>
+    <string name="settings_screen_granular_auto">Auto-approved</string>
+    <string name="settings_group_permissions">Permission profiles</string>
+    <string name="settings_screen_permissions_empty">No permission profiles returned by the server.</string>
+    <string name="settings_group_session">Session</string>
+    <string name="settings_screen_session_id">Session</string>
+    <string name="settings_screen_session_not_started">(not started)</string>
+    <string name="settings_screen_branch">Branch</string>
+    <string name="settings_screen_no_git">(not in a git repository)</string>
+    <string name="settings_group_instructions">Agents.md</string>
+    <string name="settings_screen_no_agents_md">No AGENTS.md loaded this session</string>
+    <string name="settings_group_context">Context</string>
+    <string name="settings_screen_context_window">Context window</string>
+    <string name="settings_screen_context_usage">%1$s / %2$s · %3$d%%</string>
+    <string name="settings_screen_io_cached">Input / output / cached</string>
+    <string name="settings_group_library">Library and integrations</string>
+    <string name="settings_screen_back">Back</string>
+
+    <!-- SkillsScreen -->
+    <string name="skills_screen_title">Skills</string>
+    <string name="skills_screen_subtitle">%1$d skills · %2$d enabled</string>
+    <string name="skills_screen_empty">No skills available. Add SKILL.md under .codex/skills and reload.</string>
+    <string name="skills_screen_enabled">Enabled</string>
+    <string name="skills_screen_disabled">Disabled</string>
+    <string name="skills_screen_back">Back</string>
+
+    <!-- SubAgentScreen -->
+    <string name="sub_agent_screen_fallback_name">Subagent · %1$s</string>
+    <string name="sub_agent_screen_missing">No longer in this session\'s agent list</string>
+    <string name="sub_agent_section_task">Prompt</string>
+    <string name="sub_agent_screen_task_empty">No prompt available.</string>
+    <string name="sub_agent_section_run">Task details</string>
+    <string name="sub_agent_screen_not_found">Not found</string>
+    <string name="sub_agent_screen_role_badge">%1$s agent</string>
+    <string name="sub_agent_screen_agent_thread">Agent thread</string>
+    <string name="sub_agent_screen_main_thread">Main thread</string>
+    <string name="sub_agent_screen_model">Model</string>
+    <string name="sub_agent_screen_effort">Reasoning effort</string>
+    <string name="sub_agent_screen_source_item">Source item</string>
+    <string name="sub_agent_section_activity">Activity</string>
+    <string name="sub_agent_screen_activity_count">%1$d events</string>
+    <string name="sub_agent_screen_activity_empty">No items in the parent session mention this agent.</string>
+    <string name="sub_agent_screen_collab_call">Agent tool · %1$s</string>
+    <string name="sub_agent_screen_started">Started</string>
+    <string name="sub_agent_screen_interacted">Interacted with</string>
+    <string name="sub_agent_screen_interrupted">Interrupted</string>
+    <string name="sub_agent_screen_completed">Completed</string>
+    <string name="sub_agent_screen_back">Back</string>
+
+    <!-- WorkspacePickerScreen -->
+    <string name="workspace_picker_title">Choose working directory</string>
+    <string name="workspace_picker_read_error">Cannot read this directory</string>
+    <string name="workspace_picker_reading">Loading %1$s…</string>
+    <string name="workspace_picker_parent">Parent directory</string>
+    <string name="workspace_picker_empty">This directory has no subdirectories or files.</string>
+    <string name="workspace_picker_footer">This directory will be the session workspace</string>
+    <string name="workspace_picker_confirm">Use this directory</string>
+    <string name="workspace_picker_back">Back</string>
+    <!-- SubAgentThreadScreen.kt: a subagent's own conversation. -->
+    <string name="sub_agent_thread_fallback_title">Subagent session</string>
+    <string name="sub_agent_thread_subtitle">This agent\'s own session, read alongside the one it was spawned from</string>
+    <string name="sub_agent_thread_empty">This agent\'s session has no items yet.</string>
+    <string name="sub_agent_thread_assistant">Subagent</string>
+    <string name="session_list_sections">Sections</string>
+    <string name="session_list_section_new">New section</string>
+    <string name="session_list_section_new_detail">Group threads by what they are for, not only by directory</string>
+    <string name="session_list_section_name">Section name</string>
+    <string name="session_list_section_create">Create</string>
+    <string name="session_list_section_move">Move to:</string>
+    <string name="session_list_section_none">None</string>
+    <string name="session_list_section_cancel">Cancel</string>
+    <string name="apps_screen_installed_only">Installed only</string>
+    <string name="apps_screen_installed_only_detail">Ask app/installed instead of app/list</string>
+    <string name="apps_screen_reread">Re-read after the write</string>
+    <string name="apps_screen_reread_one">Re-read</string>
+    <string name="apps_screen_not_installed">Not installed</string>
+</resources>

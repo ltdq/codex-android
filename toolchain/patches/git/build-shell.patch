@@ -1,0 +1,73 @@
+--- a/shared.mak
++++ b/shared.mak
+@@ -128,5 +128,5 @@
+ GIT_DATE="$(GIT_DATE)" \
+ GIT_USER_AGENT="$(GIT_USER_AGENT)" \
+ GIT_VERSION="$(GIT_VERSION_OVERRIDE)" \
+-$(SHELL_PATH) "$(1)/GIT-VERSION-GEN" "$(1)" "$(2)" "$(3)"
++sh "$(1)/GIT-VERSION-GEN" "$(1)" "$(2)" "$(3)"
+ endef
+--- a/Makefile
++++ b/Makefile
+@@ -2694,19 +2694,19 @@
+ 
+ config-list.h: tools/generate-configlist.sh
+ 	@mkdir -p .depend
+-	$(QUIET_GEN)$(SHELL_PATH) ./tools/generate-configlist.sh . $@ .depend/config-list.h.d
++	$(QUIET_GEN)sh ./tools/generate-configlist.sh . $@ .depend/config-list.h.d
+ 
+ -include .depend/config-list.h.d
+ 
+ command-list.h: tools/generate-cmdlist.sh command-list.txt
+ 
+ command-list.h: $(wildcard Documentation/git*.adoc)
+-	$(QUIET_GEN)$(SHELL_PATH) ./tools/generate-cmdlist.sh \
++	$(QUIET_GEN)sh ./tools/generate-cmdlist.sh \
+ 		$(patsubst %,--exclude-program %,$(EXCLUDED_PROGRAMS)) \
+ 		. $@
+ 
+ hook-list.h: tools/generate-hooklist.sh Documentation/githooks.adoc
+-	$(QUIET_GEN)$(SHELL_PATH) ./tools/generate-hooklist.sh . $@
++	$(QUIET_GEN)sh ./tools/generate-hooklist.sh . $@
+ 
+ SCRIPT_DEFINES = $(SHELL_PATH_SQ):$(DIFF_SQ):\
+ 	$(localedir_SQ):$(USE_GETTEXT_SCHEME):$(SANE_TOOL_PATH_SQ):\
+@@ -2761,7 +2761,7 @@
+ PERL_DEFINES += $(gitexecdir) $(perllibdir) $(localedir)
+ 
+ $(SCRIPT_PERL_GEN): % : %.perl tools/generate-perl.sh GIT-PERL-DEFINES GIT-PERL-HEADER GIT-VERSION-FILE
+-	$(QUIET_GEN)$(SHELL_PATH) tools/generate-perl.sh ./GIT-BUILD-OPTIONS ./GIT-VERSION-FILE GIT-PERL-HEADER "$<" "$@+" && \
++	$(QUIET_GEN)sh tools/generate-perl.sh ./GIT-BUILD-OPTIONS ./GIT-VERSION-FILE GIT-PERL-HEADER "$<" "$@+" && \
+ 	mv $@+ $@
+ 
+ PERL_DEFINES := $(subst $(space),:,$(PERL_DEFINES))
+@@ -2809,7 +2809,7 @@
+ ifndef NO_PYTHON
+ $(SCRIPT_PYTHON_GEN): tools/generate-python.sh
+ $(SCRIPT_PYTHON_GEN): % : %.py
+-	$(QUIET_GEN)$(SHELL_PATH) tools/generate-python.sh ./GIT-BUILD-OPTIONS "$<" "$@"
++	$(QUIET_GEN)sh tools/generate-python.sh ./GIT-BUILD-OPTIONS "$<" "$@"
+ else # NO_PYTHON
+ $(SCRIPT_PYTHON_GEN): % : unimplemented.sh
+ 	$(QUIET_GEN) \
+@@ -3225,7 +3225,7 @@
+ 
+ perl/build/lib/%.pm: perl/%.pm tools/generate-perl.sh GIT-BUILD-OPTIONS GIT-VERSION-FILE GIT-PERL-DEFINES
+ 	$(call mkdir_p_parent_template)
+-	$(QUIET_GEN)$(SHELL_PATH) tools/generate-perl.sh ./GIT-BUILD-OPTIONS ./GIT-VERSION-FILE GIT-PERL-HEADER "$<" "$@"
++	$(QUIET_GEN)sh tools/generate-perl.sh ./GIT-BUILD-OPTIONS ./GIT-VERSION-FILE GIT-PERL-HEADER "$<" "$@"
+ 
+ perl/build/man/man3/Git.3pm: perl/Git.pm
+ 	$(call mkdir_p_parent_template)
+@@ -4032,9 +4032,9 @@
+             fi
+ 
+ $(UNIT_TEST_DIR)/clar-decls.h: $(patsubst %,$(UNIT_TEST_DIR)/%.c,$(CLAR_TEST_SUITES)) $(UNIT_TEST_DIR)/generate-clar-decls.sh GIT-TEST-SUITES
+-	$(QUIET_GEN)$(SHELL_PATH) $(UNIT_TEST_DIR)/generate-clar-decls.sh "$@" $(filter %.c,$^)
++	$(QUIET_GEN)sh $(UNIT_TEST_DIR)/generate-clar-decls.sh "$@" $(filter %.c,$^)
+ $(UNIT_TEST_DIR)/clar.suite: $(UNIT_TEST_DIR)/clar-decls.h $(UNIT_TEST_DIR)/generate-clar-suites.sh
+-	$(QUIET_GEN)$(SHELL_PATH) $(UNIT_TEST_DIR)/generate-clar-suites.sh $< $(UNIT_TEST_DIR)/clar.suite
++	$(QUIET_GEN)sh $(UNIT_TEST_DIR)/generate-clar-suites.sh $< $(UNIT_TEST_DIR)/clar.suite
+ $(UNIT_TEST_DIR)/clar/clar.o: $(UNIT_TEST_DIR)/clar.suite
+ $(CLAR_TEST_OBJS): $(UNIT_TEST_DIR)/clar-decls.h
+ $(CLAR_TEST_OBJS): EXTRA_CPPFLAGS = -I$(UNIT_TEST_DIR)

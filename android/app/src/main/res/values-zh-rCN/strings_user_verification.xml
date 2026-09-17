@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- userVerification 一族（app/user_verification.kt）：状态、注册、签名、取消、删除。
+         文案依据 protocol/protocol/v2/misc.kt 的线上类型写成——它带的是凭证 id 与不可用原因，
+         并没有一个 state 字段。 -->
+    <string name="user_verification_page_title">用户验证</string>
+    <string name="user_verification_page_back">返回</string>
+    <string name="user_verification_page_refresh">重新读取验证状态</string>
+    <string name="user_verification_page_reading">读取中…</string>
+    <string name="user_verification_page_ellipsis">…</string>
+
+    <string name="user_verification_page_status">状态</string>
+    <string name="user_verification_page_state_label">当前状态</string>
+    <string name="user_verification_page_reason">原因</string>
+    <string name="user_verification_page_message">服务器说明</string>
+    <string name="user_verification_page_credential_id">凭证 id</string>
+
+    <!-- 页面只有这三种形态。线上没有 state 字段，所以除此之外没有第四种。 -->
+    <string name="user_verification_page_state_unavailable">本机不可用</string>
+    <string name="user_verification_page_state_not_enrolled">还没有凭证</string>
+    <string name="user_verification_page_state_enrolled">本机已有凭证</string>
+
+    <string name="user_verification_page_unavailable">验证不可用</string>
+    <string name="user_verification_page_unavailable_detail">验证是平台能力，不是服务器上的开关：它要用到设备的生物识别和 keystore。服务器已报告这台设备无法同时提供两者，所以在它改变之前，注册和签名都不会成功。这里只剩「重新读取状态」这一件事可做。</string>
+
+    <string name="user_verification_page_enroll">注册凭证</string>
+    <string name="user_verification_page_enroll_note">注册会在本机 keystore 里创建一份凭证，并返回它的公钥部分。它不向后台登记任何东西，也不签名——登记要由调用方在这之后自己完成。</string>
+
+    <string name="user_verification_page_credential">凭证</string>
+    <string name="user_verification_page_algorithm">算法</string>
+    <string name="user_verification_page_public_key">公钥</string>
+    <string name="user_verification_page_metadata_absent">服务器没有返回这份凭证的算法和公钥。旧版 app-server 会省略它们；这里只显示实际收到的内容。</string>
+
+    <string name="user_verification_page_sign">签署一个挑战</string>
+    <string name="user_verification_page_sign_detail">userVerification/verify</string>
+    <string name="user_verification_page_challenge">挑战</string>
+    <string name="user_verification_page_challenge_placeholder">ZXhhbXBsZS1jaGFsbGVuZ2U</string>
+    <string name="user_verification_page_challenge_help">无填充的 base64url，1 到 4096 字节，按服务器给出的原文填入。</string>
+    <string name="user_verification_page_description">描述</string>
+    <string name="user_verification_page_description_placeholder">登录描述</string>
+    <string name="user_verification_page_description_help">真实弹窗会显示的上下文说明。本客户端只向 userVerification/verify 发送一个字符串，所以只有挑战会到达服务器。</string>
+    <string name="user_verification_page_sign_confirm">签名</string>
+
+    <string name="user_verification_page_cancel">取消当前验证</string>
+    <string name="user_verification_page_delete">删除凭证</string>
+    <string name="user_verification_page_cancel_note">「取消」只中止还在进行中的验证，它不是撤销：已经返回的签名不会被收回；要让这台设备彻底不再能签名，用的是「删除凭证」。</string>
+</resources>

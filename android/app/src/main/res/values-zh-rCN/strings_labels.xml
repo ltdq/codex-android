@@ -1,0 +1,159 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- shared.kt: CollabAgentTool -->
+    <string name="collab_tool_spawn_agent">派生代理</string>
+    <string name="collab_tool_send_input">发送输入</string>
+    <string name="collab_tool_resume_agent">恢复代理</string>
+    <string name="collab_tool_wait">等待代理</string>
+    <string name="collab_tool_close_agent">关闭代理</string>
+    <string name="collab_tool_send_message">发送消息</string>
+    <string name="collab_tool_followup_task">追加任务</string>
+    <string name="collab_tool_interrupt_agent">中断代理</string>
+    <string name="collab_tool_list_agents">列出代理</string>
+
+    <!-- shared.kt: ReasoningEffort -->
+    <string name="reasoning_effort_minimal">极低</string>
+    <string name="reasoning_effort_low">低</string>
+    <string name="reasoning_effort_medium">中</string>
+    <string name="reasoning_effort_high">高</string>
+    <string name="reasoning_effort_xhigh">极高</string>
+
+    <!-- thread_data.kt: ThreadStatus -->
+    <string name="thread_status_idle">空闲</string>
+    <string name="thread_status_not_loaded">未加载</string>
+    <string name="thread_status_active">运行中</string>
+    <string name="thread_status_error">错误</string>
+
+    <!-- thread_data.kt: TurnStatus -->
+    <string name="turn_status_in_progress">进行中</string>
+    <string name="turn_status_completed">已完成</string>
+    <string name="turn_status_interrupted">已中断</string>
+    <string name="turn_status_failed">失败</string>
+
+    <!-- thread_data.kt: McpServerConnectionStatus -->
+    <string name="mcp_connection_status_starting">启动中</string>
+    <string name="mcp_connection_status_ready">已连接</string>
+    <string name="mcp_connection_status_failed">失败</string>
+    <string name="mcp_connection_status_disabled">已禁用</string>
+
+    <!-- thread_data.kt: SkillScope -->
+    <string name="skill_scope_user">个人</string>
+    <string name="skill_scope_project">项目</string>
+    <string name="skill_scope_system">内置</string>
+
+    <!-- server_messages.kt: CommandExecutionApprovalDecision -->
+    <string name="command_approval_decision_accept">允许</string>
+    <string name="command_approval_decision_accept_for_session">本会话总是允许</string>
+    <string name="command_approval_decision_decline">拒绝</string>
+    <string name="command_approval_decision_cancel">取消本轮</string>
+
+    <!-- server_messages.kt: FileChangeApprovalDecision -->
+    <string name="file_change_approval_decision_accept">允许</string>
+    <string name="file_change_approval_decision_accept_for_session">本会话总是允许</string>
+    <string name="file_change_approval_decision_decline">拒绝</string>
+    <string name="file_change_approval_decision_cancel">取消本轮</string>
+
+    <!-- server_messages.kt: PermissionsApprovalDecision (no Cancel variant) -->
+    <string name="permissions_approval_decision_accept">允许</string>
+    <string name="permissions_approval_decision_accept_for_session">本会话总是允许</string>
+    <string name="permissions_approval_decision_decline">拒绝</string>
+
+    <!-- notifications.kt: GoalStatus -->
+    <string name="goal_status_active">进行中</string>
+    <string name="goal_status_paused">已暂停</string>
+    <string name="goal_status_budget_limited">达到预算上限</string>
+    <string name="goal_status_complete">已完成</string>
+
+    <!-- config_types.kt: AskForApproval -->
+    <string name="approval_policy_untrusted">仅信任命令</string>
+    <string name="approval_policy_untrusted_description">只自动执行已知安全的只读命令，其余一律询问。</string>
+    <string name="approval_policy_on_request">按需询问</string>
+    <string name="approval_policy_on_request_description">由模型按需请求审批；命令仍受 Android 应用权限限制。</string>
+    <string name="approval_policy_granular">逐项设置</string>
+    <string name="approval_policy_granular_description">分别控制沙箱、规则、Skill、权限与 MCP 表单的询问时机。</string>
+    <string name="approval_policy_never">从不询问</string>
+    <string name="approval_policy_never_description">不请求用户审批；命令仍受 Android 应用权限限制。</string>
+
+    <!-- config_types.kt: SandboxMode -->
+    <string name="sandbox_mode_read_only">只读</string>
+    <string name="sandbox_mode_workspace_write">可写工作区</string>
+    <string name="sandbox_mode_full_access">完全访问</string>
+
+    <!-- config_types.kt: CollaborationMode -->
+    <string name="collaboration_mode_default">默认</string>
+    <string name="collaboration_mode_default_description">正常执行，遇到工具调用按审批策略处理。</string>
+    <string name="collaboration_mode_plan">Plan</string>
+    <string name="collaboration_mode_plan_description">只输出方案与待办，不改动文件。</string>
+    <string name="collaboration_mode_goal">Goal</string>
+    <string name="collaboration_mode_goal_description">围绕一个目标持续推进，直到完成或触达预算。</string>
+
+    <!-- config_types.kt: Personality -->
+    <string name="personality_pragmatic">务实</string>
+    <string name="personality_friendly">友好</string>
+    <string name="personality_none">默认</string>
+
+    <!-- app_server_client.kt: ElicitationAction -->
+    <string name="elicitation_action_accept">提交</string>
+    <string name="elicitation_action_decline">拒绝</string>
+    <string name="elicitation_action_cancel">取消</string>
+
+    <!-- config.kt: ConfigLayerSource -->
+    <string name="config_layer_packaged">内置默认</string>
+    <string name="config_layer_packaged_description">随安装包提供，优先级最低。</string>
+    <string name="config_layer_system">系统</string>
+    <string name="config_layer_system_description">由机器统一管理；它固定的键无法在本地覆盖。</string>
+    <string name="config_layer_user">用户</string>
+    <string name="config_layer_user_description">你自己的配置文件；本页的修改写在这里。</string>
+    <string name="config_layer_project">项目</string>
+    <string name="config_layer_project_description">来自工作目录，例如 .codex/config.toml。</string>
+    <string name="config_layer_session">本次会话</string>
+    <string name="config_layer_session_description">仅本次运行通过命令行传入。</string>
+    <string name="config_layer_unknown">其他</string>
+    <string name="config_layer_unknown_description">本客户端未建模的层。</string>
+
+    <!-- config.kt: WriteStatus -->
+    <string name="write_status_ok">已保存</string>
+    <string name="write_status_overridden">已保存，但被覆盖</string>
+
+    <!-- misc.kt: ThreadMemoryMode -->
+    <string name="memory_mode_disabled">关闭</string>
+    <string name="memory_mode_read">只读</string>
+    <string name="memory_mode_read_write">读写</string>
+
+    <!-- misc.kt: AttachmentType -->
+    <string name="attachment_type_image">图片</string>
+    <string name="attachment_type_file">文件</string>
+
+    <!-- account.kt: LoginAppBrand -->
+    <string name="login_brand_codex">Codex</string>
+    <string name="login_brand_chatgpt">ChatGPT</string>
+
+    <!-- misc.kt: TimelineEntryKind -->
+    <string name="timeline_kind_turn">回合</string>
+    <string name="timeline_kind_item">条目</string>
+    <string name="timeline_kind_compaction">压缩</string>
+    <string name="timeline_kind_goal">目标</string>
+
+    <!-- misc.kt: UserVerificationState -->
+    <string name="user_verification_not_enrolled">未登记</string>
+    <string name="user_verification_pending">待确认</string>
+    <string name="user_verification_verified">已验证</string>
+    <string name="user_verification_failed">验证失败</string>
+
+    <!-- misc.kt: EnvironmentStatusKind -->
+    <string name="environment_status_ready">已就绪</string>
+    <string name="environment_status_pending">等待连接</string>
+    <string name="environment_status_disconnected">已断开</string>
+    <string name="environment_status_unknown">未配置</string>
+
+    <!-- misc.kt: RemoteControlConnectionStatus -->
+    <string name="remote_control_status_disabled">已关闭</string>
+    <string name="remote_control_status_connecting">连接中</string>
+    <string name="remote_control_status_connected">已连接</string>
+    <string name="remote_control_status_errored">连接失败</string>
+
+    <!-- misc.kt: UserVerificationUnavailableReason -->
+    <string name="user_verification_unavailable_credential_missing">本机没有可用凭证</string>
+    <string name="user_verification_unavailable_biometrics">本机生物识别不可用</string>
+    <string name="user_verification_unavailable_provider">验证服务不可用</string>
+</resources>

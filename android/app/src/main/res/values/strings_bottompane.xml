@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- ApprovalOverlay.kt: dialog titles, one per request family. -->
+    <string name="approval_overlay_exec_title">Command execution approval</string>
+    <string name="approval_overlay_patch_title">File change approval</string>
+    <string name="approval_overlay_permissions_title">Permissions approval</string>
+    <string name="approval_overlay_user_input_title">Your answer is needed</string>
+    <string name="approval_overlay_elicitation_title_fallback">MCP form</string>
+    <string name="approval_overlay_dynamic_tool_title">Tool call approval</string>
+
+    <!-- ApprovalOverlay.kt: dialog summaries, shown when the server sent no reason. -->
+    <string name="approval_overlay_exec_summary_fallback">Codex wants to run a command in your workspace</string>
+    <string name="approval_overlay_patch_summary">Codex wants to change %1$d files</string>
+    <string name="approval_overlay_permissions_summary_fallback">Codex needs additional sandbox permissions</string>
+    <string name="approval_overlay_user_input_summary_waiting">Codex is waiting for your input</string>
+    <string name="approval_overlay_user_input_summary_questions">%1$d unanswered questions</string>
+    <string name="approval_overlay_elicitation_summary">%1$s needs your approval.</string>
+    <string name="approval_overlay_dynamic_tool_summary_fallback">Codex wants to call a dynamically declared tool</string>
+
+    <!-- ApprovalOverlay.kt: host handshakes. The reducer answers these before they reach the
+         dialog, so seeing one of these cards means that path broke. -->
+    <string name="approval_overlay_tokens_title">Sign-in needs refreshing</string>
+    <string name="approval_overlay_tokens_summary">The server asked the host for new credentials.</string>
+    <string name="approval_overlay_attestation_title">Attestation requested</string>
+    <string name="approval_overlay_attestation_summary">The server asked the host to attest this installation.</string>
+    <string name="approval_overlay_clock_title">Clock reading requested</string>
+    <string name="approval_overlay_clock_summary">The server asked the host for the current time.</string>
+
+    <!-- ApprovalOverlay.kt: field labels of the request bodies. -->
+    <string name="approval_overlay_field_directory">Directory</string>
+    <string name="approval_overlay_field_reason">Reason</string>
+    <string name="approval_overlay_field_actions">Actions</string>
+    <string name="approval_overlay_field_permission_rule">Permission rule</string>
+    <string name="approval_overlay_field_grant_root">Grant root</string>
+    <string name="approval_overlay_field_tool">Tool</string>
+
+    <!-- ApprovalOverlay.kt: section labels above each block of a request body. -->
+    <string name="approval_overlay_field_command">Command</string>
+    <string name="approval_overlay_field_changes">Changes</string>
+    <string name="approval_overlay_field_permissions">Permissions</string>
+    <string name="approval_overlay_field_input">Input</string>
+
+    <!-- ApprovalOverlay.kt: empty bodies and the permission checklist. -->
+    <string name="approval_overlay_patch_body_unavailable">Changes are unavailable; the server sent no patch body.</string>
+    <string name="approval_overlay_permissions_empty">This request did not include any specific permissions.</string>
+    <string name="approval_overlay_command_unavailable">The server sent no command line.</string>
+    <string name="approval_overlay_changes_summary">%1$d files · %2$d additions · %3$d removals</string>
+    <string name="approval_overlay_changes_more">%1$d more files</string>
+    <string name="approval_overlay_permission_network">Access the network</string>
+    <string name="approval_overlay_permission_shell">Run shell commands</string>
+    <string name="approval_overlay_permission_read">Read %1$s</string>
+    <string name="approval_overlay_permission_write">Write %1$s</string>
+
+    <!-- ApprovalOverlay.kt: a command line shown under a `$` prompt, and a namespaced tool name. -->
+    <string name="approval_overlay_command_prompt">$</string>
+    <string name="approval_overlay_dynamic_tool_qualified">%1$s / %2$s</string>
+
+    <!-- ApprovalOverlay.kt: one-line summaries of a parsed shell command. -->
+    <string name="approval_overlay_action_read">Read %1$s</string>
+    <string name="approval_overlay_action_search_query">" `%1$s`"</string>
+    <string name="approval_overlay_action_list">List %1$s</string>
+    <string name="approval_overlay_action_list_directory">List the directory</string>
+    <string name="approval_overlay_action_search">Search</string>
+    <string name="approval_overlay_action_search_path">" in %1$s"</string>
+    <string name="approval_overlay_list_separator">", "</string>
+
+    <!-- Composer.kt -->
+    <string name="composer_hint_idle">Send a message</string>
+    <string name="composer_add_attachment">Add attachment</string>
+    <string name="composer_interrupt_turn">Interrupt turn</string>
+    <string name="composer_send">Send</string>
+    <string name="composer_queued_count">%1$d queued messages</string>
+
+    <!-- DecisionBar.kt -->
+    <string name="decision_bar_cancel">Cancel</string>
+    <string name="decision_bar_remaining_queue">%1$d more approvals pending</string>
+
+    <!-- FileSearchPopup.kt -->
+    <string name="file_search_popup_prompt">Type a file name to search</string>
+    <string name="file_search_popup_empty">No matches</string>
+
+    <!-- McpServerElicitation.kt -->
+    <string name="mcp_server_elicitation_required">Required</string>
+    <string name="mcp_server_elicitation_boolean_on">On</string>
+    <string name="mcp_server_elicitation_boolean_off">Off</string>
+    <string name="mcp_server_elicitation_enum_unavailable">Options unavailable</string>
+    <string name="mcp_server_elicitation_empty_form">This form has no fields to fill in.</string>
+
+    <!-- RequestUserInputView.kt -->
+    <string name="request_user_input_view_other">None of the above</string>
+    <string name="request_user_input_view_your_answer">Type your answer</string>
+    <string name="request_user_input_view_unanswered">%1$d questions still need answers</string>
+    <string name="request_user_input_view_selected">Selected</string>
+    <string name="request_user_input_view_submit">Submit</string>
+    <string name="file_search_popup_searching">Searching…</string>
+    <string name="composer_remove_attachment">Remove this attachment</string>
+</resources>

@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- ServerDiagnosticsResponse、FeedbackUploadParams 与读取它们的页面（app/diagnostics.kt）。
+         运行时长把三个数字放在同一个字符串里，方便译文自行决定顺序和标点。 -->
+    <string name="diagnostics_screen_title">诊断</string>
+    <string name="diagnostics_screen_back">返回</string>
+    <string name="diagnostics_screen_refresh">重新读取诊断信息</string>
+    <string name="diagnostics_screen_subtitle">服务器 %1$s</string>
+    <string name="diagnostics_screen_subtitle_unknown">还没有读取</string>
+    <string name="diagnostics_screen_subtitle_unversioned">未提供版本号</string>
+    <string name="diagnostics_screen_section_server">服务器诊断</string>
+    <string name="diagnostics_screen_not_asked">还没有诊断信息</string>
+    <string name="diagnostics_screen_not_asked_detail">服务器还没有回应探测，所以这个页面没有任何可报告的内容——连进程 id 都没有。</string>
+    <string name="diagnostics_screen_check">读取诊断信息</string>
+    <string name="diagnostics_process_section">服务器进程</string>
+    <string name="diagnostics_process_pid">进程 id</string>
+    <string name="diagnostics_process_version">版本</string>
+    <string name="diagnostics_process_uptime">运行时长</string>
+    <string name="diagnostics_process_uptime_value">%1$d 天 %2$d 小时 %3$d 分</string>
+    <string name="diagnostics_gauges_section">指标</string>
+    <string name="diagnostics_gauges_empty">服务器没有报告任何指标。</string>
+    <string name="diagnostics_gauges_note">每根条表示该指标占这里最大值（%1$s）的比例，不是任何容量的百分比。</string>
+    <string name="diagnostics_feedback_section">反馈问题</string>
+    <string name="diagnostics_feedback_body">这个页面就是为服务器不正常的时候准备的。反馈会记在上面那个进程名下，连同 id 和版本一起提交。</string>
+    <string name="diagnostics_feedback_action">提交反馈</string>
+    <string name="diagnostics_feedback_form_title">提交反馈</string>
+    <string name="diagnostics_feedback_form_subtitle">提交给正在运行这个会话的服务器</string>
+    <string name="diagnostics_feedback_classification">分类</string>
+    <string name="diagnostics_feedback_classification_placeholder">bug</string>
+    <string name="diagnostics_feedback_classification_help">必填：服务器按这个分类归档反馈。</string>
+    <string name="diagnostics_feedback_reason">发生了什么</string>
+    <string name="diagnostics_feedback_reason_placeholder">工具还在运行，这一轮就中断了</string>
+    <string name="diagnostics_feedback_reason_help">选填，但这才是别人能据以处理的部分。</string>
+    <string name="diagnostics_feedback_send">提交</string>
+</resources>

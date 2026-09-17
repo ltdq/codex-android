@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- MemoryStatusResponse 与读取它的页面（bottom_pane/memories_settings_view.kt）。
+         状态接口只回答一个就绪标志和一个已整理会话数；memories_screen_count_only 存在的
+         原因就是没有任何接口会返回记忆本身。 -->
+    <string name="memories_screen_title">记忆</string>
+    <string name="memories_screen_back">返回</string>
+    <string name="memories_screen_refresh">重新读取记忆状态</string>
+    <string name="memories_screen_subtitle_unknown">还没有读取状态</string>
+    <string name="memories_screen_subtitle_ready">已整理 %1$d 个会话</string>
+    <string name="memories_screen_subtitle_not_ready">存储尚未就绪</string>
+    <string name="memories_screen_section_status">记忆存储</string>
+    <string name="memories_screen_not_asked">还没有读取</string>
+    <string name="memories_screen_not_asked_detail">这个页面还没有向服务器询问记忆存储的状态，所以这里的内容都不是关于它的报告。</string>
+    <string name="memories_screen_check">读取状态</string>
+    <string name="memories_screen_store">存储</string>
+    <string name="memories_screen_store_ready">已就绪</string>
+    <string name="memories_screen_store_not_ready">未就绪</string>
+    <string name="memories_screen_consolidated">已整理会话</string>
+    <string name="memories_screen_store_empty">存储已就绪，但还没有任何会话被整理进来。</string>
+    <string name="memories_screen_count_only">这个状态接口只回答一个数量，从不返回内容：协议里没有任何接口能取回已存储的记忆本身，所以这个页面无法展示存储里到底有什么。</string>
+    <string name="memories_screen_reset_section">重置</string>
+    <string name="memories_screen_reset_note">重置会丢弃存储里的全部内容。服务器和这个客户端都无法把它恢复。</string>
+    <string name="memories_screen_reset_action">重置记忆</string>
+    <string name="memories_screen_reset_title">要重置记忆吗？</string>
+    <string name="memories_screen_reset_subtitle">此操作无法撤销</string>
+    <string name="memories_screen_reset_body">记忆存储里已整理的会话会被全部丢弃，会话本身不受影响。</string>
+    <string name="memories_screen_reset_cancel">取消</string>
+    <string name="memories_screen_reset_confirm">重置</string>
+</resources>

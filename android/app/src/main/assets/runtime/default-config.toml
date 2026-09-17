@@ -1,0 +1,8 @@
+# Persistent user configuration. Android runtime paths are supplied by the host.
+cli_auth_credentials_store = "file"
+approval_policy = "on-request"
+sandbox_mode = "danger-full-access"
+
+[features]
+shell_snapshot = false
+shell_zsh_fork = false

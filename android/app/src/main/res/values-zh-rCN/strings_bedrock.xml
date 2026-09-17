@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- BedrockDiscoverResponse 与 BedrockSetupParams，由 onboarding/bedrock.kt 读取。 -->
+    <string name="bedrock_screen_title">Amazon Bedrock</string>
+    <string name="bedrock_screen_subtitle">用 Bedrock 作为模型提供方，替代 ChatGPT</string>
+    <string name="bedrock_screen_back">返回</string>
+    <string name="bedrock_screen_refresh">重新获取区域列表</string>
+    <string name="bedrock_regions_title">区域</string>
+    <string name="bedrock_regions_loading">正在询问服务器可以提供哪些区域…</string>
+    <string name="bedrock_regions_empty">没有返回任何区域</string>
+    <string name="bedrock_regions_empty_detail">服务器有响应，但没有给出可以登录的区域。点刷新会再问一次。</string>
+    <string name="bedrock_region_selected">已选区域</string>
+    <string name="bedrock_failed_title">服务器没有响应</string>
+    <string name="bedrock_setup_title">配置 Bedrock</string>
+    <string name="bedrock_setup_detail">配置会把当前账号从 ChatGPT 切到上面选中的 Bedrock 区域。它和区域列表分成两步，是因为这一步会改动账号，而不只是读取。</string>
+    <string name="bedrock_setup_action">用该区域完成配置</string>
+</resources>

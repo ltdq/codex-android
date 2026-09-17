@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- RemoteControlStatus, RemoteControlClient and the page that prints them (status/remote_control.kt). -->
+    <string name="remote_control_page_title">Remote control</string>
+    <string name="remote_control_page_unread">Not read yet</string>
+    <string name="remote_control_page_back">Back</string>
+    <string name="remote_control_page_refresh">Refresh</string>
+    <string name="remote_control_page_retry">Check again</string>
+    <string name="remote_control_connection">Connection</string>
+    <string name="remote_control_status_label">Status</string>
+    <string name="remote_control_server">Server name</string>
+    <string name="remote_control_installation">Installation</string>
+    <string name="remote_control_environment">Environment</string>
+    <string name="remote_control_relay">Remote access</string>
+    <string name="remote_control_relay_detail">While this is on, the other devices signed in to your account can reach this machine through the relay.</string>
+    <string name="remote_control_unread">The relay state has not been read</string>
+    <string name="remote_control_unread_detail">This client has not asked remoteControl/status/read yet, so it cannot say whether the relay is on.</string>
+    <string name="remote_control_pairing">Pairing</string>
+    <string name="remote_control_pairing_detail">Starting a pairing mints a code that another device claims in order to reach this machine.</string>
+    <string name="remote_control_pairing_hint">Type this code on the other device. It stays valid until it is claimed or replaced.</string>
+    <string name="remote_control_pairing_start">Start pairing</string>
+    <string name="remote_control_pairing_code">Pairing code</string>
+    <string name="remote_control_pairing_state">State</string>
+    <string name="remote_control_pairing_claimed">Paired</string>
+    <string name="remote_control_pairing_waiting">Waiting for the other device</string>
+    <string name="remote_control_pairing_restart">Start over</string>
+    <string name="remote_control_devices">Paired devices</string>
+    <string name="remote_control_devices_empty">No device has paired</string>
+    <string name="remote_control_devices_empty_detail">A device appears here after it claims a pairing code. Revoking one cuts off its access to this machine.</string>
+    <string name="remote_control_device_separator">" · "</string>
+    <string name="remote_control_device_never_seen">Never connected</string>
+    <string name="remote_control_device_revoke">Revoke</string>
+    <string name="remote_control_pairing_check">Check whether it was claimed</string>
+</resources>

@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- A closed thread's history: search, occurrence hits, the timeline index and the paged
+         listings (app/history_ui.kt). -->
+    <string name="history_ui_title">Thread history</string>
+    <string name="history_ui_back">Back</string>
+    <string name="history_ui_no_thread">No thread selected yet</string>
+    <string name="history_ui_failed">The server could not answer</string>
+
+    <string name="history_ui_find">Find a thread</string>
+    <string name="history_ui_find_placeholder">Words from the thread</string>
+    <string name="history_ui_find_action">Search</string>
+    <string name="history_ui_no_search">No search yet</string>
+    <string name="history_ui_no_search_detail">A closed thread has no transcript to open, so search is the way in. Type a term to find the thread whose history you want to read.</string>
+    <string name="history_ui_no_results">No match</string>
+    <string name="history_ui_no_results_detail">The server answered this search with nothing. A term that appears nowhere in the searched history cannot be found.</string>
+    <string name="history_ui_updated_format">yyyy-MM-dd HH:mm</string>
+
+    <string name="history_ui_scan">Inside this thread</string>
+    <string name="history_ui_scan_placeholder">Words from the items</string>
+    <string name="history_ui_scan_action">Search</string>
+    <string name="history_ui_no_scan">Not searched yet</string>
+    <string name="history_ui_no_scan_detail">This is a separate call from the thread search above, and it only looks inside the selected thread.</string>
+    <string name="history_ui_hit_note">A hit names the item it was found in and how far into that item the match sits. Nothing here scrolls a transcript to a hit, so these rows are for reading only.</string>
+    <string name="history_ui_hit_offset">offset %1$d</string>
+    <string name="history_ui_hit_no_snippet">The server sent no snippet for this hit</string>
+
+    <string name="history_ui_index">Timeline index</string>
+    <string name="history_ui_index_note">The sparse index behind the scrubber: one row per recorded turn, item, compaction or goal.</string>
+    <string name="history_ui_index_empty">No index entries</string>
+    <string name="history_ui_index_empty_detail">The server returned no timeline entries for this thread.</string>
+
+    <string name="history_ui_pages">Pages</string>
+    <string name="history_ui_tab_items">Items</string>
+    <string name="history_ui_tab_turns">Turns</string>
+    <string name="history_ui_tab_timeline">Timeline</string>
+    <string name="history_ui_loading">Loading…</string>
+    <string name="history_ui_load_more">Load more</string>
+    <string name="history_ui_page_empty">This page is empty</string>
+    <string name="history_ui_page_empty_detail">The server answered this listing with no rows.</string>
+    <string name="history_ui_turn_detail">%1$s · %2$d items</string>
+
+    <string name="history_ui_item_files">%1$s (+%2$d files)</string>
+    <string name="history_ui_item_sleep">%1$d ms</string>
+    <string name="history_ui_item_compaction">Context compaction</string>
+</resources>

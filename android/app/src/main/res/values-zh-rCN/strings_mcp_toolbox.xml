@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- bottom_pane/mcp_toolbox.kt -->
+    <string name="mcp_toolbox_title">MCP 工具箱</string>
+    <string name="mcp_toolbox_back">返回</string>
+
+    <string name="mcp_toolbox_resource_section">资源</string>
+    <string name="mcp_toolbox_resource_uri">资源 URI</string>
+    <string name="mcp_toolbox_resource_uri_placeholder">file:///README.md</string>
+    <string name="mcp_toolbox_resource_read">读取资源</string>
+    <string name="mcp_toolbox_resource_uri_label">URI</string>
+    <string name="mcp_toolbox_resource_mime">MIME 类型</string>
+    <string name="mcp_toolbox_resource_no_text">服务器没有返回文本内容。</string>
+    <string name="mcp_toolbox_resource_failed">资源读取失败</string>
+
+    <string name="mcp_toolbox_tool_section">工具</string>
+    <string name="mcp_toolbox_tool_name">工具名</string>
+    <string name="mcp_toolbox_tool_name_placeholder">read_file</string>
+    <string name="mcp_toolbox_tool_arguments">参数（JSON）</string>
+    <string name="mcp_toolbox_tool_arguments_placeholder">{\"path\": \"README.md\"}</string>
+    <string name="mcp_toolbox_tool_call">调用工具</string>
+    <string name="mcp_toolbox_tool_ok">服务器已返回</string>
+    <string name="mcp_toolbox_tool_error">工具返回了错误</string>
+    <string name="mcp_toolbox_tool_failed">工具调用失败</string>
+    <string name="mcp_toolbox_result_empty">工具没有返回内容</string>
+
+    <string name="mcp_toolbox_stream_section">事件</string>
+    <string name="mcp_toolbox_stream_switch">接收该服务器的事件</string>
+    <string name="mcp_toolbox_stream_switch_detail">由 App 打开服务器的事件流，推送的内容按先后顺序显示在下方。</string>
+    <string name="mcp_toolbox_stream_empty">还没有收到事件。打开开关后，服务器推送的通知会显示在这里。</string>
+</resources>

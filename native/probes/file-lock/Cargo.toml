@@ -1,0 +1,12 @@
+[package]
+name = "codex-android-file-lock-probe"
+version = "0.1.0"
+edition = "2024"
+
+[workspace]
+
+[profile.release]
+opt-level = 2
+lto = "thin"
+codegen-units = 8
+strip = "debuginfo"

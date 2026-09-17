@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- ExternalAgentConfigMigrationItem、ExternalAgentConfigImportHistory，以及读取它们的页面
+         （external_agent_config_migration.kt）。 -->
+    <string name="migration_screen_title">导入配置</string>
+    <string name="migration_screen_subtitle">已检测到 %1$d 项</string>
+    <string name="migration_screen_back">返回</string>
+
+    <string name="migration_detect_section">检测其他智能体</string>
+    <string name="migration_detect_note">检测只做读取：扫描另一个智能体的配置并报告发现了什么；在你按下导入之前，不会写入或改动任何内容。</string>
+    <string name="migration_detect_action">检测</string>
+
+    <string name="migration_selection_section">检测结果</string>
+    <string name="migration_selection_empty">还没有检测到任何内容</string>
+    <string name="migration_selection_empty_detail">运行一次检测，看看另一个智能体的配置能带来什么。</string>
+    <string name="migration_selection_select_all">全选</string>
+    <string name="migration_selection_select_none">全不选</string>
+    <string name="migration_selection_count">已选 %1$d 项</string>
+    <string name="migration_selection_import">导入所选项</string>
+    <string name="migration_item_subtitle">%1$s · %2$s</string>
+
+    <string name="migration_progress_section">正在导入</string>
+    <string name="migration_progress_count">%1$d / %2$d</string>
+
+    <string name="migration_history_section">导入记录</string>
+    <string name="migration_history_empty">还没有导入记录</string>
+    <string name="migration_history_empty_detail">无论导入由本客户端还是服务器执行，完成后都会在这里留下一行记录。</string>
+    <string name="migration_history_time_format">M月d日 HH:mm</string>
+    <string name="migration_history_note">记录一条备注</string>
+    <string name="migration_history_note_detail">为客户端自己执行的导入留下一条审计记录</string>
+    <string name="migration_history_note_title">记录导入备注</string>
+    <string name="migration_history_note_summary">备注</string>
+    <string name="migration_history_note_placeholder">手工导入了 Claude Code 的 MCP 服务器</string>
+    <string name="migration_history_note_help">用一句话说明导入了什么；它会成为这条历史记录的标题。</string>
+    <string name="migration_history_note_save">记录</string>
+</resources>

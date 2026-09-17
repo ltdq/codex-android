@@ -1,0 +1,26 @@
+<resources>
+    <string name="goal_status_blocked">阻塞</string>
+    <string name="goal_status_usage_limited">用量受限</string>
+    <string name="runtime_project_count">%1$d 个项目</string>
+    <string name="runtime_disconnected">Codex 连接已断开</string>
+    <string name="runtime_android_sandbox">Android 应用沙箱</string>
+    <string name="runtime_android_sandbox_detail">命令与 App 使用相同的 Android UID、文件和网络权限，不会额外限制到工作区内。</string>
+    <string name="runtime_fixed">固定</string>
+    <string name="reasoning_effort_none">无</string>
+    <string name="reasoning_effort_max">最高</string>
+    <string name="reasoning_effort_ultra">超高</string>
+    <string name="runtime_starting">正在启动 Codex</string>
+    <string name="runtime_startup_failed">Codex 启动失败</string>
+    <string name="runtime_retry">重试</string>
+    <string name="runtime_new_thread">新建会话</string>
+    <string name="runtime_sign_in">登录</string>
+    <string name="runtime_login_chatgpt">使用 ChatGPT 登录</string>
+    <string name="runtime_api_key">OpenAI API 密钥</string>
+    <string name="runtime_login_api_key">使用 API 密钥登录</string>
+    <string name="runtime_login_waiting">等待完成登录</string>
+    <string name="runtime_open_browser">打开浏览器</string>
+    <string name="runtime_cancel_login">取消登录</string>
+    <string name="runtime_ready">开始新的会话</string>
+    <string name="runtime_creating_thread">正在创建会话</string>
+    <string name="runtime_attachment_failed">无法导入附件</string>
+</resources>

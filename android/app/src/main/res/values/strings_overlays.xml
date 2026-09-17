@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Strings of the overlay sheets (ui/overlays). Wording follows codex-tui: the agent states,
+    "Subagents"/"Agents", "Goal", "Model: ", "Reasoning level" and "Queued follow-up inputs" are
+    its own phrases.
+-->
+<resources>
+    <!-- AgentPickerSheet.kt: the shared sheet shell and the agent picker. -->
+    <string name="agent_picker_sheet_close">Cancel</string>
+    <string name="agent_picker_title">Agents</string>
+    <string name="agent_picker_subtitle">%1$d agents · subagents come from collab tool calls</string>
+    <string name="agent_picker_filter_hint">Filter by name or task</string>
+    <string name="agent_picker_filter_clear">Clear filter</string>
+    <string name="agent_picker_empty">No matching agents</string>
+    <string name="agent_picker_current">Current agent</string>
+
+    <!-- AgentsOverview.kt: the agent dashboard and the roster presentation helpers. -->
+    <string name="agents_overview_title">Agents</string>
+    <string name="agents_overview_subtitle">%1$d agents · %2$s tokens total</string>
+    <string name="agents_overview_empty">No agents in this thread yet</string>
+    <string name="agents_overview_current">Current</string>
+    <string name="agents_overview_no_task">No prompt available.</string>
+    <string name="agents_overview_effort">Reasoning: %1$s</string>
+    <string name="agents_overview_source">Source: %1$s</string>
+    <string name="agents_overview_tokens_none">—</string>
+    <string name="agents_overview_role_main">Main</string>
+    <string name="agents_overview_role_sub">Sub</string>
+    <string name="agents_overview_status_pending_init">Pending init</string>
+    <string name="agents_overview_status_running">Running</string>
+    <string name="agents_overview_status_interrupted">Interrupted</string>
+    <string name="agents_overview_status_completed">Completed</string>
+    <string name="agents_overview_status_errored">Errored</string>
+    <string name="agents_overview_status_shutdown">Shutdown</string>
+    <string name="agents_overview_status_not_found">Not found</string>
+    <string name="agents_overview_status_main_thread">Main thread</string>
+    <string name="agents_overview_status_idle">Idle</string>
+    <string name="agents_overview_activity_started">Started</string>
+    <string name="agents_overview_activity_interacted">Contacted</string>
+    <string name="agents_overview_activity_interrupted">Interrupted</string>
+    <string name="agents_overview_activity_completed">Completed</string>
+
+    <!-- GoalSheet.kt: the goal sheet, its status pill and the shared pill button. -->
+    <string name="goal_sheet_title">Goal</string>
+    <string name="goal_sheet_subtitle_idle">Goal mode keeps working toward the objective</string>
+    <string name="goal_sheet_objective_hint">Goal objective</string>
+    <string name="goal_sheet_objective_example">Example: split the status card into reusable components, then make the build pass. The agent keeps going until the goal is complete.</string>
+    <string name="goal_sheet_start">Start goal</string>
+    <string name="goal_sheet_usage">Tokens used: %1$s · Time used: %2$s</string>
+    <string name="goal_sheet_progress_hint">The agent reports progress at the end of each turn; the status becomes Completed when it is done.</string>
+    <string name="goal_sheet_clear">Clear goal</string>
+    <string name="goal_sheet_duration_hours_minutes">%1$dh %2$dm</string>
+    <string name="goal_sheet_duration_hours">%1$dh</string>
+    <string name="goal_sheet_duration_minutes_seconds">%1$dm %2$ds</string>
+    <string name="goal_sheet_duration_minutes">%1$dm</string>
+    <string name="goal_sheet_duration_seconds">%1$ds</string>
+
+    <!-- ModelSheet.kt: the model and reasoning-level pickers. -->
+    <string name="model_sheet_title">Model and reasoning</string>
+    <string name="model_sheet_subtitle">Current: %1$s · %2$s</string>
+    <string name="model_sheet_empty">Model list not available yet.</string>
+    <string name="model_sheet_effort_section">Reasoning level</string>
+    <string name="model_sheet_effort_default_and_hint">%1$s default: %2$s · %3$s</string>
+    <string name="model_sheet_this_model">this model</string>
+    <string name="model_sheet_effort_sheet_subtitle">Higher levels reason more thoroughly, but respond more slowly</string>
+    <string name="model_sheet_effort_current">Current: %1$s · %2$s</string>
+    <string name="model_sheet_default_badge">Default</string>
+    <string name="model_sheet_context">Context %1$s · default %2$s</string>
+    <string name="model_sheet_selected_model">Selected model</string>
+    <string name="model_sheet_selected_effort">Selected level</string>
+    <string name="model_sheet_hint_minimal">Almost no reasoning; fastest</string>
+    <string name="model_sheet_hint_low">Light reasoning for small changes</string>
+    <string name="model_sheet_hint_medium">Balanced; the default level</string>
+    <string name="model_sheet_hint_high">Deeper reasoning for complex changes</string>
+    <string name="model_sheet_hint_xhigh">Deepest reasoning; slowest</string>
+
+    <!-- PlanTimeline.kt: the plan timeline and its header chip. -->
+    <string name="plan_timeline_summary">%1$d steps · %2$d completed</string>
+    <string name="plan_timeline_chip">%1$d/%2$d steps</string>
+    <string name="plan_timeline_pending">Pending</string>
+    <string name="plan_timeline_in_progress">In progress</string>
+    <string name="plan_timeline_completed">Completed</string>
+
+    <!-- QueuedMessages.kt: the messages queued behind the running turn. -->
+    <string name="queued_messages_header">Queued · %1$d</string>
+    <string name="queued_messages_collapse">Collapse queued messages</string>
+    <string name="queued_messages_empty">(empty message)</string>
+    <string name="queued_messages_steer">Steer</string>
+    <string name="queued_messages_start">Run now</string>
+    <string name="queued_messages_move_up">Move up</string>
+    <string name="queued_messages_move_down">Move down</string>
+    <string name="queued_messages_remove">Remove</string>
+    <string name="queued_messages_clear">Clear all</string>
+    <!-- Agent roster naming: the fold takes these as parameters, so they live here. -->
+    <string name="agent_roster_main_label">Main agent</string>
+    <string name="agent_roster_sub_agent_name">Subagent · %1$s</string>
+    <string name="queued_messages_edit">Edit</string>
+    <string name="queued_messages_edit_detail">Rewrites the queued message; the other inputs it carries are kept</string>
+    <string name="queued_messages_edit_label">Message</string>
+    <string name="queued_messages_edit_save">Save</string>
+</resources>

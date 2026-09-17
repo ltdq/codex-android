@@ -1,0 +1,15 @@
+--- a/awk.h
++++ b/awk.h
+@@ -584,6 +584,12 @@
+ #define for_array 	sub.nodep.rn
+ 
+ /* Node_frame: */
++#ifdef __ANDROID__
++/* bionic's <sched.h> (API 36) pulls in <linux/sched.h>, which uses "stack" as
++ * a struct member name and would collide with the macro below.  Include it
++ * before the macro is defined.  */
++#include <sched.h>
++#endif
+ #define stack        sub.nodep.r.av
+ #define func_node    sub.nodep.x.extra
+ #define prev_frame_size	sub.nodep.reflags

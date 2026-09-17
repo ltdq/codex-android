@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- ProjectEntry, EnvironmentInfo, and the pages that read them (app/projects.kt). -->
+    <string name="projects_screen_title">Projects</string>
+    <string name="projects_screen_subtitle">%1$d projects · %2$d environments</string>
+    <string name="projects_screen_back">Back</string>
+    <string name="projects_screen_new">New project</string>
+    <string name="projects_screen_edit">Edit project</string>
+    <string name="projects_screen_import">Import a directory</string>
+    <string name="projects_screen_import_detail">Adopt an existing checkout as a project</string>
+    <string name="projects_screen_path_label">Directory</string>
+    <string name="projects_screen_projects">Saved projects</string>
+    <string name="projects_screen_empty">No projects yet</string>
+    <string name="projects_screen_empty_detail">A project is a checkout you come back to; the sidebar groups threads under its directory either way.</string>
+    <string name="projects_screen_thread_count">%1$d threads</string>
+    <string name="projects_screen_move_up">Move up</string>
+    <string name="projects_screen_move_down">Move down</string>
+    <string name="projects_screen_delete">Delete</string>
+    <string name="projects_screen_environments">Execution environments</string>
+    <string name="projects_screen_no_environments">No environment known yet</string>
+    <string name="projects_screen_no_environments_detail">The protocol has no call that lists environments. One appears here once a session attaches to it, or once you add it below.</string>
+    <string name="projects_screen_environment_detail">Shell, directory and connection state</string>
+    <string name="projects_screen_add_environment">Add an environment</string>
+    <string name="projects_screen_add_environment_detail">An environment is a remote exec server, not a local folder</string>
+
+    <string name="environment_detail_loading">Reading…</string>
+    <string name="environment_detail_state">Connection</string>
+    <string name="environment_detail_status">Status</string>
+    <string name="environment_detail_unknown">Not configured</string>
+    <string name="environment_detail_error">Detail</string>
+    <string name="environment_detail_shell">Shell</string>
+    <string name="environment_detail_shell_name">Name</string>
+    <string name="environment_detail_shell_path">Executable</string>
+    <string name="environment_detail_cwd">Default directory</string>
+    <string name="environment_detail_unreachable">The server could not answer</string>
+    <string name="environment_detail_recheck">Check again</string>
+
+    <string name="form_field_required">This field cannot be empty</string>
+    <string name="projects_form_name">Name</string>
+    <string name="projects_form_name_placeholder">Project name</string>
+    <string name="projects_form_path">Directory</string>
+    <string name="projects_form_path_placeholder">Workspace directory</string>
+    <string name="projects_form_path_help">The absolute path the server will run threads in.</string>
+    <string name="projects_form_save">Save</string>
+    <string name="environment_form_id">Environment id</string>
+    <string name="environment_form_id_placeholder">build-box</string>
+    <string name="environment_form_url">Exec server url</string>
+    <string name="environment_form_url_placeholder">ws://build-box:8787</string>
+    <string name="environment_form_url_help">The server dials this to reach the machine; leaving the connect timeout blank uses its own.</string>
+    <string name="environment_form_add">Add</string>
+    <string name="projects_screen_recheck">Check again</string>
+    <string name="projects_screen_rechecked">%1$s, re-read</string>
+    <string name="projects_screen_thread_count_label">Threads</string>
+</resources>

@@ -1,0 +1,27 @@
+# Build outputs
+**/build/
+**/target/
+artifacts/
+
+# Rust / native
+native/out/
+native/host-target/
+native/shell-test-target/
+native/rust-sysroot/
+native/build-upstream/
+
+# toolchain
+toolchain/out/
+toolchain/src/
+
+# Android / Gradle
+.gradle/
+.kotlin/
+.cxx/
+.idea/
+*.iml
+local.properties
+
+# Signing material must never be committed
+*.jks
+*.keystore

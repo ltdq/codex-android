@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- PluginShareEntry、MarketplaceEntry，以及操作它们的页面（chatwidget/plugins.kt）。 -->
+    <string name="plugin_shares_screen_title">插件分享</string>
+    <string name="plugin_shares_screen_subtitle">%1$d 个分享 · %2$d 个插件市场</string>
+    <string name="plugin_shares_screen_back">返回</string>
+    <string name="plugin_shares_screen_refresh">重新加载分享与插件市场</string>
+
+    <string name="plugin_shares_shares_title">已发布的分享</string>
+    <string name="plugin_shares_shares_empty">还没有发布任何插件</string>
+    <string name="plugin_shares_shares_empty_detail">发布会把本地插件的一份副本上传到账号；插件本身仍然留在磁盘上。</string>
+    <string name="plugin_shares_row_targets">%1$s · %2$s</string>
+    <string name="plugin_shares_discoverability_private">私有</string>
+    <string name="plugin_shares_discoverability_workspace">工作区</string>
+    <string name="plugin_shares_discoverability_public">公开</string>
+    <string name="plugin_shares_update_targets">修改分享对象</string>
+    <string name="plugin_shares_checkout">检出</string>
+    <string name="plugin_shares_delete">删除分享</string>
+    <string name="plugin_shares_targets_title">分享对象</string>
+    <string name="plugin_shares_targets_label">对象列表</string>
+    <string name="plugin_shares_targets_placeholder">team-a, team-b</string>
+    <string name="plugin_shares_targets_help">用逗号分隔的工作区或账号名称；留空表示不分享给任何人。</string>
+    <string name="plugin_shares_targets_confirm">保存分享对象</string>
+
+    <string name="plugin_shares_publish_title">发布插件</string>
+    <string name="plugin_shares_publish_row">发布本地插件</string>
+    <string name="plugin_shares_publish_row_detail">只会新建一个分享；已有分享的对象在它自己那一行里修改。</string>
+    <string name="plugin_shares_publish_label">插件目录</string>
+    <string name="plugin_shares_publish_help">要上传的插件的绝对路径；本地副本不受影响。</string>
+    <string name="plugin_shares_publish_confirm">发布</string>
+
+    <string name="plugin_shares_marketplaces_title">插件市场</string>
+    <string name="plugin_shares_marketplaces_empty">还没有插件市场</string>
+    <string name="plugin_shares_marketplaces_empty_detail">插件市场是一个存放插件的 git 仓库；添加之后，其中的插件就可以安装。</string>
+    <string name="plugin_shares_marketplace_add">添加插件市场</string>
+    <string name="plugin_shares_marketplace_add_detail">由服务端从来源克隆，可选指定 ref</string>
+    <string name="plugin_shares_marketplace_remove">移除</string>
+    <string name="plugin_shares_marketplace_plugin_count">%1$d 个插件</string>
+    <string name="plugin_shares_marketplace_source">来源</string>
+    <string name="plugin_shares_marketplace_source_placeholder">https://github.com/example/plugins</string>
+    <string name="plugin_shares_marketplace_ref">Ref</string>
+    <string name="plugin_shares_marketplace_ref_placeholder">main</string>
+    <string name="plugin_shares_marketplace_ref_help">要检出的分支、标签或提交；留空则跟随来源的默认值。</string>
+    <string name="plugin_shares_marketplace_add_confirm">添加</string>
+    <string name="plugin_shares_upgrade_all">全部升级</string>
+
+    <string name="plugin_shares_reconcile">重新同步插件</string>
+    <string name="plugin_shares_last_run_title">上次运行</string>
+    <string name="plugin_shares_last_run_reconciled">被改写的插件</string>
+    <string name="plugin_shares_last_run_upgraded">已升级的插件市场</string>
+</resources>
