@@ -1,11 +1,16 @@
 package com.cy.codexui
 
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.referentialEqualityPolicy
 import androidx.compose.runtime.setValue
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
+import com.cy.codexui.protocol.protocol.item.AgentMessageItem
+import com.cy.codexui.protocol.protocol.item.PlanItem
 import com.cy.codexui.protocol.protocol.item.ThreadItem
 import com.cy.codexui.protocol.protocol.v2.AccountInfo
 import com.cy.codexui.protocol.protocol.v2.AccountUsage
@@ -78,11 +83,29 @@ class SessionState {
     /** Items in arrival order; deltas mutate the item they name in place. */
     val items = mutableStateListOf<ThreadItem>()
 
+    /**
+     * Monotonic revision of the [items] list, bumped by every mutation of it.
+     *
+     * Composables that fold the whole transcript into a derived list (the agent roster) key that
+     * fold on this counter instead of reading the list themselves: reading the list in a screen's
+     * scope subscribes the whole screen to every streaming delta, while this counter lets the fold
+     * live in a derived state that only notifies its readers when the folded value changed.
+     */
+    var itemsRevision by mutableIntStateOf(0)
+        private set
+
     /** The plan the agent is working through, from `turn/plan/updated`. */
     val plan = mutableStateListOf<PlanStep>()
 
-    /** Whole-turn diff, re-parsed whenever `turn/diff/updated` arrives. */
-    var turnDiff by mutableStateOf<List<FileDiff>>(emptyList())
+    /**
+     * Whole-turn diff, folded from `turn/diff/updated`.
+     *
+     * Identity comparison is deliberate: the accumulator returns the very same list while the
+     * payload is unchanged and a fresh one as soon as an append changed a file, so an identity
+     * check is both cheaper than comparing every line and exactly the invalidation the readers
+     * need.
+     */
+    var turnDiff by mutableStateOf<List<FileDiff>>(emptyList(), referentialEqualityPolicy())
         private set
 
     var usage by mutableStateOf(ThreadTokenUsage())
@@ -137,6 +160,80 @@ class SessionState {
     var streamingItemId by mutableStateOf<String?>(null)
         private set
 
+    /**
+     * Incremental markdown buffers, keyed by the item id the deltas name.
+     *
+     * A delta appends here instead of replacing the item: `item.copy(text = item.text + delta)`
+     * copied the whole answer on every token, and the renderer had to re-parse the result. The
+     * buffer owns the parsed blocks, so a delta costs the tail block and nothing else. Entries are
+     * dropped when the item completes or the thread changes; a snapshot write (history refresh)
+     * leaves them alone because the snapshot can be older than the stream.
+     */
+    private val streamBuffers = mutableStateMapOf<String, MarkdownStream>()
+
+    internal fun stream(id: String): MarkdownStream? = streamBuffers[id]
+
+    /** Whole streamed text, materialized only when an item completes without a text body. */
+    internal fun streamText(id: String): String? = streamBuffers[id]?.text
+
+    internal fun endStream(id: String) {
+        streamBuffers.remove(id)
+    }
+
+    /**
+     * Freeze every buffer that is still open into its item and drop it.
+     *
+     * An interrupted turn can end without `item/completed`, and an item whose text never lands in
+     * the list would be invisible to everything that reads `ThreadItem.text` — copy, search, the
+     * session preview. This materializes the buffer once, at the only moment the streaming ends
+     * without the item saying so itself.
+     */
+    internal fun settleStreams() {
+        if (streamBuffers.isEmpty()) return
+        for ((id, stream) in streamBuffers) {
+            val index = items.indexOfFirst { it.id == id }
+            if (index < 0) continue
+            val filled = when (val item = items[index]) {
+                is AgentMessageItem -> if (item.text.isEmpty()) item.copy(text = stream.text) else null
+                is PlanItem -> if (item.text.isEmpty()) item.copy(text = stream.text) else null
+                else -> null
+            }
+            if (filled != null) {
+                items[index] = filled
+                itemsRevision++
+            }
+        }
+        streamBuffers.clear()
+    }
+
+    internal fun endAllStreams() {
+        streamBuffers.clear()
+    }
+
+    /** Drop buffers for items a history refresh no longer has, keeping the live one. */
+    internal fun retainStreams(ids: Set<String>) {
+        streamBuffers.keys.retainAll(ids)
+    }
+
+    /** Append one agent-message delta and make its item the streaming one. */
+    internal fun appendAgentDelta(itemId: String, delta: String) {
+        streamBuffers.getOrPut(itemId) { MarkdownStream() }.append(delta)
+        if (items.none { it.id == itemId }) {
+            items.add(AgentMessageItem(id = itemId, text = ""))
+            itemsRevision++
+        }
+        applyStreaming(itemId)
+    }
+
+    /** Append one plan-text delta; the plan body is markdown just like an agent message. */
+    internal fun appendPlanDelta(itemId: String, delta: String) {
+        streamBuffers.getOrPut(itemId) { MarkdownStream() }.append(delta)
+        if (items.none { it.id == itemId }) {
+            items.add(PlanItem(id = itemId, text = ""))
+            itemsRevision++
+        }
+    }
+
     fun bindThread(id: String, state: ThreadSessionState) {
         threadId = id
         config = state
@@ -152,9 +249,11 @@ class SessionState {
         loading = true
         running = false
         streamingItemId = null
+        streamBuffers.clear()
         attachments.clear()
         backgroundTerminals.clear()
         items.clear()
+        itemsRevision++
         plan.clear()
         turnDiff = emptyList()
         usage = ThreadTokenUsage()
@@ -211,6 +310,7 @@ class SessionState {
     fun upsert(item: ThreadItem) {
         val index = items.indexOfFirst { it.id == item.id }
         if (index < 0) items.add(item) else items[index] = item
+        itemsRevision++
     }
 
     /**
@@ -221,7 +321,10 @@ class SessionState {
      * the snapshot's; the snapshot is only good for the history this client has not seen yet.
      */
     fun addIfAbsent(item: ThreadItem) {
-        if (items.none { it.id == item.id }) items.add(item)
+        if (items.none { it.id == item.id }) {
+            items.add(item)
+            itemsRevision++
+        }
     }
 
     fun item(id: String): ThreadItem? = items.firstOrNull { it.id == id }

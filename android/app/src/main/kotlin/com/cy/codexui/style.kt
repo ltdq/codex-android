@@ -35,6 +35,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -109,8 +110,11 @@ import top.yukonga.miuix.kmp.window.WindowBottomSheet
  * A continuous ("squircle") rounded corner shape built on the miuix squircle SDF path.
  *
  * Extends [CornerBasedShape] so shader based effects (edge highlight, lens) can read the corner
- * radii instead of falling back to a stadium approximation.
+ * radii instead of falling back to a stadium approximation. Immutable: the two fields are `val`s
+ * and nothing inside the class is observable, so a shape instance may be shared between
+ * composables without making them unstable.
  */
+@Immutable
 class SquircleShape(
     private val cornerRadius: Dp,
     private val extension: Float = SquircleDefaults.Extension,
@@ -635,8 +639,9 @@ private fun FoldAway(
  *
  * The path is built [cornerRadius] taller than the box it is applied to, which pushes the bottom
  * arcs outside the layer: clipped to the box, the silhouette has square bottom corners and the same
- * continuous top corners as [SquircleShape].
+ * continuous top corners as [SquircleShape]. Immutable, for the same reason as [SquircleShape].
  */
+@Immutable
 class SheetShape(private val cornerRadius: Dp) : Shape {
     override fun createOutline(
         size: Size,

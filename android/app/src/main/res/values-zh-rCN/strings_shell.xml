@@ -24,7 +24,7 @@
     <string name="components_sheet_close">关闭</string>
 
     <!-- blocks.kt -->
-    <string name="blocks_lines_omitted">… 其余 %1$d 行已省略</string>
+    <string name="blocks_show_more_lines">再显示 %1$d 行</string>
     <string name="blocks_collapse_diff">收起改动</string>
     <string name="blocks_view_diff">查看改动</string>
     <string name="blocks_collapse">收起%1$s</string>
@@ -54,4 +54,21 @@
     <string name="chatwidget_diagnostic_hook_failed">钩子 %1$s 执行失败</string>
     <string name="chatwidget_diagnostic_mcp_login_failed">MCP 服务 %1$s 登录失败</string>
     <string name="shell_request_failed">服务器拒绝了这次请求</string>
+
+    <!-- keymap/shortcuts_overlay.kt -->
+    <string name="shortcuts_overlay_title">键盘快捷键</string>
+    <string name="shortcuts_overlay_group_global">全局</string>
+    <string name="shortcuts_overlay_group_composer">输入框</string>
+    <string name="shortcuts_overlay_group_suggestions">建议</string>
+    <string name="shortcuts_overlay_global_escape">中断当前任务，或退出输入框</string>
+    <string name="shortcuts_overlay_global_interrupt">中断当前任务</string>
+    <string name="shortcuts_overlay_global_transcript">打开历史记录</string>
+    <string name="shortcuts_overlay_global_help">显示本列表</string>
+    <string name="shortcuts_overlay_composer_submit">发送消息</string>
+    <string name="shortcuts_overlay_composer_newline">插入换行</string>
+    <string name="shortcuts_overlay_composer_help">输入框为空时显示本列表</string>
+    <string name="shortcuts_overlay_popup_move">在建议之间上下移动</string>
+    <string name="shortcuts_overlay_popup_accept">选用当前建议</string>
+    <string name="shortcuts_overlay_popup_dismiss">关闭建议列表</string>
+    <string name="shortcuts_overlay_close_hint">按 Esc 或点击空白处关闭</string>
 </resources>

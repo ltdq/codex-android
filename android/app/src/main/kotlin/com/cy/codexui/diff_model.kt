@@ -62,10 +62,19 @@ class DiffPalette(
     val context: androidx.compose.ui.graphics.Color,
 )
 
-private val HunkHeader = Regex("^@@ -\\d+(?:,\\d+)? \\+\\d+(?:,\\d+)? @@(.*)$")
-private val FileHeader = Regex("^diff --git a/(.*?) b/(.*)$")
+private val HunkHeader =
+    Regex("^@@ -(\\d+)(?:,(\\d+))? \\+(\\d+)(?:,(\\d+))? @@(.*)$")
+// MULTILINE only affects the whole-payload scan below; matching one line is unaffected.
+private val FileHeader = Regex("^diff --git a/(.*?) b/(.*)$", RegexOption.MULTILINE)
 private val OldPath = Regex("^--- (?:a/)?(.*)$")
 private val NewPath = Regex("^\\+\\+\\+ (?:b/)?(.*)$")
+
+/** Byte offsets where each `diff --git` line starts in [diff], in payload order. */
+internal fun gitFileHeaderOffsets(diff: String): List<Int> =
+    FileHeader.findAll(diff).map { it.range.first }.toList()
+
+/** Path named by one `diff --git` line, or `null` when [line] is not one. */
+internal fun gitFileHeaderPath(line: String): String? = FileHeader.find(line)?.groupValues?.get(2)
 
 /**
  * Parse one unified diff body into [DiffLine]s.
@@ -73,36 +82,56 @@ private val NewPath = Regex("^\\+\\+\\+ (?:b/)?(.*)$")
  * Tolerant by design: hunk headers reset the gutters, an unparseable line is treated as context,
  * and a body that carries no hunks at all renders as-is so a truncated stream still shows
  * something.
+ *
+ * Hunk line counts are tracked because file headers and content share prefixes: a removed line
+ * whose text starts with `--` renders as `--- …`, which is indistinguishable from a file header
+ * unless the parser knows it is still inside a hunk. Counts make that decision exact; a line that
+ * outlives its hunk is still classified by its prefix, so a truncated stream keeps rendering.
  */
 fun parseUnifiedDiff(diff: String): List<DiffLine> {
     val lines = mutableListOf<DiffLine>()
     var oldLine = 0
     var newLine = 0
+    var oldLeft = 0
+    var newLeft = 0
+    var inHunk = false
     for (raw in diff.lines()) {
         val header = HunkHeader.find(raw)
         when {
             header != null -> {
-                val numbers = Regex("-\\d+(?:,\\d+)? \\+\\d+(?:,\\d+)?")
-                    .find(raw)
-                    ?.value
-                    ?.split(' ')
-                oldLine = numbers?.getOrNull(0)?.removePrefix("-")?.substringBefore(',')?.toIntOrNull() ?: 0
-                newLine = numbers?.getOrNull(1)?.removePrefix("+")?.substringBefore(',')?.toIntOrNull() ?: 0
+                oldLine = header.groupValues[1].toIntOrNull() ?: 0
+                newLine = header.groupValues[3].toIntOrNull() ?: 0
+                // A missing `,count` is one line, not an unknown count: that is the unified diff
+                // convention, and it is what lets the hunk end exactly where it should.
+                oldLeft = header.groupValues[2].toIntOrNull() ?: 1
+                newLeft = header.groupValues[4].toIntOrNull() ?: 1
+                inHunk = true
                 lines += DiffLine(DiffLineKind.Hunk, raw, null, null)
             }
 
-            raw.startsWith("+++") || raw.startsWith("---") || FileHeader.matches(raw) -> {
+            // A `diff --git` line cannot be hunk content: every content line carries a ` `, `+` or
+            // `-` prefix. It is therefore always a section header, even mid-hunk.
+            FileHeader.matches(raw) -> {
+                inHunk = false
+                lines += DiffLine(DiffLineKind.Hunk, raw, null, null)
+            }
+
+            // The two path headers, by contrast, are only headers outside a hunk: a removed line
+            // whose text begins `--` renders as `--- …` and must stay a removal.
+            !inHunk && (raw.startsWith("+++") || raw.startsWith("---")) -> {
                 lines += DiffLine(DiffLineKind.Hunk, raw, null, null)
             }
 
             raw.startsWith("+") -> {
                 lines += DiffLine(DiffLineKind.Add, raw.substring(1), null, newLine)
                 newLine++
+                if (newLeft > 0) newLeft--
             }
 
             raw.startsWith("-") -> {
                 lines += DiffLine(DiffLineKind.Remove, raw.substring(1), oldLine, null)
                 oldLine++
+                if (oldLeft > 0) oldLeft--
             }
 
             raw.startsWith("\\") -> lines += DiffLine(DiffLineKind.Context, raw, null, null)
@@ -112,8 +141,11 @@ fun parseUnifiedDiff(diff: String): List<DiffLine> {
                 lines += DiffLine(DiffLineKind.Context, text, oldLine, newLine)
                 oldLine++
                 newLine++
+                if (oldLeft > 0) oldLeft--
+                if (newLeft > 0) newLeft--
             }
         }
+        if (inHunk && oldLeft == 0 && newLeft == 0) inHunk = false
     }
     return lines
 }
@@ -132,22 +164,10 @@ fun diffFileKind(lines: List<DiffLine>): DiffFileKind {
 /** Split a whole-turn diff (`turn/diff/updated`) into one [FileDiff] per `diff --git` section. */
 fun parseTurnDiff(diff: String): List<FileDiff> {
     if (diff.isBlank()) return emptyList()
-    val sections = mutableListOf<Pair<String, MutableList<String>>>()
-    var currentPath: String? = null
-    var current = mutableListOf<String>()
-    for (line in diff.lines()) {
-        val header = FileHeader.find(line)
-        if (header != null) {
-            if (currentPath != null) sections += currentPath to current
-            currentPath = header.groupValues[2]
-            current = mutableListOf()
-        }
-        current += line
-    }
-    if (currentPath != null) sections += currentPath to current
+    val starts = gitFileHeaderOffsets(diff)
 
     // A diff without `diff --git` headers (a single-file patch) arrives as one section.
-    if (sections.isEmpty()) {
+    if (starts.isEmpty()) {
         val lines = parseUnifiedDiff(diff)
         val path = lines.firstNotNullOfOrNull { line ->
             when {
@@ -156,27 +176,19 @@ fun parseTurnDiff(diff: String): List<FileDiff> {
                 else -> null
             }
         } ?: "patch"
-        return listOf(
-            FileDiff(
-                path = path,
-                kind = diffFileKind(lines),
-                lines = lines,
-                additions = lines.count { it.kind == DiffLineKind.Add },
-                removals = lines.count { it.kind == DiffLineKind.Remove },
-            ),
-        )
+        return listOf(fileDiffOf(path, lines))
     }
 
-    return sections.map { (path, body) ->
-        val lines = parseUnifiedDiff(body.joinToString("\n"))
-        FileDiff(
-            path = path,
-            kind = diffFileKind(lines),
-            lines = lines,
-            additions = lines.count { it.kind == DiffLineKind.Add },
-            removals = lines.count { it.kind == DiffLineKind.Remove },
-        )
+    return starts.mapIndexed { index, start ->
+        val end = starts.getOrNull(index + 1) ?: diff.length
+        parseFileSection(diff.substring(start, end))
     }
+}
+
+/** Parse one `diff --git` section — its header line plus body — into a [FileDiff]. */
+internal fun parseFileSection(section: String): FileDiff {
+    val path = gitFileHeaderPath(section.substringBefore('\n')) ?: "patch"
+    return fileDiffOf(path, parseUnifiedDiff(section))
 }
 
 /** Build a diff from already-structured lines. */

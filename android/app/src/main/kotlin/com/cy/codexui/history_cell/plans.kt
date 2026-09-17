@@ -27,6 +27,8 @@ import com.cy.codexui.R
 import com.cy.codexui.protocol.protocol.item.PlanItem
 import com.cy.codexui.protocol.protocol.v2.PlanStep
 import com.cy.codexui.protocol.protocol.v2.PlanStepStatus
+import com.cy.codexui.MarkdownStream
+import com.cy.codexui.MarkdownStreamText
 import com.cy.codexui.MarkdownText
 import com.cy.codexui.raisedSurface
 import com.cy.codexui.successColor
@@ -50,6 +52,7 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 fun PlanItemCell(
     item: PlanItem,
     modifier: Modifier = Modifier,
+    stream: MarkdownStream? = null,
     streaming: Boolean = false,
     corner: Dp = UiConsts.CornerRow,
     horizontalPadding: Dp = 12.dp,
@@ -87,10 +90,13 @@ fun PlanItemCell(
             )
         }
         Spacer(Modifier.height(titleSpacing))
-        MarkdownText(
-            markdown = item.text.ifBlank { stringResource(R.string.plans_cell_empty) },
-            streaming = streaming,
-        )
+        if (stream != null && stream.hasContent) {
+            MarkdownStreamText(stream = stream, streaming = streaming)
+        } else {
+            MarkdownText(
+                markdown = item.text.ifBlank { stringResource(R.string.plans_cell_empty) },
+            )
+        }
     }
 }
 

@@ -63,7 +63,8 @@
 - [ ] `HookStarted/HookCompleted`、`FileChange` 审批、`currentTime/read` 等只有真实服务端
       才会发的路径。
 - [ ] 登录状态：设备码登录 / API key / 取消 / 过期 / 登出，凭据是否只落在 `files/home/.codex/`。
-- [ ] 长会话的流式性能与内存（当前每个 delta 都全量重解析 markdown）。
+- [ ] 长会话的流式性能与内存。Kotlin 侧已改增量路径（markdown 只重解析 tail block、
+      diff 只解析追加段），但这批改动只在 JVM 测试里验证过，仍需真机 trace 确认。
 - [ ] 进程被系统回收后的恢复、以及 `transportLagged` 之后的重新同步。
 
 ## 4. UI 功能缺口
@@ -71,14 +72,15 @@
 ### 4.1 渲染
 
 - [ ] markdown 表格、数学、删除线、H4-H6、setext、分隔线、缩进代码块、嵌套列表、硬换行
-      （`markdown_render.kt` 442 行手写扫描器，无 table/math 代码）。
-- [ ] 围栏解析只认 `^```\s*(\S*)\s*$`（`markdown_render.kt:287`）：不支持
+      （`markdown_stream.kt` 手写扫描器，无 table/math 代码）。
+- [ ] 围栏解析只认 `^```\s*(\S*)\s*$`（`markdown_stream.kt:240`）：不支持
       ```` ```rust title=x ````、`~~~`、4 反引号。
 - [ ] 无语法高亮（代码围栏、exec 命令、MCP 参数、diff 全是等宽文本）。
 - [ ] 链接机制缺失：`[label](url)` 只渲染 label，URL 被丢弃；无 `UriHandler`/本地文件/
-      `:line:col`/codex-file-citation 处理（`markdown_render.kt:363-366`）。
+      `:line:col`/codex-file-citation 处理（`markdown_render.kt:527`）。
 - [ ] 流式渲染无提交边界：`Motion.StreamCommitIntervalMs`（`motion.kt:74`）零引用，
-      delta 逐个重 upsert 并全量重解析（`chatwidget.kt:635-647`）；未闭合围栏吞到 EOF。
+      delta 仍逐条提交（增量解析已把单条代价降到 tail block，但长代码围栏的 tail 仍是
+      O(块)）；未闭合围栏吞到 EOF。
 - [ ] exec 输出只截头（`history_cell/exec.kt:256-268` 只 `take(maxLines)`），
       上游是 head + `… +N lines` + tail，并带 bash 高亮与 "Explored" 分组折叠。
 - [ ] web search 的 `action` 未建模（`ThreadItem.kt:132-138`），无从显示 `Opened <url>`。
@@ -87,9 +89,6 @@
 
 ### 4.2 diff
 
-- [ ] **header 判定顺序错误**：`diff_model.kt:94` 的 `+++`/`---`/FileHeader 判定排在
-      `:98-106` 的 `+`/`-` 之前 → 删除内容里以 `--` 开头、或新增内容里以 `++` 开头的行
-      被误判成文件头，gutter 与 `+N/−M` 计数一起错。`DiffModelTest` 没覆盖这个歧义。
 - [ ] 缺 rename（`old → new`）、`⋮` hunk 分隔（现在直接渲染 `diff --git` / `@@`）、
       路径按 cwd / git root / home 相对化、tab 展开、`\ No newline at end of file` 处理。
 - [ ] `/diff` 空操作（见 §1）。
@@ -145,7 +144,8 @@
 - [ ] 图片通路：picker 是 `OpenDocument("*/*")` 且只插 `@path` 文本；composer 只构造
       `UserInput.Text`（`rendering.kt:463`），`onMentionPicked = {}`，`TextElement` 从不构造；
       缺 `LocalImage`、路径粘贴识别、`[Image #N]` 占位、32 MiB 上限。
-- [ ] 键盘层（`onKeyEvent` 命中 0）、输入历史与反向搜索。
+- [ ] 输入历史与反向搜索（硬件键盘层已在 `keymap/` 落地）：composer 没有草稿历史，
+      Ctrl+R/Ctrl+S 未绑定；Ctrl+O 复制、Ctrl+G 外部编辑器等待平台能力（见本条上文）。
 - [ ] 外部编辑器（`ACTION_EDIT`）、降低动效（`areAnimatorsEnabled`/`ANIMATOR_DURATION_SCALE`）、
       主题界面（32 个内置主题 + `.tmTheme` 不可达）、版本/更新感知（`BuildConfig` 未引用）。
 - [ ] feedback 披露：不设 `includeLogs`、丢弃 `reportId`、分类是自由文本。
@@ -190,7 +190,9 @@
 ### 4.10 死代码与只写不读（顺手清理）
 
 - [ ] 零引用：`theme/running_outline.kt`（119 行）、`Motion.LoopMs`、
-      `Motion.StreamCommitIntervalMs`、`FuzzySearchSession`、`ModelSheet`/`EffortSheet`。
+      `Motion.StreamCommitIntervalMs`、`FuzzySearchSession`、`ModelSheet`/`EffortSheet`、
+      `CommandPopup`/`FileSearchPopup`（composer 改用带键盘游标的私有列表；`PopupShell`
+      仍被两者共用）。
 - [ ] 只写不读：`catalog.elicitationCount`、`SessionDiagnostic.willRetry`、
       `workspaceMessages`、`configRequirements`、`TextElement`、`McpElicitationRequest.Url`。
 - [ ] 只有 handler 没有生产者的 `AppEvent`：`UnsubscribeThread`、`UpdateThreadMetadata`、
@@ -216,7 +218,8 @@
 - [ ] **PTY / 交互式命令不支持**：`json_rpc_app_server_client.kt:531` 显式
       `require(!tty)`，`process/spawn|write|resize|kill` 全在未实现列表里。
 - [ ] **markdown 交给 Rust**（`libcodex_fmt.so`，pulldown-cmark + syntect）未做；
-      与 §4.1 的 Kotlin 实现二选一。若做，要先解决 oniguruma/two-face 依赖
+      当前选定的是 §4.1 的 Kotlin 增量实现，只有需要 syntect 高亮时才值得再评估 Rust。
+      若做，要先解决 oniguruma/two-face 依赖
       （`toolchain/env.sh` 里的 `ONIGURUMA_VER` 目前无人引用，`jq.sh` 会删掉头文件）
       与高亮上限（上游 >512 KiB / >10 000 行跳过）。
 - [ ] **体积与启动耗时**：`libcodex_android_jni.so` 168 MiB + `libcodex_helper.so` 18 MiB
@@ -235,7 +238,7 @@
 - [ ] `network-proxy` 的 Android 分支指向 Termux 证书路径（`native_certs.rs`），
       在普通 App 上是 no-op；运行期是否被触达未验证（App 侧靠注入
       `SSL_CERT_FILE` / `CURL_CA_BUNDLE` 兜底）。
-- [ ] `diff_render.kt` 是否仍有 400 行截断（`take(400)` 无命中，未逐行读完）。
+- [ ] 真机上 diff "显示更多" 分页的滚动位置与长文件 jank 未验证；无截图测试做像素对比。
 - [ ] `AgentMessageItem.questions` 是否被服务端用于回传答案（决定是否需要独立的
       `request_user_input` 结果 cell）。
 - [ ] 协议漂移的统计口径（同名类型、发明字段数）未按当前代码重算。

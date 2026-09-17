@@ -23,7 +23,10 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            // R8 and the resource shrinker are release-only; debug stays uninstrumented so a
+            // stack trace or a layout inspector session reads like the source.
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }

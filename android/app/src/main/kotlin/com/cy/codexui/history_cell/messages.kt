@@ -1,11 +1,5 @@
 package com.cy.codexui.history_cell
 
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -19,7 +13,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -36,6 +29,8 @@ import com.cy.codexui.protocol.protocol.item.AgentMessageItem
 import com.cy.codexui.protocol.protocol.item.UserMessageItem
 import com.cy.codexui.protocol.protocol.v2.AsyncUserInputQuestion
 import com.cy.codexui.protocol.protocol.v2.UserInput
+import com.cy.codexui.MarkdownStream
+import com.cy.codexui.MarkdownStreamText
 import com.cy.codexui.MarkdownText
 import com.cy.codexui.SquircleShape
 import com.cy.codexui.UiConsts
@@ -108,16 +103,15 @@ fun UserMessageCell(
 fun AgentMessageCell(
     item: AgentMessageItem,
     modifier: Modifier = Modifier,
+    stream: MarkdownStream? = null,
     streaming: Boolean = false,
     label: String = stringResource(R.string.messages_cell_assistant_name),
-    caretPeriodMs: Int = StreamingCaretPeriodMs,
     labelFontSize: TextUnit = UiType.Subtitle,
     labelLineHeight: TextUnit = UiType.SheetTitle,
     labelSpacing: Dp = 5.dp,
     questionSpacing: Dp = 10.dp,
 ) {
     val colors = MiuixTheme.colorScheme
-    val caret = if (streaming) rememberBlinkingCaret(caretPeriodMs) else ""
     val questions = item.questions.orEmpty()
 
     Column(modifier = modifier.fillMaxWidth()) {
@@ -130,10 +124,13 @@ fun AgentMessageCell(
             maxLines = 1,
         )
         Spacer(Modifier.height(labelSpacing))
-        MarkdownText(
-            markdown = if (caret.isEmpty()) item.text else item.text.trimEnd() + " " + caret,
-            streaming = streaming,
-        )
+        // While deltas are being buffered the parsed blocks are the body; once the item completes
+        // the stream is dropped and the authoritative text renders instead.
+        if (stream != null && stream.hasContent) {
+            MarkdownStreamText(stream = stream, streaming = streaming)
+        } else {
+            MarkdownText(markdown = item.text)
+        }
         if (questions.isNotEmpty()) {
             Spacer(Modifier.height(questionSpacing))
             QuestionList(questions)
@@ -237,23 +234,5 @@ private fun QuestionList(
     }
 }
 
-/**
- * The TUI's block caret: `▍` at the end of a streaming message, blinking on a 600ms period.
- */
-@Composable
-private fun rememberBlinkingCaret(periodMs: Int = StreamingCaretPeriodMs): String {
-    val transition = rememberInfiniteTransition(label = "streamingCaret")
-    val phase by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = periodMs, easing = LinearEasing),
-            repeatMode = RepeatMode.Reverse,
-        ),
-        label = "streamingCaretPhase",
-    )
-    return if (phase > 0.5f) BlockCaret else ""
-}
-
-private const val StreamingCaretPeriodMs = 600
-private const val BlockCaret = "▍"
+// The streaming caret lives with the markdown renderer: it is drawn by the tail block's own
+// composable there, so a blink no longer changes the message text and no longer forces a re-parse.

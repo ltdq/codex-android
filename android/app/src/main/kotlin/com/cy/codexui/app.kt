@@ -5,6 +5,7 @@ import android.net.Uri
 import android.provider.OpenableColumns
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -16,11 +17,13 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -29,6 +32,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.input.key.KeyEvent
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
@@ -65,6 +73,15 @@ import com.cy.codexui.chatwidget.WindowsSandboxScreen
 import com.cy.codexui.chatwidget.WorkspacePickerScreen
 import com.cy.codexui.chatwidget.openSurfaceFor
 import com.cy.codexui.external_agent_config_migration.ExternalAgentImportScreen
+import com.cy.codexui.keymap.CodexKeymap
+import com.cy.codexui.keymap.CodexKeys
+import com.cy.codexui.keymap.KeyAction
+import com.cy.codexui.keymap.KeyContext
+import com.cy.codexui.keymap.LocalChatKeyFocus
+import com.cy.codexui.keymap.LocalShortcutsHelp
+import com.cy.codexui.keymap.ShortcutsHelpState
+import com.cy.codexui.keymap.ShortcutsOverlay
+import com.cy.codexui.keymap.toKeyChord
 import com.cy.codexui.runtime.CodexApplication
 import com.cy.codexui.onboarding.BedrockScreen
 import com.cy.codexui.protocol.AppServerClient
@@ -1106,6 +1123,7 @@ fun CodexScreen(
     val runtime = context.applicationContext as CodexApplication
     val preferences = remember { context.getSharedPreferences("codex_ui", android.content.Context.MODE_PRIVATE) }
     val colors = MiuixTheme.colorScheme
+    val shortcutsHelp = remember { ShortcutsHelpState() }
 
     var sidebarExpanded by remember { mutableStateOf(false) }
     var projectsCollapsed by remember {
@@ -1137,6 +1155,8 @@ fun CodexScreen(
             LaunchedEffect(liveTopInset) {
                 if (liveTopInset < topInset) topInset = liveTopInset
             }
+            // The window is edge-to-edge, so the system does not resize it for the keyboard; the
+            // chat entry consumes the IME inset itself (see the `imePadding` on its box below).
             val bottomInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
 
             NavDisplay(
@@ -1157,36 +1177,76 @@ fun CodexScreen(
                 ),
             ) {
                 entry<Surface.Chat>(swipeDismiss = NavSwipeDirection.None) {
-                    // Back closes the drawer before it leaves the chat. Registered here, inside the
-                    // entry, so a covered chat never sees the event at all.
-                    BackHandler(enabled = app.surface == Surface.Chat && sidebarExpanded) {
-                        sidebarExpanded = false
+                    val chatKeys = remember { FocusRequester() }
+                    var chatHasFocus by remember { mutableStateOf(false) }
+                    // The window has to keep one focus target or hardware key events have nowhere
+                    // to go: the composer only holds focus while the user is typing, and Esc hands
+                    // it back to this node. Requested when the chat becomes the visible surface and
+                    // only while nothing inside it is focused yet, so a tap on the composer is
+                    // never undone. A sheet takes focus while it is up and may hand back none when
+                    // it closes, which is the other half of the same rule.
+                    LaunchedEffect(app.surface) {
+                        if (app.surface == Surface.Chat && !chatHasFocus) {
+                            runCatching { chatKeys.requestFocus() }
+                        }
                     }
-                    ChatScreen(
-                        app = app,
-                        topInset = topInset,
-                        bottomInset = bottomInset,
-                        sidebarExpanded = sidebarExpanded,
-                        onSidebarExpandedChange = { sidebarExpanded = it },
-                        projectsCollapsed = projectsCollapsed,
-                        onToggleProjects = {
-                            projectsCollapsed = !projectsCollapsed
-                            preferences.edit()
-                                .putBoolean(CodexApp.KeyProjectsCollapsed, projectsCollapsed)
-                                .apply()
-                        },
-                        expandedProjects = expandedProjects,
-                        onToggleProject = { id ->
-                            expandedProjects = if (id in expandedProjects) {
-                                expandedProjects - id
-                            } else {
-                                expandedProjects + id
+                    CompositionLocalProvider(
+                        LocalChatKeyFocus provides chatKeys,
+                        LocalShortcutsHelp provides shortcutsHelp,
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                // The window is edge-to-edge, so the keyboard overlays the app
+                                // instead of resizing it: consuming the IME inset here lifts the
+                                // composer above the keyboard and shrinks the transcript viewport
+                                // with it. Keys still route through the focus node below.
+                                .imePadding()
+                                .focusRequester(chatKeys)
+                                .onFocusChanged { chatHasFocus = it.hasFocus }
+                                .focusable()
+                                .onPreviewKeyEvent { event ->
+                                    handleHardwareKey(app, shortcutsHelp, chatKeys, event)
+                                },
+                        ) {
+                            // Back closes the drawer before it leaves the chat. Registered here,
+                            // inside the entry, so a covered chat never sees the event at all.
+                            BackHandler(enabled = app.surface == Surface.Chat && sidebarExpanded) {
+                                sidebarExpanded = false
                             }
-                            preferences.edit()
-                                .putStringSet(CodexApp.KeyExpandedProjects, expandedProjects)
-                                .apply()
-                        },
-                    )
+                            // The overlay is modal, so the back gesture dismisses it instead of
+                            // leaving the app; registered after the drawer handler, which only
+                            // matters when both are somehow up.
+                            BackHandler(enabled = shortcutsHelp.visible) {
+                                shortcutsHelp.dismiss()
+                            }
+                            ChatScreen(
+                                app = app,
+                                topInset = topInset,
+                                bottomInset = bottomInset,
+                                sidebarExpanded = sidebarExpanded,
+                                onSidebarExpandedChange = { sidebarExpanded = it },
+                                projectsCollapsed = projectsCollapsed,
+                                onToggleProjects = {
+                                    projectsCollapsed = !projectsCollapsed
+                                    preferences.edit()
+                                        .putBoolean(CodexApp.KeyProjectsCollapsed, projectsCollapsed)
+                                        .apply()
+                                },
+                                expandedProjects = expandedProjects,
+                                onToggleProject = { id ->
+                                    expandedProjects = if (id in expandedProjects) {
+                                        expandedProjects - id
+                                    } else {
+                                        expandedProjects + id
+                                    }
+                                    preferences.edit()
+                                        .putStringSet(CodexApp.KeyExpandedProjects, expandedProjects)
+                                        .apply()
+                                },
+                            )
+                        }
+                    }
                 }
 
                 entry<Surface.Settings>(swipeDismiss = NavSwipeDirection.TopToBottom) {
@@ -1475,7 +1535,74 @@ fun CodexScreen(
                     }
                 }
             }
+            // Drawn last, so it covers the nav stack; the composer's `?` reaches the same state
+            // object through [LocalShortcutsHelp].
+            ShortcutsOverlay(state = shortcutsHelp)
         }
+    }
+}
+
+/**
+ * Global hardware-key dispatch for the chat surface.
+ *
+ * Consumed chords stop here; an unconsumed one falls through to the focused node — the composer's
+ * own preview handler, or the text field's editing shortcuts — which is how Ctrl+C stays "copy"
+ * while no turn is running and how Esc reaches an open popup before it interrupts anything.
+ */
+private fun handleHardwareKey(
+    app: CodexApp,
+    shortcutsHelp: ShortcutsHelpState,
+    chatKeys: FocusRequester,
+    event: KeyEvent,
+): Boolean {
+    // A page over the chat owns the keyboard while it is up; the chat entry stays composed behind
+    // it, so without this gate Ctrl+T inside a sheet would push another page.
+    if (app.surface != Surface.Chat) return false
+    val chord = event.toKeyChord() ?: return false
+    // The help overlay is modal for keys: nothing behind it may react while it is up, and Esc or
+    // either toggle closes it.
+    if (shortcutsHelp.visible) {
+        val closes = chord.key == CodexKeys.ESCAPE ||
+            CodexKeymap.resolve(KeyContext.Global, chord) == KeyAction.ShowShortcuts ||
+            CodexKeymap.resolve(KeyContext.Composer, chord) == KeyAction.ShowShortcuts
+        if (closes) shortcutsHelp.dismiss()
+        return true
+    }
+    return when (CodexKeymap.resolve(KeyContext.Chat, chord)) {
+        KeyAction.InterruptTurn ->
+            if (app.widget.state.running) {
+                app.onAppEvent(AppEvent.InterruptTurn)
+                true
+            } else {
+                // Esc still belongs to an open popup or the focused field, and Ctrl+C to the
+                // clipboard.
+                false
+            }
+
+        KeyAction.OpenTranscript -> {
+            app.openSurface(Surface.ThreadHistory)
+            true
+        }
+
+        KeyAction.ShowShortcuts -> {
+            // Focus moves to the root so a soft keyboard cannot keep typing into the field behind
+            // the overlay.
+            shortcutsHelp.toggle()
+            runCatching { chatKeys.requestFocus() }
+            true
+        }
+
+        else ->
+            // `?` opens the same overlay, but only while there is no draft to type it into.
+            if (CodexKeymap.resolve(KeyContext.Composer, chord) == KeyAction.ShowShortcuts &&
+                app.widget.state.composerDraft.isEmpty()
+            ) {
+                shortcutsHelp.toggle()
+                runCatching { chatKeys.requestFocus() }
+                true
+            } else {
+                false
+            }
     }
 }
 

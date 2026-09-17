@@ -42,11 +42,13 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -64,15 +66,18 @@ import androidx.compose.ui.unit.sp
 import com.cy.codexui.AppEvent
 import com.cy.codexui.CodexApp
 import com.cy.codexui.CodexButton
+import com.cy.codexui.MarkdownStream
 import com.cy.codexui.Motion
 import com.cy.codexui.R
 import com.cy.codexui.SessionDiagnostic
+import com.cy.codexui.SessionState
 import com.cy.codexui.SquircleShape
 import com.cy.codexui.Surface
 import com.cy.codexui.ThreadStatusTone
 import com.cy.codexui.UiConsts
 import com.cy.codexui.UiType
 import com.cy.codexui.app.AgentPickerSheet
+import com.cy.codexui.app.AgentRosterEntry
 import com.cy.codexui.app.AgentsOverview
 import com.cy.codexui.app.deriveAgentRoster
 import com.cy.codexui.bottom_pane.ApprovalDialog
@@ -82,6 +87,7 @@ import com.cy.codexui.floatingSurface
 import com.cy.codexui.glassTint
 import com.cy.codexui.history_cell.DiagnosticCell
 import com.cy.codexui.history_cell.ThreadItemCell
+import com.cy.codexui.perf.IdentityKeys
 import com.cy.codexui.protocol.ApprovalRequest
 import com.cy.codexui.protocol.ApprovalResponse
 import com.cy.codexui.protocol.protocol.item.AgentMessageItem
@@ -100,6 +106,7 @@ import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.LinearProgressIndicator
 import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.blur.Backdrop
 import top.yukonga.miuix.kmp.blur.ProgressiveBlur
 import top.yukonga.miuix.kmp.blur.layerBackdrop
 import top.yukonga.miuix.kmp.blur.progressiveTextureBlur
@@ -169,11 +176,6 @@ fun ChatScreen(
         }
     }
     val colors = MiuixTheme.colorScheme
-    // The draft is read from the session rather than kept in a `remember`, because two other things
-    // write it — a slash command that prefills an argument, and a transcript row that offers to
-    // quote itself — and both outlive this composable's own state.
-    val prompt = session.composerDraft
-    val onPromptChange: (String) -> Unit = { app.onAppEvent(AppEvent.SetComposerDraft(it)) }
     var overviewOpen by remember { mutableStateOf(false) }
     // `show` stays true while the sheet animates out: it calls back when it has actually left, and
     // clearing the flag on the request instead would cut the exit off mid-slide.
@@ -182,9 +184,13 @@ fun ChatScreen(
 
     val mainAgentLabel = stringResource(R.string.agent_roster_main_label)
     val subAgentNameFormat = stringResource(R.string.agent_roster_sub_agent_name)
-    val roster = remember(session.items.toList(), session.threadId, mainAgentLabel, subAgentNameFormat) {
-        deriveAgentRoster(session.items.toList(), session.threadId, mainAgentLabel, subAgentNameFormat)
+    // The roster is folded out of the whole transcript, so it is derived through [AgentRosterMemo]
+    // rather than read here: reading the items list in this scope would subscribe the entire screen
+    // to every streaming delta, and only the memo's folded value may invalidate this screen.
+    val rosterMemo = remember(session, session.threadId, mainAgentLabel, subAgentNameFormat) {
+        AgentRosterMemo(session, mainAgentLabel, subAgentNameFormat)
     }
+    val roster = rosterMemo.roster
     val approval = app.widget.currentApproval
     val backdrop = rememberLayerBackdrop {
         drawRect(colors.background)
@@ -235,28 +241,12 @@ fun ChatScreen(
                     .fillMaxHeight()
                     .graphicsLayer { translationX = contentShift.toPx() },
             ) {
-                if (!app.startupReady || (!session.open && !session.loading) ||
-                    (session.open && session.items.isEmpty() && session.diagnostics.isEmpty() && !session.running)) {
-                    RuntimeTranscript(app, Modifier.fillMaxSize().padding(
-                        horizontal = UiConsts.ScreenMargin,
-                        vertical = UiConsts.TranscriptTopInset + UiConsts.PromptBarHeight,
-                    ))
-                } else Transcript(
-                    items = session.items.toList(),
-                    diagnostics = session.diagnostics.toList(),
-                    streamingItemId = session.streamingItemId,
-                    plan = session.plan.toList(),
-                    loading = session.loading,
-                    empty = !session.open && !session.loading,
-                    onOpenAgent = { threadId -> app.openSurface(Surface.SubAgentThread(threadId)) },
-                    onOpenAgentInfo = { threadId -> app.openSurface(Surface.SubAgent(threadId)) },
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                        start = UiConsts.TranscriptGutter,
-                        end = UiConsts.TranscriptGutter,
-                        top = topInset + UiConsts.TranscriptTopInset,
-                        bottom = bottomInset + UiConsts.PromptBarHeight + UiConsts.ScreenMargin * 2 +
-                            UiConsts.TranscriptBottomInset,
-                    ),
+                TranscriptPane(
+                    app = app,
+                    session = session,
+                    topInset = topInset,
+                    bottomInset = bottomInset,
+                    modifier = Modifier.fillMaxSize(),
                 )
             }
         }
@@ -301,8 +291,6 @@ fun ChatScreen(
         // button. Widening one card meant the section column slid sideways as the diff opened and
         // slid back as it closed, and the row that had just been tapped was no longer where it was
         // tapped.
-        val paneFile = session.turnDiff.firstOrNull { it.path == panelState.paneFilePath }
-        val diffOpen = panelState.openFilePath != null
         val panelMax = maxWidth - UiConsts.ScreenMargin * 2
         val statusWidth = minOf(UiConsts.StatusPanelWidth, panelMax)
         // Both cards fit side by side on anything tablet-shaped; on a narrow window the diff takes
@@ -313,8 +301,9 @@ fun ChatScreen(
         } else {
             minOf(UiConsts.DiffPaneWidth, panelMax)
         }
-        var statusHeight by remember { mutableStateOf(0.dp) }
-        val diffHeight = statusHeight.coerceIn(minDiffHeight, maxDiffHeight)
+        // Measured by the status card's layout and read by the diff card's own content below, so a
+        // status remeasure invalidates the diff pane instead of this whole screen.
+        val statusHeight = remember { mutableStateOf(0.dp) }
 
         AnimatedVisibility(
             visible = panelState.open,
@@ -339,6 +328,11 @@ fun ChatScreen(
                 horizontalArrangement = Arrangement.spacedBy(UiConsts.PanelGap),
                 verticalAlignment = Alignment.Top,
             ) {
+                // Read inside the panel's scope: the whole-turn diff is replaced on every
+                // `turn/diff/updated`, and a card in here is a cheaper thing to rebuild than the
+                // screen that hosts it.
+                val paneFile = session.turnDiff.firstOrNull { it.path == panelState.paneFilePath }
+                val diffOpen = panelState.openFilePath != null
                 AnimatedVisibility(
                     visible = diffOpen && paneFile != null,
                     // Grows out of the status card's edge, leftwards: the new card is the one that
@@ -360,7 +354,7 @@ fun ChatScreen(
                             siblings = session.turnDiff,
                             onClose = panelState::closeFile,
                             width = diffWidth,
-                            height = diffHeight,
+                            height = statusHeight.value.coerceIn(minDiffHeight, maxDiffHeight),
                         )
                     }
                 }
@@ -371,9 +365,9 @@ fun ChatScreen(
                         status = session.status,
                         usage = session.usage,
                         turnDiff = session.turnDiff,
-                        plan = session.plan.toList(),
+                        plan = session.plan,
                         roster = roster,
-                        items = session.items.toList(),
+                        items = session.items,
                         width = statusWidth,
                         maxHeight = statusCardMaxHeight,
                         models = app.catalog.models,
@@ -385,7 +379,7 @@ fun ChatScreen(
                         onOpenAgent = { threadId -> app.openSurface(Surface.SubAgentThread(threadId)) },
                         onOpenAgentInfo = { threadId -> app.openSurface(Surface.SubAgent(threadId)) },
                         modifier = Modifier.onSizeChanged {
-                            statusHeight = with(density) { it.height.toDp() }
+                            statusHeight.value = with(density) { it.height.toDp() }
                         },
                     )
                 }
@@ -403,127 +397,31 @@ fun ChatScreen(
             label = "promptBarStartInset",
         )
 
-        Column(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .padding(bottom = UiConsts.ScreenMargin),
-            verticalArrangement = Arrangement.spacedBy(composerGap),
-        ) {
-            AnimatedVisibility(
-                visible = session.queued.isNotEmpty(),
-                enter = fadeIn(tween(queuedEnterDurationMs, easing = Motion.EnterEasing)) +
-                    expandVertically(
-                        expandFrom = Alignment.Bottom,
-                        animationSpec = tween(queuedEnterDurationMs, easing = Motion.EnterEasing),
-                    ),
-                exit = fadeOut(tween(queuedExitDurationMs, easing = Motion.ExitEasing)) +
-                    shrinkVertically(
-                        shrinkTowards = Alignment.Bottom,
-                        animationSpec = tween(queuedExitDurationMs, easing = Motion.ExitEasing),
-                    ),
-            ) {
-                AttachmentTray(
-                    attachments = session.attachments.toList(),
-                    onRemove = { attachment ->
-                        app.onAppEvent(
-                            AppEvent.RemoveAttachment(
-                                threadId = session.threadId,
-                                type = AttachmentType.fromWire(attachment.attachmentType),
-                                identityKey = attachment.identityKey,
-                            ),
-                        )
-                    },
-                    modifier = Modifier.padding(horizontal = UiConsts.ScreenMargin),
-                )
-                QueuedMessages(
-                    messages = session.queued.toList(),
-                    onStart = { entry -> app.onAppEvent(AppEvent.StartQueuedMessage(entry.id)) },
-                    onMove = { entry, delta -> app.onAppEvent(AppEvent.MoveQueuedMessage(entry.id, delta)) },
-                    onRemove = { entry -> app.onAppEvent(AppEvent.DeleteQueuedMessage(entry.id)) },
-                    // The non-text inputs are carried across untouched: the sheet edits the body,
-                    // and a queued image is not something a text field can have an opinion about.
-                    onEdit = { entry, body ->
-                        val kept = entry.input.filterNot { it is UserInput.Text }
-                        app.onAppEvent(
-                            AppEvent.UpdateQueuedMessage(
-                                queuedId = entry.id,
-                                inputs = listOf(UserInput.Text(body)) + kept,
-                            ),
-                        )
-                    },
-                    onClear = { app.onAppEvent(AppEvent.ClearQueue) },
-                    onDismiss = {},
-                    modifier = Modifier.padding(horizontal = UiConsts.ScreenMargin),
-                )
-            }
-
-            Composer(
-                value = prompt,
-                onValueChange = onPromptChange,
-                onSubmit = {
-                    if (prompt.isNotBlank()) {
-                        app.onAppEvent(
-                            AppEvent.SubmitUserMessage(
-                                listOf(com.cy.codexui.protocol.protocol.v2.UserInput.Text(prompt)),
-                            ),
-                        )
-                    }
-                },
-                onInterrupt = { app.onAppEvent(AppEvent.InterruptTurn) },
-                onAttach = { attachmentPicker.launch(arrayOf("*/*")) },
-                running = session.running,
-                enabled = app.startupReady && !session.loading && !app.creatingThread,
-                hint = if (session.open) {
-                    stringResource(R.string.chat_composer_hint_open)
-                } else {
-                    stringResource(R.string.chat_composer_hint_empty)
-                },
-                queuedCount = session.queued.size,
-                slashSuggestions = if (prompt.startsWith("/")) {
-                    SidebarModel.slashSuggestions().filter {
-                        prompt.length <= 1 || it.command.startsWith(prompt, ignoreCase = true)
-                    }
-                } else {
-                    emptyList()
-                },
-                onSuggestionPicked = { command ->
-                    // A command that takes no argument is dispatched on the spot rather than typed
-                    // out and submitted: `/clear` with a trailing space is a draft nobody wants,
-                    // and the TUI runs it the moment it is picked.
-                    if (command.takesArgument) {
-                        onPromptChange(command.command + " ")
-                    } else {
-                        app.onAppEvent(AppEvent.SubmitSlashCommand(command.command, ""))
-                    }
-                },
-                mentionCandidates = mentionPaths,
-                // The composer already spliced the picked path into the draft; this hook exists for
-                // surfaces that want to react to the mention itself (nothing does yet).
-                onMentionPicked = {},
-                backdrop = backdrop,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(
-                        start = (promptBarStartInset + UiConsts.ScreenMargin).coerceAtLeast(0.dp),
-                        end = UiConsts.ScreenMargin,
-                    ),
-            )
-        }
+        ComposerDock(
+            app = app,
+            session = session,
+            mentionPaths = mentionPaths,
+            promptBarStartInset = promptBarStartInset,
+            backdrop = backdrop,
+            onAttach = { attachmentPicker.launch(arrayOf("*/*")) },
+            composerGap = composerGap,
+            queuedEnterDurationMs = queuedEnterDurationMs,
+            queuedExitDurationMs = queuedExitDurationMs,
+            modifier = Modifier.align(Alignment.BottomCenter),
+        )
 
         // `AgentPickerSheet` is the roster as a filterable list; it has no trigger yet — the status
         // card's agent section opens the overview instead — so it is not mounted here.
-        AgentsOverview(
-            show = overviewOpen || overviewLeaving,
+        AgentsOverviewPane(
+            session = session,
             roster = roster,
-            activeThreadId = session.threadId,
+            show = overviewOpen || overviewLeaving,
             onSelect = { threadId -> app.openSurface(Surface.SubAgentThread(threadId)); overviewLeaving = true },
             onDismiss = { overviewLeaving = true },
             onDismissFinished = {
                 overviewLeaving = false
                 overviewOpen = false
             },
-            totalTokens = session.usage.totalTokens,
         )
 
         // The drawer is painted last and sized to the window: it is a drawer, so the transcript and
@@ -576,6 +474,103 @@ fun ChatScreen(
     }
 }
 
+/**
+ * The transcript surface: either the empty-runtime screen or the live transcript.
+ *
+ * Split out of [ChatScreen] so the session's transcript state — the item list, the diagnostics,
+ * the plan and the streaming id — is read inside this scope. A streaming write then invalidates
+ * this pane instead of the composer, the status panels and the drawer that surround it.
+ */
+@Composable
+private fun TranscriptPane(
+    app: CodexApp,
+    session: SessionState,
+    topInset: Dp,
+    bottomInset: Dp,
+    modifier: Modifier = Modifier,
+) {
+    val items = session.items
+    val diagnostics = session.diagnostics
+    // The empty/loading decision is a derived boolean: the underlying lists are written on every
+    // delta, and this pane should only recompose when the decision itself flips.
+    val runtimeEmpty by remember(session) {
+        derivedStateOf {
+            (!session.open && !session.loading) ||
+                (session.open && items.isEmpty() && diagnostics.isEmpty() && !session.running)
+        }
+    }
+    if (!app.startupReady || runtimeEmpty) {
+        RuntimeTranscript(
+            app = app,
+            modifier = modifier.padding(
+                horizontal = UiConsts.ScreenMargin,
+                vertical = UiConsts.TranscriptTopInset + UiConsts.PromptBarHeight,
+            ),
+        )
+        return
+    }
+    // Remembered so a recomposition of this pane (a status flip, say) does not hand the list a new
+    // lambda and force the rows to be rebuilt with it.
+    val isStreaming: (ThreadItem) -> Boolean = remember(session) {
+        // Deferred: the transcript asks per row whether it is the streaming one, so the reads of
+        // `running` and `streamingItemId` belong to the row's scope, not to this pane's.
+        { item -> session.running && item.id == session.streamingItemId }
+    }
+    // The markdown buffer a row renders while its deltas are still arriving; looked up per row so
+    // only the row that owns the stream reads that entry of the map.
+    val streamFor: (String) -> MarkdownStream? = remember(session) { { id -> session.stream(id) } }
+    Transcript(
+        items = items,
+        diagnostics = diagnostics,
+        isStreaming = isStreaming,
+        streamFor = streamFor,
+        plan = session.plan,
+        loading = session.loading,
+        empty = !session.open && !session.loading,
+        onOpenAgent = { threadId -> app.openSurface(Surface.SubAgentThread(threadId)) },
+        onOpenAgentInfo = { threadId -> app.openSurface(Surface.SubAgent(threadId)) },
+        contentPadding = PaddingValues(
+            start = UiConsts.TranscriptGutter,
+            end = UiConsts.TranscriptGutter,
+            top = topInset + UiConsts.TranscriptTopInset,
+            bottom = bottomInset + UiConsts.PromptBarHeight + UiConsts.ScreenMargin * 2 +
+                UiConsts.TranscriptBottomInset,
+        ),
+    )
+}
+
+/**
+ * The agent roster folded out of the transcript, at most once per [SessionState.itemsRevision].
+ *
+ * The point of the dedicated type is what is *not* observed: the fold reads the revision and
+ * nothing else, so an item write only schedules a recalculation, and the screen that read
+ * [roster] is invalidated only when the folded value actually differs. During a turn the
+ * transcript is written on every delta and the roster normally does not change at all, so none of
+ * those writes recompose the caller.
+ */
+private class AgentRosterMemo(
+    private val session: SessionState,
+    private val mainAgentLabel: String,
+    private val subAgentNameFormat: String,
+) {
+    private var revision = -1
+    private var cached: List<AgentRosterEntry> = emptyList()
+    private val state = derivedStateOf {
+        val current = session.itemsRevision
+        if (current != revision) {
+            revision = current
+            // The list itself is read without a read observer: the revision above is the memo's
+            // only dependency, and the fold runs once per revision rather than once per reader.
+            cached = Snapshot.withoutReadObservation {
+                deriveAgentRoster(session.items, session.threadId, mainAgentLabel, subAgentNameFormat)
+            }
+        }
+        cached
+    }
+
+    val roster: List<AgentRosterEntry> get() = state.value
+}
+
 @Composable
 private fun RuntimeTranscript(app: CodexApp, modifier: Modifier) {
     val session = app.widget.state
@@ -590,6 +585,9 @@ private fun RuntimeTranscript(app: CodexApp, modifier: Modifier) {
             when {
                 app.startupLoading || app.creatingThread -> {
                     Text(stringResource(if (app.creatingThread) R.string.runtime_creating_thread else R.string.runtime_starting))
+                    // A genuine spinner, and the only animation this screen runs: it is composed
+                    // only while the runtime is starting or a thread is being created, so an idle
+                    // chat never holds it.
                     LinearProgressIndicator(modifier = Modifier.width(160.dp))
                 }
                 app.startupError != null -> {
@@ -683,7 +681,8 @@ internal fun openSurfaceFor(app: CodexApp, id: String) {
 private fun Transcript(
     items: List<ThreadItem>,
     diagnostics: List<SessionDiagnostic>,
-    streamingItemId: String?,
+    isStreaming: (ThreadItem) -> Boolean,
+    streamFor: (String) -> MarkdownStream?,
     plan: List<com.cy.codexui.protocol.protocol.v2.PlanStep>,
     loading: Boolean,
     empty: Boolean,
@@ -701,29 +700,41 @@ private fun Transcript(
         return
     }
 
+    // Diagnostics have content equality, so a content hash is not a key: two identical notices
+    // would collide. This allocates one identity per notice instead, and prunes entries for
+    // notices the bounded list has already evicted.
+    val diagnosticKeys = remember { IdentityKeys<SessionDiagnostic>() }
+
     LazyColumn(
         state = listState,
         modifier = Modifier.fillMaxSize(),
         contentPadding = contentPadding,
         verticalArrangement = Arrangement.spacedBy(itemGap),
     ) {
-        items(items.size, key = { items[it].id }) { index ->
+        // The list is read here, not copied: the count and the keys re-read it when it changes,
+        // and each row reads its own element inside its own scope, so a delta that replaces one
+        // element does not rebuild the screen around the list.
+        items(count = items.size, key = { items[it].id }) { index ->
             val item = items[index]
             Column(modifier = Modifier.fillMaxWidth()) {
                 ThreadItemCell(
                     item = item,
-                    streaming = item.id == streamingItemId,
+                    stream = streamFor(item.id),
+                    streaming = isStreaming(item),
                     assistantLabel = stringResource(R.string.chat_transcript_assistant_label),
                     onOpenAgent = onOpenAgent,
                     onOpenAgentInfo = onOpenAgentInfo,
                 )
                 if (item is AgentMessageItem && plan.isNotEmpty() && index == items.lastIndex) {
                     Spacer(Modifier.height(planGap))
-                    com.cy.codexui.chatwidget.PlanTimeline(steps = plan)
+                    PlanTimeline(steps = plan)
                 }
             }
         }
-        items(diagnostics.size, key = { "diag-${diagnostics[it].hashCode()}" }) { index ->
+        items(
+            count = diagnostics.size,
+            key = { index -> diagnosticKeys.keyOf(diagnostics[index], diagnostics) },
+        ) { index ->
             DiagnosticCell(diagnostic = diagnostics[index])
         }
         if (loading) {
@@ -965,6 +976,166 @@ internal fun StatusChip(
             maxLines = 1,
         )
     }
+}
+
+/**
+ * The queued-message tray and the composer.
+ *
+ * Its reads — the draft, the queue, the running flag — live here rather than in [ChatScreen], so a
+ * keystroke, a queue change or a turn starting does not recompose the transcript and the panels
+ * behind it.
+ */
+@Composable
+private fun ComposerDock(
+    app: CodexApp,
+    session: SessionState,
+    mentionPaths: List<String>,
+    promptBarStartInset: Dp,
+    backdrop: Backdrop,
+    onAttach: () -> Unit,
+    modifier: Modifier = Modifier,
+    composerGap: Dp = 8.dp,
+    queuedEnterDurationMs: Int = Motion.EnterMs,
+    queuedExitDurationMs: Int = Motion.ExitMs,
+) {
+    // The draft is read from the session rather than kept in a `remember`, because two other things
+    // write it — a slash command that prefills an argument, and a transcript row that offers to
+    // quote itself — and both outlive this composable's own state.
+    val prompt = session.composerDraft
+    val onPromptChange: (String) -> Unit = { app.onAppEvent(AppEvent.SetComposerDraft(it)) }
+
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(bottom = UiConsts.ScreenMargin),
+        verticalArrangement = Arrangement.spacedBy(composerGap),
+    ) {
+        AnimatedVisibility(
+            visible = session.queued.isNotEmpty(),
+            enter = fadeIn(tween(queuedEnterDurationMs, easing = Motion.EnterEasing)) +
+                expandVertically(
+                    expandFrom = Alignment.Bottom,
+                    animationSpec = tween(queuedEnterDurationMs, easing = Motion.EnterEasing),
+                ),
+            exit = fadeOut(tween(queuedExitDurationMs, easing = Motion.ExitEasing)) +
+                shrinkVertically(
+                    shrinkTowards = Alignment.Bottom,
+                    animationSpec = tween(queuedExitDurationMs, easing = Motion.ExitEasing),
+                ),
+        ) {
+            AttachmentTray(
+                attachments = session.attachments,
+                onRemove = { attachment ->
+                    app.onAppEvent(
+                        AppEvent.RemoveAttachment(
+                            threadId = session.threadId,
+                            type = AttachmentType.fromWire(attachment.attachmentType),
+                            identityKey = attachment.identityKey,
+                        ),
+                    )
+                },
+                modifier = Modifier.padding(horizontal = UiConsts.ScreenMargin),
+            )
+            QueuedMessages(
+                messages = session.queued,
+                onStart = { entry -> app.onAppEvent(AppEvent.StartQueuedMessage(entry.id)) },
+                onMove = { entry, delta -> app.onAppEvent(AppEvent.MoveQueuedMessage(entry.id, delta)) },
+                onRemove = { entry -> app.onAppEvent(AppEvent.DeleteQueuedMessage(entry.id)) },
+                // The non-text inputs are carried across untouched: the sheet edits the body,
+                // and a queued image is not something a text field can have an opinion about.
+                onEdit = { entry, body ->
+                    val kept = entry.input.filterNot { it is UserInput.Text }
+                    app.onAppEvent(
+                        AppEvent.UpdateQueuedMessage(
+                            queuedId = entry.id,
+                            inputs = listOf(UserInput.Text(body)) + kept,
+                        ),
+                    )
+                },
+                onClear = { app.onAppEvent(AppEvent.ClearQueue) },
+                onDismiss = {},
+                modifier = Modifier.padding(horizontal = UiConsts.ScreenMargin),
+            )
+        }
+
+        Composer(
+            value = prompt,
+            onValueChange = onPromptChange,
+            onSubmit = {
+                if (prompt.isNotBlank()) {
+                    app.onAppEvent(
+                        AppEvent.SubmitUserMessage(
+                            listOf(com.cy.codexui.protocol.protocol.v2.UserInput.Text(prompt)),
+                        ),
+                    )
+                }
+            },
+            onInterrupt = { app.onAppEvent(AppEvent.InterruptTurn) },
+            onAttach = onAttach,
+            running = session.running,
+            enabled = app.startupReady && !session.loading && !app.creatingThread,
+            hint = if (session.open) {
+                stringResource(R.string.chat_composer_hint_open)
+            } else {
+                stringResource(R.string.chat_composer_hint_empty)
+            },
+            queuedCount = session.queued.size,
+            slashSuggestions = if (prompt.startsWith("/")) {
+                SidebarModel.slashSuggestions().filter {
+                    prompt.length <= 1 || it.command.startsWith(prompt, ignoreCase = true)
+                }
+            } else {
+                emptyList()
+            },
+            onSuggestionPicked = { command ->
+                // A command that takes no argument is dispatched on the spot rather than typed
+                // out and submitted: `/clear` with a trailing space is a draft nobody wants,
+                // and the TUI runs it the moment it is picked.
+                if (command.takesArgument) {
+                    onPromptChange(command.command + " ")
+                } else {
+                    app.onAppEvent(AppEvent.SubmitSlashCommand(command.command, ""))
+                }
+            },
+            mentionCandidates = mentionPaths,
+            // The composer already spliced the picked path into the draft; this hook exists for
+            // surfaces that want to react to the mention itself (nothing does yet).
+            onMentionPicked = {},
+            backdrop = backdrop,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(
+                    start = (promptBarStartInset + UiConsts.ScreenMargin).coerceAtLeast(0.dp),
+                    end = UiConsts.ScreenMargin,
+                ),
+        )
+    }
+}
+
+/**
+ * The agent overview sheet, with its reads scoped away from [ChatScreen].
+ *
+ * The token total moves while a turn streams; the roster read is already the memoized fold, so
+ * this indirection keeps the usage updates from invalidating the chat screen around the sheet.
+ */
+@Composable
+private fun AgentsOverviewPane(
+    session: SessionState,
+    roster: List<AgentRosterEntry>,
+    show: Boolean,
+    onSelect: (String) -> Unit,
+    onDismiss: () -> Unit,
+    onDismissFinished: () -> Unit,
+) {
+    AgentsOverview(
+        show = show,
+        roster = roster,
+        activeThreadId = session.threadId,
+        onSelect = onSelect,
+        onDismiss = onDismiss,
+        onDismissFinished = onDismissFinished,
+        totalTokens = session.usage.totalTokens,
+    )
 }
 
 /**

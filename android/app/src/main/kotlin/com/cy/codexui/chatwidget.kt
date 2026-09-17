@@ -4,6 +4,7 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import com.cy.codexui.diff.TurnDiffAccumulator
 import com.cy.codexui.protocol.AppServerClient
 import com.cy.codexui.protocol.AppServerEvent
 import com.cy.codexui.protocol.ApprovalRequest
@@ -65,6 +66,15 @@ class ChatWidget(
      */
     private val finishedTurns = ArrayDeque<String>()
 
+    /**
+     * The accumulating `turn/diff/updated` payload of the current turn.
+     *
+     * The server re-sends the whole diff on every notification, so the accumulator re-parses only
+     * the appended tail and keeps the parsed `FileDiff` of every unchanged file. Reset wherever the
+     * turn or the thread changes, so a later turn never extends the previous turn's payload.
+     */
+    private val turnDiff = TurnDiffAccumulator()
+
     /** Requests the UI can currently answer; only the head is on screen. */
     val currentApproval: ApprovalRequest? get() = pendingApprovals.firstOrNull()
     var answeringApproval by mutableStateOf(false)
@@ -115,6 +125,7 @@ class ChatWidget(
         loadJob?.cancel()
         val version = ++loadVersion
         state.beginLoad(threadId)
+        turnDiff.reset()
         streamOvertookLoad = false
         loadJob = scope.launch {
             val resumed = client.resumeThread(threadId)
@@ -176,6 +187,7 @@ class ChatWidget(
             client.startThread(cwd)
                 .onSuccess { session ->
                     state.beginLoad(session.threadId)
+                    turnDiff.reset()
                     state.bindThread(session.threadId, session)
                 }
                 .onFailure { error ->
@@ -465,6 +477,7 @@ class ChatWidget(
         loadJob?.cancel()
         loadVersion++
         state.beginLoad(session.threadId)
+        turnDiff.reset()
         state.bindThread(session.threadId, session)
     }
 
@@ -474,6 +487,7 @@ class ChatWidget(
         pendingApprovals.clear()
         answeringApproval = false
         approvalError = null
+        turnDiff.reset()
         state.clear()
     }
 
@@ -631,8 +645,8 @@ class ChatWidget(
         when (event) {
             is AppServerEvent.ItemStarted -> state.upsert(event.item)
             is AppServerEvent.ItemCompleted -> onItemCompleted(event.item)
-            is AppServerEvent.AgentMessageDelta -> appendAgentText(event.delta.itemId, event.delta.delta)
-            is AppServerEvent.PlanDelta -> appendPlanText(event.delta.itemId, event.delta.delta)
+            is AppServerEvent.AgentMessageDelta -> state.appendAgentDelta(event.delta.itemId, event.delta.delta)
+            is AppServerEvent.PlanDelta -> state.appendPlanDelta(event.delta.itemId, event.delta.delta)
             is AppServerEvent.ReasoningTextDelta -> appendReasoningText(event.delta.itemId, event.delta.delta)
             is AppServerEvent.ReasoningSummaryDelta -> appendReasoningText(event.delta.itemId, event.delta.delta)
             is AppServerEvent.ReasoningSummaryPartAdded -> appendReasoningText(event.delta.itemId, "\n\n")
@@ -651,7 +665,7 @@ class ChatWidget(
 
             is AppServerEvent.TurnCompleted -> onTurnCompleted(event)
             is AppServerEvent.TurnDiffUpdatedEvent ->
-                state.applyTurnDiff(parseTurnDiff(event.delta.diff))
+                state.applyTurnDiff(turnDiff.apply(event.delta.diff))
 
             is AppServerEvent.TurnPlanUpdatedEvent -> state.applyPlan(event.delta.plan)
             is AppServerEvent.ThreadStartedEvent -> state.bindThread(event.thread.threadIdOr(event.threadId), state.config)
@@ -837,7 +851,10 @@ class ChatWidget(
             is AppServerEvent.RealtimeOutputAudioDelta,
             -> Unit
 
-            is AppServerEvent.ThreadClosed -> state.applyStatus(ThreadStatus.NotLoaded)
+            is AppServerEvent.ThreadClosed -> {
+                state.endAllStreams()
+                state.applyStatus(ThreadStatus.NotLoaded)
+            }
             is AppServerEvent.ThreadArchived, is AppServerEvent.ThreadUnarchived,
             is AppServerEvent.ThreadDeleted,
             -> Unit
@@ -845,7 +862,10 @@ class ChatWidget(
     }
 
     private fun onItemCompleted(item: ThreadItem) {
-        state.upsert(item)
+        // The completed item carries the authoritative text; the streamed buffer is only a stand-in
+        // for the case where it does not (a server that completes an item without a text body).
+        state.upsert(withStreamedText(item))
+        state.endStream(item.id)
         if (state.streamingItemId == item.id) state.applyStreaming(null)
         // A finished item can never still be waiting for a decision: either this client answered it,
         // another client did (the server says so through `serverRequest/resolved`), or the server
@@ -875,6 +895,9 @@ class ChatWidget(
 
     private fun onTurnCompleted(event: AppServerEvent.TurnCompleted) {
         state.applyStatus(ThreadStatus.Idle)
+        // An interrupted turn may never complete its last item; its buffered deltas are folded back
+        // into the item before the stream flag is cleared.
+        state.settleStreams()
         state.applyStreaming(null)
         refreshQueue(event.threadId)
         // Every approval belongs to the turn that asked for it. Card families with no item of their
@@ -905,6 +928,9 @@ class ChatWidget(
                 ),
             )
         }
+        // The turn is over, so the payload it accumulated is never extended again. [SessionState]
+        // keeps the parsed diff for the status card; only the accumulator's memory is released.
+        turnDiff.reset()
     }
 
     private fun refreshHistory(threadId: String) {
@@ -925,29 +951,32 @@ class ChatWidget(
                     state.items.clear()
                     response.items.forEach(state::upsert)
                     state.applyStatus(response.thread.status)
+                    // A snapshot can be older than the live stream, so the buffer for the item
+                    // still streaming is kept; only buffers for items this client no longer has
+                    // are dropped.
+                    val keep = response.items.mapTo(mutableSetOf()) { it.id }
+                    state.streamingItemId?.let(keep::add)
+                    state.retainStreams(keep)
                     return@launch
                 }
             }
         }
     }
 
-    private fun appendAgentText(itemId: String, delta: String) {
-        val item = state.item(itemId) as? AgentMessageItem
-        state.applyStreaming(itemId)
-        if (item == null) {
-            state.upsert(AgentMessageItem(id = itemId, text = delta))
-        } else {
-            state.upsert(item.copy(text = item.text + delta))
-        }
-    }
+    /**
+     * Fill in a text body from the item's stream when the completion event left it empty.
+     *
+     * This materializes the buffer once, at the end of a message, which is the only point where the
+     * whole text is needed: until then the transcript renders the parsed blocks instead.
+     */
+    private fun withStreamedText(item: ThreadItem): ThreadItem = when {
+        item is AgentMessageItem && item.text.isEmpty() ->
+            state.streamText(item.id)?.let { item.copy(text = it) } ?: item
 
-    private fun appendPlanText(itemId: String, delta: String) {
-        val item = state.item(itemId) as? PlanItem
-        if (item == null) {
-            state.upsert(PlanItem(id = itemId, text = delta))
-        } else {
-            state.upsert(item.copy(text = item.text + delta))
-        }
+        item is PlanItem && item.text.isEmpty() ->
+            state.streamText(item.id)?.let { item.copy(text = it) } ?: item
+
+        else -> item
     }
 
     private fun appendReasoningText(itemId: String, delta: String) {

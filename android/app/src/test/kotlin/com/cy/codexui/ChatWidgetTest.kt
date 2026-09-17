@@ -7,6 +7,7 @@ import com.cy.codexui.protocol.ApprovalResponse
 import com.cy.codexui.protocol.ConnectionState
 import com.cy.codexui.protocol.protocol.RequestId
 import com.cy.codexui.protocol.protocol.v2.ClientInfo
+import com.cy.codexui.protocol.protocol.v2.ItemTextDelta
 import com.cy.codexui.protocol.protocol.v2.CommandExecutionApprovalDecision
 import com.cy.codexui.protocol.protocol.v2.CommandExecutionApprovalParams
 import com.cy.codexui.protocol.protocol.v2.ThreadSessionState
@@ -14,6 +15,7 @@ import com.cy.codexui.protocol.protocol.v2.ThreadStatus
 import com.cy.codexui.protocol.protocol.v2.Thread
 import com.cy.codexui.protocol.protocol.v2.ThreadReadResponse
 import com.cy.codexui.protocol.protocol.v2.ThreadTokenUsage
+import com.cy.codexui.protocol.protocol.v2.TurnStatus
 import com.cy.codexui.protocol.protocol.item.AgentMessageItem
 import com.cy.codexui.protocol.protocol.item.CommandExecutionItem
 import com.cy.codexui.protocol.protocol.v2.UserInput
@@ -149,6 +151,70 @@ class ChatWidgetTest {
         runCurrent()
         assertEquals(listOf(actual), widget.state.items.toList())
         assertEquals(8_000, widget.state.usage.totalTokens)
+    }
+
+    @Test
+    fun `agent deltas buffer into a stream without rewriting the item`() = runTest {
+        val client = TestClient()
+        val widget = ChatWidget(client, backgroundScope)
+        widget.bind(ThreadSessionState(threadId = "thread"))
+        widget.attach()
+        val id = "message"
+
+        client.events.emit(AppServerEvent.ItemStarted("thread", "turn", AgentMessageItem(id, "")))
+        runCurrent()
+        val revisionAfterStart = widget.state.itemsRevision
+
+        client.events.emit(AppServerEvent.AgentMessageDelta("thread", ItemTextDelta("thread", "turn", id, "Hello ")))
+        client.events.emit(AppServerEvent.AgentMessageDelta("thread", ItemTextDelta("thread", "turn", id, "world")))
+        runCurrent()
+
+        // The item body stays empty while the deltas are buffered, so nothing copies the answer per
+        // token, and the revision does not move, so folds keyed on it do not rerun per delta.
+        assertEquals("", (widget.state.items.single() as AgentMessageItem).text)
+        assertEquals(revisionAfterStart, widget.state.itemsRevision)
+        assertEquals(id, widget.state.streamingItemId)
+        assertEquals("Hello world", assertNotNull(widget.state.stream(id)).text)
+
+        client.events.emit(AppServerEvent.ItemCompleted("thread", "turn", AgentMessageItem(id, "Hello world")))
+        runCurrent()
+
+        assertEquals("Hello world", (widget.state.items.single() as AgentMessageItem).text)
+        assertNull(widget.state.stream(id))
+        assertNull(widget.state.streamingItemId)
+    }
+
+    @Test
+    fun `completion without a text body keeps the streamed buffer`() = runTest {
+        val client = TestClient()
+        val widget = ChatWidget(client, backgroundScope)
+        widget.bind(ThreadSessionState(threadId = "thread"))
+        widget.attach()
+        val id = "message"
+
+        client.events.emit(AppServerEvent.AgentMessageDelta("thread", ItemTextDelta("thread", "turn", id, "kept")))
+        runCurrent()
+        client.events.emit(AppServerEvent.ItemCompleted("thread", "turn", AgentMessageItem(id, "")))
+        runCurrent()
+
+        assertEquals("kept", (widget.state.items.single() as AgentMessageItem).text)
+    }
+
+    @Test
+    fun `interrupted turn folds buffered deltas into the item`() = runTest {
+        val client = TestClient()
+        val widget = ChatWidget(client, backgroundScope)
+        widget.bind(ThreadSessionState(threadId = "thread"))
+        widget.attach()
+        val id = "message"
+
+        client.events.emit(AppServerEvent.AgentMessageDelta("thread", ItemTextDelta("thread", "turn", id, "half")))
+        runCurrent()
+        client.events.emit(AppServerEvent.TurnCompleted("thread", "turn", TurnStatus.Interrupted))
+        runCurrent()
+
+        assertEquals("half", (widget.state.items.single() as AgentMessageItem).text)
+        assertNull(widget.state.stream(id))
     }
 
     private class TestClient : AppServerClient {

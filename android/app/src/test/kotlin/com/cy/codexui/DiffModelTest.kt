@@ -53,6 +53,63 @@ class DiffModelTest {
     }
 
     @Test
+    fun contentLinesThatLookLikeFileHeadersStayContentInsideAHunk() {
+        val lines = parseUnifiedDiff(
+            listOf(
+                "@@ -1,3 +1,3 @@",
+                "--- keep",
+                "+++ going",
+                " context",
+            ).joinToString("\n"),
+        )
+        assertEquals(
+            listOf(
+                DiffLineKind.Hunk,
+                DiffLineKind.Remove,
+                DiffLineKind.Add,
+                DiffLineKind.Context,
+            ),
+            lines.map { it.kind },
+        )
+        assertEquals("-- keep", lines[1].text)
+        assertEquals("++ going", lines[2].text)
+    }
+
+    @Test
+    fun gitHeadersSplitEvenWhenAHunkWasTruncated() {
+        // A truncated payload can cut a hunk short. `diff --git` is unambiguous — hunk content
+        // always carries a prefix — so it must still open a new section.
+        val lines = parseUnifiedDiff(
+            listOf(
+                "@@ -1,5 +1,5 @@",
+                "-a",
+                "+b",
+                "diff --git a/next.kt b/next.kt",
+                "--- a/next.kt",
+                "+++ b/next.kt",
+            ).joinToString("\n"),
+        )
+        assertEquals(DiffLineKind.Hunk, lines[3].kind)
+        assertEquals(DiffLineKind.Hunk, lines[4].kind)
+        assertEquals(DiffLineKind.Hunk, lines[5].kind)
+    }
+
+    @Test
+    fun fileHeadersAfterAnExhaustedHunkAreStillHeaders() {
+        val lines = parseUnifiedDiff(
+            listOf(
+                "@@ -1 +1 @@",
+                "-a",
+                "+b",
+                "--- a/next.kt",
+                "+++ b/next.kt",
+            ).joinToString("\n"),
+        )
+        assertEquals(DiffLineKind.Hunk, lines[3].kind)
+        assertEquals(DiffLineKind.Hunk, lines[4].kind)
+    }
+
+    @Test
     fun infersFileKindFromTheBody() {
         val added = parseUnifiedDiff("@@ -0,0 +1,2 @@\n+a\n+b")
         assertEquals(DiffFileKind.Added, diffFileKind(added))

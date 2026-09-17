@@ -26,6 +26,7 @@ import com.cy.codexui.protocol.protocol.item.UserMessageItem
 import com.cy.codexui.protocol.protocol.item.WebSearchItem
 import com.cy.codexui.protocol.protocol.v2.DiagnosticSeverity
 import com.cy.codexui.DiagnosticCode
+import com.cy.codexui.MarkdownStream
 import com.cy.codexui.SessionDiagnostic
 
 /**
@@ -41,6 +42,7 @@ import com.cy.codexui.SessionDiagnostic
 fun ThreadItemCell(
     item: ThreadItem,
     modifier: Modifier = Modifier,
+    stream: MarkdownStream? = null,
     streaming: Boolean = false,
     assistantLabel: String = stringResource(R.string.transcript_cell_assistant_name),
     onOpenAgent: (String) -> Unit = {},
@@ -49,9 +51,9 @@ fun ThreadItemCell(
     when (item) {
         is UserMessageItem -> UserMessageCell(item, modifier)
         is HookPromptItem -> HookPromptCell(item, modifier)
-        is AgentMessageItem -> AgentMessageCell(item, modifier, streaming, assistantLabel)
+        is AgentMessageItem -> AgentMessageCell(item, modifier, stream, streaming, assistantLabel)
         is FunctionCallOutputItem -> FunctionCallOutputCell(item, modifier)
-        is PlanItem -> PlanItemCell(item, modifier, streaming)
+        is PlanItem -> PlanItemCell(item, modifier, stream, streaming)
         is ReasoningItem -> ReasoningCell(item, modifier, streaming)
         is CommandExecutionItem -> CommandExecutionCell(item, modifier)
         is FileChangeItem -> FileChangeCell(item, modifier)

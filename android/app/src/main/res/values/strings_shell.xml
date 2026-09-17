@@ -27,7 +27,7 @@
     <string name="components_sheet_close">Close</string>
 
     <!-- blocks.kt -->
-    <string name="blocks_lines_omitted">… +%1$d lines</string>
+    <string name="blocks_show_more_lines">Show %1$d more lines</string>
     <string name="blocks_collapse_diff">Collapse changes</string>
     <string name="blocks_view_diff">View changes</string>
     <string name="blocks_collapse">Collapse %1$s</string>
@@ -57,4 +57,21 @@
     <string name="chatwidget_diagnostic_hook_failed">Hook %1$s failed</string>
     <string name="chatwidget_diagnostic_mcp_login_failed">Sign-in for MCP server %1$s failed</string>
     <string name="shell_request_failed">The server rejected that request</string>
+
+    <!-- keymap/shortcuts_overlay.kt -->
+    <string name="shortcuts_overlay_title">Keyboard shortcuts</string>
+    <string name="shortcuts_overlay_group_global">Global</string>
+    <string name="shortcuts_overlay_group_composer">Composer</string>
+    <string name="shortcuts_overlay_group_suggestions">Suggestions</string>
+    <string name="shortcuts_overlay_global_escape">Interrupt the running turn, or leave the field</string>
+    <string name="shortcuts_overlay_global_interrupt">Interrupt the running turn</string>
+    <string name="shortcuts_overlay_global_transcript">Open conversation history</string>
+    <string name="shortcuts_overlay_global_help">Show this list</string>
+    <string name="shortcuts_overlay_composer_submit">Send the message</string>
+    <string name="shortcuts_overlay_composer_newline">Insert a line break</string>
+    <string name="shortcuts_overlay_composer_help">Show this list while the composer is empty</string>
+    <string name="shortcuts_overlay_popup_move">Move through the suggestions</string>
+    <string name="shortcuts_overlay_popup_accept">Insert the highlighted suggestion</string>
+    <string name="shortcuts_overlay_popup_dismiss">Dismiss the suggestions</string>
+    <string name="shortcuts_overlay_close_hint">Esc or a tap outside closes this list</string>
 </resources>

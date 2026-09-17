@@ -18,7 +18,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -55,11 +57,18 @@ import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.ChevronForward
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
+/** How many more diff lines one tap on the expander reveals. */
+private const val DiffExpanderChunk = 200
+
 /**
  * Diff rendering shared by the transcript's patch cells and the status card's diff pane.
  *
- * Mirrors `codex-rs/tui/src/diff_render.rs`: two gutters, per-kind tinting and a `… N 行已省略`
- * tail when the body is longer than the cell is willing to show.
+ * Mirrors `codex-rs/tui/src/diff_render.rs`: two gutters, per-kind tinting and a tail row when the
+ * body is longer than the cell is willing to show.
+ *
+ * The body is a plain Column bounded by [maxLines] and grown in chunks on demand. A lazy list
+ * would nest a second vertical scrollable inside the transcript's LazyColumn, and an unbounded
+ * Column would make one transcript item lay out a whole file.
  */
 @Composable
 fun DiffBody(
@@ -75,36 +84,105 @@ fun DiffBody(
     omittedLineHeight: TextUnit = UiType.CardTitle,
 ) {
     val palette = diffPalette()
-    val shown = if (lines.size > maxLines) lines.take(maxLines) else lines
+    val hunkTextColor = MiuixTheme.colorScheme.onSurfaceVariantSummary
+    val signAdded = stringResource(R.string.blocks_sign_added)
+    val signRemoved = stringResource(R.string.blocks_sign_removed)
+    // Rows are folded once per body and re-folded only when the diff, the palette or the locale
+    // changes, so recomposing a row does no string, Color or TextStyle construction.
+    val rows = remember(lines, palette, hunkTextColor, signAdded, signRemoved) {
+        buildDiffRows(lines, palette, hunkTextColor, signAdded, signRemoved)
+    }
+    // Disclosure state for the truncated tail; keyed on the diff so a new payload opens at its
+    // start instead of at a stale offset.
+    val visible = remember(lines, maxLines) {
+        mutableIntStateOf(maxLines.coerceIn(0, lines.size))
+    }
+    val shown = visible.intValue.coerceAtMost(lines.size)
     Column(
         modifier = modifier
             .fillMaxWidth()
             .horizontalScroll(rememberScrollState())
             .padding(vertical = verticalPadding),
     ) {
-        shown.forEach { line -> DiffRow(line = line, palette = palette, showGutters = showGutters) }
-        if (lines.size > shown.size) {
-            Text(
-                text = stringResource(R.string.blocks_lines_omitted, lines.size - shown.size),
-                modifier = Modifier.padding(
-                    start = omittedStartPadding,
-                    top = omittedTopPadding,
-                    bottom = omittedBottomPadding,
-                ),
+        for (index in 0 until shown) {
+            DiffRow(model = rows[index], gutterColor = palette.gutter, showGutters = showGutters)
+        }
+        if (shown < lines.size) {
+            DiffExpander(
+                label = stringResource(R.string.blocks_show_more_lines, lines.size - shown),
+                onClick = {
+                    visible.intValue = (shown + DiffExpanderChunk).coerceAtMost(lines.size)
+                },
+                startPadding = omittedStartPadding,
+                topPadding = omittedTopPadding,
+                bottomPadding = omittedBottomPadding,
                 fontSize = omittedFontSize,
                 lineHeight = omittedLineHeight,
-                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                maxLines = 1,
-                softWrap = false,
             )
         }
     }
 }
 
-@Composable
-fun DiffRow(
-    line: DiffLine,
+/**
+ * One diff row with everything the layout needs already resolved.
+ *
+ * Immutable and comparable, which is what lets Compose skip a row whose line did not change while
+ * an unrelated file of the same turn grows.
+ */
+@Immutable
+internal data class DiffRowModel(
+    val oldLine: String,
+    val newLine: String,
+    val sign: String,
+    val text: String,
+    val background: Color,
+    val textColor: Color,
+)
+
+/** Fold parsed lines into row models. Pure, so a body pays for it once rather than per frame. */
+internal fun buildDiffRows(
+    lines: List<DiffLine>,
     palette: DiffPalette,
+    hunkTextColor: Color,
+    signAdded: String,
+    signRemoved: String,
+): List<DiffRowModel> {
+    val rows = ArrayList<DiffRowModel>(lines.size)
+    for (line in lines) {
+        val background = when (line.kind) {
+            DiffLineKind.Add -> palette.addSurface
+            DiffLineKind.Remove -> palette.removeSurface
+            DiffLineKind.Hunk -> palette.hunkSurface
+            DiffLineKind.Context -> Color.Transparent
+        }
+        val textColor = when (line.kind) {
+            DiffLineKind.Add -> palette.addText
+            DiffLineKind.Remove -> palette.removeText
+            DiffLineKind.Hunk -> hunkTextColor
+            DiffLineKind.Context -> palette.context
+        }
+        val sign = when (line.kind) {
+            DiffLineKind.Add -> signAdded
+            DiffLineKind.Remove -> signRemoved
+            DiffLineKind.Hunk, DiffLineKind.Context -> ""
+        }
+        rows += DiffRowModel(
+            oldLine = line.oldLine?.toString().orEmpty(),
+            newLine = line.newLine?.toString().orEmpty(),
+            sign = sign,
+            text = line.text,
+            background = background,
+            textColor = textColor,
+        )
+    }
+    return rows
+}
+
+/** One diff line. Every value is precomputed in [DiffRowModel]; nothing is built here. */
+@Composable
+internal fun DiffRow(
+    model: DiffRowModel,
+    gutterColor: Color,
     showGutters: Boolean = true,
     verticalPadding: Dp = 1.dp,
     signWidth: Dp = 15.dp,
@@ -112,61 +190,73 @@ fun DiffRow(
     fontSize: TextUnit = UiType.Body,
     lineHeight: TextUnit = UiType.CaptionLine,
 ) {
-    val colors = MiuixTheme.colorScheme
-    val background = when (line.kind) {
-        DiffLineKind.Add -> palette.addSurface
-        DiffLineKind.Remove -> palette.removeSurface
-        DiffLineKind.Hunk -> palette.hunkSurface
-        DiffLineKind.Context -> Color.Transparent
-    }
-    val textColor = when (line.kind) {
-        DiffLineKind.Add -> palette.addText
-        DiffLineKind.Remove -> palette.removeText
-        DiffLineKind.Hunk -> palette.hunkText
-        DiffLineKind.Context -> palette.context
-    }
-    val sign = when (line.kind) {
-        DiffLineKind.Add -> stringResource(R.string.blocks_sign_added)
-        DiffLineKind.Remove -> stringResource(R.string.blocks_sign_removed)
-        else -> ""
-    }
     Row(
         modifier = Modifier
-            .background(background)
+            .background(model.background)
             .padding(vertical = verticalPadding),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (showGutters) {
-            DiffLineNumber(value = line.oldLine, color = palette.gutter)
-            DiffLineNumber(value = line.newLine, color = palette.gutter)
+            DiffLineNumber(text = model.oldLine, color = gutterColor)
+            DiffLineNumber(text = model.newLine, color = gutterColor)
         }
         Text(
-            text = sign,
+            text = model.sign,
             modifier = Modifier.width(signWidth),
             fontSize = fontSize,
             lineHeight = lineHeight,
             fontFamily = FontFamily.Monospace,
-            color = textColor,
+            color = model.textColor,
             textAlign = TextAlign.Center,
             maxLines = 1,
             softWrap = false,
         )
         Text(
-            text = line.text,
+            text = model.text,
             modifier = Modifier.padding(end = endPadding),
             fontSize = fontSize,
             lineHeight = lineHeight,
             fontFamily = FontFamily.Monospace,
-            color = if (line.kind == DiffLineKind.Hunk) colors.onSurfaceVariantSummary else textColor,
+            color = model.textColor,
             maxLines = 1,
             softWrap = false,
         )
     }
 }
 
+/**
+ * The row that stands in for the hidden tail of a long diff.
+ *
+ * A tap reveals the next chunk rather than repeating the omitted count: a diff the caller
+ * truncated is usually still worth reading, and the old note left no way to read it without
+ * opening the status pane.
+ */
+@Composable
+private fun DiffExpander(
+    label: String,
+    onClick: () -> Unit,
+    startPadding: Dp,
+    topPadding: Dp,
+    bottomPadding: Dp,
+    fontSize: TextUnit,
+    lineHeight: TextUnit,
+) {
+    Text(
+        text = label,
+        modifier = Modifier
+            .clickable(onClick = onClick)
+            .padding(start = startPadding, top = topPadding, bottom = bottomPadding),
+        fontSize = fontSize,
+        lineHeight = lineHeight,
+        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+        maxLines = 1,
+        softWrap = false,
+    )
+}
+
 @Composable
 fun DiffLineNumber(
-    value: Int?,
+    text: String,
     color: Color,
     width: Dp = 32.dp,
     endPadding: Dp = 8.dp,
@@ -174,7 +264,7 @@ fun DiffLineNumber(
     lineHeight: TextUnit = UiType.CaptionLine,
 ) {
     Text(
-        text = value?.toString().orEmpty(),
+        text = text,
         modifier = Modifier
             .width(width)
             .padding(end = endPadding),
