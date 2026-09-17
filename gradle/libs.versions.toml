@@ -1,0 +1,43 @@
+[versions]
+agp = "9.4.1"
+kotlin = "2.4.20"
+composeMultiplatform = "1.12.0"
+miuix = "0.9.4"
+androidxActivity = "1.13.0"
+kotlinxCoroutines = "1.11.0"
+kotlinxSerialization = "1.11.0"
+junit = "4.13.2"
+zstdJni = "1.5.7-17"
+
+[libraries]
+androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "androidxActivity" }
+
+# Kotlin coroutines drive the transport and session reducer.
+kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "kotlinxCoroutines" }
+kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "kotlinxCoroutines" }
+# The protocol tree, parser and printer. One encode per outgoing message and one parse per
+# incoming message; the Rust half uses serde_json the same way.
+kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinxSerialization" }
+junit = { module = "junit:junit", version.ref = "junit" }
+# Test-only: decompresses the precomputed experimental exports, the authoritative full method list.
+zstd-jni = { module = "com.github.luben:zstd-jni", version.ref = "zstdJni" }
+
+miuix-ui = { module = "top.yukonga.miuix.kmp:miuix-ui-android", version.ref = "miuix" }
+# Preference rows (Switch / Radio / Arrow / Checkbox / Spinner / Slider). Depends on miuix-ui; the
+# settings page is built from these instead of hand-rolled card rows.
+miuix-preference = { module = "top.yukonga.miuix.kmp:miuix-preference-android", version.ref = "miuix" }
+# The navigation runtime: the whole page stack is driven by one Animatable<Float>, so a programmatic
+# push/pop and the predictive-back gesture replay the same transition instead of two handwritten
+# ones. It has no dependency on androidx.navigation3.
+miuix-nav = { module = "top.yukonga.miuix.kmp:miuix-nav-android", version.ref = "miuix" }
+# Runtime shader / RenderEffect abstraction (AGSL on Android). The one effect the app cannot express
+# with a gradient: the "still running" comet that travels along a chip's outline.
+miuix-shader = { module = "top.yukonga.miuix.kmp:miuix-shader-android", version.ref = "miuix" }
+miuix-icons = { module = "top.yukonga.miuix.kmp:miuix-icons-android", version.ref = "miuix" }
+miuix-blur = { module = "top.yukonga.miuix.kmp:miuix-blur-android", version.ref = "miuix" }
+miuix-squircle = { module = "top.yukonga.miuix.kmp:miuix-squircle-android", version.ref = "miuix" }
+
+[plugins]
+android-application = { id = "com.android.application", version.ref = "agp" }
+compose-compiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
+compose-multiplatform = { id = "org.jetbrains.compose", version.ref = "composeMultiplatform" }
