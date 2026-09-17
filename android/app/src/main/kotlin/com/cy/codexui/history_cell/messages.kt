@@ -106,6 +106,7 @@ fun AgentMessageCell(
     stream: MarkdownStream? = null,
     streaming: Boolean = false,
     label: String = stringResource(R.string.messages_cell_assistant_name),
+    cwd: String? = null,
     labelFontSize: TextUnit = UiType.Subtitle,
     labelLineHeight: TextUnit = UiType.SheetTitle,
     labelSpacing: Dp = 5.dp,
@@ -127,9 +128,9 @@ fun AgentMessageCell(
         // While deltas are being buffered the parsed blocks are the body; once the item completes
         // the stream is dropped and the authoritative text renders instead.
         if (stream != null && stream.hasContent) {
-            MarkdownStreamText(stream = stream, streaming = streaming)
+            MarkdownStreamText(stream = stream, streaming = streaming, cwd = cwd)
         } else {
-            MarkdownText(markdown = item.text)
+            MarkdownText(markdown = item.text, cwd = cwd)
         }
         if (questions.isNotEmpty()) {
             Spacer(Modifier.height(questionSpacing))

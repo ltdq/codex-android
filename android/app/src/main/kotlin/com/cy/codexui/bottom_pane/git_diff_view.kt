@@ -146,6 +146,7 @@ fun GitDiffScreen(
                             file = file,
                             expanded = expanded[file.path] == true,
                             onToggle = { expanded[file.path] = expanded[file.path] != true },
+                            cwd = cwd,
                             corner = UiConsts.CornerControl,
                         )
                     }

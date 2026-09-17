@@ -181,6 +181,45 @@ class DiffModelTest {
     }
 
     @Test
+    fun renameSectionsCarryBothPathsAndTheRenamedKind() {
+        val diff = listOf(
+            "diff --git a/old/name.kt b/new/name.kt",
+            "similarity index 90%",
+            "rename from old/name.kt",
+            "rename to new/name.kt",
+            "--- a/old/name.kt",
+            "+++ b/new/name.kt",
+            "@@ -1 +1 @@",
+            "-old",
+            "+new",
+        ).joinToString("\n")
+
+        val files = parseTurnDiff(diff)
+        assertEquals(1, files.size)
+        assertEquals("new/name.kt", files[0].path)
+        assertEquals("old/name.kt", files[0].oldPath)
+        assertEquals(DiffFileKind.Renamed, files[0].kind)
+        assertEquals("R", files[0].letter)
+        assertEquals("name.kt → name.kt", files[0].displayName)
+    }
+
+    @Test
+    fun singleFileRenameWithoutGitHeaderIsStillDetected() {
+        val files = parseTurnDiff("--- a/old.kt\n+++ b/new.kt\n@@ -1 +1 @@\n-a\n+b")
+        assertEquals("new.kt", files[0].path)
+        assertEquals("old.kt", files[0].oldPath)
+        assertEquals(DiffFileKind.Renamed, files[0].kind)
+    }
+
+    @Test
+    fun noNewlineMarkerIsMetadataNotContent() {
+        val lines = parseUnifiedDiff(
+            "@@ -1 +1 @@\n-old\n+new\n\\ No newline at end of file",
+        )
+        assertEquals(DiffLineKind.Hunk, lines.last().kind)
+    }
+
+    @Test
     fun unparseableLinesBecomeContextRatherThanFailing() {
         val lines = parseUnifiedDiff("this is not a diff at all")
         assertEquals(1, lines.size)

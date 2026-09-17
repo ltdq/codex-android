@@ -133,9 +133,24 @@ data class WebSearchItem(
     override val id: String,
     val query: String,
     val results: List<WebSearchResult> = emptyList(),
+    /** What the web tool actually did; `null` on servers that do not model the action yet. */
+    val action: WebSearchAction? = null,
 ) : ThreadItem
 
 data class WebSearchResult(val title: String, val url: String)
+
+/**
+ * The `WebSearchAction` union of `app-server-protocol/schema/json/v2`.
+ *
+ * Mirrors `codex-rs/ext/items/src/web_search.rs`: the search tool can search, open a page or find
+ * text in one, and only the action's own fields name what happened.
+ */
+sealed interface WebSearchAction {
+    data class Search(val query: String?, val queries: List<String>?) : WebSearchAction
+    data class OpenPage(val url: String?) : WebSearchAction
+    data class FindInPage(val url: String?, val pattern: String?) : WebSearchAction
+    data object Other : WebSearchAction
+}
 
 data class ImageViewItem(
     override val id: String,

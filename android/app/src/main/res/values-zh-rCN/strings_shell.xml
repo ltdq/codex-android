@@ -40,6 +40,9 @@
     <string name="markdown_render_bullet">•</string>
     <string name="markdown_render_numbered">%1$d.</string>
 
+    <!-- links.kt: a local file link has no editor to open, so the path is copied instead. -->
+    <string name="markdown_link_path_copied">已复制 %1$s</string>
+
     <!-- chatwidget.kt: the notices DiagnosticCell renders from SessionDiagnostic.code -->
     <string name="chatwidget_diagnostic_thread_load_failed">会话载入失败</string>
     <string name="chatwidget_diagnostic_new_thread_failed">新建会话失败</string>
@@ -53,6 +56,7 @@
     <string name="chatwidget_diagnostic_strict_review">本轮需要先经过严格审查才能继续。</string>
     <string name="chatwidget_diagnostic_hook_failed">钩子 %1$s 执行失败</string>
     <string name="chatwidget_diagnostic_mcp_login_failed">MCP 服务 %1$s 登录失败</string>
+    <string name="chatwidget_diagnostic_safety_buffering">正在多花一点时间思考这个请求，无需任何操作。</string>
     <string name="shell_request_failed">服务器拒绝了这次请求</string>
 
     <!-- keymap/shortcuts_overlay.kt -->

@@ -22,28 +22,37 @@ data class FileDiff(
     val lines: List<DiffLine>,
     val additions: Int,
     val removals: Int,
+    /** Source path of a rename, or `null` when the file was not moved. */
+    val oldPath: String? = null,
 ) {
     /** Shortened path shown as the headline of a file row. */
     val fileName: String get() = path.substringAfterLast('/')
 
+    /** `old → new` for a rename, the plain file name otherwise. */
+    val displayName: String
+        get() = oldPath?.let { "${it.substringAfterLast('/')} → $fileName" } ?: fileName
+
     /** Directory of the file, shortened from the left so the last folders stay readable. */
-    val parentPath: String
-        get() {
-            val dir = path.substringBeforeLast('/', "")
-            if (dir.isEmpty()) return ""
-            val parts = dir.split('/')
-            return if (parts.size <= 3) "$dir/" else "…/" + parts.takeLast(3).joinToString("/") + "/"
-        }
+    val parentPath: String get() = shortenedParent(path)
 
     val letter: String
         get() = when (kind) {
             DiffFileKind.Added -> "A"
             DiffFileKind.Modified -> "M"
             DiffFileKind.Deleted -> "D"
+            DiffFileKind.Renamed -> "R"
         }
 }
 
-enum class DiffFileKind { Added, Modified, Deleted }
+enum class DiffFileKind { Added, Modified, Deleted, Renamed }
+
+/** Directory of [path], shortened from the left so the last folders stay readable. */
+fun shortenedParent(path: String): String {
+    val dir = path.substringBeforeLast('/', "")
+    if (dir.isEmpty()) return ""
+    val parts = dir.split('/')
+    return if (parts.size <= 3) "$dir/" else "…/" + parts.takeLast(3).joinToString("/") + "/"
+}
 
 /**
  * Colours for one diff, resolved per theme so added and removed lines stay readable in both modes.
@@ -74,7 +83,11 @@ internal fun gitFileHeaderOffsets(diff: String): List<Int> =
     FileHeader.findAll(diff).map { it.range.first }.toList()
 
 /** Path named by one `diff --git` line, or `null` when [line] is not one. */
-internal fun gitFileHeaderPath(line: String): String? = FileHeader.find(line)?.groupValues?.get(2)
+internal fun gitFileHeaderPath(line: String): String? = gitFileHeaderPaths(line)?.second
+
+/** The `a/…` and `b/…` paths of one `diff --git` line; they differ for a rename. */
+internal fun gitFileHeaderPaths(line: String): Pair<String, String>? =
+    FileHeader.find(line)?.let { it.groupValues[1] to it.groupValues[2] }
 
 /**
  * Parse one unified diff body into [DiffLine]s.
@@ -134,7 +147,7 @@ fun parseUnifiedDiff(diff: String): List<DiffLine> {
                 if (oldLeft > 0) oldLeft--
             }
 
-            raw.startsWith("\\") -> lines += DiffLine(DiffLineKind.Context, raw, null, null)
+            raw.startsWith("\\") -> lines += DiffLine(DiffLineKind.Hunk, raw, null, null)
 
             else -> {
                 val text = raw.removePrefix(" ")
@@ -169,14 +182,18 @@ fun parseTurnDiff(diff: String): List<FileDiff> {
     // A diff without `diff --git` headers (a single-file patch) arrives as one section.
     if (starts.isEmpty()) {
         val lines = parseUnifiedDiff(diff)
-        val path = lines.firstNotNullOfOrNull { line ->
+        var oldPath: String? = null
+        var newPath: String? = null
+        for (line in lines) {
             when {
-                line.text.startsWith("+++ ") -> NewPath.find(line.text)?.groupValues?.get(1)
-                line.text.startsWith("--- ") -> OldPath.find(line.text)?.groupValues?.get(1)
-                else -> null
+                line.text.startsWith("+++ ") -> newPath = NewPath.find(line.text)?.groupValues?.get(1)
+                line.text.startsWith("--- ") -> oldPath = OldPath.find(line.text)?.groupValues?.get(1)
             }
-        } ?: "patch"
-        return listOf(fileDiffOf(path, lines))
+        }
+        val path = newPath ?: oldPath ?: "patch"
+        return listOf(
+            fileDiffOf(path, lines, oldPath?.takeIf { it != path && it != "/dev/null" }),
+        )
     }
 
     return starts.mapIndexed { index, start ->
@@ -187,15 +204,18 @@ fun parseTurnDiff(diff: String): List<FileDiff> {
 
 /** Parse one `diff --git` section — its header line plus body — into a [FileDiff]. */
 internal fun parseFileSection(section: String): FileDiff {
-    val path = gitFileHeaderPath(section.substringBefore('\n')) ?: "patch"
-    return fileDiffOf(path, parseUnifiedDiff(section))
+    val paths = gitFileHeaderPaths(section.substringBefore('\n'))
+    val path = paths?.second ?: "patch"
+    val oldPath = paths?.first?.takeIf { it != path }
+    return fileDiffOf(path, parseUnifiedDiff(section), oldPath)
 }
 
 /** Build a diff from already-structured lines. */
-fun fileDiffOf(path: String, lines: List<DiffLine>): FileDiff = FileDiff(
+fun fileDiffOf(path: String, lines: List<DiffLine>, oldPath: String? = null): FileDiff = FileDiff(
     path = path,
-    kind = diffFileKind(lines),
+    kind = if (oldPath != null) DiffFileKind.Renamed else diffFileKind(lines),
     lines = lines,
     additions = lines.count { it.kind == DiffLineKind.Add },
     removals = lines.count { it.kind == DiffLineKind.Remove },
+    oldPath = oldPath,
 )

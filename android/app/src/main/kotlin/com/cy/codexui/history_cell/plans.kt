@@ -54,6 +54,7 @@ fun PlanItemCell(
     modifier: Modifier = Modifier,
     stream: MarkdownStream? = null,
     streaming: Boolean = false,
+    cwd: String? = null,
     corner: Dp = UiConsts.CornerRow,
     horizontalPadding: Dp = 12.dp,
     verticalPadding: Dp = 10.dp,
@@ -91,10 +92,11 @@ fun PlanItemCell(
         }
         Spacer(Modifier.height(titleSpacing))
         if (stream != null && stream.hasContent) {
-            MarkdownStreamText(stream = stream, streaming = streaming)
+            MarkdownStreamText(stream = stream, streaming = streaming, cwd = cwd)
         } else {
             MarkdownText(
                 markdown = item.text.ifBlank { stringResource(R.string.plans_cell_empty) },
+                cwd = cwd,
             )
         }
     }

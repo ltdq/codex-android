@@ -64,6 +64,10 @@ import com.cy.codexui.DiffBody
 import com.cy.codexui.FileKindBadge
 import com.cy.codexui.FileStatText
 import com.cy.codexui.FileDiff
+import com.cy.codexui.displayDiffPath
+import com.cy.codexui.languageFromPath
+import com.cy.codexui.runtimeHome
+import com.cy.codexui.shortenedParent
 import com.cy.codexui.protocol.protocol.v2.AskForApproval
 import com.cy.codexui.protocol.protocol.v2.ModelPreset
 import com.cy.codexui.protocol.protocol.v2.ReasoningEffort
@@ -190,6 +194,7 @@ fun DiffCard(
     width: Dp,
     height: Dp,
     modifier: Modifier = Modifier,
+    cwd: String? = null,
     panelElevation: Dp = UiConsts.PanelElevation,
 ) {
     val shape = remember { SquircleShape(UiConsts.PanelCorner) }
@@ -205,6 +210,7 @@ fun DiffCard(
             file = file,
             siblings = siblings,
             onClose = onClose,
+            cwd = cwd,
             modifier = Modifier.fillMaxSize(),
         )
     }
@@ -299,6 +305,7 @@ private fun SectionsColumn(
 
             FilesSection(
                 files = turnDiff,
+                cwd = session.cwd,
                 openPath = state.openFilePath,
                 collapsed = state.isFolded(StatusSection.Files),
                 onToggle = { state.toggleSection(StatusSection.Files) },
@@ -892,6 +899,7 @@ private fun AgentRow(
 @Composable
 private fun FilesSection(
     files: List<FileDiff>,
+    cwd: String?,
     openPath: String?,
     collapsed: Boolean,
     onToggle: () -> Unit,
@@ -924,6 +932,7 @@ private fun FilesSection(
             files.forEach { file ->
                 FileRow(
                     file = file,
+                    cwd = cwd,
                     open = file.path == openPath,
                     onClick = { onOpen(file.path) },
                 )
@@ -935,6 +944,7 @@ private fun FilesSection(
 @Composable
 private fun FileRow(
     file: FileDiff,
+    cwd: String?,
     open: Boolean,
     onClick: () -> Unit,
     contentPadding: PaddingValues = PaddingValues(horizontal = 9.dp, vertical = 6.dp),
@@ -949,6 +959,9 @@ private fun FileRow(
 ) {
     val colors = MiuixTheme.colorScheme
     val shape = remember { RoundedCornerShape(UiConsts.RowCorner) }
+    val shownPath = displayDiffPath(file.path, cwd, runtimeHome())
+    val title = if (file.oldPath != null) file.displayName else shownPath.substringAfterLast('/')
+    val parent = shortenedParent(shownPath)
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -964,7 +977,7 @@ private fun FileRow(
         Spacer(Modifier.width(badgeGap))
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = file.fileName,
+                text = title,
                 fontSize = nameSize,
                 lineHeight = nameLineHeight,
                 fontWeight = if (open) FontWeight.Medium else FontWeight.Normal,
@@ -973,7 +986,7 @@ private fun FileRow(
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
-                text = file.parentPath,
+                text = parent,
                 fontSize = pathSize,
                 lineHeight = pathLineHeight,
                 color = colors.onSurfaceVariantSummary,
@@ -1018,6 +1031,7 @@ fun DiffPane(
     siblings: List<FileDiff>,
     onClose: () -> Unit,
     modifier: Modifier = Modifier,
+    cwd: String? = null,
     headerPadding: PaddingValues = PaddingValues(start = 16.dp, end = 8.dp, top = 12.dp, bottom = 10.dp),
     nameSize: TextUnit = UiType.Message,
     nameLineHeight: TextUnit = UiType.Title,
@@ -1038,6 +1052,8 @@ fun DiffPane(
 ) {
     val colors = MiuixTheme.colorScheme
     val index = siblings.indexOfFirst { it.path == file.path }
+    val shownPath = displayDiffPath(file.path, cwd, runtimeHome())
+    val title = if (file.oldPath != null) file.displayName else shownPath.substringAfterLast('/')
     Column(modifier = modifier) {
         Row(
             modifier = Modifier
@@ -1047,7 +1063,7 @@ fun DiffPane(
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = file.fileName,
+                    text = title,
                     fontSize = nameSize,
                     lineHeight = nameLineHeight,
                     fontWeight = FontWeight.Medium,
@@ -1056,7 +1072,7 @@ fun DiffPane(
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(
-                    text = file.parentPath,
+                    text = shortenedParent(shownPath),
                     fontSize = pathSize,
                     lineHeight = pathLineHeight,
                     color = colors.onSurfaceVariantSummary,
@@ -1087,7 +1103,11 @@ fun DiffPane(
                 .weight(1f)
                 .verticalScroll(rememberScrollState()),
         ) {
-            DiffBody(lines = file.lines, maxLines = 800)
+            DiffBody(
+                lines = file.lines,
+                maxLines = 800,
+                language = languageFromPath(file.path),
+            )
         }
         if (siblings.size > 1) {
             Box(

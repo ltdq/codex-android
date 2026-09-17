@@ -32,12 +32,15 @@ import androidx.compose.ui.unit.sp
 import com.cy.codexui.R
 import com.cy.codexui.protocol.protocol.item.CommandExecutionItem
 import com.cy.codexui.protocol.protocol.v2.CommandAction
+import com.cy.codexui.protocol.protocol.v2.CommandExecutionSource
 import com.cy.codexui.protocol.protocol.v2.CommandExecutionStatus
 import com.cy.codexui.CodeBlock
 import com.cy.codexui.ToolCard
 import com.cy.codexui.ThreadStatusTone
+import com.cy.codexui.highlightShellCommand
 import com.cy.codexui.statusDotColor
 import com.cy.codexui.statusPillSurface
+import com.cy.codexui.syntaxPalette
 import com.cy.codexui.UiType
 import com.cy.codexui.UiConsts
 import top.yukonga.miuix.kmp.basic.LinearProgressIndicator
@@ -70,6 +73,9 @@ fun CommandExecutionCell(
     val colors = MiuixTheme.colorScheme
     val tone = commandExecutionTone(item.status)
     val output = item.aggregatedOutput?.trimEnd().orEmpty()
+    val palette = syntaxPalette()
+    val command = item.command.trim().ifEmpty { stringResource(R.string.exec_cell_command_title) }
+    val styledCommand = remember(command, palette) { highlightShellCommand(command, palette) }
     val meta = listOfNotNull(
         item.exitCode?.let { stringResource(R.string.exec_cell_exit_code, it) },
         item.durationMs?.let { formatToolDuration(it) },
@@ -77,7 +83,8 @@ fun CommandExecutionCell(
 
     ToolCard(
         icon = MiuixIcons.Trim,
-        title = item.command.trim().ifEmpty { stringResource(R.string.exec_cell_command_title) },
+        title = command,
+        titleStyled = styledCommand,
         subtitle = item.cwd.ifBlank { null },
         modifier = modifier,
         accent = statusDotColor(tone),
@@ -116,7 +123,7 @@ fun CommandExecutionCell(
             Spacer(Modifier.height(blockSpacing))
         }
         when {
-            output.isNotEmpty() -> LimitedCodeBlock(text = output, language = "shell")
+            output.isNotEmpty() -> LimitedCodeBlock(text = output, language = "shell", maxLines = 10)
             item.status == CommandExecutionStatus.InProgress -> Text(
                 text = stringResource(R.string.exec_cell_waiting_for_output),
                 fontSize = bodyFontSize,
@@ -234,8 +241,9 @@ internal fun MetaChip(
 }
 
 /**
- * Tool output in a code block, collapsed to [maxLines] with a control that reveals the rest.
- * Streaming output keeps this cheap: the whole buffer is never measured, only counted.
+ * Tool output in a code block, collapsed to a head and a tail with a `… +N lines` marker between
+ * them, as `codex-rs/tui/src/exec_cell/render.rs` previews a command. The expander below the block
+ * still reveals the whole body.
  */
 @Composable
 internal fun LimitedCodeBlock(
@@ -251,21 +259,27 @@ internal fun LimitedCodeBlock(
 ) {
     val colors = MiuixTheme.colorScheme
     val body = text.trimEnd('\n')
-    val lineCount = remember(body) { body.count { it == '\n' } + 1 }
+    val lines = remember(body) { body.split('\n') }
     var expanded by remember(body) { mutableStateOf(false) }
-    val truncated = lineCount > maxLines
+    val headCount = (maxLines / 2).coerceAtLeast(1)
+    val tailCount = (maxLines - headCount).coerceAtLeast(0)
+    val omitted = (lines.size - headCount - tailCount).coerceAtLeast(0)
+    val truncated = lines.size > maxLines
+    val marker = stringResource(R.string.exec_cell_omitted_lines, omitted)
+    val shownBody = when {
+        !truncated || expanded -> body
+        tailCount == 0 -> (lines.take(headCount) + marker).joinToString("\n")
+        else -> (lines.take(headCount) + marker + lines.takeLast(tailCount)).joinToString("\n")
+    }
 
     Column(modifier = modifier.fillMaxWidth()) {
-        CodeBlock(
-            code = if (truncated && !expanded) body.lines().take(maxLines).joinToString("\n") else body,
-            language = language,
-        )
+        CodeBlock(code = shownBody, language = language)
         if (truncated) {
             Text(
                 text = if (expanded) {
                     stringResource(R.string.exec_cell_collapse)
                 } else {
-                    stringResource(R.string.exec_cell_more_lines, lineCount)
+                    stringResource(R.string.exec_cell_more_lines, lines.size - headCount)
                 },
                 modifier = Modifier
                     .clip(RoundedCornerShape(corner))
@@ -299,3 +313,17 @@ internal fun formatToolDuration(durationMs: Long): String {
         )
     }
 }
+
+/**
+ * Whether one command is "exploring" rather than "running".
+ *
+ * Mirrors `ExecCell::is_exploring_call` in `codex-rs/tui/src/exec_cell/model.rs`: reads, listings
+ * and searches the agent runs to understand the workspace group under an `Explored` heading instead
+ * of one card each.
+ */
+internal fun CommandExecutionItem.isExploringCall(): Boolean =
+    source == CommandExecutionSource.Agent &&
+        commandActions.isNotEmpty() &&
+        commandActions.all { action ->
+            action is CommandAction.Read || action is CommandAction.ListFiles || action is CommandAction.Search
+        }

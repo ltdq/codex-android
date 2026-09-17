@@ -37,33 +37,59 @@ class DiffRowModelTest {
     @Test
     fun foldsGuttersSignsAndColorsPerKind() {
         val rows = rowsFor("@@ -1,2 +1,2 @@\n-old\n+new\n context")
-        assertEquals(4, rows.size)
+        // The first hunk header is metadata; only content becomes rows.
+        assertEquals(3, rows.size)
 
-        assertEquals("", rows[0].oldLine)
+        assertEquals("1", rows[0].oldLine)
         assertEquals("", rows[0].newLine)
-        assertEquals("", rows[0].sign)
-        assertEquals(palette.hunkSurface, rows[0].background)
-        assertEquals(hunkTextColor, rows[0].textColor)
+        assertEquals("−", rows[0].sign)
+        assertEquals("old", rows[0].text)
+        assertEquals(palette.removeSurface, rows[0].background)
+        assertEquals(palette.removeText, rows[0].textColor)
 
-        assertEquals("1", rows[1].oldLine)
-        assertEquals("", rows[1].newLine)
-        assertEquals("−", rows[1].sign)
-        assertEquals("old", rows[1].text)
-        assertEquals(palette.removeSurface, rows[1].background)
-        assertEquals(palette.removeText, rows[1].textColor)
+        assertEquals("", rows[1].oldLine)
+        assertEquals("1", rows[1].newLine)
+        assertEquals("+", rows[1].sign)
+        assertEquals("new", rows[1].text)
+        assertEquals(palette.addSurface, rows[1].background)
+        assertEquals(palette.addText, rows[1].textColor)
 
-        assertEquals("", rows[2].oldLine)
-        assertEquals("1", rows[2].newLine)
-        assertEquals("+", rows[2].sign)
-        assertEquals("new", rows[2].text)
-        assertEquals(palette.addSurface, rows[2].background)
-        assertEquals(palette.addText, rows[2].textColor)
+        assertEquals("2", rows[2].oldLine)
+        assertEquals("2", rows[2].newLine)
+        assertEquals("", rows[2].sign)
+        assertEquals(Color.Transparent, rows[2].background)
+        assertEquals(palette.context, rows[2].textColor)
+    }
 
-        assertEquals("2", rows[3].oldLine)
-        assertEquals("2", rows[3].newLine)
-        assertEquals("", rows[3].sign)
-        assertEquals(Color.Transparent, rows[3].background)
-        assertEquals(palette.context, rows[3].textColor)
+    @Test
+    fun fileMetadataIsDroppedAndHunksAreSeparated() {
+        val rows = rowsFor(
+            listOf(
+                "diff --git a/a.kt b/a.kt",
+                "--- a/a.kt",
+                "+++ b/a.kt",
+                "@@ -1 +1 @@",
+                "-old",
+                "+new",
+                "@@ -20 +20 @@",
+                " context",
+                "\\ No newline at end of file",
+            ).joinToString("\n"),
+        )
+        // Metadata lines produce nothing; the second hunk header becomes the separator.
+        assertEquals(4, rows.size)
+        assertEquals("old", rows[0].text)
+        assertEquals("new", rows[1].text)
+        assertEquals(DiffHunkSeparator, rows[2].text)
+        assertEquals("", rows[2].sign)
+        assertEquals("context", rows[3].text)
+    }
+
+    @Test
+    fun tabsExpandToFourSpaces() {
+        val rows = rowsFor("@@ -1 +1 @@\n-\tindented\n+\tindented more")
+        assertEquals("    indented", rows[0].text)
+        assertEquals("    indented more", rows[1].text)
     }
 
     @Test

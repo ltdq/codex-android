@@ -43,6 +43,9 @@
     <string name="markdown_render_bullet">•</string>
     <string name="markdown_render_numbered">%1$d.</string>
 
+    <!-- links.kt: a local file link has no editor to open, so the path is copied instead. -->
+    <string name="markdown_link_path_copied">Copied %1$s</string>
+
     <!-- chatwidget.kt: the notices DiagnosticCell renders from SessionDiagnostic.code -->
     <string name="chatwidget_diagnostic_thread_load_failed">Failed to resume session</string>
     <string name="chatwidget_diagnostic_new_thread_failed">Failed to start a fresh session</string>
@@ -56,6 +59,7 @@
     <string name="chatwidget_diagnostic_strict_review">This turn needs a strict review before it can continue.</string>
     <string name="chatwidget_diagnostic_hook_failed">Hook %1$s failed</string>
     <string name="chatwidget_diagnostic_mcp_login_failed">Sign-in for MCP server %1$s failed</string>
+    <string name="chatwidget_diagnostic_safety_buffering">Giving this request a little extra thought. No action is required.</string>
     <string name="shell_request_failed">The server rejected that request</string>
 
     <!-- keymap/shortcuts_overlay.kt -->

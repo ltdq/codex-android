@@ -29,6 +29,7 @@ import com.cy.codexui.protocol.protocol.v2.UserInput
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Test
@@ -213,6 +214,11 @@ class ChatWidgetTest {
 
         client.events.emit(AppServerEvent.AgentMessageDelta("thread", ItemTextDelta("thread", "turn", id, "Hello ")))
         client.events.emit(AppServerEvent.AgentMessageDelta("thread", ItemTextDelta("thread", "turn", id, "world")))
+        runCurrent()
+
+        // Deltas wait for the commit tick, so nothing has been parsed yet.
+        assertNull(widget.state.stream(id))
+        advanceTimeBy(Motion.StreamCommitIntervalMs + 1)
         runCurrent()
 
         // The item body stays empty while the deltas are buffered, so nothing copies the answer per

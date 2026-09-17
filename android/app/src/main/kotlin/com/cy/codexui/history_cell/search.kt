@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -22,6 +23,7 @@ import com.cy.codexui.R
 import com.cy.codexui.protocol.protocol.item.ImageGenerationItem
 import com.cy.codexui.protocol.protocol.item.ImageViewItem
 import com.cy.codexui.protocol.protocol.item.SleepItem
+import com.cy.codexui.protocol.protocol.item.WebSearchAction
 import com.cy.codexui.protocol.protocol.item.WebSearchItem
 import com.cy.codexui.protocol.protocol.item.WebSearchResult
 import com.cy.codexui.ToolCard
@@ -56,7 +58,7 @@ fun WebSearchCell(
     val colors = MiuixTheme.colorScheme
     ToolCard(
         icon = MiuixIcons.Basic.Search,
-        title = stringResource(R.string.search_cell_title, item.query),
+        title = webSearchTitle(item),
         subtitle = stringResource(R.string.search_cell_result_count, item.results.size),
         modifier = modifier,
     ) {
@@ -71,6 +73,51 @@ fun WebSearchCell(
             Column(verticalArrangement = Arrangement.spacedBy(resultSpacing)) {
                 item.results.forEach { result -> SearchResultRow(result) }
             }
+        }
+    }
+}
+
+/**
+ * The web tool's own summary line.
+ *
+ * Mirrors `web_search_action_detail` and `WebSearchCell::summary` in
+ * `codex-rs/tui/src/history_cell/search.rs`: the action names the verb and its own fields the
+ * detail, so opening a page reads `Opened <url>` instead of an empty search query.
+ */
+@Composable
+@ReadOnlyComposable
+private fun webSearchTitle(item: WebSearchItem): String = when (val action = item.action) {
+    is WebSearchAction.OpenPage -> action.url?.takeIf { it.isNotBlank() }
+        ?.let { stringResource(R.string.search_cell_opened, it) }
+        ?: stringResource(R.string.search_cell_opened_page)
+
+    is WebSearchAction.FindInPage -> {
+        val pattern = action.pattern?.takeIf { it.isNotBlank() }
+        val url = action.url?.takeIf { it.isNotBlank() }
+        when {
+            pattern != null && url != null ->
+                stringResource(R.string.search_cell_find_in_page, pattern, url)
+            pattern != null -> stringResource(R.string.search_cell_searched_for, pattern)
+            url != null -> stringResource(R.string.search_cell_searched_page, url)
+            else -> stringResource(R.string.search_cell_searched_page_no_url)
+        }
+    }
+
+    is WebSearchAction.Search -> {
+        val detail = action.query?.takeIf { it.isNotBlank() }
+            ?: action.queries?.joinToString(", ").orEmpty()
+        if (detail.isBlank()) {
+            stringResource(R.string.search_cell_searched_web)
+        } else {
+            stringResource(R.string.search_cell_searched_web_for, detail)
+        }
+    }
+
+    is WebSearchAction.Other, null -> {
+        if (item.query.isBlank()) {
+            stringResource(R.string.search_cell_searched_web)
+        } else {
+            stringResource(R.string.search_cell_searched_web_for, item.query)
         }
     }
 }

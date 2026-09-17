@@ -29,30 +29,7 @@
 
 ## 2. UI 功能缺口
 
-### 2.1 渲染
-
-- [ ] markdown 表格、数学、删除线、H4-H6、setext、分隔线、缩进代码块、嵌套列表、硬换行
-      （`markdown_stream.kt` 手写扫描器，无 table/math 代码）。
-- [ ] 围栏解析只认 `^```\s*(\S*)\s*$`（`markdown_stream.kt:240`）：不支持
-      ```` ```rust title=x ````、`~~~`、4 反引号。
-- [ ] 无语法高亮（代码围栏、exec 命令、MCP 参数、diff 全是等宽文本）。
-- [ ] 链接机制缺失：`[label](url)` 只渲染 label，URL 被丢弃；无 `UriHandler`/本地文件/
-      `:line:col`/codex-file-citation 处理（`markdown_render.kt:527`）。
-- [ ] 流式渲染无提交边界：`Motion.StreamCommitIntervalMs`（`motion.kt:74`）零引用，
-      delta 仍逐条提交（增量解析已把单条代价降到 tail block，但长代码围栏的 tail 仍是
-      O(块)）；未闭合围栏吞到 EOF。
-- [ ] exec 输出只截头（`history_cell/exec.kt:256-268` 只 `take(maxLines)`），
-      上游是 head + `… +N lines` + tail，并带 bash 高亮与 "Explored" 分组折叠。
-- [ ] web search 的 `action` 未建模（`ThreadItem.kt:132-138`），无从显示 `Opened <url>`。
-- [ ] safety buffering 通知是显式 no-op（`chatwidget.kt:814`）。
-- [ ] 诊断上限 20 条且静默丢弃（`session_state.kt:230,234`），无按 model slug 去重。
-
-### 2.2 diff
-
-- [ ] 缺 rename（`old → new`）、`⋮` hunk 分隔（现在直接渲染 `diff --git` / `@@`）、
-      路径按 cwd / git root / home 相对化、tab 展开、`\ No newline at end of file` 处理。
-
-### 2.3 审批
+### 2.1 审批
 
 - [ ] approvals reviewer 选择缺失：`approvalsReviewer` 只在协议与 client 里，
       `AskForApproval` 无 `AutoReview`（`protocol/protocol/v2/config_types.kt:9-14`），无 UI。
@@ -60,7 +37,7 @@
 - [ ] 跨线程待审批提示、可操作内联 banner 缺失。
 - [ ] guardian review 的 `+N more` 聚合缺失。
 
-### 2.4 多 agent 与会话编排
+### 2.2 多 agent 与会话编排
 
 - [ ] `AgentPickerSheet` 未挂载（`app/agent_picker.kt:182` 只有定义）；
       `AgentRosterEntry.statusLabel()/tone()` 在 `app/agents_overview.kt:136` 与
@@ -81,7 +58,7 @@
 - [ ] turn 级活动指示器（计时器、折行的工具细节、hook 状态槽位）、turn 完成分隔行、
       标题生成中指示、`InProgress` item 收尾、misalignment 策略缺失。
 
-### 2.5 登录与 onboarding
+### 2.3 登录与 onboarding
 
 - [ ] 登录本身已可用（`status/account.kt:148-221`：设备码 + API key + 取消 + 错误态），
       但缺首次启动引导/欢迎屏，只在提交时按 `loggedIn` 拦一次（`app.kt:205`）。
@@ -94,11 +71,10 @@
 - [ ] OSS provider 选择缺失。
 - [ ] API key 存在 `auth.json`，未用 Keystore/EncryptedSharedPreferences（未深入验证）。
 
-### 2.6 平台能力（当前在 `app/src/main` 里命中 0）
+### 2.4 平台能力
 
-- [ ] 剪贴板：复制消息、复制代码块、状态卡复制、`/copy`（`ClipboardManager` 命中 0）。
+- [ ] 剪贴板：复制消息、复制代码块、状态卡复制、`/copy`（目前只有 links.kt 复制本地链接路径）。
 - [ ] 系统通知：`POST_NOTIFICATIONS` 未申请，无 channel（上游有按类型白名单）。
-- [ ] 打开链接（同 §2.1）。
 - [ ] 图片通路：picker 是 `OpenDocument("*/*")` 且只插 `@path` 文本；composer 只构造
       `UserInput.Text`（`rendering.kt:463`），`onMentionPicked = {}`，`TextElement` 从不构造；
       缺 `LocalImage`、路径粘贴识别、`[Image #N]` 占位、32 MiB 上限。
@@ -108,7 +84,7 @@
       主题界面（32 个内置主题 + `.tmTheme` 不可达）、版本/更新感知（`BuildConfig` 未引用）。
 - [ ] feedback 披露：不设 `includeLogs`、丢弃 `reportId`、分类是自由文本。
 
-### 2.7 命令与输入
+### 2.5 命令与输入
 
 - [ ] 命令目录 14 条建议 / 22 条识别 vs 上游约 60 条；`/plan` 无 dispatch 分支、无
       `SetCollaborationMode` 事件、`catalog.collaborationModes` 从不读取 → 计划/目标模式
@@ -123,7 +99,7 @@
 - [ ] 提交被拒时草稿被清空（上游保留草稿）；composer 无法被禁用（父级拥有输入权 /
       子 agent 线程时应禁用并换占位符）。
 
-### 2.8 管理面
+### 2.6 管理面
 
 - [ ] hooks 浏览器深度不足：无 trust 操作、无 review-needed 状态、无按事件分组与计数、
       无 handler 细节（`HookMetadata` 已带 `trustStatus`，但 UI 不显示也不写）。
@@ -135,20 +111,20 @@
 - [ ] service tier / fast 模式无 UI；`/status` 打开的是 `server/diagnostics`，
       而会话状态读出缺失。
 
-### 2.9 状态与用量
+### 2.7 状态与用量
 
 - [ ] 状态卡字段窄于上游：缺权限摘要、`AGENTS.md` 摘要、model provider、thread name、
       协作模式行、费率条与过期警告、credits/spend-control、按线程 credits/USD、
       各类 token 拆分（protocol 已携带，UI 未展示）。
 - [ ] 费率恢复逻辑缺失（高用量换模型提示、用量警告、恢复期暂挂）；`DiagnosticCode`
-      12 个码里没有费率/用量限制码。
+      13 个码里没有费率/用量限制码。
 - [ ] reset credits / credits nudge 不可达（无 UI 入口；`account/rateLimitResetCredit/consume` 已绑定）。
 - [ ] 客户端设置项只有 3 个 SharedPreferences 键，无动效/主题/通知设置。
 
-### 2.10 死代码与只写不读（顺手清理）
+### 2.8 死代码与只写不读（顺手清理）
 
 - [ ] 零引用：`theme/running_outline.kt`（119 行）、`Motion.LoopMs`、
-      `Motion.StreamCommitIntervalMs`、`FuzzySearchSession`、`ModelSheet`/`EffortSheet`、
+      `FuzzySearchSession`、`ModelSheet`/`EffortSheet`、
       `CommandPopup`/`FileSearchPopup`（composer 改用带键盘游标的私有列表；`PopupShell`
       仍被两者共用）。
 - [ ] 只写不读：`catalog.elicitationCount`、`SessionDiagnostic.willRetry`、
@@ -169,14 +145,15 @@
       `SharedPreferences` 是全局一份（`app.kt:1097`）。
 - [ ] **Embedded 子进程 + stdio 形态**（`libcodex_app_server.so` + JSONL 客户端）未做。
       当前设计明确走 in-process，除非要支持「服务端进程可独立存活」，否则不做。
-- [ ] **流式 delta 无节流**：`bridge.rs:373-384` 逐条转发，Kotlin 侧也没有窗口合并。
+- [ ] **流式 delta 无节流**：`bridge.rs:373-384` 逐条转发；Kotlin 侧 agent/plan 的 markdown
+      delta 已按 `Motion.StreamCommitIntervalMs` 合并，reasoning 与命令输出仍逐条提交。
 - [ ] **`Lagged` 只降级成错误**（`bridge.rs:377` → `transportLagged` → IOException），
       没有自动重同步/重放。
 - [ ] **worker 卡死/崩溃没有看门狗**：只有事件流关闭时报错，App 侧只能提示后手动重试。
 - [ ] **PTY / 交互式命令不支持**：`json_rpc_app_server_client.kt:531` 显式
       `require(!tty)`，`process/spawn|write|resize|kill` 全在未实现列表里。
 - [ ] **markdown 交给 Rust**（`libcodex_fmt.so`，pulldown-cmark + syntect）未做；
-      当前选定的是 §2.1 的 Kotlin 增量实现，只有需要 syntect 高亮时才值得再评估 Rust。
+      当前选定的是 Kotlin 增量实现，只有需要 syntect 高亮时才值得再评估 Rust。
       若做，要先解决 oniguruma/two-face 依赖
       （`toolchain/env.sh` 里的 `ONIGURUMA_VER` 目前无人引用，`jq.sh` 会删掉头文件）
       与高亮上限（上游 >512 KiB / >10 000 行跳过）。

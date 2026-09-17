@@ -143,7 +143,11 @@ internal object WireCodec {
                 o.required("senderThreadId"), o.strings("receiverThreadIds"), o.text("prompt"), o.text("model"), o.text("reasoningEffort")?.let(ReasoningEffort::fromWire),
                 o.objectOrNull("agentsStates").orEmpty().mapValues { (_, state) -> state.objectValue().let { CollabAgentState(AgentRunStatus.fromWire(it.required("status")), it.text("message")) } })
             "subAgentActivity" -> SubAgentActivityItem(id, SubAgentActivityKind.entries.find { it.wire == o.text("kind") } ?: SubAgentActivityKind.Started, o.required("agentThreadId"), o.required("agentPath"))
-            "webSearch" -> WebSearchItem(id, o.text("query") ?: o.objectOrNull("action")?.text("query").orEmpty())
+            "webSearch" -> WebSearchItem(
+                id,
+                o.text("query") ?: o.objectOrNull("action")?.text("query").orEmpty(),
+                action = o.objectOrNull("action")?.let(::webSearchAction),
+            )
             "imageView" -> ImageViewItem(id, o.required("path"))
             "sleep" -> SleepItem(id, o.long("durationMs") ?: 0)
             "imageGeneration" -> ImageGenerationItem(id, o.text("prompt").orEmpty(), DynamicToolCallStatus.entries.find { it.wire == status } ?: DynamicToolCallStatus.InProgress)
@@ -236,6 +240,18 @@ internal object WireCodec {
 
     fun realtimeItem(o: JsonObject) = ThreadRealtimeItem(o.required("id"), o.text("realtimeSessionId").orEmpty(),
         o.text("type").orEmpty(), o.text("role"), o.text("text"), o.text("turnId"), o.text("itemId"), o.text("outcome"))
+
+    /** One `WebSearchAction`; unknown tags fall back to [WebSearchAction.Other]. */
+    private fun webSearchAction(o: JsonObject): WebSearchAction = when (o.text("type")) {
+        "openPage" -> WebSearchAction.OpenPage(o.text("url"))
+        "findInPage" -> WebSearchAction.FindInPage(o.text("url"), o.text("pattern"))
+        "search" -> WebSearchAction.Search(
+            query = o.text("query"),
+            queries = o.strings("queries").takeIf { it.isNotEmpty() },
+        )
+
+        else -> WebSearchAction.Other
+    }
 
     fun hookMetadata(o: JsonObject) = HookMetadata(
         key = o.required("key"), eventName = o.required("eventName"), handlerType = o.text("handlerType").orEmpty(),

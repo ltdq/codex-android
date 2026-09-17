@@ -85,16 +85,22 @@ import com.cy.codexui.bottom_pane.Composer
 import com.cy.codexui.chatwidget.QueuedMessages
 import com.cy.codexui.floatingSurface
 import com.cy.codexui.glassTint
+import com.cy.codexui.history_cell.CommandExecutionCell
 import com.cy.codexui.history_cell.DiagnosticCell
 import com.cy.codexui.history_cell.ThreadItemCell
+import com.cy.codexui.history_cell.commandActionLabel
+import com.cy.codexui.history_cell.isExploringCall
 import com.cy.codexui.perf.IdentityKeys
 import com.cy.codexui.protocol.ApprovalRequest
 import com.cy.codexui.protocol.ApprovalResponse
 import com.cy.codexui.protocol.protocol.item.AgentMessageItem
+import com.cy.codexui.protocol.protocol.item.CommandExecutionItem
 import com.cy.codexui.protocol.protocol.item.ThreadItem
 import com.cy.codexui.protocol.protocol.v2.AttachmentType
+import com.cy.codexui.protocol.protocol.v2.CommandExecutionStatus
 import com.cy.codexui.protocol.protocol.v2.ThreadAttachment
 import com.cy.codexui.protocol.protocol.v2.UserInput
+import com.cy.codexui.CollapsibleSection
 import com.cy.codexui.raisedSurface
 import com.cy.codexui.status.DiffCard
 import com.cy.codexui.status.StatusCard
@@ -353,6 +359,7 @@ fun ChatScreen(
                             file = file,
                             siblings = session.turnDiff,
                             onClose = panelState::closeFile,
+                            cwd = session.config.cwd,
                             width = diffWidth,
                             height = statusHeight.value.coerceIn(minDiffHeight, maxDiffHeight),
                         )
@@ -529,6 +536,7 @@ private fun TranscriptPane(
         plan = session.plan,
         loading = session.loading,
         empty = !session.open && !session.loading,
+        cwd = session.config.cwd,
         onOpenAgent = { threadId -> app.openSurface(Surface.SubAgentThread(threadId)) },
         onOpenAgentInfo = { threadId -> app.openSurface(Surface.SubAgent(threadId)) },
         contentPadding = PaddingValues(
@@ -673,6 +681,71 @@ internal fun openSurfaceFor(app: CodexApp, id: String) {
 }
 
 /**
+ * One row of the transcript after folding.
+ *
+ * A run of exploring commands (reads, listings, searches) collapses into one [exposed] row, which
+ * is what the TUI's `ExecCell` does; everything else is a single item. [indices] point into the
+ * session's item list so each row still reads its own element in its own scope.
+ */
+internal data class TranscriptRow(
+    val key: String,
+    val indices: List<Int>,
+    val exposed: Boolean,
+)
+
+/** Fold a run of exploring commands into one row, leaving every other item on its own. */
+internal fun foldTranscriptRows(items: List<ThreadItem>): List<TranscriptRow> {
+    val rows = ArrayList<TranscriptRow>()
+    var index = 0
+    while (index < items.size) {
+        val item = items[index]
+        if (item is CommandExecutionItem && item.isExploringCall()) {
+            var end = index + 1
+            while (end < items.size && (items[end] as? CommandExecutionItem)?.isExploringCall() == true) {
+                end++
+            }
+            rows += TranscriptRow("explored:${item.id}", (index until end).toList(), exposed = true)
+            index = end
+        } else {
+            rows += TranscriptRow(item.id, listOf(index), exposed = false)
+            index++
+        }
+    }
+    return rows
+}
+
+/**
+ * The collapsed `Explored` group.
+ *
+ * The TUI shows only the header because the full transcript is one keystroke away; a phone has no
+ * second surface, so the group expands to the per-command cards it stands for.
+ */
+@Composable
+private fun ExploredGroupRow(
+    commands: List<CommandExecutionItem>,
+    modifier: Modifier = Modifier,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val active = commands.any { it.status == CommandExecutionStatus.InProgress }
+    val labels = commands.mapNotNull { command ->
+        command.commandActions.firstOrNull()?.let { label -> commandActionLabel(label) }
+    }
+    val summary = labels.take(3).joinToString(" · ") +
+        if (labels.size > 3) " +${labels.size - 3}" else ""
+    CollapsibleSection(
+        title = stringResource(
+            if (active) R.string.exec_cell_exploring else R.string.exec_cell_explored,
+        ),
+        expanded = expanded,
+        onToggle = { expanded = !expanded },
+        subtitle = summary.ifEmpty { null },
+        modifier = modifier,
+    ) {
+        commands.forEach { command -> CommandExecutionCell(command) }
+    }
+}
+
+/**
  * The transcript.
  *
  * Mirrors the history viewport of `codex-rs/tui/src/chatwidget.rs`: a scrollable list of items,
@@ -688,6 +761,7 @@ private fun Transcript(
     plan: List<com.cy.codexui.protocol.protocol.v2.PlanStep>,
     loading: Boolean,
     empty: Boolean,
+    cwd: String?,
     onOpenAgent: (String) -> Unit,
     onOpenAgentInfo: (String) -> Unit,
     contentPadding: androidx.compose.foundation.layout.PaddingValues,
@@ -706,6 +780,10 @@ private fun Transcript(
     // would collide. This allocates one identity per notice instead, and prunes entries for
     // notices the bounded list has already evicted.
     val diagnosticKeys = remember { IdentityKeys<SessionDiagnostic>() }
+    // The fold is a derived value so a streaming write inside a row does not rewrite it: only an
+    // item insertion or replacement changes the list it reads.
+    val rowsState = remember(items) { derivedStateOf { foldTranscriptRows(items) } }
+    val rows = rowsState.value
 
     LazyColumn(
         state = listState,
@@ -716,18 +794,26 @@ private fun Transcript(
         // The list is read here, not copied: the count and the keys re-read it when it changes,
         // and each row reads its own element inside its own scope, so a delta that replaces one
         // element does not rebuild the screen around the list.
-        items(count = items.size, key = { items[it].id }) { index ->
-            val item = items[index]
+        items(count = rows.size, key = { rows[it].key }) { index ->
+            val row = rows[index]
+            val item = row.indices.firstOrNull()?.let { items.getOrNull(it) } ?: return@items
             Column(modifier = Modifier.fillMaxWidth()) {
-                ThreadItemCell(
-                    item = item,
-                    stream = streamFor(item.id),
-                    streaming = isStreaming(item),
-                    assistantLabel = stringResource(R.string.chat_transcript_assistant_label),
-                    onOpenAgent = onOpenAgent,
-                    onOpenAgentInfo = onOpenAgentInfo,
-                )
-                if (item is AgentMessageItem && plan.isNotEmpty() && index == items.lastIndex) {
+                if (row.exposed) {
+                    ExploredGroupRow(
+                        commands = row.indices.mapNotNull { items.getOrNull(it) as? CommandExecutionItem },
+                    )
+                } else {
+                    ThreadItemCell(
+                        item = item,
+                        stream = streamFor(item.id),
+                        streaming = isStreaming(item),
+                        assistantLabel = stringResource(R.string.chat_transcript_assistant_label),
+                        cwd = cwd,
+                        onOpenAgent = onOpenAgent,
+                        onOpenAgentInfo = onOpenAgentInfo,
+                    )
+                }
+                if (item is AgentMessageItem && plan.isNotEmpty() && index == rows.lastIndex) {
                     Spacer(Modifier.height(planGap))
                     PlanTimeline(steps = plan)
                 }

@@ -671,6 +671,7 @@ private fun PatchBody(params: FileChangeApprovalParams, changes: List<FileUpdate
                         file = diff,
                         expanded = expanded[path] == true,
                         onToggle = { expanded[path] = expanded[path] != true },
+                        cwd = params.grantRoot,
                         bodyMaxLines = UiConsts.PatchBodyMaxLines,
                         corner = UiConsts.CornerControl,
                     )

@@ -40,6 +40,7 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 fun FileChangeCell(
     item: FileChangeItem,
     modifier: Modifier = Modifier,
+    cwd: String? = null,
     errorFontSize: TextUnit = UiType.Body,
     errorLineHeight: TextUnit = UiType.SheetTitle,
     blockSpacing: Dp = 6.dp,
@@ -87,6 +88,7 @@ fun FileChangeCell(
                     file = diff,
                     expanded = expanded[index] == true,
                     onToggle = { expanded[index] = expanded[index] != true },
+                    cwd = cwd,
                 )
             }
         }

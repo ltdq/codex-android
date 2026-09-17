@@ -31,6 +31,7 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -60,11 +61,16 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 /** How many more diff lines one tap on the expander reveals. */
 private const val DiffExpanderChunk = 200
 
+/** What a tab expands to in rendered diff content, as `diff_render.rs` does. */
+private const val DiffTabReplacement = "    "
+
 /**
  * Diff rendering shared by the transcript's patch cells and the status card's diff pane.
  *
- * Mirrors `codex-rs/tui/src/diff_render.rs`: two gutters, per-kind tinting and a tail row when the
- * body is longer than the cell is willing to show.
+ * Mirrors `codex-rs/tui/src/diff_render.rs`: two gutters, per-kind tinting, per-hunk syntax
+ * highlighting derived from the file extension, and a tail row when the body is longer than the
+ * cell is willing to show. File metadata (`diff --git`, `---`, `+++`, `\ No newline…`) is dropped
+ * and the hunks of one file are separated by a `⋮` row, which is what the TUI renders.
  *
  * The body is a plain Column bounded by [maxLines] and grown in chunks on demand. A lazy list
  * would nest a second vertical scrollable inside the transcript's LazyColumn, and an unbounded
@@ -76,6 +82,7 @@ fun DiffBody(
     modifier: Modifier = Modifier,
     maxLines: Int = Int.MAX_VALUE,
     showGutters: Boolean = true,
+    language: String? = null,
     verticalPadding: Dp = 4.dp,
     omittedStartPadding: Dp = 16.dp,
     omittedTopPadding: Dp = 6.dp,
@@ -84,6 +91,7 @@ fun DiffBody(
     omittedLineHeight: TextUnit = UiType.CardTitle,
 ) {
     val palette = diffPalette()
+    val syntax = syntaxPalette()
     val hunkTextColor = MiuixTheme.colorScheme.onSurfaceVariantSummary
     val signAdded = stringResource(R.string.blocks_sign_added)
     val signRemoved = stringResource(R.string.blocks_sign_removed)
@@ -92,12 +100,17 @@ fun DiffBody(
     val rows = remember(lines, palette, hunkTextColor, signAdded, signRemoved) {
         buildDiffRows(lines, palette, hunkTextColor, signAdded, signRemoved)
     }
+    // Syntax spans are built in one pass per body: the lexer has to see the lines in order for a
+    // block comment or raw string to carry across them.
+    val styled = remember(lines, language, syntax) {
+        highlightDiffLines(lines, language, syntax)
+    }
     // Disclosure state for the truncated tail; keyed on the diff so a new payload opens at its
     // start instead of at a stale offset.
-    val visible = remember(lines, maxLines) {
-        mutableIntStateOf(maxLines.coerceIn(0, lines.size))
+    val visible = remember(rows, maxLines) {
+        mutableIntStateOf(maxLines.coerceIn(0, rows.size))
     }
-    val shown = visible.intValue.coerceAtMost(lines.size)
+    val shown = visible.intValue.coerceAtMost(rows.size)
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -105,13 +118,19 @@ fun DiffBody(
             .padding(vertical = verticalPadding),
     ) {
         for (index in 0 until shown) {
-            DiffRow(model = rows[index], gutterColor = palette.gutter, showGutters = showGutters)
+            val row = rows[index]
+            DiffRow(
+                model = row,
+                gutterColor = palette.gutter,
+                showGutters = showGutters,
+                styled = styled.getOrNull(row.sourceIndex),
+            )
         }
-        if (shown < lines.size) {
+        if (shown < rows.size) {
             DiffExpander(
-                label = stringResource(R.string.blocks_show_more_lines, lines.size - shown),
+                label = stringResource(R.string.blocks_show_more_lines, rows.size - shown),
                 onClick = {
-                    visible.intValue = (shown + DiffExpanderChunk).coerceAtMost(lines.size)
+                    visible.intValue = (shown + DiffExpanderChunk).coerceAtMost(rows.size)
                 },
                 startPadding = omittedStartPadding,
                 topPadding = omittedTopPadding,
@@ -127,7 +146,8 @@ fun DiffBody(
  * One diff row with everything the layout needs already resolved.
  *
  * Immutable and comparable, which is what lets Compose skip a row whose line did not change while
- * an unrelated file of the same turn grows.
+ * an unrelated file of the same turn grows. [sourceIndex] points back into the parsed line list so
+ * the row can pick up its syntax spans.
  */
 @Immutable
 internal data class DiffRowModel(
@@ -137,9 +157,16 @@ internal data class DiffRowModel(
     val text: String,
     val background: Color,
     val textColor: Color,
+    val sourceIndex: Int = -1,
 )
 
-/** Fold parsed lines into row models. Pure, so a body pays for it once rather than per frame. */
+/**
+ * Fold parsed lines into row models.
+ *
+ * Pure, so a body pays for it once rather than per frame. File metadata lines produce no row; a
+ * second and later hunk header becomes a `⋮` separator, which is the only part of a header the TUI
+ * shows.
+ */
 internal fun buildDiffRows(
     lines: List<DiffLine>,
     palette: DiffPalette,
@@ -148,7 +175,26 @@ internal fun buildDiffRows(
     signRemoved: String,
 ): List<DiffRowModel> {
     val rows = ArrayList<DiffRowModel>(lines.size)
-    for (line in lines) {
+    var seenHunk = false
+    for ((index, line) in lines.withIndex()) {
+        if (line.kind == DiffLineKind.Hunk) {
+            // Only `@@` headers become rows, and only as the separator between hunks.
+            if (line.text.startsWith("@@")) {
+                if (seenHunk) {
+                    rows += DiffRowModel(
+                        oldLine = "",
+                        newLine = "",
+                        sign = "",
+                        text = DiffHunkSeparator,
+                        background = Color.Transparent,
+                        textColor = hunkTextColor,
+                        sourceIndex = -1,
+                    )
+                }
+                seenHunk = true
+            }
+            continue
+        }
         val background = when (line.kind) {
             DiffLineKind.Add -> palette.addSurface
             DiffLineKind.Remove -> palette.removeSurface
@@ -170,20 +216,48 @@ internal fun buildDiffRows(
             oldLine = line.oldLine?.toString().orEmpty(),
             newLine = line.newLine?.toString().orEmpty(),
             sign = sign,
-            text = line.text,
+            text = line.text.replace("\t", DiffTabReplacement),
             background = background,
             textColor = textColor,
+            sourceIndex = index,
         )
     }
     return rows
 }
 
-/** One diff line. Every value is precomputed in [DiffRowModel]; nothing is built here. */
+/**
+ * Syntax spans for the content lines of one diff.
+ *
+ * Hunk headers and file metadata are skipped, and the lexer sees content in order so a multi-line
+ * construct carries across lines the way it does in the file.
+ */
+internal fun highlightDiffLines(
+    lines: List<DiffLine>,
+    language: String?,
+    palette: SyntaxPalette,
+): List<AnnotatedString?> {
+    val spec = languageSpec(language)
+    val out = arrayOfNulls<AnnotatedString>(lines.size)
+    if (spec == null) return out.toList()
+    val lexer = SyntaxLexer(spec, palette)
+    for ((index, line) in lines.withIndex()) {
+        if (line.kind == DiffLineKind.Hunk) continue
+        val text = line.text.replace("\t", DiffTabReplacement)
+        if (text.length > SyntaxHighlightMaxLineBytes) continue
+        out[index] = lexer.highlight(text)
+    }
+    return out.toList()
+}
+
+internal const val DiffHunkSeparator = "⋮"
+
+/** One diff line. Every value is precomputed in [DiffRowModel]; only colour is resolved here. */
 @Composable
 internal fun DiffRow(
     model: DiffRowModel,
     gutterColor: Color,
     showGutters: Boolean = true,
+    styled: AnnotatedString? = null,
     verticalPadding: Dp = 1.dp,
     signWidth: Dp = 15.dp,
     endPadding: Dp = 18.dp,
@@ -212,7 +286,7 @@ internal fun DiffRow(
             softWrap = false,
         )
         Text(
-            text = model.text,
+            text = styled ?: AnnotatedString(model.text),
             modifier = Modifier.padding(end = endPadding),
             fontSize = fontSize,
             lineHeight = lineHeight,
@@ -350,6 +424,7 @@ fun fileKindColor(kind: DiffFileKind): Color {
         DiffFileKind.Added -> successColor()
         DiffFileKind.Modified -> warningColor()
         DiffFileKind.Deleted -> colors.error
+        DiffFileKind.Renamed -> colors.primary
     }
 }
 
@@ -395,6 +470,7 @@ fun FileDiffRow(
     expanded: Boolean,
     onToggle: () -> Unit,
     modifier: Modifier = Modifier,
+    cwd: String? = null,
     bodyMaxLines: Int = 400,
     corner: Dp = UiConsts.CornerControl,
     horizontalPadding: Dp = 6.dp,
@@ -411,6 +487,15 @@ fun FileDiffRow(
 ) {
     val colors = MiuixTheme.colorScheme
     val shape = remember(corner) { RoundedCornerShape(corner) }
+    val home = runtimeHome()
+    val shownPath = displayDiffPath(file.path, cwd, home)
+    val shownOld = file.oldPath?.let { displayDiffPath(it, cwd, home) }
+    val title = if (shownOld != null && shownOld != shownPath) {
+        "${shownOld.substringAfterLast('/')} → ${shownPath.substringAfterLast('/')}"
+    } else {
+        shownPath.substringAfterLast('/')
+    }
+    val parent = shortenedParent(shownPath)
     Column(modifier = modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier
@@ -427,7 +512,7 @@ fun FileDiffRow(
             Spacer(Modifier.width(badgeSpacing))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = file.fileName,
+                    text = title,
                     fontSize = titleFontSize,
                     lineHeight = titleLineHeight,
                     fontWeight = if (expanded) FontWeight.Medium else FontWeight.Normal,
@@ -435,9 +520,9 @@ fun FileDiffRow(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                if (file.parentPath.isNotEmpty()) {
+                if (parent.isNotEmpty()) {
                     Text(
-                        text = file.parentPath,
+                        text = parent,
                         fontSize = parentFontSize,
                         lineHeight = parentLineHeight,
                         color = colors.onSurfaceVariantSummary,
@@ -466,6 +551,7 @@ fun FileDiffRow(
             DiffBody(
                 lines = file.lines,
                 maxLines = bodyMaxLines,
+                language = languageFromPath(file.path),
                 modifier = Modifier.padding(start = bodyStartPadding),
             )
         }
@@ -482,6 +568,7 @@ fun ToolCard(
     title: String,
     modifier: Modifier = Modifier,
     subtitle: String? = null,
+    titleStyled: AnnotatedString? = null,
     accent: Color = MiuixTheme.colorScheme.primary,
     trailing: @Composable (() -> Unit)? = null,
     corner: Dp = UiConsts.CornerRow,
@@ -514,15 +601,27 @@ fun ToolCard(
             )
             Spacer(Modifier.width(iconSpacing))
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = title,
-                    fontSize = titleFontSize,
-                    lineHeight = titleLineHeight,
-                    fontWeight = FontWeight.Medium,
-                    color = colors.onSurface,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                if (titleStyled != null) {
+                    Text(
+                        text = titleStyled,
+                        fontSize = titleFontSize,
+                        lineHeight = titleLineHeight,
+                        fontWeight = FontWeight.Medium,
+                        color = colors.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                } else {
+                    Text(
+                        text = title,
+                        fontSize = titleFontSize,
+                        lineHeight = titleLineHeight,
+                        fontWeight = FontWeight.Medium,
+                        color = colors.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
                 if (subtitle != null) {
                     Text(
                         text = subtitle,

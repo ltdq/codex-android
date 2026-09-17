@@ -144,4 +144,144 @@ class MarkdownStreamTest {
         assertEquals(emptyList<MarkdownBlock>(), parse(""))
         assertEquals(emptyList<MarkdownBlock>(), parse("\n\n   \n"))
     }
+
+    @Test
+    fun `headings go up to level six and setext underlines become headings`() {
+        assertEquals(
+            listOf(MarkdownBlock.Heading(4, "h4"), MarkdownBlock.Heading(6, "h6")),
+            parse("#### h4\n\n###### h6\n"),
+        )
+        assertEquals(
+            listOf(MarkdownBlock.Heading(1, "Title")),
+            parse("Title\n=====\n"),
+        )
+        assertEquals(
+            listOf(MarkdownBlock.Heading(2, "Subtitle")),
+            parse("Subtitle\n---\n"),
+        )
+    }
+
+    @Test
+    fun `horizontal rules are their own block`() {
+        assertEquals(
+            listOf(MarkdownBlock.ThematicBreak, MarkdownBlock.Paragraph("after")),
+            parse("***\n\nafter"),
+        )
+        assertEquals(listOf(MarkdownBlock.ThematicBreak), parse("_ _ _\n"))
+    }
+
+    @Test
+    fun `hard breaks survive as newlines in a paragraph`() {
+        val blocks = parse("first line  \nsecond line\n\nbackslash\\\nbreak")
+        assertEquals(MarkdownBlock.Paragraph("first line\nsecond line"), blocks[0])
+        assertEquals(MarkdownBlock.Paragraph("backslash\nbreak"), blocks[1])
+    }
+
+    @Test
+    fun `fences accept tildes long markers and info strings`() {
+        assertEquals(
+            listOf(MarkdownBlock.Code("code", "rust")),
+            parse("~~~rust\ncode\n~~~\n"),
+        )
+        assertEquals(
+            listOf(MarkdownBlock.Code("code", "rust")),
+            parse("````rust title=main.rs\ncode\n````\n"),
+        )
+        // A fence body may contain a shorter fence of the same character.
+        assertEquals(
+            listOf(MarkdownBlock.Code("```\ninner", null)),
+            parse("````\n```\ninner\n````\n"),
+        )
+    }
+
+    @Test
+    fun `indented code is a code block until the indentation ends`() {
+        // A blank line inside indented code is part of the block, as in CommonMark.
+        val blocks = parse("    val a = 1\n    val b = 2\n\n    val c = 3\ntext\n")
+        assertEquals(
+            listOf(
+                MarkdownBlock.Code("val a = 1\nval b = 2\n\nval c = 3", null),
+                MarkdownBlock.Paragraph("text"),
+            ),
+            blocks,
+        )
+    }
+
+    @Test
+    fun `list items nest by indent`() {
+        assertEquals(
+            listOf(
+                MarkdownBlock.Bullet("outer"),
+                MarkdownBlock.Bullet("inner", depth = 1),
+                MarkdownBlock.Bullet("deeper", depth = 2),
+                MarkdownBlock.Numbered(3, "counted", depth = 1),
+            ),
+            parse("- outer\n  - inner\n    - deeper\n  3. counted\n"),
+        )
+    }
+
+    @Test
+    fun `pipe tables freeze when the table ends`() {
+        val blocks = parse(
+            "| Name | Value |\n| :--- | ---: |\n| a | 1 |\n| b | 2 |\n\nafter\n",
+        )
+        assertEquals(2, blocks.size)
+        val table = blocks[0] as MarkdownBlock.Table
+        assertEquals(listOf("Name", "Value"), table.header)
+        assertEquals(listOf(listOf("a", "1"), listOf("b", "2")), table.rows)
+        assertEquals(listOf(TableAlignment.Start, TableAlignment.End), table.alignments)
+        assertEquals(MarkdownBlock.Paragraph("after"), blocks[1])
+    }
+
+    @Test
+    fun `streaming table rows append without rewriting the table`() {
+        val stream = MarkdownStream()
+        stream.append("| h |\n| --- |\n| one |")
+        assertTrue(stream.tail is MarkdownBlock.OpenTable)
+        // The unfinished row is not a row yet: a row is only parsed once its newline arrives.
+        assertEquals(emptyList(), (stream.tail as MarkdownBlock.OpenTable).rows.toList())
+
+        stream.append("\n| two |\n")
+        assertEquals(
+            listOf(listOf("one"), listOf("two")),
+            (stream.tail as MarkdownBlock.OpenTable).rows.toList(),
+        )
+
+        stream.append("\n")
+        assertEquals(
+            listOf(MarkdownBlock.Table(listOf("h"), listOf(listOf("one"), listOf("two")), listOf(TableAlignment.Start))),
+            stream.frozen.toList(),
+        )
+    }
+
+    @Test
+    fun `display math is one block`() {
+        assertEquals(
+            listOf(MarkdownBlock.Math("x^2 + y^2 = z^2")),
+            parse("$$\nx^2 + y^2 = z^2\n$$\n"),
+        )
+    }
+
+    @Test
+    fun `chunked append still matches a single parse with the new blocks`() {
+        val doc = buildString {
+            append("### Title\n\n")
+            append("para  \nwith break\n\n")
+            append("- a\n  - b\n\n")
+            append("| h | h2 |\n| --- | --- |\n| 1 | 2 |\n\n")
+            append("~~~json\n{\"a\": 1}\n~~~\n\n")
+            append("    indented\n\ntext \$x\$\n")
+        }
+        val expected = parse(doc)
+        for (step in 1..6) {
+            val stream = MarkdownStream()
+            var index = 0
+            while (index < doc.length) {
+                val end = (index + step).coerceAtMost(doc.length)
+                stream.append(doc.substring(index, end))
+                index = end
+            }
+            assertEquals(expected, stream.allBlocks(), "chunk size $step")
+        }
+    }
 }

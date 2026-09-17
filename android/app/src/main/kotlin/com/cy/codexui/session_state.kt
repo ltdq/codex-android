@@ -128,6 +128,15 @@ class SessionState {
     /** Diagnostics surfaced as transcript notices. */
     val diagnostics = mutableStateListOf<SessionDiagnostic>()
 
+    /**
+     * Model slugs whose fallback-metadata warning has already been shown.
+     *
+     * Mirrors `chatwidget/warnings.rs`: the server repeats that warning once per turn and the slug
+     * is the only part that varies, so it is deduplicated by slug. Every other diagnostic is kept
+     * as-is.
+     */
+    private val fallbackModelMetadataSlugs = mutableSetOf<String>()
+
     /** Model label shown on the status card; reroutes update it. */
     var activeModelLabel by mutableStateOf("")
 
@@ -261,6 +270,7 @@ class SessionState {
         goal = null
         queued.clear()
         diagnostics.clear()
+        fallbackModelMetadataSlugs.clear()
         status = ThreadStatus.NotLoaded
     }
 
@@ -331,14 +341,31 @@ class SessionState {
     fun item(id: String): ThreadItem? = items.firstOrNull { it.id == id }
 
     fun addDiagnostic(diagnostic: SessionDiagnostic) {
+        val slug = fallbackModelMetadataWarningSlug(diagnostic.message)
+        if (slug != null && !fallbackModelMetadataSlugs.add(slug)) return
         diagnostics.add(diagnostic)
-        if (diagnostics.size > MaxDiagnostics) diagnostics.removeAt(0)
-    }
-
-    private companion object {
-        const val MaxDiagnostics = 20
     }
 }
+
+/**
+ * The model slug of a `Model metadata for ...` warning, or `null` for any other message.
+ *
+ * The prefix and suffix are the exact strings `codex-rs/core/src/session/turn_context.rs` builds,
+ * and the slug between them is what upstream deduplicates on.
+ */
+internal fun fallbackModelMetadataWarningSlug(message: String?): String? {
+    val text = message ?: return null
+    if (!text.startsWith(FallbackModelMetadataPrefix) || !text.endsWith(FallbackModelMetadataSuffix)) {
+        return null
+    }
+    return text.removePrefix(FallbackModelMetadataPrefix)
+        .removeSuffix(FallbackModelMetadataSuffix)
+        .ifEmpty { null }
+}
+
+private const val FallbackModelMetadataPrefix = "Model metadata for `"
+private const val FallbackModelMetadataSuffix =
+    "` not found. Defaulting to fallback metadata; this can degrade performance and cause issues."
 
 /**
  * Which notice a [SessionDiagnostic] is, when the wording is the client's own.
@@ -389,6 +416,14 @@ enum class DiagnosticCode {
 
     /** An MCP server's OAuth flow failed; the notice names the server. */
     McpLoginFailed,
+
+    /**
+     * The server put the turn behind its safety buffer.
+     *
+     * This is a pause rather than a failure: the notice exists so a quiet turn does not read as a
+     * hung one.
+     */
+    SafetyBuffering,
 }
 
 /** One warning or error the transcript shows as a notice cell. */

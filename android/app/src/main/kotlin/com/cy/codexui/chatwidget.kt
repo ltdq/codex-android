@@ -30,6 +30,7 @@ import com.cy.codexui.protocol.protocol.v2.UserInput
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
@@ -93,6 +94,24 @@ class ChatWidget(
         (state.item(itemId) as? FileChangeItem)?.changes?.takeIf { it.isNotEmpty() }
             ?: patchChanges[itemId].orEmpty()
 
+    /**
+     * Markdown deltas waiting for the next commit tick.
+     *
+     * A server can emit a delta per token, and committing each one recomposes the transcript row
+     * and the tail block with it. Deltas are therefore accumulated here and applied together at
+     * [Motion.StreamCommitIntervalMs], which is the cadence the transcript renders at; an item that
+     * completes flushes first, so nothing is lost at the end of a message.
+     */
+    private class PendingMarkdown(val itemId: String, val plan: Boolean) {
+        val text = StringBuilder()
+    }
+
+    private val pendingMarkdown = linkedMapOf<String, PendingMarkdown>()
+    private var markdownFlushJob: Job? = null
+
+    /** Turns that already produced their one safety-buffering notice, bounded like [finishedTurns]. */
+    private val safetyBufferedTurns = LinkedHashSet<String>()
+
     /** Requests the UI can currently answer; only the head is on screen. */
     val currentApproval: ApprovalRequest? get() = pendingApprovals.firstOrNull()
     var answeringApproval by mutableStateOf(false)
@@ -127,11 +146,13 @@ class ChatWidget(
     }
 
     fun detach() {
+        flushMarkdown()
         subscription?.cancel()
         subscription = null
     }
 
     fun connectionLost() {
+        flushMarkdown()
         pendingApprovals.clear()
         patchChanges.clear()
         answeringApproval = false
@@ -143,6 +164,7 @@ class ChatWidget(
     fun open(threadId: String, onLoaded: (Result<ThreadReadResponse>) -> Unit = {}) {
         loadJob?.cancel()
         val version = ++loadVersion
+        dropMarkdown()
         state.beginLoad(threadId)
         turnDiff.reset()
         patchChanges.clear()
@@ -206,6 +228,7 @@ class ChatWidget(
         scope.launch {
             client.startThread(com.cy.codexui.protocol.protocol.v2.ThreadStartParams(cwd = cwd))
                 .onSuccess { session ->
+                    dropMarkdown()
                     state.beginLoad(session.threadId)
                     turnDiff.reset()
                     patchChanges.clear()
@@ -497,6 +520,7 @@ class ChatWidget(
     fun bind(session: com.cy.codexui.protocol.protocol.v2.ThreadSessionState) {
         loadJob?.cancel()
         loadVersion++
+        dropMarkdown()
         state.beginLoad(session.threadId)
         turnDiff.reset()
         patchChanges.clear()
@@ -510,6 +534,9 @@ class ChatWidget(
         patchChanges.clear()
         answeringApproval = false
         approvalError = null
+        markdownFlushJob?.cancel()
+        markdownFlushJob = null
+        pendingMarkdown.clear()
         turnDiff.reset()
         state.clear()
     }
@@ -517,6 +544,43 @@ class ChatWidget(
     private fun replaceQueue(queued: List<QueuedSubmission>) {
         state.queued.clear()
         state.queued.addAll(queued)
+    }
+
+    private fun dropMarkdown() {
+        markdownFlushJob?.cancel()
+        markdownFlushJob = null
+        pendingMarkdown.clear()
+    }
+
+    /** Buffer one markdown delta until the next commit tick. */
+    private fun appendMarkdownDelta(itemId: String, delta: String, plan: Boolean) {
+        pendingMarkdown.getOrPut(itemId) { PendingMarkdown(itemId, plan) }.text.append(delta)
+        if (markdownFlushJob == null) {
+            markdownFlushJob = scope.launch {
+                delay(Motion.StreamCommitIntervalMs)
+                flushMarkdown()
+            }
+        }
+    }
+
+    /**
+     * Apply every buffered markdown delta now.
+     *
+     * The tick calls this after [Motion.StreamCommitIntervalMs]; item completion and turn end call
+     * it directly so a message never loses its tail to a pending flush.
+     */
+    internal fun flushMarkdown() {
+        markdownFlushJob = null
+        if (pendingMarkdown.isEmpty()) return
+        val pending = pendingMarkdown.values.toList()
+        pendingMarkdown.clear()
+        for (entry in pending) {
+            if (entry.plan) {
+                state.appendPlanDelta(entry.itemId, entry.text.toString())
+            } else {
+                state.appendAgentDelta(entry.itemId, entry.text.toString())
+            }
+        }
     }
 
     private fun submitInput(inputs: List<UserInput>) {
@@ -668,8 +732,12 @@ class ChatWidget(
         when (event) {
             is AppServerEvent.ItemStarted -> state.upsert(event.item)
             is AppServerEvent.ItemCompleted -> onItemCompleted(event.item)
-            is AppServerEvent.AgentMessageDelta -> state.appendAgentDelta(event.delta.itemId, event.delta.delta)
-            is AppServerEvent.PlanDelta -> state.appendPlanDelta(event.delta.itemId, event.delta.delta)
+            is AppServerEvent.AgentMessageDelta ->
+                appendMarkdownDelta(event.delta.itemId, event.delta.delta, plan = false)
+
+            is AppServerEvent.PlanDelta ->
+                appendMarkdownDelta(event.delta.itemId, event.delta.delta, plan = true)
+
             is AppServerEvent.ReasoningTextDelta -> appendReasoningText(event.delta.itemId, event.delta.delta)
             is AppServerEvent.ReasoningSummaryDelta -> appendReasoningText(event.delta.itemId, event.delta.delta)
             is AppServerEvent.ReasoningSummaryPartAdded -> appendReasoningText(event.delta.itemId, "\n\n")
@@ -849,7 +917,6 @@ class ChatWidget(
             is AppServerEvent.EnvironmentConnected,
             is AppServerEvent.EnvironmentDisconnected,
             is AppServerEvent.ModelVerification,
-            is AppServerEvent.ModelSafetyBufferingUpdated,
             is AppServerEvent.ModelProviderAuthRecovery,
             is AppServerEvent.McpServerEvent,
             is AppServerEvent.ProjectChanged,
@@ -876,6 +943,8 @@ class ChatWidget(
             is AppServerEvent.RealtimeOutputAudioDelta,
             -> Unit
 
+            is AppServerEvent.ModelSafetyBufferingUpdated -> onSafetyBuffering(event.delta)
+
             is AppServerEvent.ThreadClosed -> {
                 state.endAllStreams()
                 state.applyStatus(ThreadStatus.NotLoaded)
@@ -886,7 +955,31 @@ class ChatWidget(
         }
     }
 
-    private fun onItemCompleted(item: ThreadItem) {
+    /**
+     * Note the safety buffer once per turn.
+     *
+     * The notification can repeat while the turn waits, and the TUI only re-shows its transient
+     * menu when the retry offer changes. The phone has no retry affordance, so one informational
+     * notice per turn is the whole behaviour: `showBufferingUi == false` only dismisses the menu.
+     */
+    private fun onSafetyBuffering(delta: com.cy.codexui.protocol.protocol.v2.ModelSafetyBufferingUpdatedNotification) {
+        if (!delta.showBufferingUi) return
+        if (delta.turnId.isEmpty() || delta.turnId in finishedTurns) return
+        if (!safetyBufferedTurns.add(delta.turnId)) return
+        while (safetyBufferedTurns.size > MaxRememberedTurns) {
+            safetyBufferedTurns.remove(safetyBufferedTurns.first())
+        }
+        state.addDiagnostic(
+            SessionDiagnostic(
+                severity = DiagnosticSeverity.Info,
+                code = DiagnosticCode.SafetyBuffering,
+            ),
+        )
+    }
+
+    private fun onItemCompleted(item: ThreadItem) {        // Any delta still waiting for its tick belongs to this item; the authoritative text that
+        // follows would otherwise be overwritten by a late flush with an older prefix.
+        flushMarkdown()
         // The completed item carries the authoritative text; the streamed buffer is only a stand-in
         // for the case where it does not (a server that completes an item without a text body).
         state.upsert(withStreamedText(item))
@@ -919,6 +1012,7 @@ class ChatWidget(
     }
 
     private fun onTurnCompleted(event: AppServerEvent.TurnCompleted) {
+        flushMarkdown()
         state.applyStatus(ThreadStatus.Idle)
         // An interrupted turn may never complete its last item; its buffered deltas are folded back
         // into the item before the stream flag is cleared.

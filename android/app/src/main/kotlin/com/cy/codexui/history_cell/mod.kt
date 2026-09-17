@@ -45,18 +45,19 @@ fun ThreadItemCell(
     stream: MarkdownStream? = null,
     streaming: Boolean = false,
     assistantLabel: String = stringResource(R.string.transcript_cell_assistant_name),
+    cwd: String? = null,
     onOpenAgent: (String) -> Unit = {},
     onOpenAgentInfo: (String) -> Unit = {},
 ) {
     when (item) {
         is UserMessageItem -> UserMessageCell(item, modifier)
         is HookPromptItem -> HookPromptCell(item, modifier)
-        is AgentMessageItem -> AgentMessageCell(item, modifier, stream, streaming, assistantLabel)
+        is AgentMessageItem -> AgentMessageCell(item, modifier, stream, streaming, assistantLabel, cwd = cwd)
         is FunctionCallOutputItem -> FunctionCallOutputCell(item, modifier)
-        is PlanItem -> PlanItemCell(item, modifier, stream, streaming)
+        is PlanItem -> PlanItemCell(item, modifier, stream, streaming, cwd = cwd)
         is ReasoningItem -> ReasoningCell(item, modifier, streaming)
         is CommandExecutionItem -> CommandExecutionCell(item, modifier)
-        is FileChangeItem -> FileChangeCell(item, modifier)
+        is FileChangeItem -> FileChangeCell(item, modifier, cwd = cwd)
         is McpToolCallItem -> McpToolCallCell(item, modifier)
         is DynamicToolCallItem -> DynamicToolCallCell(item, modifier)
         is CollabAgentToolCallItem ->
@@ -138,4 +139,6 @@ private fun diagnosticText(code: DiagnosticCode, args: List<String>): String = w
         R.string.chatwidget_diagnostic_mcp_login_failed,
         args.firstOrNull().orEmpty(),
     )
+
+    DiagnosticCode.SafetyBuffering -> stringResource(R.string.chatwidget_diagnostic_safety_buffering)
 }

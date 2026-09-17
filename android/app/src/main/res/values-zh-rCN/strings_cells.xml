@@ -38,7 +38,10 @@
     <string name="exec_cell_status_failed">失败</string>
     <string name="exec_cell_status_declined">已拒绝</string>
     <string name="exec_cell_more_lines">展开全部 %1$d 行</string>
+    <string name="exec_cell_omitted_lines">… 另有 %1$d 行</string>
     <string name="exec_cell_collapse">收起</string>
+    <string name="exec_cell_explored">已探索</string>
+    <string name="exec_cell_exploring">探索中</string>
     <string name="exec_cell_duration_ms">%1$dms</string>
     <string name="exec_cell_duration_seconds">%1$.1fs</string>
     <string name="exec_cell_duration_minutes">%1$dm%2$ds</string>
@@ -92,6 +95,14 @@
 
     <!-- SearchCell.kt -->
     <string name="search_cell_title">搜索：%1$s</string>
+    <string name="search_cell_opened">已打开 %1$s</string>
+    <string name="search_cell_opened_page">已打开网页</string>
+    <string name="search_cell_find_in_page">在 %2$s 中搜索 \'%1$s\'</string>
+    <string name="search_cell_searched_for">搜索 \'%1$s\'</string>
+    <string name="search_cell_searched_page">已搜索网页 %1$s</string>
+    <string name="search_cell_searched_page_no_url">已搜索网页</string>
+    <string name="search_cell_searched_web">已搜索网络</string>
+    <string name="search_cell_searched_web_for">已搜索网络：%1$s</string>
     <string name="search_cell_result_count">%1$d 条结果</string>
     <string name="search_cell_no_results">没有返回结果</string>
     <string name="search_cell_view_image">查看图片</string>

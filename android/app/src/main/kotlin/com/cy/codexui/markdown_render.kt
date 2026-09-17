@@ -27,15 +27,22 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextLinkStyles
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withLink
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
@@ -53,9 +60,10 @@ private val TranscriptLineHeight = UiType.MessageLine
  *
  * The TUI renders through `codex-rs/tui/src/markdown_render.rs` with a streaming variant that
  * tolerates half-finished fences (`markdown_render/streaming.rs`). The phone keeps the same
- * contract but a smaller surface: paragraphs, bullets, numbered items, headings, block quotes,
- * fenced code and inline `code` / **bold** / *italic* spans are styled; anything else passes
- * through as text.
+ * contract but a smaller surface: paragraphs with hard breaks, headings up to level six (ATX and
+ * setext), nested lists, block quotes, thematic breaks, indented and fenced code with syntax
+ * highlighting, pipe tables, display math, and inline `code` / **bold** / *italic* / ~~strike~~ /
+ * `$math$` / links are styled.
  *
  * A partially streamed document is legal input — an unterminated fence simply renders as code to
  * the end of the buffer. Streaming callers hand over a [MarkdownStream] so a delta rebuilds only
@@ -76,10 +84,11 @@ fun MarkdownText(
     quoteBarHeight: Dp = 20.dp,
     quoteBarCorner: Dp = UiConsts.CornerBar,
     quoteSpacing: Dp = 10.dp,
+    cwd: String? = null,
 ) {
     val style = markdownStyle(
         textColor, fontSize, lineHeight, blockSpacing, headingSizeStep, headingLineHeightStep,
-        quoteBarWidth, quoteBarHeight, quoteBarCorner, quoteSpacing,
+        quoteBarWidth, quoteBarHeight, quoteBarCorner, quoteSpacing, cwd,
     )
     // The stream is immutable once filled: the buffer arrives whole here, and a caller that has a
     // growing buffer uses [MarkdownStreamText] instead so the parse stays incremental.
@@ -109,10 +118,11 @@ fun MarkdownStreamText(
     quoteBarHeight: Dp = 20.dp,
     quoteBarCorner: Dp = UiConsts.CornerBar,
     quoteSpacing: Dp = 10.dp,
+    cwd: String? = null,
 ) {
     val style = markdownStyle(
         textColor, fontSize, lineHeight, blockSpacing, headingSizeStep, headingLineHeightStep,
-        quoteBarWidth, quoteBarHeight, quoteBarCorner, quoteSpacing,
+        quoteBarWidth, quoteBarHeight, quoteBarCorner, quoteSpacing, cwd,
     )
     MarkdownStreamText(stream, modifier, style, streaming)
 }
@@ -146,7 +156,7 @@ private fun FrozenBlocks(blocks: List<MarkdownBlock>, style: MarkdownStyle) {
 private fun MarkdownBlockView(block: MarkdownBlock, style: MarkdownStyle, caret: Boolean) {
     when (block) {
         is MarkdownBlock.Paragraph -> StyledText(
-            text = inline(block.text, style.textColor),
+            text = style.inline(block.text, style.textColor),
             fontSize = style.fontSize,
             lineHeight = style.lineHeight,
             color = style.textColor,
@@ -154,9 +164,8 @@ private fun MarkdownBlockView(block: MarkdownBlock, style: MarkdownStyle, caret:
         )
 
         is MarkdownBlock.Heading -> StyledText(
-            text = inline(block.text, style.textColor),
-            fontSize = (style.fontSize.value +
-                (3 - block.level).coerceIn(0, 3) * style.headingSizeStep.value).sp,
+            text = style.inline(block.text, style.textColor),
+            fontSize = (style.fontSize.value + headingStep(block.level) * style.headingSizeStep.value).sp,
             lineHeight = (style.lineHeight.value + style.headingLineHeightStep.value).sp,
             color = style.textColor,
             caret = caret,
@@ -165,24 +174,26 @@ private fun MarkdownBlockView(block: MarkdownBlock, style: MarkdownStyle, caret:
 
         is MarkdownBlock.Bullet -> BulletRow(
             marker = stringResource(R.string.markdown_render_bullet),
-            text = inline(block.text, style.textColor),
+            text = style.inline(block.text, style.textColor),
             fontSize = style.fontSize,
             lineHeight = style.lineHeight,
             color = style.textColor,
             caret = caret,
+            depth = block.depth,
         )
 
         is MarkdownBlock.Numbered -> BulletRow(
             marker = stringResource(R.string.markdown_render_numbered, block.index),
-            text = inline(block.text, style.textColor),
+            text = style.inline(block.text, style.textColor),
             fontSize = style.fontSize,
             lineHeight = style.lineHeight,
             color = style.textColor,
             caret = caret,
+            depth = block.depth,
         )
 
         is MarkdownBlock.Quote -> QuoteRow(
-            text = inline(block.text, style.textColor),
+            text = style.inline(block.text, style.textColor),
             style = style,
             caret = caret,
         )
@@ -195,8 +206,25 @@ private fun MarkdownBlockView(block: MarkdownBlock, style: MarkdownStyle, caret:
         )
 
         is MarkdownBlock.OpenCode -> StreamingCodeBlock(block, caret = caret)
+
+        is MarkdownBlock.Table -> TableView(
+            header = block.header,
+            rows = block.rows,
+            alignments = block.alignments,
+            style = style,
+            caret = caret,
+        )
+
+        is MarkdownBlock.OpenTable -> OpenTableView(block, style, caret = caret)
+
+        MarkdownBlock.ThematicBreak -> ThematicBreakView()
+
+        is MarkdownBlock.Math -> MathBlock(block.text)
     }
 }
+
+/** Extra size steps an H1..H6 gets over the body text; H4-H6 step down below H3. */
+private fun headingStep(level: Int): Int = (3 - level).coerceIn(-2, 3)
 
 /** Styling for every block, bundled so a block view compares one stable parameter. */
 @Immutable
@@ -211,7 +239,19 @@ private data class MarkdownStyle(
     val quoteBarHeight: Dp,
     val quoteBarCorner: Dp,
     val quoteSpacing: Dp,
-)
+    val cwd: String?,
+) {
+    /** Resolve inline spans; kept here so every block shares one link colour and cwd. */
+    @Composable
+    fun inline(text: String, color: Color): AnnotatedString {
+        val uriHandler = LocalUriHandler.current
+        val context = LocalContext.current
+        val linkColor = MiuixTheme.colorScheme.primary
+        return remember(text, color, linkColor, cwd, uriHandler, context) {
+            inline(text, color, cwd, linkColor) { target -> openLink(context, uriHandler, target) }
+        }
+    }
+}
 
 @Composable
 private fun markdownStyle(
@@ -225,9 +265,10 @@ private fun markdownStyle(
     quoteBarHeight: Dp,
     quoteBarCorner: Dp,
     quoteSpacing: Dp,
+    cwd: String?,
 ): MarkdownStyle = MarkdownStyle(
     textColor, fontSize, lineHeight, blockSpacing, headingSizeStep, headingLineHeightStep,
-    quoteBarWidth, quoteBarHeight, quoteBarCorner, quoteSpacing,
+    quoteBarWidth, quoteBarHeight, quoteBarCorner, quoteSpacing, cwd,
 )
 
 /**
@@ -243,6 +284,7 @@ private fun StyledText(
     color: Color,
     caret: Boolean = false,
     fontWeight: FontWeight? = null,
+    textAlign: TextAlign? = null,
     modifier: Modifier = Modifier,
 ) {
     val suffix = if (caret) rememberBlinkingCaret() else ""
@@ -255,6 +297,7 @@ private fun StyledText(
         fontSize = fontSize,
         lineHeight = lineHeight,
         fontWeight = fontWeight,
+        textAlign = textAlign,
         color = color,
     )
 }
@@ -267,9 +310,11 @@ private fun BulletRow(
     lineHeight: TextUnit,
     color: Color,
     caret: Boolean,
+    depth: Int = 0,
     markerWidth: Dp = UiConsts.IconLeading,
 ) {
     Row(modifier = Modifier.fillMaxWidth()) {
+        if (depth > 0) Spacer(Modifier.width(markerWidth * depth))
         Text(
             text = marker,
             modifier = Modifier.width(markerWidth),
@@ -310,6 +355,143 @@ private fun QuoteRow(text: AnnotatedString, style: MarkdownStyle, caret: Boolean
     }
 }
 
+/** The horizontal rule `---` / `***` / `___` renders. */
+@Composable
+private fun ThematicBreakView() {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 2.dp)
+            .height(1.dp)
+            .background(MiuixTheme.colorScheme.onSurface.copy(alpha = 0.18f)),
+    )
+}
+
+/** A display equation: mono-italic so `\alpha` and friends stay distinguishable. */
+@Composable
+private fun MathBlock(text: String, modifier: Modifier = Modifier) {
+    if (text.isBlank()) return
+    Text(
+        text = text,
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(UiConsts.CornerChip))
+            .background(codeSurface())
+            .padding(horizontal = 10.dp, vertical = 7.dp),
+        fontSize = UiType.Body,
+        lineHeight = UiType.Message,
+        fontFamily = FontFamily.Monospace,
+        fontStyle = FontStyle.Italic,
+        color = MiuixTheme.colorScheme.onSurface,
+    )
+}
+
+// ---------------------------------------------------------------------------------------------
+// Tables
+// ---------------------------------------------------------------------------------------------
+
+@Composable
+private fun TableView(
+    header: List<String>,
+    rows: List<List<String>>,
+    alignments: List<TableAlignment>,
+    style: MarkdownStyle,
+    caret: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    TableFrame(modifier) {
+        TableRowView(header, alignments, style, header = true, caret = false)
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp)
+                .height(1.dp)
+                .background(MiuixTheme.colorScheme.onSurface.copy(alpha = 0.14f)),
+        )
+        for (index in rows.indices) {
+            TableRowView(rows[index], alignments, style, header = false, caret = caret && index == rows.lastIndex)
+        }
+    }
+}
+
+@Composable
+private fun OpenTableView(
+    table: MarkdownBlock.OpenTable,
+    style: MarkdownStyle,
+    caret: Boolean,
+    modifier: Modifier = Modifier,
+    rowSpacing: Dp = 3.dp,
+) {
+    TableFrame(modifier) {
+        TableRowView(table.header, table.alignments, style, header = true, caret = false)
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp)
+                .height(1.dp)
+                .background(MiuixTheme.colorScheme.onSurface.copy(alpha = 0.14f)),
+        )
+        val rows = table.rows
+        for (index in rows.indices) {
+            TableRowView(
+                cells = rows[index],
+                alignments = table.alignments,
+                style = style,
+                header = false,
+                caret = caret && index == rows.lastIndex,
+                topPadding = rowSpacing,
+            )
+        }
+    }
+}
+
+@Composable
+private fun TableFrame(modifier: Modifier, content: @Composable () -> Unit) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(UiConsts.CornerRow))
+            .background(codeSurface())
+            .padding(vertical = 7.dp),
+    ) {
+        content()
+    }
+}
+
+@Composable
+private fun TableRowView(
+    cells: List<String>,
+    alignments: List<TableAlignment>,
+    style: MarkdownStyle,
+    header: Boolean,
+    caret: Boolean,
+    topPadding: Dp = 0.dp,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 10.dp, end = 10.dp, top = if (header) 0.dp else topPadding),
+    ) {
+        for (index in cells.indices) {
+            val text = style.inline(cells[index], style.textColor)
+            StyledText(
+                text = text,
+                modifier = Modifier.weight(1f),
+                fontSize = UiType.Meta,
+                lineHeight = UiType.Message,
+                color = style.textColor,
+                caret = caret && index == cells.lastIndex,
+                fontWeight = if (header) FontWeight.Medium else null,
+                textAlign = when (alignments.getOrNull(index) ?: TableAlignment.Start) {
+                    TableAlignment.Start -> TextAlign.Start
+                    TableAlignment.Center -> TextAlign.Center
+                    TableAlignment.End -> TextAlign.End
+                },
+            )
+        }
+    }
+}
+
 /**
  * A fenced code block. Wraps the whole block in a horizontally scrollable surface with a language
  * chip, which is what the TUI's `code_fence.rs` does with its own fence detection.
@@ -335,10 +517,10 @@ fun CodeBlock(
     codeFontSize: TextUnit = UiType.Body,
     codeLineHeight: TextUnit = UiType.BodyLine,
 ) {
-    val lines = remember(code) {
-        val trimmed = code.trimEnd('\n')
-        if (trimmed.isEmpty()) emptyList() else trimmed.lines()
-    }
+    val palette = syntaxPalette()
+    val trimmed = remember(code) { code.trimEnd('\n') }
+    val lines = remember(trimmed) { if (trimmed.isEmpty()) emptyList() else trimmed.lines() }
+    val styled = remember(trimmed, language, palette) { highlightCodeLines(trimmed, language, palette) }
     CodeSurface(
         language = language,
         streaming = streaming,
@@ -354,7 +536,7 @@ fun CodeBlock(
     ) {
         for (index in lines.indices) {
             CodeLine(
-                text = lines[index],
+                text = styled.getOrElse(index) { AnnotatedString(lines[index]) },
                 caret = caret && index == lines.lastIndex,
                 fontSize = codeFontSize,
                 lineHeight = codeLineHeight,
@@ -366,6 +548,12 @@ fun CodeBlock(
 
 @Composable
 private fun StreamingCodeBlock(block: MarkdownBlock.OpenCode, caret: Boolean) {
+    val palette = syntaxPalette()
+    val spec = remember(block.language) { languageSpec(block.language) }
+    val lexer = remember(spec, palette) { spec?.let { SyntaxLexer(it, palette) } }
+    // Highlighted lines are cached per completed line: a streaming fence then pays for the line it
+    // just finished instead of re-lexing every line on each delta.
+    val styled = remember(lexer, palette) { mutableListOf<AnnotatedString>() }
     CodeSurface(
         language = block.language,
         streaming = true,
@@ -380,20 +568,45 @@ private fun StreamingCodeBlock(block: MarkdownBlock.OpenCode, caret: Boolean) {
         contentVerticalPadding = 10.dp,
     ) {
         val lines = block.lines
-        for (index in lines.indices) {
-            CodeLine(
-                text = lines[index],
-                caret = false,
-                fontSize = UiType.Body,
-                lineHeight = UiType.BodyLine,
-                color = MiuixTheme.colorScheme.onSurface,
-            )
+        if (lexer == null) {
+            for (index in lines.indices) {
+                CodeLine(
+                    text = AnnotatedString(lines[index]),
+                    caret = false,
+                    fontSize = UiType.Body,
+                    lineHeight = UiType.BodyLine,
+                    color = MiuixTheme.colorScheme.onSurface,
+                )
+            }
+        } else {
+            while (styled.size < lines.size) {
+                styled.add(lexer.highlight(lines[styled.size]))
+            }
+            for (index in lines.indices) {
+                CodeLine(
+                    text = styled[index],
+                    caret = false,
+                    fontSize = UiType.Body,
+                    lineHeight = UiType.BodyLine,
+                    color = MiuixTheme.colorScheme.onSurface,
+                )
+            }
         }
         // The partial line is where the stream is writing; only this scope re-reads when it grows.
+        // Its highlight starts from the state the previous complete line left behind, which is what
+        // keeps a block comment or raw string open across the boundary.
         val partial = block.partial
         if (partial.isNotEmpty() || caret) {
+            val partialStyled = if (lexer == null || partial.isEmpty()) {
+                AnnotatedString(partial)
+            } else {
+                val state = lexer.snapshot()
+                val highlighted = lexer.highlight(partial)
+                lexer.restore(state)
+                highlighted
+            }
             CodeLine(
-                text = partial,
+                text = partialStyled,
                 caret = caret,
                 fontSize = UiType.Body,
                 lineHeight = UiType.BodyLine,
@@ -470,15 +683,18 @@ private fun CodeSurface(
 
 @Composable
 private fun CodeLine(
-    text: String,
+    text: AnnotatedString,
     caret: Boolean,
     fontSize: TextUnit,
     lineHeight: TextUnit,
     color: Color,
 ) {
     val suffix = if (caret) rememberBlinkingCaret() else ""
+    val shown = remember(text, suffix) {
+        if (suffix.isEmpty()) text else AnnotatedString.Builder(text).apply { append(suffix) }.toAnnotatedString()
+    }
     Text(
-        text = if (suffix.isEmpty()) text else text + suffix,
+        text = shown,
         fontSize = fontSize,
         lineHeight = lineHeight,
         fontFamily = FontFamily.Monospace,
@@ -520,25 +736,52 @@ fun InlineCode(
 // ---------------------------------------------------------------------------------------------
 
 /**
- * Style inline spans. Only four span kinds are recognised, which is what agent output actually
- * uses: `code`, **bold**, *italic* and links, rendered as their label because tapping through to a
- * browser is out of scope for the phone shell.
+ * Style inline spans.
+ *
+ * Recognised spans are the ones agent output actually uses: `code`, **bold**, *italic*,
+ * ~~strikethrough~~, `$inline math$`, `[label](url)` links and `:codex-file-citation{…}` directives.
+ * A link keeps its destination: web links are annotated so a tap opens them, and local file links
+ * render their cwd-relative target so the path is readable without a tap.
  */
-internal fun inline(text: String, color: Color): AnnotatedString {
-    return buildAnnotatedString {
-        var cursor = 0
-        while (cursor < text.length) {
-            val next = nextSpan(text, cursor)
-            if (next == null) {
-                append(text.substring(cursor))
-                break
-            }
-            append(text.substring(cursor, next.start))
-            withStyle(next.style(color)) {
-                append(next.render)
-            }
-            cursor = next.end
+internal fun inline(
+    text: String,
+    color: Color,
+    cwd: String? = null,
+    linkColor: Color = color,
+    onLink: ((LinkTarget) -> Unit)? = null,
+): AnnotatedString = buildAnnotatedString {
+    var cursor = 0
+    while (cursor < text.length) {
+        val next = nextSpan(text, cursor, cwd) ?: run {
+            append(text.substring(cursor))
+            break
         }
+        append(text.substring(cursor, next.start))
+        if (next.target == null) {
+            withStyle(next.style(color)) { append(next.render) }
+        } else {
+            val annotation = LinkAnnotation.Clickable(
+                tag = next.render,
+                styles = TextLinkStyles(
+                    style = SpanStyle(color = linkColor, textDecoration = TextDecoration.Underline),
+                ),
+                linkInteractionListener = { onLink?.invoke(next.target) },
+            )
+            withLink(annotation) {
+                withStyle(next.style(linkColor)) { append(next.render) }
+                if (next.suffix.isNotEmpty()) {
+                    withStyle(
+                        SpanStyle(
+                            fontFamily = FontFamily.Monospace,
+                            color = linkColor.copy(alpha = 0.75f),
+                        ),
+                    ) {
+                        append(next.suffix)
+                    }
+                }
+            }
+        }
+        cursor = next.end
     }
 }
 
@@ -547,15 +790,21 @@ private class Span(
     val end: Int,
     val render: String,
     val style: (Color) -> SpanStyle,
+    val target: LinkTarget? = null,
+    val suffix: String = "",
 )
 
-private fun nextSpan(text: String, from: Int): Span? {
+private fun nextSpan(text: String, from: Int, cwd: String?): Span? {
     val candidates = listOfNotNull(
         spanOf(text, from, '`', '`') { c ->
             SpanStyle(fontFamily = FontFamily.Monospace, color = c, background = c.copy(alpha = 0.07f))
         },
         spanOf(text, from, "**", "**") { _ -> SpanStyle(fontWeight = FontWeight.SemiBold) },
+        spanOf(text, from, "~~", "~~") { _ -> SpanStyle(textDecoration = TextDecoration.LineThrough) },
         spanOf(text, from, '*', '*') { _ -> SpanStyle(fontStyle = FontStyle.Italic) },
+        mathSpan(text, from),
+        linkSpan(text, from, cwd),
+        citationSpan(text, from, cwd),
     )
     return candidates.minByOrNull { it.start }
 }
@@ -586,6 +835,101 @@ private fun spanOf(
     val end = text.indexOf(close, start + open.length)
     if (end < 0) return null
     return Span(start, end + close.length, text.substring(start + open.length, end), style)
+}
+
+/** `$…$` with no whitespace next to the delimiters, so shell variables and prices stay text. */
+private fun mathSpan(text: String, from: Int): Span? {
+    var start = text.indexOf('$', from)
+    while (start >= 0) {
+        if (start > 0 && text[start - 1] == '\\') {
+            start = text.indexOf('$', start + 1)
+            continue
+        }
+        val end = text.indexOf('$', start + 1)
+        if (end > start + 1) {
+            val body = text.substring(start + 1, end)
+            val bounded = body.firstOrNull()?.isWhitespace() == false &&
+                body.lastOrNull()?.isWhitespace() == false &&
+                !body.contains('\n')
+            if (bounded) {
+                return Span(
+                    start,
+                    end + 1,
+                    body,
+                    { c -> SpanStyle(fontFamily = FontFamily.Monospace, fontStyle = FontStyle.Italic, color = c) },
+                )
+            }
+            start = text.indexOf('$', end + 1)
+        } else {
+            start = text.indexOf('$', start + 1)
+        }
+    }
+    return null
+}
+
+/** `[label](destination)`; the destination is kept as the link target, not dropped. */
+private fun linkSpan(text: String, from: Int, cwd: String?): Span? {
+    var open = text.indexOf('[', from)
+    while (open >= 0) {
+        val close = text.indexOf(']', open + 1)
+        if (close > open + 1 && text.getOrNull(close + 1) == '(') {
+            val end = text.indexOf(')', close + 2)
+            if (end > close + 2) {
+                val label = text.substring(open + 1, close)
+                // A title (`"…"`) may follow the destination; it is not part of the URL.
+                val destination = text.substring(close + 2, end).trim()
+                    .substringBefore(" ")
+                    .removeSurrounding("<", ">")
+                if (destination.isNotEmpty()) {
+                    val target = parseLinkTarget(destination, cwd)
+                    val suffix = if (target is LinkTarget.Local) " (${target.display})" else ""
+                    val render = label.ifEmpty {
+                        if (target is LinkTarget.Local) target.display else destination
+                    }
+                    return Span(
+                        open,
+                        end + 1,
+                        render,
+                        { c -> SpanStyle(color = c) },
+                        target,
+                        suffix,
+                    )
+                }
+            }
+        }
+        open = text.indexOf('[', open + 1)
+    }
+    return null
+}
+
+/**
+ * A `:codex-file-citation{path="…"}` directive.
+ *
+ * The directive is control data, not prose: it is replaced by the path it points at, exactly as
+ * `markdown_render/file_citations.rs` turns it into a local link.
+ */
+private fun citationSpan(text: String, from: Int, cwd: String?): Span? {
+    var start = text.indexOf(":codex-file-citation{", from)
+    while (start >= 0) {
+        val citation = citationAt(text, start)
+        if (citation != null) {
+            val (end, path) = citation
+            val target = parseLinkTarget(
+                if (isLocalPathLike(path)) path else "./$path",
+                cwd,
+            )
+            val display = (target as? LinkTarget.Local)?.display ?: path
+            return Span(
+                start,
+                end,
+                display,
+                { c -> SpanStyle(fontFamily = FontFamily.Monospace, color = c) },
+                target,
+            )
+        }
+        start = text.indexOf(":codex-file-citation{", start + 1)
+    }
+    return null
 }
 
 // ---------------------------------------------------------------------------------------------
