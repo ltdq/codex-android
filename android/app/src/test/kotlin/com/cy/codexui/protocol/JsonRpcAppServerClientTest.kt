@@ -13,6 +13,7 @@ import com.cy.codexui.protocol.protocol.item.AgentMessageItem
 import com.cy.codexui.protocol.protocol.v2.AttachmentType
 import com.cy.codexui.protocol.protocol.v2.ClientInfo
 import com.cy.codexui.protocol.protocol.v2.CommandExecutionApprovalDecision
+import com.cy.codexui.protocol.protocol.v2.PatchChangeKind
 import com.cy.codexui.protocol.protocol.v2.TimelineEntry
 import com.cy.codexui.protocol.protocol.v2.TurnStatus
 import com.cy.codexui.protocol.protocol.v2.UserInput
@@ -206,6 +207,27 @@ class JsonRpcAppServerClientTest {
         assertEquals("decline", response.objectOrNull("result")!!.text("decision"))
         client.close()
     }
+
+    @Test
+    fun `file change approval carries no patch and patch updates decode from their own notification`() =
+        runTest {
+            val transport = HarnessTransport()
+            val client = JsonRpcAppServerClient(transport, backgroundScope)
+            client.initialize(ClientInfo("android", version = "1")).getOrThrow()
+            val approval = async { client.requests.first() }
+            transport.push("""{"id":"patch","method":"item/fileChange/requestApproval","params":{"threadId":"t","turnId":"turn","itemId":"item","startedAtMs":7,"reason":"needs write","grantRoot":"/workspace"}}""")
+            val received = assertIs<ApprovalRequest.ApplyPatch>(approval.await())
+            assertEquals("needs write", received.params.reason)
+            assertEquals("/workspace", received.params.grantRoot)
+            assertEquals(7L, received.params.startedAtMs)
+
+            val update = async(UnconfinedTestDispatcher(testScheduler)) { client.events.first() }
+            transport.push("""{"method":"item/fileChange/patchUpdated","params":{"threadId":"t","turnId":"turn","itemId":"item","changes":[{"path":"a.txt","kind":{"type":"update"},"diff":"@@ -1 +1 @@\n-a\n+b\n"}]}}""")
+            val patch = assertIs<AppServerEvent.FileChangePatchUpdated>(update.await())
+            assertEquals("a.txt", patch.delta.changes.single().path)
+            assertEquals(PatchChangeKind.Update, patch.delta.changes.single().kind)
+            client.close()
+        }
 
     @Test
     fun `closing discards queued approvals before reconnecting`() = runTest {

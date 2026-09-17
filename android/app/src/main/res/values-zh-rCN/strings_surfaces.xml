@@ -189,4 +189,15 @@
     <string name="apps_screen_reread">写入后的重新读取</string>
     <string name="apps_screen_reread_one">重新读取</string>
     <string name="apps_screen_not_installed">未安装</string>
+
+    <!-- GitDiffScreen -->
+    <string name="git_diff_screen_title">Git 差异</string>
+    <string name="git_diff_screen_description">查看未提交和未跟踪的改动</string>
+    <string name="git_diff_screen_back">返回</string>
+    <string name="git_diff_screen_reload">重新读取差异</string>
+    <string name="git_diff_screen_loading">正在读取工作区…</string>
+    <string name="git_diff_screen_empty">没有未提交或未跟踪的改动。</string>
+    <string name="git_diff_screen_not_repository">该目录不在 Git 仓库内。</string>
+    <string name="git_diff_screen_failed">无法读取 Git 差异：%1$s</string>
+    <string name="git_diff_screen_summary">%1$d 个文件 · +%2$d −%3$d</string>
 </resources>

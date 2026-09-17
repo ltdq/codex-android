@@ -5,8 +5,8 @@ package com.cy.codexui.protocol.protocol.v2
  *
  * Mirrors `schema/typescript/v2/{CommandExecutionRequestApprovalParams, FileChangeRequestApprovalParams,
  * PermissionsRequestApprovalParams, ToolRequestUserInputParams, McpServerElicitationRequestParams}.ts`.
- * The legacy `execCommandApproval` / `applyPatchApproval` pair carries the same payloads and is
- * mapped onto these at ingestion time.
+ * The deprecated v1 `execCommandApproval` / `applyPatchApproval` pair is registered in
+ * [ServerRequestMethod] but not answered: this client speaks the v2 methods only.
  */
 
 data class CommandExecutionApprovalParams(
@@ -31,6 +31,13 @@ data class CommandExecutionApprovalParams(
         ),
 )
 
+/**
+ * Parameters of `item/fileChange/requestApproval`.
+ *
+ * The request names the item under review but does not repeat its diff — the wire has no `changes`
+ * field (`codex-rs/app-server-protocol/src/protocol/v2/item.rs`, `FileChangeRequestApprovalParams`).
+ * The patch is recovered from the `FileChangeItem` the same ids point at; see `ChatWidget`.
+ */
 data class FileChangeApprovalParams(
     val threadId: String,
     val turnId: String,
@@ -38,8 +45,6 @@ data class FileChangeApprovalParams(
     val startedAtMs: Long = 0L,
     val reason: String? = null,
     val grantRoot: String? = null,
-    /** Server-side copy of the patch under review; the item may not have arrived yet. */
-    val changes: List<FileUpdateChange> = emptyList(),
 )
 
 data class PermissionsApprovalParams(

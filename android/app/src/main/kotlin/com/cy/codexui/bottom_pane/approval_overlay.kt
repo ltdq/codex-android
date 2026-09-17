@@ -50,6 +50,7 @@ import com.cy.codexui.protocol.protocol.v2.DynamicToolCallParams
 import com.cy.codexui.protocol.protocol.v2.DynamicToolCallResponse
 import com.cy.codexui.protocol.protocol.v2.FileChangeApprovalDecision
 import com.cy.codexui.protocol.protocol.v2.FileChangeApprovalParams
+import com.cy.codexui.protocol.protocol.v2.FileUpdateChange
 import com.cy.codexui.protocol.protocol.v2.PermissionsApprovalDecision
 import com.cy.codexui.protocol.protocol.v2.PermissionsApprovalParams
 import com.cy.codexui.FileDiffRow
@@ -123,12 +124,18 @@ fun ApprovalDialog(
     remainingQueue: Int = 0,
     busy: Boolean = false,
     error: String? = null,
+    /** Resolves the patch behind a file-change request, which names its item but not its diff. */
+    patchChanges: (ApprovalRequest) -> List<FileUpdateChange> = { emptyList() },
 ) {
     // The dialog outlives the request by one exit animation, so the last one is kept mounted:
     // clearing it would blank the card out from under the transition.
     var lastRequest by remember { mutableStateOf<ApprovalRequest?>(null) }
     if (request != null) lastRequest = request
     val shown = request ?: lastRequest
+    // The same rule for the file-change diff, which lives on the item rather than on the request:
+    // it is resolved while the request is live and kept through the exit animation.
+    var lastChanges by remember { mutableStateOf<List<FileUpdateChange>>(emptyList()) }
+    if (request != null) lastChanges = patchChanges(request)
 
     // One decision per request. Without this the exit animation is a window in which a second tap
     // answers a request the server has already resolved.
@@ -156,6 +163,7 @@ fun ApprovalDialog(
                 },
                 remainingQueue = remainingQueue,
                 busy = busy,
+                patchChanges = lastChanges,
             )
             error?.let { Text(it, color = MiuixTheme.colorScheme.error, fontSize = UiType.Meta) }
         }
@@ -200,6 +208,7 @@ private fun ApprovalBody(
     decide: (ApprovalResponse) -> Unit,
     remainingQueue: Int,
     busy: Boolean,
+    patchChanges: List<FileUpdateChange>,
 ) {
     // Every family keeps its answer pinned under the scrolling body: on a two-question form or a
     // sixty-line patch the button that unblocks the turn must not be the thing that scrolled away.
@@ -222,12 +231,12 @@ private fun ApprovalBody(
             )
 
             else -> {
-                ApprovalHeader(request = request)
+                ApprovalHeader(request = request, patchChanges = patchChanges)
                 Spacer(Modifier.height(UiConsts.DialogHeaderGap))
                 ApprovalScrollBody {
                     when (request) {
                         is ApprovalRequest.Exec -> ExecBody(request.params)
-                        is ApprovalRequest.ApplyPatch -> PatchBody(request.params)
+                        is ApprovalRequest.ApplyPatch -> PatchBody(request.params, patchChanges)
                         is ApprovalRequest.Permissions -> PermissionsBody(request.params)
                         is ApprovalRequest.DynamicTool -> DynamicToolBody(request.params)
                         else -> Unit
@@ -249,11 +258,11 @@ private fun ApprovalBody(
  * tool are four different things, and a warning triangle on all four would say nothing.
  */
 @Composable
-private fun ApprovalHeader(request: ApprovalRequest) {
+private fun ApprovalHeader(request: ApprovalRequest, patchChanges: List<FileUpdateChange>) {
     val colors = MiuixTheme.colorScheme
     val accent = approvalAccent(request)
     val title = approvalTitle(request)
-    val summary = approvalSummary(request)
+    val summary = approvalSummary(request, patchChanges)
     val shape = remember { RoundedCornerShape(UiConsts.CornerControl) }
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -327,13 +336,16 @@ private fun approvalTitle(request: ApprovalRequest): String = when (request) {
 /** Second line: why, when the server said why, and what it is otherwise. */
 @Composable
 @ReadOnlyComposable
-private fun approvalSummary(request: ApprovalRequest): String = when (request) {
+private fun approvalSummary(
+    request: ApprovalRequest,
+    patchChanges: List<FileUpdateChange>,
+): String = when (request) {
     is ApprovalRequest.Exec -> request.params.reason?.takeIf { it.isNotBlank() }
         ?: request.params.cwd?.takeIf { it.isNotBlank() }
         ?: stringResource(R.string.approval_overlay_exec_summary_fallback)
 
     is ApprovalRequest.ApplyPatch -> request.params.reason?.takeIf { it.isNotBlank() }
-        ?: stringResource(R.string.approval_overlay_patch_summary, request.params.changes.size)
+        ?: stringResource(R.string.approval_overlay_patch_summary, patchChanges.size)
 
     is ApprovalRequest.Permissions -> request.params.reason?.takeIf { it.isNotBlank() }
         ?: stringResource(R.string.approval_overlay_permissions_summary_fallback)
@@ -590,16 +602,16 @@ private fun commandActionLabel(action: CommandAction): String = when (action) {
  * open each card to find out whether the change was a rename or a rewrite.
  */
 @Composable
-private fun PatchBody(params: FileChangeApprovalParams) {
+private fun PatchBody(params: FileChangeApprovalParams, changes: List<FileUpdateChange>) {
     val colors = MiuixTheme.colorScheme
-    val files = remember(params.changes) {
-        params.changes.map { change ->
+    val files = remember(changes) {
+        changes.map { change ->
             change.path to fileDiffOf(change.path, parseUnifiedDiff(change.diff))
         }
     }
     // Each file owns its disclosure state; the first file opens so the dialog leads with its diff.
-    var showAll by remember(params.changes) { mutableStateOf(false) }
-    val expanded = remember(params.changes) {
+    var showAll by remember(changes) { mutableStateOf(false) }
+    val expanded = remember(changes) {
         mutableStateMapOf<String, Boolean>().apply {
             files.firstOrNull()?.let { put(it.first, true) }
         }

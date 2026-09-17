@@ -968,7 +968,7 @@ class JsonRpcAppServerClient(
             "item/commandExecution/requestApproval" -> ApprovalRequest.Exec(requestId, thread, turn, item, time,
                 CommandExecutionApprovalParams(thread, turn, item, time, p.text("approvalId"), p.text("environmentId"), p.text("reason"), p.text("command"), p.text("cwd")))
             "item/fileChange/requestApproval" -> ApprovalRequest.ApplyPatch(requestId, thread, turn, item, time,
-                FileChangeApprovalParams(thread, turn, item, time, p.text("reason"), p.text("grantRoot"), WireCodec.changes(p)))
+                FileChangeApprovalParams(thread, turn, item, time, p.text("reason"), p.text("grantRoot")))
             "item/permissions/requestApproval" -> {
                 val permissions = p.objectOrNull("permissions") ?: obj()
                 val fs = permissions.objectOrNull("fileSystem")

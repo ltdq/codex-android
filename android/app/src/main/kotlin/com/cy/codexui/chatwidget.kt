@@ -1,6 +1,7 @@
 package com.cy.codexui
 
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -11,11 +12,13 @@ import com.cy.codexui.protocol.ApprovalRequest
 import com.cy.codexui.protocol.ApprovalResponse
 import com.cy.codexui.protocol.protocol.item.AgentMessageItem
 import com.cy.codexui.protocol.protocol.item.CommandExecutionItem
+import com.cy.codexui.protocol.protocol.item.FileChangeItem
 import com.cy.codexui.protocol.protocol.item.McpToolCallItem
 import com.cy.codexui.protocol.protocol.item.PlanItem
 import com.cy.codexui.protocol.protocol.item.ReasoningItem
 import com.cy.codexui.protocol.protocol.item.ThreadItem
 import com.cy.codexui.protocol.protocol.v2.DiagnosticSeverity
+import com.cy.codexui.protocol.protocol.v2.FileUpdateChange
 import com.cy.codexui.protocol.protocol.v2.QueuedSubmission
 import com.cy.codexui.protocol.protocol.v2.ReviewTarget
 import com.cy.codexui.protocol.protocol.v2.ThreadSettingsUpdateParams
@@ -75,6 +78,21 @@ class ChatWidget(
      */
     private val turnDiff = TurnDiffAccumulator()
 
+    /**
+     * Patch content for a file-change item, as last announced by the stream.
+     *
+     * `item/fileChange/requestApproval` identifies the item but carries no diff, and
+     * `item/fileChange/patchUpdated` can arrive before `item/started` — so this is where the two
+     * are matched up. The item wins when it is present because it is the authoritative copy;
+     * upstream recovers the same way in `tui/src/app/file_change_approvals.rs`.
+     */
+    private val patchChanges = mutableStateMapOf<String, List<FileUpdateChange>>()
+
+    /** The patch under review for [itemId], or empty when nothing has arrived yet. */
+    fun fileChangeChanges(itemId: String): List<FileUpdateChange> =
+        (state.item(itemId) as? FileChangeItem)?.changes?.takeIf { it.isNotEmpty() }
+            ?: patchChanges[itemId].orEmpty()
+
     /** Requests the UI can currently answer; only the head is on screen. */
     val currentApproval: ApprovalRequest? get() = pendingApprovals.firstOrNull()
     var answeringApproval by mutableStateOf(false)
@@ -115,6 +133,7 @@ class ChatWidget(
 
     fun connectionLost() {
         pendingApprovals.clear()
+        patchChanges.clear()
         answeringApproval = false
         approvalError = null
         state.applyStatus(ThreadStatus.NotLoaded)
@@ -126,6 +145,7 @@ class ChatWidget(
         val version = ++loadVersion
         state.beginLoad(threadId)
         turnDiff.reset()
+        patchChanges.clear()
         streamOvertookLoad = false
         loadJob = scope.launch {
             val resumed = client.resumeThread(threadId)
@@ -188,6 +208,7 @@ class ChatWidget(
                 .onSuccess { session ->
                     state.beginLoad(session.threadId)
                     turnDiff.reset()
+                    patchChanges.clear()
                     state.bindThread(session.threadId, session)
                 }
                 .onFailure { error ->
@@ -478,6 +499,7 @@ class ChatWidget(
         loadVersion++
         state.beginLoad(session.threadId)
         turnDiff.reset()
+        patchChanges.clear()
         state.bindThread(session.threadId, session)
     }
 
@@ -485,6 +507,7 @@ class ChatWidget(
         loadJob?.cancel()
         loadVersion++
         pendingApprovals.clear()
+        patchChanges.clear()
         answeringApproval = false
         approvalError = null
         turnDiff.reset()
@@ -759,9 +782,11 @@ class ChatWidget(
             }
 
             // `item/fileChange/patchUpdated` carries the patch as it grows. The item may not have
-            // been started yet, in which case the later `item/started` brings the same content.
+            // been started yet, in which case the later `item/started` brings the same content; the
+            // update is kept by id either way so an approval arriving in between still has a diff.
             is AppServerEvent.FileChangePatchUpdated -> {
-                val item = state.item(event.delta.itemId) as? com.cy.codexui.protocol.protocol.item.FileChangeItem
+                patchChanges[event.delta.itemId] = event.delta.changes
+                val item = state.item(event.delta.itemId) as? FileChangeItem
                 if (item != null) state.upsert(item.copy(changes = event.delta.changes))
             }
 
@@ -931,6 +956,7 @@ class ChatWidget(
         // The turn is over, so the payload it accumulated is never extended again. [SessionState]
         // keeps the parsed diff for the status card; only the accumulator's memory is released.
         turnDiff.reset()
+        patchChanges.clear()
     }
 
     private fun refreshHistory(threadId: String) {

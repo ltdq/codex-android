@@ -158,6 +158,7 @@ object SidebarModel {
         SlashCommand("/plugins", stringResource(R.string.sidebar_library_plugins)),
         SlashCommand("/apps", stringResource(R.string.sidebar_library_apps)),
         SlashCommand("/review", stringResource(R.string.sidebar_library_review)),
+        SlashCommand("/diff", stringResource(R.string.git_diff_screen_description)),
         SlashCommand("/goal", stringResource(R.string.goal_sheet_title)),
         SlashCommand("/shell", stringResource(R.string.exec_command_title), takesArgument = true),
     )

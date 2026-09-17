@@ -76,6 +76,14 @@ sealed interface Surface : NavKey {
     /** `/review` — pick what to review, then start it. */
     data object Review : Surface
 
+    /**
+     * `/diff` — the working tree, tracked and untracked.
+     *
+     * A page rather than a transcript cell: the turn diff on the status card only carries what a
+     * turn changed, and untracked files are not part of it at all.
+     */
+    data object Diff : Surface
+
     // ---- sessions ---------------------------------------------------------------
     /** The realtime voice session for the open thread. */
     data object Realtime : Surface

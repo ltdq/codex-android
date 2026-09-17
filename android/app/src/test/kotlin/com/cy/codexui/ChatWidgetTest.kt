@@ -10,6 +10,11 @@ import com.cy.codexui.protocol.protocol.v2.ClientInfo
 import com.cy.codexui.protocol.protocol.v2.ItemTextDelta
 import com.cy.codexui.protocol.protocol.v2.CommandExecutionApprovalDecision
 import com.cy.codexui.protocol.protocol.v2.CommandExecutionApprovalParams
+import com.cy.codexui.protocol.protocol.v2.FileChangeApprovalParams
+import com.cy.codexui.protocol.protocol.v2.FileChangePatchUpdatedNotification
+import com.cy.codexui.protocol.protocol.v2.FileUpdateChange
+import com.cy.codexui.protocol.protocol.v2.PatchApplyStatus
+import com.cy.codexui.protocol.protocol.v2.PatchChangeKind
 import com.cy.codexui.protocol.protocol.v2.ThreadSessionState
 import com.cy.codexui.protocol.protocol.v2.ThreadStatus
 import com.cy.codexui.protocol.protocol.v2.Thread
@@ -18,6 +23,7 @@ import com.cy.codexui.protocol.protocol.v2.ThreadTokenUsage
 import com.cy.codexui.protocol.protocol.v2.TurnStatus
 import com.cy.codexui.protocol.protocol.item.AgentMessageItem
 import com.cy.codexui.protocol.protocol.item.CommandExecutionItem
+import com.cy.codexui.protocol.protocol.item.FileChangeItem
 import com.cy.codexui.protocol.protocol.v2.UserInput
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -70,6 +76,42 @@ class ChatWidgetTest {
         runCurrent()
         assertNull(widget.currentApproval)
         assertNull(widget.approvalError)
+    }
+
+    @Test
+    fun `file change approval recovers the patch the request does not carry`() = runTest {
+        val client = TestClient()
+        val widget = ChatWidget(client, backgroundScope)
+        widget.bind(ThreadSessionState(threadId = "thread"))
+        widget.attach()
+        val streamed = listOf(FileUpdateChange("a.txt", PatchChangeKind.Update, "@@ -1 +1 @@\n-old\n+new\n"))
+        client.events.emit(
+            AppServerEvent.FileChangePatchUpdated(
+                "thread",
+                FileChangePatchUpdatedNotification("thread", "turn", "patch", streamed),
+            ),
+        )
+        runCurrent()
+        client.requests.emit(
+            ApprovalRequest.ApplyPatch(
+                RequestId("file-approval"), "thread", "turn", "patch", 0L,
+                FileChangeApprovalParams("thread", "turn", "patch"),
+            ),
+        )
+        runCurrent()
+        assertNotNull(widget.currentApproval)
+        assertEquals(streamed, widget.fileChangeChanges("patch"))
+
+        // The item is the authoritative copy: once it arrives, its changes are what is rendered.
+        val fromItem = listOf(FileUpdateChange("a.txt", PatchChangeKind.Update, "@@ -1,2 +1,2 @@\n-old\n-older\n+new\n+newer\n"))
+        client.events.emit(
+            AppServerEvent.ItemStarted(
+                "thread", "turn",
+                FileChangeItem("patch", fromItem, PatchApplyStatus.InProgress),
+            ),
+        )
+        runCurrent()
+        assertEquals(fromItem, widget.fileChangeChanges("patch"))
     }
 
     @Test

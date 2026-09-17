@@ -462,6 +462,8 @@ fun ChatScreen(
             error = app.widget.approvalError,
             onDecision = { request, response -> onApprovalDecision(app, request, response) },
             remainingQueue = (app.widget.approvalQueueSize - 1).coerceAtLeast(0),
+            // The patch is not on the request; it is recovered from the item the request names.
+            patchChanges = { request -> app.widget.fileChangeChanges(request.itemId) },
         )
         if (app.goalMenuOpen) {
             GoalSheet(

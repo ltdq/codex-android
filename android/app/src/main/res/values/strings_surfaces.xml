@@ -190,4 +190,15 @@
     <string name="apps_screen_reread">Re-read after the write</string>
     <string name="apps_screen_reread_one">Re-read</string>
     <string name="apps_screen_not_installed">Not installed</string>
+
+    <!-- GitDiffScreen -->
+    <string name="git_diff_screen_title">Git diff</string>
+    <string name="git_diff_screen_description">Show the uncommitted and untracked changes</string>
+    <string name="git_diff_screen_back">Back</string>
+    <string name="git_diff_screen_reload">Reload diff</string>
+    <string name="git_diff_screen_loading">Reading the working tree…</string>
+    <string name="git_diff_screen_empty">No uncommitted or untracked changes.</string>
+    <string name="git_diff_screen_not_repository">This directory is not inside a Git repository.</string>
+    <string name="git_diff_screen_failed">Could not read the Git diff: %1$s</string>
+    <string name="git_diff_screen_summary">%1$d files · +%2$d −%3$d</string>
 </resources>

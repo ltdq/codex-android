@@ -58,6 +58,7 @@ import com.cy.codexui.bottom_pane.AppsScreen
 import com.cy.codexui.bottom_pane.BackgroundTerminalsScreen
 import com.cy.codexui.bottom_pane.ExecCommandScreen
 import com.cy.codexui.bottom_pane.FileBrowserScreen
+import com.cy.codexui.bottom_pane.GitDiffScreen
 import com.cy.codexui.bottom_pane.HooksScreen
 import com.cy.codexui.bottom_pane.McpScreen
 import com.cy.codexui.bottom_pane.McpToolboxScreen
@@ -214,11 +215,23 @@ class CodexApp(
                 val commandText = event.inputs.singleOrNull()?.let {
                     (it as? com.cy.codexui.protocol.protocol.v2.UserInput.Text)?.text?.trim()
                 }
-                val command = commandText?.substringBefore(' ')?.removePrefix("/")
-                if (commandText?.startsWith("/") == true && command in ComposerCommands) {
-                    runSlashCommand(AppEvent.SubmitSlashCommand(command!!, commandText.substringAfter(' ', "")))
-                    if (command != "shell") widget.state.applyDraft("")
-                    return
+                when (val input = commandText?.let { classifySlashInput(it, ComposerCommands) }) {
+                    is SlashInput.Command -> {
+                        runSlashCommand(AppEvent.SubmitSlashCommand(input.name, input.args))
+                        if (input.name != "shell") widget.state.applyDraft("")
+                        return
+                    }
+
+                    is SlashInput.Unknown -> {
+                        // A command-shaped token that names nothing must not become a model message:
+                        // the agent would answer a stray line of prose and the user would never learn
+                        // the command does not exist. The draft stays so the typo can be fixed.
+                        reportUnknownCommand(input.name)
+                        return
+                    }
+
+                    // Plain text, an upload, or a path that happens to begin with a slash.
+                    else -> Unit
                 }
                 if (!catalog.account.loggedIn) {
                     openSurface(Surface.Account)
@@ -678,9 +691,9 @@ class CodexApp(
                 ),
             )
 
-            // `/diff` has nowhere to go: the turn's diff is already on the status card, and a page
-            // that re-rendered it would be a second copy of the same data.
-            "diff" -> Unit
+            // The status card's pane only shows the *turn's* diff; `/diff` is the working tree, which
+            // includes changes no turn made and files git has never seen.
+            "diff" -> openSurface(Surface.Diff)
 
             // `/goal` never reaches here — it takes an argument, so the picker leaves it in the
             // draft — but listing it keeps this dispatch total.
@@ -693,7 +706,16 @@ class CodexApp(
                 createThread(afterCreated = { onAppEvent(AppEvent.SetGoal(argument)) })
             }
 
-            else -> Unit
+            // Unreachable while [ComposerCommands] is exactly this dispatch's command list, but a
+            // command that is offered and handled nowhere must not fail silently.
+            else -> reportUnknownCommand(event.command.removePrefix("/"))
+        }
+    }
+
+    /** Say that [name] names no command; the caller keeps the draft so it can be corrected. */
+    private fun reportUnknownCommand(name: String) {
+        scope.launch {
+            snackbar.showSnackbar(context.getString(R.string.runtime_unknown_slash_command, name))
         }
     }
 
@@ -1073,7 +1095,21 @@ class CodexApp(
         const val KeySelectedSession = "session_selected"
         const val KeyExpandedProjects = "projects_expanded"
         const val KeyProjectsCollapsed = "projects_collapsed"
-        val ComposerCommands = setOf("new", "resume", "model", "approvals", "settings", "usage", "mcp", "skills", "plugins", "apps", "goal", "review", "fork", "archive", "compact", "init", "shell")
+
+        /**
+         * Every command [CodexApp.runSlashCommand] answers.
+         *
+         * This list and that dispatch are one set: a name that is handled but missing here is
+         * unreachable, and a name that is listed but handled nowhere is the same failure seen from
+         * the other side. `/diff`, `/hooks`, `/status`, `/permissions` and `/revert` were handled
+         * before they were listed, so typing them sent the literal line to the model.
+         */
+        val ComposerCommands = setOf(
+            "new", "resume", "fork", "archive", "compact", "revert",
+            "review", "diff", "init", "goal", "shell",
+            "mcp", "skills", "plugins", "apps", "hooks", "status", "permissions",
+            "model", "approvals", "settings", "usage",
+        )
     }
 }
 
@@ -1492,6 +1528,16 @@ fun CodexScreen(
                         ReviewScreen(
                             threadId = app.widget.state.threadId,
                             onEvent = app::onAppEvent,
+                            onBack = app::closeSurface,
+                        )
+                    }
+                }
+
+                entry<Surface.Diff>(swipeDismiss = NavSwipeDirection.TopToBottom) {
+                    SheetPage(onDismiss = app::closeSurface) {
+                        GitDiffScreen(
+                            cwd = app.widget.state.config.cwd.ifBlank { app.defaultWorkspace },
+                            client = app.client,
                             onBack = app::closeSurface,
                         )
                     }

@@ -23,4 +23,5 @@
     <string name="runtime_ready">Ready for a new conversation</string>
     <string name="runtime_creating_thread">Creating conversation</string>
     <string name="runtime_attachment_failed">Could not import attachment</string>
+    <string name="runtime_unknown_slash_command">Unrecognized command \'/%1$s\'. Type \"/\" for a list of supported commands.</string>
 </resources>
