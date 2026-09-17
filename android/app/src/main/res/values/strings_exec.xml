@@ -66,18 +66,14 @@
     <string name="exec_terminals_command_unknown">The server did not report a command</string>
     <string name="exec_terminals_cwd_unknown">Directory unknown</string>
     <string name="exec_terminals_row_meta">%1$s · %2$s</string>
+    <string name="exec_terminals_os_pid">OS pid %d</string>
+    <string name="exec_terminals_os_pid_unknown">OS pid unknown</string>
     <string name="exec_terminals_terminate">Terminate</string>
     <string name="exec_terminals_read_failed">The server could not answer</string>
     <string name="exec_terminals_retry">Read again</string>
     <string name="exec_terminals_reading">Reading…</string>
 
     <!-- bottom_pane/unified_exec_footer.kt: how long ago a terminal was started. -->
-    <string name="exec_terminals_age_unknown">Started at an unknown time</string>
-    <string name="exec_terminals_age_now">Just started</string>
-    <string name="exec_terminals_age_minutes">%1$d min ago</string>
-    <string name="exec_terminals_age_hours">%1$d h ago</string>
-    <string name="exec_terminals_age_days">%1$d d ago</string>
-    <string name="exec_terminals_age_weeks">%1$d w ago</string>
     <string name="exec_command_terminal_stdin_label">Send to the process</string>
     <string name="exec_command_terminal_stdin_placeholder">One line, sent with a trailing newline</string>
     <string name="exec_command_terminal_stdin_send">Send</string>

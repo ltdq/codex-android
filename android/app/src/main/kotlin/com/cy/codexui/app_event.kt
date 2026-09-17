@@ -2,12 +2,15 @@ package com.cy.codexui
 
 import com.cy.codexui.protocol.ApprovalResponse
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
 import com.cy.codexui.protocol.protocol.RequestId
 import com.cy.codexui.protocol.protocol.v2.AskForApproval
 import com.cy.codexui.protocol.protocol.v2.AttachmentType
 import com.cy.codexui.protocol.protocol.v2.ConfigBatchWriteParams
 import com.cy.codexui.protocol.protocol.v2.LoginAccountParams
 import com.cy.codexui.protocol.protocol.v2.MergeStrategy
+import com.cy.codexui.protocol.protocol.v2.PluginShareDiscoverability
+import com.cy.codexui.protocol.protocol.v2.PluginShareTarget
 import com.cy.codexui.protocol.protocol.v2.ReasoningEffort
 import com.cy.codexui.protocol.protocol.v2.ReviewTarget
 import com.cy.codexui.protocol.protocol.v2.ThreadMemoryMode
@@ -72,7 +75,7 @@ sealed interface AppEvent {
     ) : AppEvent
 
     /** Append raw item JSON this client did not author, for replaying a foreign transcript. */
-    data class InjectThreadItems(val threadId: String, val items: List<String>) : AppEvent
+    data class InjectThreadItems(val threadId: String, val items: List<JsonElement>) : AppEvent
 
     /** Run one shell command in the session's shell, without starting a turn. */
     data class RunShellCommand(val threadId: String, val command: String) : AppEvent
@@ -148,11 +151,13 @@ sealed interface AppEvent {
     /** Consume one rate-limit reset credit; `null` means "whichever the server picks". */
     data class ConsumeResetCredit(val creditId: String? = null) : AppEvent
 
-    /** Ask the server to e-mail a top-up link; `null` uses the address on the account. */
-    data class SendAddCreditsNudgeEmail(val email: String? = null) : AppEvent
+    /** Ask the server to e-mail a top-up link for one credit type. */
+    data class SendAddCreditsNudgeEmail(
+        val creditType: com.cy.codexui.protocol.protocol.v2.AddCreditsNudgeCreditType,
+    ) : AppEvent
 
-    data class BedrockDiscover(val region: String? = null) : AppEvent
-    data class BedrockSetup(val region: String) : AppEvent
+    data object BedrockDiscover : AppEvent
+    data class BedrockSetup(val params: com.cy.codexui.protocol.protocol.v2.BedrockSetupParams) : AppEvent
 
     // ---- catalogs: reload requests --------------------------------------------
     //
@@ -191,7 +196,8 @@ sealed interface AppEvent {
     data class CheckoutPluginShare(val remotePluginId: String) : AppEvent
     data class UpdatePluginShareTargets(
         val remotePluginId: String,
-        val targets: List<String>,
+        val discoverability: PluginShareDiscoverability,
+        val targets: List<PluginShareTarget>,
     ) : AppEvent
 
     // ---- skills, apps, hooks ---------------------------------------------------
@@ -206,8 +212,20 @@ sealed interface AppEvent {
     data class McpLogin(val serverName: String) : AppEvent
     data object ReloadMcpConfig : AppEvent
 
-    /** Open or close a server's event stream; its notifications arrive on the event flow. */
-    data class SetMcpEventStream(val server: String, val streaming: Boolean) : AppEvent
+    /**
+     * Open or close a server's event stream; its notifications arrive on the event flow.
+     *
+     * [subscriptionId] is the client-chosen name the stop call uses; [name] and [arguments] are the
+     * MCP tool call the stream belongs to, the same pair `mcpServer/tool/call` takes.
+     */
+    data class SetMcpEventStream(
+        val server: String,
+        val threadId: String,
+        val subscriptionId: String,
+        val name: String,
+        val arguments: JsonElement = JsonNull,
+        val streaming: Boolean,
+    ) : AppEvent
 
     // ---- projects and environments ---------------------------------------------
     data class CreateProject(val name: String, val path: String) : AppEvent
@@ -220,7 +238,7 @@ sealed interface AppEvent {
     data class DeleteProject(val projectId: String) : AppEvent
     data class MoveProject(val projectId: String, val position: Int) : AppEvent
     data class ImportProject(val path: String) : AppEvent
-    data class AddEnvironment(val name: String, val cwd: String) : AppEvent
+    data class AddEnvironment(val environmentId: String, val execServerUrl: String) : AppEvent
 
     // ---- remote control --------------------------------------------------------
     data class SetRemoteControlEnabled(val enabled: Boolean) : AppEvent
@@ -278,8 +296,11 @@ sealed interface AppEvent {
 
     // ---- external agent migration ----------------------------------------------
     data object DetectExternalAgentConfig : AppEvent
-    data class ImportExternalAgentConfig(val itemIds: List<String>) : AppEvent
-    data class RecordExternalAgentImportHistory(val id: String, val summary: String) : AppEvent
+
+    /** The detected items go back to the server unchanged; there is no id-only import. */
+    data class ImportExternalAgentConfig(
+        val items: List<com.cy.codexui.protocol.protocol.v2.ExternalAgentConfigMigrationItem>,
+    ) : AppEvent
 
     // ---- feedback --------------------------------------------------------------
     data class UploadFeedback(
@@ -299,10 +320,14 @@ sealed interface AppEvent {
         val threadId: String,
         val type: AttachmentType,
         val identityKey: String,
-        val payload: String? = null,
+        val payload: JsonElement = JsonNull,
     ) : AppEvent
 
-    data class RemoveAttachment(val threadId: String, val attachmentId: String) : AppEvent
+    data class RemoveAttachment(
+        val threadId: String,
+        val type: AttachmentType,
+        val identityKey: String,
+    ) : AppEvent
     data class TerminateBackgroundTerminal(val threadId: String, val processId: String) : AppEvent
     data class CleanBackgroundTerminals(val threadId: String) : AppEvent
 

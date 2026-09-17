@@ -228,7 +228,6 @@ class ClientRequestRegistryTest {
         "getConnection",
         "updateThreadSettingsFull",
         "readConfigLayers",
-        "unsupported",
     )
 
     /**

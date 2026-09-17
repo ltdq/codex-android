@@ -14,4 +14,14 @@
     <string name="bedrock_setup_title">Set up Bedrock</string>
     <string name="bedrock_setup_detail">Setting up moves this account from ChatGPT to Bedrock in the region above. It is a separate step from the list because it changes the account rather than only reading it.</string>
     <string name="bedrock_setup_action">Set up with this region</string>
+    <string name="bedrock_methods_title">Credentials</string>
+    <string name="bedrock_region_required">Region required</string>
+    <string name="bedrock_kind_access_keys">Access keys</string>
+    <string name="bedrock_kind_bedrock_api_key">Bedrock API key</string>
+    <string name="bedrock_summary_profile">%1$s · %2$s</string>
+    <string name="bedrock_summary_environment">Environment · %1$s</string>
+    <string name="bedrock_region_form_title">Region</string>
+    <string name="bedrock_region_form_label">AWS region</string>
+    <string name="bedrock_region_form_placeholder">us-east-1</string>
+    <string name="bedrock_region_form_confirm">Use this region</string>
 </resources>

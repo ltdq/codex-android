@@ -140,7 +140,7 @@ fun ExecCommandScreen(
 
                 is AppServerEvent.ProcessOutputDelta -> {
                     val delta = event.delta
-                    if (delta.processId == terminalId && delta.deltaBase64.isNotEmpty()) {
+                    if (delta.processHandle == terminalId && delta.deltaBase64.isNotEmpty()) {
                         terminalOutput += decodeOutput(delta.deltaBase64)
                     }
                 }
@@ -149,10 +149,10 @@ fun ExecCommandScreen(
                 // the one it killed, or the pty. Anything else belongs to a turn, not to this page.
                 is AppServerEvent.ProcessExited -> {
                     val delta = event.delta
-                    if (delta.processId == terminalId) {
+                    if (delta.processHandle == terminalId) {
                         terminalExited = true
                     }
-                    if (delta.processId == execProcessId) {
+                    if (delta.processHandle == execProcessId) {
                         execProcessId = null
                     }
                 }
@@ -272,6 +272,73 @@ fun ExecCommandScreen(
                 },
             )
 
+            // The pty half. `process/spawn` names what it starts, so the handle the call returns is
+            // what every control below addresses — unlike `command/exec`, whose response carries no
+            // id at all.
+            TerminalCard(
+                start = termStart,
+                onStartChange = { termStart = it },
+                cwd = termCwd,
+                onCwdChange = { termCwd = it },
+                processId = terminalId,
+                exited = terminalExited,
+                output = terminalOutput,
+                cwdFallback = initialCwd,
+                onSpawn = {
+                    val argv = splitCommandLine(termStart)
+                    if (argv.isNotEmpty()) {
+                        scope.launch {
+                            notice = null
+                            client.spawnProcess(
+                                command = argv,
+                                cwd = termCwd.trim().ifEmpty { null },
+                                tty = true,
+                            )
+                                .onSuccess { handle ->
+                                    terminalId = handle
+                                    terminalOutput = ""
+                                    terminalExited = false
+                                }
+                                .onFailure { failure -> notice = failure.message }
+                        }
+                    }
+                },
+                onKill = {
+                    val id = terminalId
+                    if (id != null) {
+                        scope.launch {
+                            client.killProcess(id).onFailure { failure -> notice = failure.message }
+                        }
+                    }
+                },
+                onWrite = { line ->
+                    val id = terminalId
+                    if (id != null) {
+                        scope.launch {
+                            client.writeProcessStdin(id, line.toByteArray(), closeStdin = false)
+                                .onFailure { failure -> notice = failure.message }
+                        }
+                    }
+                },
+                onCloseStdin = {
+                    val id = terminalId
+                    if (id != null) {
+                        scope.launch {
+                            client.writeProcessStdin(id, null, closeStdin = true)
+                                .onFailure { failure -> notice = failure.message }
+                        }
+                    }
+                },
+                onResizePty = { rows, cols ->
+                    val id = terminalId
+                    if (id != null) {
+                        scope.launch {
+                            client.resizeProcessPty(id, rows, cols)
+                                .onFailure { failure -> notice = failure.message }
+                        }
+                    }
+                },
+            )
         }
     }
 }

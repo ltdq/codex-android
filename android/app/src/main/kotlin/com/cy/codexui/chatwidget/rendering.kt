@@ -427,7 +427,11 @@ fun ChatScreen(
                     attachments = session.attachments.toList(),
                     onRemove = { attachment ->
                         app.onAppEvent(
-                            AppEvent.RemoveAttachment(session.threadId, attachment.id),
+                            AppEvent.RemoveAttachment(
+                                threadId = session.threadId,
+                                type = AttachmentType.fromWire(attachment.attachmentType),
+                                identityKey = attachment.identityKey,
+                            ),
                         )
                     },
                     modifier = Modifier.padding(horizontal = UiConsts.ScreenMargin),
@@ -999,7 +1003,7 @@ private fun AttachmentTray(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    text = attachment.name.ifEmpty { attachment.id },
+                    text = attachment.identityKey.ifEmpty { attachment.id },
                     fontSize = UiType.Chip,
                     lineHeight = UiType.ChipLine,
                     color = colors.onSurface,

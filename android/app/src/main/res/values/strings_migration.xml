@@ -26,11 +26,16 @@
     <string name="migration_history_empty">No imports yet</string>
     <string name="migration_history_empty_detail">Every import leaves a row here once it finishes, whether this client or the server ran it.</string>
     <string name="migration_history_time_format">MMM d, yyyy HH:mm</string>
-    <string name="migration_history_note">Record a note</string>
-    <string name="migration_history_note_detail">Leave an audit row for an import this client ran itself</string>
-    <string name="migration_history_note_title">Record an import note</string>
-    <string name="migration_history_note_summary">Note</string>
-    <string name="migration_history_note_placeholder">Imported the Claude Code MCP servers by hand</string>
-    <string name="migration_history_note_help">One line describing what was imported; it becomes the history row\'s title.</string>
-    <string name="migration_history_note_save">Record</string>
+    <string name="migration_kind_agents_md">AGENTS.md</string>
+    <string name="migration_kind_config">Config</string>
+    <string name="migration_kind_skills">Skills</string>
+    <string name="migration_kind_plugins">Plugins</string>
+    <string name="migration_kind_mcp_server_config">MCP servers</string>
+    <string name="migration_kind_subagents">Subagents</string>
+    <string name="migration_kind_hooks">Hooks</string>
+    <string name="migration_kind_commands">Commands</string>
+    <string name="migration_kind_memory">Memory</string>
+    <string name="migration_kind_sessions">Sessions</string>
+    <string name="migration_kind_unknown">Unrecognized</string>
+    <string name="migration_history_counts">%1$d imported · %2$d failed</string>
 </resources>

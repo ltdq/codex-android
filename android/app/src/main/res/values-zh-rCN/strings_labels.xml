@@ -132,6 +132,7 @@
     <string name="timeline_kind_turn">回合</string>
     <string name="timeline_kind_item">条目</string>
     <string name="timeline_kind_compaction">压缩</string>
+    <string name="timeline_kind_realtime">实时</string>
     <string name="timeline_kind_goal">目标</string>
 
     <!-- misc.kt: UserVerificationState -->

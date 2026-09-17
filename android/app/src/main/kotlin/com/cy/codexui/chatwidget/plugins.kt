@@ -40,6 +40,8 @@ import com.cy.codexui.app.PathSheet
 import com.cy.codexui.protocol.protocol.v2.MarketplaceEntry
 import com.cy.codexui.protocol.protocol.v2.PluginShareDiscoverability
 import com.cy.codexui.protocol.protocol.v2.PluginShareEntry
+import com.cy.codexui.protocol.protocol.v2.PluginSharePrincipal
+import com.cy.codexui.protocol.protocol.v2.PluginShareTarget
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.icon.MiuixIcons
@@ -153,8 +155,14 @@ fun PluginSharesScreen(
         ShareTargetsSheet(
             share = share,
             onDismiss = { updatingTargets = null },
-            onSubmit = { targets ->
-                onEvent(AppEvent.UpdatePluginShareTargets(share.remotePluginId, targets))
+            onSubmit = { discoverability, targets ->
+                onEvent(
+                    AppEvent.UpdatePluginShareTargets(
+                        remotePluginId = share.remotePluginId.orEmpty(),
+                        discoverability = discoverability,
+                        targets = targets,
+                    ),
+                )
                 updatingTargets = null
             },
         )
@@ -222,10 +230,40 @@ private fun SharesCard(
                     selected = if (selected == share.remotePluginId) null else share.remotePluginId
                 },
                 onUpdateTargets = { onUpdateTargets(share) },
-                onCheckout = { onEvent(AppEvent.CheckoutPluginShare(share.remotePluginId)) },
-                onDelete = { onEvent(AppEvent.DeletePluginShare(share.remotePluginId)) },
+                onCheckout = { share.remotePluginId?.let { onEvent(AppEvent.CheckoutPluginShare(it)) } },
+                onDelete = { share.remotePluginId?.let { onEvent(AppEvent.DeletePluginShare(it)) } },
             )
         }
+    }
+}
+
+/**
+ * A share's remote id, or `null` for one the server has not published under an id of its own.
+ *
+ * The wire attaches the sharing context to the plugin summary rather than to the list entry, so the
+ * three projections below are how this page reads what the server sent without inventing fields.
+ */
+private val PluginShareEntry.remotePluginId: String? get() = plugin.remotePluginId
+
+private val PluginShareEntry.discoverability: PluginShareDiscoverability
+    get() = plugin.shareContext?.discoverability ?: PluginShareDiscoverability.Private
+
+private val PluginShareEntry.principals: List<PluginSharePrincipal>
+    get() = plugin.shareContext?.sharePrincipals.orEmpty()
+
+/**
+ * Parse one target token.
+ *
+ * `type:id` is the protocol's own addressing; a bare id is read as a user, which is what a row of
+ * plain account names has always meant, and `type:id:role` carries an explicit role.
+ */
+private fun parseShareTarget(token: String): PluginShareTarget? {
+    if (token.isEmpty()) return null
+    val parts = token.split(':', limit = 3)
+    return when (parts.size) {
+        1 -> PluginShareTarget(principalType = "user", principalId = parts[0])
+        2 -> PluginShareTarget(principalType = parts[0], principalId = parts[1])
+        else -> PluginShareTarget(principalType = parts[0], principalId = parts[1], role = parts[2])
     }
 }
 
@@ -253,10 +291,10 @@ private fun PluginShareRow(
     onDelete: () -> Unit,
 ) {
     val discoverability = discoverabilityLabel(share.discoverability)
-    val targets = share.shareTargets.joinToString(", ")
+    val targets = share.principals.joinToString(", ") { it.principalId }
     Column(modifier = Modifier.fillMaxWidth()) {
         ActionRow(
-            title = share.pluginName,
+            title = share.plugin.name,
             // The label is the state and the targets are its detail: "workspace · team-a, team-b"
             // answers both who can see the share and who it was aimed at, which a user checking
             // whether a share went to the right place needs together.
@@ -317,17 +355,17 @@ private fun PluginShareRow(
 private fun ShareTargetsSheet(
     share: PluginShareEntry,
     onDismiss: () -> Unit,
-    onSubmit: (List<String>) -> Unit,
+    onSubmit: (PluginShareDiscoverability, List<PluginShareTarget>) -> Unit,
 ) {
     FormSheet(
         title = stringResource(R.string.plugin_shares_targets_title),
-        subtitle = share.pluginName,
+        subtitle = share.plugin.name,
         fields = listOf(
             FormField(
                 key = "targets",
                 label = stringResource(R.string.plugin_shares_targets_label),
                 placeholder = stringResource(R.string.plugin_shares_targets_placeholder),
-                initial = share.shareTargets.joinToString(", "),
+                initial = share.principals.joinToString(", ") { "${it.principalType}:${it.principalId}" },
                 // An empty target list is a legal share — it is what a private one has — so the
                 // field is not required, and clearing it is how a share is narrowed back to nobody.
                 required = false,
@@ -338,11 +376,11 @@ private fun ShareTargetsSheet(
         onDismiss = onDismiss,
         onSubmit = { values ->
             onSubmit(
+                share.discoverability,
                 values["targets"]
                     .orEmpty()
                     .split(',')
-                    .map { it.trim() }
-                    .filter { it.isNotEmpty() },
+                    .mapNotNull { parseShareTarget(it.trim()) },
             )
         },
     )
@@ -609,7 +647,7 @@ private fun discoverabilityLabel(discoverability: PluginShareDiscoverability): S
     stringResource(
         when (discoverability) {
             PluginShareDiscoverability.Private -> R.string.plugin_shares_discoverability_private
-            PluginShareDiscoverability.Workspace -> R.string.plugin_shares_discoverability_workspace
-            PluginShareDiscoverability.Public -> R.string.plugin_shares_discoverability_public
+            PluginShareDiscoverability.Unlisted -> R.string.plugin_shares_discoverability_unlisted
+            PluginShareDiscoverability.Listed -> R.string.plugin_shares_discoverability_listed
         },
     )

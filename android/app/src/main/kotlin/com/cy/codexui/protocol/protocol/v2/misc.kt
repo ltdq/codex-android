@@ -1,5 +1,8 @@
 package com.cy.codexui.protocol.protocol.v2
 
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
+
 /**
  * The long tail: search, review, attachments, terminals, projects, environments, remote control,
  * verification, external-agent migration and the diagnostics probe.
@@ -25,10 +28,14 @@ data class FuzzyFileSearchResponse(val files: List<FuzzyFileSearchResult> = empt
 
 data class FuzzyFileSearchResult(
     val path: String,
+    /** `file` or `directory`. */
     val matchType: String = "file",
     val fileName: String = "",
-    val score: Double = 0.0,
-    val indices: List<Int> = emptyList(),
+    /** Root the match was found under; `fuzzyFileSearch` is always rooted. */
+    val root: String = "",
+    /** Match score; an unsigned integer upstream, not a fraction. */
+    val score: Long = 0L,
+    val indices: List<Int>? = null,
 )
 
 /** `fuzzyFileSearch/sessionStart|sessionUpdate|sessionStop` — the incremental variant. */
@@ -99,9 +106,15 @@ data class ThreadAttachmentAddParams(
     /** `image`, `file`, … — decides how the item is rendered. */
     val attachmentType: String,
     val identityKey: String,
-    val payload: String? = null,
+    val payload: JsonElement = JsonNull,
 )
 
+/**
+ * An attachment's `attachmentType` as far as this client distinguishes it.
+ *
+ * The wire field is a plain string, and a client only sets it: the server is the one that decides
+ * how to interpret the payload, so anything unrecognised is carried through as [Other].
+ */
 enum class AttachmentType(val wire: String) {
     Image("image"),
     File("file"),
@@ -113,13 +126,37 @@ enum class AttachmentType(val wire: String) {
     }
 }
 
+/** The created or existing attachment. */
 data class ThreadAttachment(
     val id: String,
-    val attachmentType: AttachmentType = AttachmentType.File,
-    val name: String = "",
-    val path: String? = null,
-    val url: String? = null,
-    val sizeBytes: Long = 0L,
+    val attachmentType: String = "file",
+    val identityKey: String = "",
+    /** Type-specific body; opaque to this client. */
+    val payload: JsonElement = JsonNull,
+    val createdAt: Long = 0L,
+)
+
+/** `thread/attachment/add` — whether the call created the record or found the existing one. */
+enum class ThreadAttachmentAddOutcome(val wire: String) {
+    Created("created"),
+    Existing("existing"),
+    ;
+
+    companion object {
+        fun fromWire(value: String?): ThreadAttachmentAddOutcome =
+            entries.firstOrNull { it.wire == value } ?: Existing
+    }
+}
+
+data class ThreadAttachmentAddResponse(
+    val outcome: ThreadAttachmentAddOutcome = ThreadAttachmentAddOutcome.Existing,
+    val attachment: ThreadAttachment = ThreadAttachment(id = ""),
+)
+
+data class ThreadAttachmentListParams(
+    val threadId: String,
+    val cursor: String? = null,
+    val limit: Int? = null,
 )
 
 data class ThreadAttachmentListResponse(
@@ -129,8 +166,29 @@ data class ThreadAttachmentListResponse(
 
 data class ThreadAttachmentRemoveParams(
     val threadId: String,
-    val attachmentId: String,
+    val attachmentType: String,
+    val identityKey: String,
 )
+
+/** `thread/attachment/updated`. */
+data class ThreadAttachmentUpdatedNotification(
+    val threadId: String,
+    val attachmentType: String = "",
+    val identityKey: String = "",
+    val attachmentId: String = "",
+    val operation: ThreadAttachmentOperation = ThreadAttachmentOperation.Created,
+)
+
+enum class ThreadAttachmentOperation(val wire: String) {
+    Created("created"),
+    Deleted("deleted"),
+    ;
+
+    companion object {
+        fun fromWire(value: String?): ThreadAttachmentOperation =
+            entries.firstOrNull { it.wire == value } ?: Created
+    }
+}
 
 /** `thread/backgroundTerminals/list`. */
 data class ThreadBackgroundTerminalsListParams(
@@ -139,15 +197,24 @@ data class ThreadBackgroundTerminalsListParams(
     val limit: Int? = null,
 )
 
-data class BackgroundTerminal(
+/**
+ * One long-lived terminal a turn left running.
+ *
+ * The resource numbers are optional because a terminal that has just started, or one whose process
+ * the OS no longer reports, sends neither.
+ */
+data class ThreadBackgroundTerminal(
+    val itemId: String,
     val processId: String,
     val command: String = "",
     val cwd: String = "",
-    val startedAt: Long = 0L,
+    val osPid: Long? = null,
+    val cpuPercent: Double? = null,
+    val rssKb: Long? = null,
 )
 
 data class ThreadBackgroundTerminalsListResponse(
-    val data: List<BackgroundTerminal> = emptyList(),
+    val data: List<ThreadBackgroundTerminal> = emptyList(),
     val nextCursor: String? = null,
 )
 
@@ -156,6 +223,8 @@ data class ThreadBackgroundTerminalsTerminateParams(
     val processId: String,
 )
 
+data class ThreadBackgroundTerminalsTerminateResponse(val terminated: Boolean = false)
+
 /** `thread/timeline/list` — the sparse "what happened when" index behind the scrubber. */
 data class ThreadTimelineListParams(
     val threadId: String,
@@ -163,30 +232,67 @@ data class ThreadTimelineListParams(
     val limit: Int? = null,
 )
 
-data class TimelineEntry(
-    val id: String,
-    val turnId: String = "",
-    val label: String = "",
-    val kind: TimelineEntryKind = TimelineEntryKind.Item,
-    val at: Long = 0L,
-)
+/**
+ * One entry of `thread/timeline/list`, in canonical rollout order.
+ *
+ * A tagged union upstream rather than a flat record, so it is one here too: an item entry carries
+ * the item, a turn boundary carries only its id and timing. [position] is the entry's index in the
+ * rollout and is the only field every variant has.
+ */
+sealed interface TimelineEntry {
+    val position: Long
 
-enum class TimelineEntryKind(val wire: String) {
-    Turn("turn"),
-    Item("item"),
-    Compaction("compaction"),
-    Goal("goal"),
-    ;
+    data class Item(
+        override val position: Long,
+        val turnId: String,
+        val item: com.cy.codexui.protocol.protocol.item.ThreadItem,
+    ) : TimelineEntry
 
-    companion object {
-        fun fromWire(value: String?): TimelineEntryKind =
-            entries.firstOrNull { it.wire == value } ?: Item
-    }
+    data class Realtime(
+        override val position: Long,
+        val item: ThreadRealtimeItem,
+    ) : TimelineEntry
+
+    data class TurnStarted(
+        override val position: Long,
+        val turnId: String,
+        val startedAt: Long? = null,
+    ) : TimelineEntry
+
+    data class TurnCompleted(
+        override val position: Long,
+        val turnId: String,
+        val status: TurnStatus,
+        val error: String? = null,
+        val startedAt: Long? = null,
+        val completedAt: Long? = null,
+        val durationMs: Long? = null,
+    ) : TimelineEntry
 }
 
+/** `thread/timeline/list` response envelope. */
 data class ThreadTimelineListResponse(
     val data: List<TimelineEntry> = emptyList(),
     val nextCursor: String? = null,
+    val activeRealtimeSessionAtPageStart: String? = null,
+)
+
+/**
+ * One durable realtime fact in the timeline.
+ *
+ * The wire type flattens its tagged content into the item, so the variant payloads are optional
+ * fields here: `type` is the discriminant, and which of [role]/[text]/[turnId]/[itemId]/[outcome]
+ * are set follows from it.
+ */
+data class ThreadRealtimeItem(
+    val id: String,
+    val realtimeSessionId: String = "",
+    val type: String = "",
+    val role: String? = null,
+    val text: String? = null,
+    val turnId: String? = null,
+    val itemId: String? = null,
+    val outcome: String? = null,
 )
 
 /** `thread/search` — find threads by text. */
@@ -208,10 +314,17 @@ data class ThreadSearchOccurrencesParams(
     val limit: Int? = null,
 )
 
+/** UTF-16 code-unit range within a snippet. */
+data class ThreadSearchTextRange(val start: Int = 0, val end: Int = 0)
+
 data class ThreadSearchOccurrence(
+    val turnId: String,
     val itemId: String,
     val snippet: String = "",
-    val offset: Int = 0,
+    /** Match range within [snippet], in UTF-16 code units. */
+    val snippetMatchRange: ThreadSearchTextRange = ThreadSearchTextRange(),
+    /** Opaque cursor `thread/turns/list` accepts for the turn this occurrence is in. */
+    val turnCursor: String = "",
 )
 
 data class ThreadSearchOccurrencesResponse(
@@ -326,18 +439,19 @@ data class CollaborationModeListResponse(val data: List<CollaborationModeEntry> 
 /** `server/diagnostics` — a content-free probe used by the connection banner. */
 data class ServerDiagnosticsResponse(
     val process: ServerDiagnosticsProcess = ServerDiagnosticsProcess(),
-    val gauges: List<ServerDiagnosticGauge> = emptyList(),
+    val gauges: List<ServerDiagnosticsGauge> = emptyList(),
 )
 
+/** The server process behind the connection: id plus the two memory readings it can report. */
 data class ServerDiagnosticsProcess(
-    val pid: Int = 0,
-    val version: String = "",
-    val uptimeSeconds: Long = 0L,
+    val id: Long = 0L,
+    val residentMemoryBytes: Long? = null,
+    val physicalFootprintBytes: Long? = null,
 )
 
-data class ServerDiagnosticGauge(
+data class ServerDiagnosticsGauge(
     val name: String,
-    val value: Double = 0.0,
+    val value: Long = 0L,
 )
 
 /** `feedback/upload`. */
@@ -346,10 +460,15 @@ data class FeedbackUploadParams(
     val reason: String? = null,
     val threadId: String? = null,
     val includeLogs: Boolean = false,
+    val extraLogFiles: List<String>? = null,
     val tags: Map<String, String>? = null,
 )
 
-data class FeedbackUploadResponse(val reportId: String = "")
+/** `feedback/upload` response: which rollout the report was filed against. */
+data class FeedbackUploadResponse(
+    val threadId: String = "",
+    val promptHash: String? = null,
+)
 
 // ---------------------------------------------------------------------------------------------
 // projects and environments
@@ -657,42 +776,122 @@ data class AttestationGenerateResponse(val token: String = "")
 // external agent config migration
 // ---------------------------------------------------------------------------------------------
 
-/** One thing a competing agent's config would bring over. */
+/**
+ * One thing a competing agent's config would bring over.
+ *
+ * [itemType] uses the protocol's uppercase wire values (`AGENTS_MD`, `CONFIG`, `SKILLS`, …).
+ * `selected` is absent upstream: every detected item is passed back by the client, which
+ * is why an import carries whole items rather than ids.
+ */
 data class ExternalAgentConfigMigrationItem(
-    val id: String,
-    val kind: String = "",
-    val label: String = "",
-    val detail: String? = null,
-    val selected: Boolean = true,
+    val itemType: String,
+    val description: String,
+    /** Null or empty means home-scoped; non-empty means repo-scoped. */
+    val cwd: String? = null,
+    val details: MigrationDetails? = null,
 )
 
-data class ExternalAgentConfigDetectParams(val cwd: String? = null)
+/** The per-type detail of one migration item; every list is independently optional upstream. */
+data class MigrationDetails(
+    val plugins: List<PluginsMigration> = emptyList(),
+    val skills: List<NamedMigration> = emptyList(),
+    val sessions: List<SessionMigration> = emptyList(),
+    val mcpServers: List<NamedMigration> = emptyList(),
+    val hooks: List<NamedMigration> = emptyList(),
+    val subagents: List<NamedMigration> = emptyList(),
+    val commands: List<NamedMigration> = emptyList(),
+    val memory: List<String> = emptyList(),
+)
+
+data class PluginsMigration(
+    val marketplaceName: String = "",
+    val pluginNames: List<String> = emptyList(),
+)
+
+/** `{name}` detail shared by skills, MCP servers, hooks, subagents and commands. */
+data class NamedMigration(val name: String = "")
+
+data class SessionMigration(
+    val path: String = "",
+    val cwd: String = "",
+    val title: String? = null,
+)
+
+data class ExternalAgentConfigDetectParams(
+    val includeHome: Boolean = false,
+    val cwds: List<String>? = null,
+    val maxSessionAgeDays: Int? = null,
+    val maxSessions: Int? = null,
+    val source: String? = null,
+    val migrationSource: String? = null,
+)
 
 data class ExternalAgentConfigDetectResponse(
     val items: List<ExternalAgentConfigMigrationItem> = emptyList(),
+    val connectors: List<ExternalAgentDetectedConnectorCandidate> = emptyList(),
+)
+
+/** A connector the migration source detected, with how many sessions referenced it. */
+data class ExternalAgentDetectedConnectorCandidate(
+    val name: String,
+    val sessionCount: Long = 0L,
+    val source: String = "",
 )
 
 data class ExternalAgentConfigImportParams(
-    val itemIds: List<String> = emptyList(),
-    val cwd: String? = null,
+    val migrationItems: List<ExternalAgentConfigMigrationItem> = emptyList(),
+    val source: String? = null,
+    val providerId: String? = null,
+    val migrationSource: String? = null,
 )
 
-data class ExternalAgentConfigImportResponse(val imported: Int = 0)
+data class ExternalAgentConfigImportResponse(val importId: String = "")
+
+/** One item type's successes and failures inside a recorded import. */
+data class ExternalAgentConfigImportTypeResult(
+    val itemType: String,
+    val successes: List<ExternalAgentConfigImportSuccess> = emptyList(),
+    val failures: List<ExternalAgentConfigImportFailure> = emptyList(),
+)
+
+data class ExternalAgentConfigImportSuccess(
+    val itemType: String = "",
+    val cwd: String? = null,
+    val source: String? = null,
+    val target: String? = null,
+    val title: String? = null,
+)
+
+data class ExternalAgentConfigImportFailure(
+    val itemType: String = "",
+    val errorType: String? = null,
+    val subErrorType: String? = null,
+    val failureStage: String = "",
+    val message: String = "",
+    val cwd: String? = null,
+    val source: String? = null,
+)
 
 data class ExternalAgentConfigImportHistory(
-    val id: String,
-    val at: Long = 0L,
-    val summary: String = "",
+    val importId: String,
+    val providerId: String? = null,
+    val completedAtMs: Long = 0L,
+    val successes: List<ExternalAgentConfigImportSuccess> = emptyList(),
+    val failures: List<ExternalAgentConfigImportFailure> = emptyList(),
 )
 
-data class ExternalAgentConfigImportReadHistoriesResponse(
+data class ExternalAgentConfigImportHistoriesReadResponse(
     val data: List<ExternalAgentConfigImportHistory> = emptyList(),
 )
 
-data class ExternalAgentConfigImportRecordHistoryParams(
-    val id: String,
-    val summary: String = "",
+/** `externalAgentConfig/import/recordHistory` params. */
+data class ExternalAgentConfigImportHistoryRecordParams(
+    /** Opaque provider identifier for the externally completed import. */
+    val providerId: String,
+    val itemTypeResults: List<ExternalAgentConfigImportTypeResult> = emptyList(),
 )
+
+data class ExternalAgentConfigImportHistoryRecordResponse(val importId: String = "")
 
 // ---------------------------------------------------------------------------------------------
 // windows sandbox
@@ -780,21 +979,49 @@ data class FileChangePatchUpdatedNotification(
     val changes: List<FileUpdateChange> = emptyList(),
 )
 
-/** `hook/started` and `hook/completed`. */
-data class HookStartedNotification(
-    val threadId: String,
-    val hookId: String,
-    val name: String = "",
-    val event: String = "",
+/**
+ * One hook execution, from `hook/started` and `hook/completed`.
+ *
+ * `status` is `running`, `completed`, `failed`, `blocked` or `stopped`; the started notification
+ * always carries `running`, which is why both notifications share this shape.
+ */
+data class HookRunSummary(
+    val id: String,
+    val eventName: String = "",
+    val handlerType: String = "",
+    val executionMode: String = "",
+    val scope: String = "",
+    val sourcePath: String = "",
+    val source: String = "",
+    val displayOrder: Long = 0L,
+    val status: String = "running",
+    val statusMessage: String? = null,
+    val startedAt: Long = 0L,
+    val completedAt: Long? = null,
+    val durationMs: Long? = null,
+    val entries: List<HookOutputEntry> = emptyList(),
+) {
+    val failed: Boolean get() = status == "failed" || status == "blocked" || status == "stopped"
+}
+
+data class HookOutputEntry(
+    /** `warning`, `stop`, `feedback`, `context` or `error`. */
+    val kind: String = "",
+    val text: String = "",
 )
 
+/** `hook/started`. */
+data class HookStartedNotification(
+    val threadId: String,
+    val turnId: String? = null,
+    val run: HookRunSummary = HookRunSummary(id = ""),
+)
+
+/** `hook/completed`. */
 data class HookCompletedNotification(
     val threadId: String,
-    val hookId: String,
-    val name: String = "",
-    val success: Boolean = true,
-    val output: String? = null,
-    val durationMs: Long = 0L,
+    val turnId: String? = null,
+    val run: HookRunSummary = HookRunSummary(id = ""),
 )
 
 /** `project/changed` and `thread/project/updated`. */

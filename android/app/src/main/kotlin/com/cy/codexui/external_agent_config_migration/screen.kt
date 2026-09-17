@@ -19,16 +19,13 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import com.cy.codexui.ActionRow
 import com.cy.codexui.AppEvent
 import com.cy.codexui.ButtonRole
 import com.cy.codexui.CatalogState
@@ -44,8 +41,6 @@ import com.cy.codexui.SurfaceBackButton
 import com.cy.codexui.SurfaceHeader
 import com.cy.codexui.UiConsts
 import com.cy.codexui.UiType
-import com.cy.codexui.app.FormField
-import com.cy.codexui.app.FormSheet
 import com.cy.codexui.codeSurface
 import com.cy.codexui.protocol.protocol.v2.ExternalAgentConfigImportHistory
 import com.cy.codexui.protocol.protocol.v2.ExternalAgentConfigMigrationItem
@@ -57,7 +52,6 @@ import top.yukonga.miuix.kmp.basic.LinearProgressIndicator
 import top.yukonga.miuix.kmp.basic.ProgressIndicatorDefaults
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.icon.MiuixIcons
-import top.yukonga.miuix.kmp.icon.extended.Add
 import top.yukonga.miuix.kmp.icon.extended.ConvertFile
 import top.yukonga.miuix.kmp.icon.extended.Info
 import top.yukonga.miuix.kmp.icon.extended.Notes
@@ -84,8 +78,7 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
  * @param catalog the catalog the page reads: what detection found, the import history, and the
  *   progress of an import that is running right now.
  * @param onEvent where the page's events go — [AppEvent.ReloadExternalAgentConfig] on entry,
- *   [AppEvent.DetectExternalAgentConfig], [AppEvent.ImportExternalAgentConfig] and
- *   [AppEvent.RecordExternalAgentImportHistory].
+ *   [AppEvent.DetectExternalAgentConfig] and [AppEvent.ImportExternalAgentConfig].
  * @param onBack closes the page.
  * @param modifier layout modifier for the page frame.
  */
@@ -99,13 +92,12 @@ fun ExternalAgentImportScreen(
     val colors = MiuixTheme.colorScheme
     val items = catalog.externalAgentConfig
     val histories = catalog.externalAgentImportHistories
-    var recordingNote by remember { mutableStateOf(false) }
-    // Keyed on the list itself, so a new detection result replaces the draft rather than leaving
-    // ticks against ids that may no longer have a row to sit on.
+    // The protocol has no per-item id: an import sends the detected items back whole, so selection
+    // is keyed by what identifies one item — type, scope and description.
     val selection = remember(items) {
-        mutableStateMapOf<String, Boolean>().apply { items.forEach { put(it.id, it.selected) } }
+        mutableStateMapOf<String, Boolean>().apply { items.forEach { put(it.selectionKey(), true) } }
     }
-    val selectedIds = items.filter { selection[it.id] == true }.map { it.id }
+    val selected = items.filter { selection[it.selectionKey()] == true }
 
     // One event covers both reads — detection and the import history — and the app runs them as two
     // independent requests, so a detection that fails still leaves the history on screen.
@@ -130,45 +122,29 @@ fun ExternalAgentImportScreen(
             MigrationSelectionCard(
                 items = items,
                 selected = selection,
-                selectedIds = selectedIds,
-                onToggle = { id, checked -> selection[id] = checked },
-                onSelectAll = { value -> items.forEach { selection[it.id] = value } },
-                onImport = { onEvent(AppEvent.ImportExternalAgentConfig(selectedIds)) },
+                selectedCount = selected.size,
+                onToggle = { key, checked -> selection[key] = checked },
+                onSelectAll = { value -> items.forEach { selection[it.selectionKey()] = value } },
+                onImport = { onEvent(AppEvent.ImportExternalAgentConfig(selected)) },
             )
             val progress = catalog.externalAgentImport
             if (progress != null) {
                 MigrationProgressCard(progress = progress)
             }
-            MigrationHistoryCard(histories = histories, onRecordNote = { recordingNote = true })
+            MigrationHistoryCard(histories = histories)
         }
     }
-
-    if (recordingNote) {
-        FormSheet(
-            title = stringResource(R.string.migration_history_note_title),
-            subtitle = stringResource(R.string.migration_history_note_detail),
-            fields = listOf(
-                FormField(
-                    key = "summary",
-                    label = stringResource(R.string.migration_history_note_summary),
-                    placeholder = stringResource(R.string.migration_history_note_placeholder),
-                    help = stringResource(R.string.migration_history_note_help),
-                ),
-            ),
-            confirmLabel = stringResource(R.string.migration_history_note_save),
-            onDismiss = { recordingNote = false },
-            onSubmit = { values ->
-                onEvent(
-                    AppEvent.RecordExternalAgentImportHistory(
-                        id = noteHistoryId(System.currentTimeMillis()),
-                        summary = values["summary"].orEmpty().trim(),
-                    ),
-                )
-                recordingNote = false
-            },
-        )
-    }
 }
+
+/**
+ * The identity of one detected item inside this page.
+ *
+ * The description is part of the key because one working directory can produce several items of the
+ * same type — a `SKILLS` row per skill — and keying on the type alone would make selecting one
+ * select all of them.
+ */
+private fun ExternalAgentConfigMigrationItem.selectionKey(): String =
+    "$itemType\u0000${cwd.orEmpty()}\u0000$description"
 
 /**
  * The detect step, and the sentence that makes it safe to press.
@@ -226,9 +202,8 @@ private fun MigrationDetectCard(onEvent: (AppEvent) -> Unit) {
  * The choose step: what detection found, one switch per item, and the import.
  *
  * The draft selection lives here rather than in the catalog because it is exactly that — a draft.
- * The server's own `selected` flags are the starting position, and everything after that is the
- * user deciding; putting it back into [CatalogState] would make a half-made choice look like server
- * state and would be wrong the moment a second detection arrived.
+ * Putting it back into [CatalogState] would make a half-made choice look like server state and
+ * would be wrong the moment a second detection arrived.
  *
  * The import sits under the list rather than in the progress card below it. The progress card
  * exists only while an import runs, so an action living there would vanish with it — taking the
@@ -238,7 +213,7 @@ private fun MigrationDetectCard(onEvent: (AppEvent) -> Unit) {
 private fun MigrationSelectionCard(
     items: List<ExternalAgentConfigMigrationItem>,
     selected: Map<String, Boolean>,
-    selectedIds: List<String>,
+    selectedCount: Int,
     onToggle: (String, Boolean) -> Unit,
     onSelectAll: (Boolean) -> Unit,
     onImport: () -> Unit,
@@ -270,7 +245,7 @@ private fun MigrationSelectionCard(
                     onClick = { onSelectAll(true) },
                     size = CodexButtonSize.Compact,
                     role = ButtonRole.Secondary,
-                    enabled = items.any { selected[it.id] != true },
+                    enabled = items.any { selected[it.selectionKey()] != true },
                 )
                 Spacer(Modifier.width(UiConsts.Space6))
                 CodexButton(
@@ -278,11 +253,11 @@ private fun MigrationSelectionCard(
                     onClick = { onSelectAll(false) },
                     size = CodexButtonSize.Compact,
                     role = ButtonRole.Secondary,
-                    enabled = items.any { selected[it.id] == true },
+                    enabled = items.any { selected[it.selectionKey()] == true },
                 )
                 Spacer(Modifier.weight(1f))
                 Text(
-                    text = stringResource(R.string.migration_selection_count, selectedIds.size),
+                    text = stringResource(R.string.migration_selection_count, selectedCount),
                     fontSize = UiType.Meta,
                     lineHeight = UiType.MetaLine,
                     color = colors.onSurfaceVariantSummary,
@@ -293,22 +268,20 @@ private fun MigrationSelectionCard(
         }
         items.forEachIndexed { index, item ->
             if (index > 0) CodexDivider()
-            // `kind` first because it is the protocol's own word for what the item is, and the
-            // detail is the human sentence about it; a row showing only one of the two either
-            // repeats the label or says nothing about what would be copied. A blank on either side
-            // is dropped rather than joined, so no row carries a dangling separator.
-            val kind = item.kind
-            val detail = item.detail?.takeIf { it.isNotBlank() }
+            // The type first because it is the protocol's own word for what the item is, and the
+            // description is the server's sentence about it; a row showing only one of the two
+            // either repeats the title or says nothing about what would be copied.
+            val kind = migrationItemTypeLabel(item.itemType)
             val subtitle = when {
-                detail == null -> kind
-                kind.isBlank() -> detail
-                else -> stringResource(R.string.migration_item_subtitle, kind, detail)
-            }.ifEmpty { null }
+                item.description.isBlank() -> item.cwd ?: kind
+                item.cwd == null -> "$kind · ${item.description}"
+                else -> "$kind · ${item.description} · ${item.cwd}"
+            }
             CodexSwitchRow(
-                title = item.label.ifBlank { item.id },
+                title = item.description.ifBlank { kind },
                 subtitle = subtitle,
-                checked = selected[item.id] == true,
-                onCheckedChange = { onToggle(item.id, it) },
+                checked = selected[item.selectionKey()] == true,
+                onCheckedChange = { onToggle(item.selectionKey(), it) },
             )
         }
         Spacer(Modifier.height(UiConsts.Space10))
@@ -318,10 +291,29 @@ private fun MigrationSelectionCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = UiConsts.Space4),
-            enabled = selectedIds.isNotEmpty(),
+            enabled = selectedCount > 0,
         )
     }
 }
+
+/** The server's uppercase item type, as a label the page can show. */
+@Composable
+@ReadOnlyComposable
+private fun migrationItemTypeLabel(type: String): String = stringResource(
+    when (type) {
+        "AGENTS_MD" -> R.string.migration_kind_agents_md
+        "CONFIG" -> R.string.migration_kind_config
+        "SKILLS" -> R.string.migration_kind_skills
+        "PLUGINS" -> R.string.migration_kind_plugins
+        "MCP_SERVER_CONFIG" -> R.string.migration_kind_mcp_server_config
+        "SUBAGENTS" -> R.string.migration_kind_subagents
+        "HOOKS" -> R.string.migration_kind_hooks
+        "COMMANDS" -> R.string.migration_kind_commands
+        "MEMORY" -> R.string.migration_kind_memory
+        "SESSIONS" -> R.string.migration_kind_sessions
+        else -> R.string.migration_kind_unknown
+    },
+)
 
 /**
  * What a running import is doing.
@@ -374,21 +366,15 @@ private fun MigrationProgressCard(progress: ImportProgress) {
 }
 
 /**
- * The audit trail: every import the server has recorded, newest first, plus a way to add to it.
+ * The audit trail: every import the server has recorded, newest first.
  *
- * `externalAgentConfig/import/recordHistory` is exposed here, apart from the import itself, because
- * the two are not the same act. The import call runs a migration and records the row that says so;
- * recording writes only the row. A client that migrated something itself — one item at a time, by
- * hand, or through a path this page never sees — can therefore leave the same audit row a
- * server-driven import would have left, and the history stays a complete account of what was
- * brought over rather than a log of one call site.
+ * Read-only: a history row is the server's record of a completed import, and the page that would
+ * add one by hand is not this one — `externalAgentConfig/import/recordHistory` takes per-item-type
+ * results, not a free-form note.
  */
 @Composable
-private fun MigrationHistoryCard(
-    histories: List<ExternalAgentConfigImportHistory>,
-    onRecordNote: () -> Unit,
-) {
-    val ordered = remember(histories) { histories.sortedByDescending { it.at } }
+private fun MigrationHistoryCard(histories: List<ExternalAgentConfigImportHistory>) {
+    val ordered = remember(histories) { histories.sortedByDescending { it.completedAtMs } }
     SectionCard(
         title = stringResource(R.string.migration_history_section),
         icon = MiuixIcons.Notes,
@@ -405,40 +391,45 @@ private fun MigrationHistoryCard(
             if (index > 0) CodexDivider()
             MigrationHistoryRow(history = history)
         }
-        CodexDivider()
-        ActionRow(
-            title = stringResource(R.string.migration_history_note),
-            subtitle = stringResource(R.string.migration_history_note_detail),
-            icon = MiuixIcons.Add,
-            onClick = onRecordNote,
-        )
     }
 }
 
 /**
  * One recorded import.
  *
- * A read-only row rather than an [ActionRow]: there is nothing behind a history entry to open, and
- * a chevron would promise one. The timestamp is the only ordering key the row has, so it is
- * rendered in the user's locale and time zone instead of as the epoch milliseconds it arrives as.
+ * A read-only row rather than an ActionRow: there is nothing behind a history entry to open, and a
+ * chevron would promise one. The timestamp is the only ordering key the row has, so it is rendered
+ * in the user's locale and time zone instead of as the epoch milliseconds it arrives as.
  */
 @Composable
 private fun MigrationHistoryRow(history: ExternalAgentConfigImportHistory) {
     val colors = MiuixTheme.colorScheme
-    val stamp = migrationTimeLabel(history.at)
+    val stamp = migrationTimeLabel(history.completedAtMs)
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = UiConsts.Space4, vertical = UiConsts.Space8),
     ) {
         Text(
-            text = history.summary.ifBlank { history.id },
+            text = history.providerId ?: history.importId,
             fontSize = UiType.RowTitle,
             lineHeight = UiType.RowTitleLine,
             fontWeight = FontWeight.Medium,
             color = colors.onSurface,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
+        )
+        Spacer(Modifier.height(UiConsts.Space2))
+        Text(
+            text = stringResource(
+                R.string.migration_history_counts,
+                history.successes.size,
+                history.failures.size,
+            ),
+            fontSize = UiType.Meta,
+            lineHeight = UiType.MetaLine,
+            color = colors.onSurfaceVariantSummary,
+            maxLines = 1,
         )
         if (stamp != null) {
             Spacer(Modifier.height(UiConsts.Space2))
@@ -457,7 +448,7 @@ private fun MigrationHistoryRow(history: ExternalAgentConfigImportHistory) {
  * A history row's timestamp, or `null` when the server sent none.
  *
  * `0` is the field's default on the wire, and formatting it would print 1970 under a row whose own
- * summary says it happened much later; a missing stamp is better than a wrong one.
+ * contents say it happened much later; a missing stamp is better than a wrong one.
  *
  * [ReadOnlyComposable] because the helper emits nothing of its own — it resolves a pattern resource
  * and formats a date with it — so it needs no composition group of its own.
@@ -472,14 +463,3 @@ private fun migrationTimeLabel(at: Long): String? = if (at <= 0L) {
         Locale.getDefault(),
     ).format(Date(at))
 }
-
-/**
- * Name the audit row a note is recorded under.
- *
- * `externalAgentConfig/import/recordHistory` takes the id the row will be filed under as well as
- * its summary, and nothing derives one for the caller: the history is a client-visible audit trail,
- * so the id belongs to whoever is recording. Minting it from the clock keeps two notes recorded in
- * the same session from claiming the same row, and keeps the form down to the one field a user can
- * actually answer.
- */
-private fun noteHistoryId(at: Long): String = "client_note_$at"

@@ -14,4 +14,14 @@
     <string name="bedrock_setup_title">配置 Bedrock</string>
     <string name="bedrock_setup_detail">配置会把当前账号从 ChatGPT 切到上面选中的 Bedrock 区域。它和区域列表分成两步，是因为这一步会改动账号，而不只是读取。</string>
     <string name="bedrock_setup_action">用该区域完成配置</string>
+    <string name="bedrock_methods_title">凭据</string>
+    <string name="bedrock_region_required">需要区域</string>
+    <string name="bedrock_kind_access_keys">访问密钥</string>
+    <string name="bedrock_kind_bedrock_api_key">Bedrock API 密钥</string>
+    <string name="bedrock_summary_profile">%1$s · %2$s</string>
+    <string name="bedrock_summary_environment">环境变量 · %1$s</string>
+    <string name="bedrock_region_form_title">区域</string>
+    <string name="bedrock_region_form_label">AWS 区域</string>
+    <string name="bedrock_region_form_placeholder">us-east-1</string>
+    <string name="bedrock_region_form_confirm">使用该区域</string>
 </resources>

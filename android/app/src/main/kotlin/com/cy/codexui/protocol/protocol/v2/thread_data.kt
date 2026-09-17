@@ -150,7 +150,7 @@ enum class SkillScope(val wire: String) {
     System("system"),
 }
 
-/** `plugin/list` entry. */
+/** `plugin/list` entry: the parts of `PluginSummary` this client renders. */
 data class PluginEntry(
     val id: String,
     val name: String,
@@ -158,6 +158,10 @@ data class PluginEntry(
     val installed: Boolean = false,
     val version: String = "",
     val marketplace: String = "",
+    /** Backend remote plugin identifier, when the plugin service published one. */
+    val remotePluginId: String? = null,
+    /** Remote sharing context, when this account has shared the plugin. */
+    val shareContext: PluginShareContext? = null,
 )
 
 /** `app/list` entry — connectors exposed by the account. */
@@ -168,14 +172,47 @@ data class AppInfo(
     val installed: Boolean = false,
 )
 
-/** `hooks/list` entry. */
-data class HookEntry(
-    val id: String,
-    val name: String,
-    val event: String,
-    val command: String,
+/**
+ * One hook configured for a working directory.
+ *
+ * Mirrors `v2::HookMetadata`. The handler is a flattened tagged union upstream (`handlerType` plus
+ * that variant's fields), so the variant fields are carried as optionals here and [handlerType]
+ * says which are meaningful.
+ */
+data class HookMetadata(
+    /** Stable identity of the hook inside its config source. */
+    val key: String,
+    val eventName: String,
+    /** `command`, `mcpTool`, `prompt` or `agent`. */
+    val handlerType: String = "",
+    val command: String? = null,
+    val async: Boolean = false,
+    val server: String? = null,
+    val tool: String? = null,
+    val matcher: String? = null,
+    val timeoutSec: Long = 0L,
+    val statusMessage: String? = null,
+    val additionalContextLimit: Int? = null,
+    val sourcePath: String = "",
+    val source: String = "",
+    val pluginId: String? = null,
+    val displayOrder: Long = 0L,
     val enabled: Boolean = true,
+    val isManaged: Boolean = false,
+    val currentHash: String = "",
+    /** `managed`, `untrusted`, `trusted` or `modified`. */
+    val trustStatus: String = "",
 )
+
+/** One `hooks/list` entry: the hooks discovered under one working directory. */
+data class HooksListEntry(
+    val cwd: String = "",
+    val hooks: List<HookMetadata> = emptyList(),
+    val warnings: List<String> = emptyList(),
+    val errors: List<HookErrorInfo> = emptyList(),
+)
+
+data class HookErrorInfo(val path: String = "", val message: String = "")
 
 /** `account/read` response. */
 data class AccountInfo(

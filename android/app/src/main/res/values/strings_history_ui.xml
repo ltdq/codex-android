@@ -43,4 +43,5 @@
     <string name="history_ui_item_files">%1$s (+%2$d files)</string>
     <string name="history_ui_item_sleep">%1$d ms</string>
     <string name="history_ui_item_compaction">Context compaction</string>
+    <string name="history_ui_timeline_turn_detail">%1$s · %2$d ms</string>
 </resources>

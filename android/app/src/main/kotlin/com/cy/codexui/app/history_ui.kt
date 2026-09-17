@@ -403,9 +403,9 @@ fun ThreadHistoryScreen(
                         else -> entries.forEachIndexed { position, entry ->
                             if (position > 0) CodexDivider()
                             HistoryRow(
-                                summary = entry.id,
-                                label = entry.kind.label(),
-                                detail = entry.label.takeIf { it.isNotBlank() },
+                                summary = timelineSummary(entry),
+                                label = entry.label(),
+                                detail = timelineDetail(entry),
                             )
                         }
                     }
@@ -443,9 +443,9 @@ fun ThreadHistoryScreen(
                                 )
 
                                 is HistoryPageRow.Timeline -> HistoryRow(
-                                    summary = row.entry.id,
-                                    label = row.entry.kind.label(),
-                                    detail = row.entry.label.takeIf { it.isNotBlank() },
+                                    summary = timelineSummary(row.entry),
+                                    label = row.entry.label(),
+                                    detail = timelineDetail(row.entry),
                                 )
                             }
                         }
@@ -618,7 +618,40 @@ private fun fileChangeSummary(item: FileChangeItem): String {
 private fun qualified(namespace: String?, name: String): String? = listOfNotNull(namespace, name)
     .filter { it.isNotBlank() }
     .joinToString("/")
-    .takeIf { it.isNotEmpty() }
+
+/**
+ * The identifying string of a timeline entry: the item's id, or the turn boundary's turn id.
+ *
+ * The upstream entry has no id field of its own — the union's variants each name what they are
+ * about — so the row's summary is derived from whichever variant arrived.
+ */
+@Composable
+@ReadOnlyComposable
+private fun timelineSummary(entry: TimelineEntry): String = when (entry) {
+    is TimelineEntry.Item -> itemSummary(entry.item)
+    is TimelineEntry.Realtime -> entry.item.id
+    is TimelineEntry.TurnStarted -> entry.turnId
+    is TimelineEntry.TurnCompleted -> entry.turnId
+}
+
+/**
+ * The detail line of a timeline entry, or `null` when the variant carries nothing more to say.
+ *
+ * A transcript turn is the unit a reader scans for, so a completed boundary reports how it ended
+ * and how long it took; an in-progress item entry has no such summary and stays a single line.
+ */
+@Composable
+@ReadOnlyComposable
+private fun timelineDetail(entry: TimelineEntry): String? = when (entry) {
+    is TimelineEntry.Item -> null
+    is TimelineEntry.Realtime -> entry.item.text?.takeIf { it.isNotBlank() } ?: entry.item.type
+    is TimelineEntry.TurnStarted -> null
+    is TimelineEntry.TurnCompleted -> stringResource(
+        R.string.history_ui_timeline_turn_detail,
+        entry.status.label(),
+        entry.durationMs ?: 0L,
+    )
+}
 
 /** The one string an input carries, or null when it carries none of its own. */
 private fun UserInput.summaryLine(): String? = when (this) {
@@ -754,7 +787,7 @@ private fun OccurrenceRow(hit: OccurrenceMatch) {
             )
             Spacer(Modifier.width(UiConsts.Space8))
             Text(
-                text = stringResource(R.string.history_ui_hit_offset, hit.offset),
+                text = stringResource(R.string.history_ui_hit_offset, hit.start),
                 fontSize = UiType.Caption,
                 lineHeight = UiType.CaptionLine,
                 color = colors.onSurfaceVariantSummary,

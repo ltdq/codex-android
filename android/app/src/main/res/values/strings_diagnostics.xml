@@ -15,9 +15,8 @@
     <string name="diagnostics_screen_check">Read diagnostics</string>
     <string name="diagnostics_process_section">Server process</string>
     <string name="diagnostics_process_pid">Process id</string>
-    <string name="diagnostics_process_version">Version</string>
-    <string name="diagnostics_process_uptime">Uptime</string>
-    <string name="diagnostics_process_uptime_value">%1$dd %2$dh %3$dm</string>
+    <string name="diagnostics_process_resident">Resident memory</string>
+    <string name="diagnostics_process_footprint">Physical footprint</string>
     <string name="diagnostics_gauges_section">Gauges</string>
     <string name="diagnostics_gauges_empty">The server reported no gauges.</string>
     <string name="diagnostics_gauges_note">Each bar is that gauge\'s share of the largest one here (%1$s), not a percentage of any capacity.</string>

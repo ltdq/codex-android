@@ -11,15 +11,15 @@
     <string name="plugin_shares_shares_empty_detail">发布会把本地插件的一份副本上传到账号；插件本身仍然留在磁盘上。</string>
     <string name="plugin_shares_row_targets">%1$s · %2$s</string>
     <string name="plugin_shares_discoverability_private">私有</string>
-    <string name="plugin_shares_discoverability_workspace">工作区</string>
-    <string name="plugin_shares_discoverability_public">公开</string>
+    <string name="plugin_shares_discoverability_unlisted">不公开列出</string>
+    <string name="plugin_shares_discoverability_listed">公开列出</string>
     <string name="plugin_shares_update_targets">修改分享对象</string>
     <string name="plugin_shares_checkout">检出</string>
     <string name="plugin_shares_delete">删除分享</string>
     <string name="plugin_shares_targets_title">分享对象</string>
     <string name="plugin_shares_targets_label">对象列表</string>
-    <string name="plugin_shares_targets_placeholder">team-a, team-b</string>
-    <string name="plugin_shares_targets_help">用逗号分隔的工作区或账号名称；留空表示不分享给任何人。</string>
+    <string name="plugin_shares_targets_placeholder">user:alice, group:team-a</string>
+    <string name="plugin_shares_targets_help">用逗号分隔的对象，格式为 类型:id，例如 user:alice 或 group:team-a；留空表示不分享给任何人。</string>
     <string name="plugin_shares_targets_confirm">保存分享对象</string>
 
     <string name="plugin_shares_publish_title">发布插件</string>

@@ -11,15 +11,15 @@
     <string name="plugin_shares_shares_empty_detail">Publishing uploads a copy of a local plugin to the account. The plugin itself stays on disk.</string>
     <string name="plugin_shares_row_targets">%1$s · %2$s</string>
     <string name="plugin_shares_discoverability_private">Private</string>
-    <string name="plugin_shares_discoverability_workspace">Workspace</string>
-    <string name="plugin_shares_discoverability_public">Public</string>
+    <string name="plugin_shares_discoverability_unlisted">Unlisted</string>
+    <string name="plugin_shares_discoverability_listed">Listed</string>
     <string name="plugin_shares_update_targets">Update targets</string>
     <string name="plugin_shares_checkout">Check out</string>
     <string name="plugin_shares_delete">Delete share</string>
     <string name="plugin_shares_targets_title">Share targets</string>
     <string name="plugin_shares_targets_label">Targets</string>
-    <string name="plugin_shares_targets_placeholder">team-a, team-b</string>
-    <string name="plugin_shares_targets_help">Comma-separated workspace or account names. Leave it empty to share with nobody.</string>
+    <string name="plugin_shares_targets_placeholder">user:alice, group:team-a</string>
+    <string name="plugin_shares_targets_help">Comma-separated targets as type:id, for example user:alice or group:team-a. Leave it empty to share with nobody.</string>
     <string name="plugin_shares_targets_confirm">Save targets</string>
 
     <string name="plugin_shares_publish_title">Publish a plugin</string>

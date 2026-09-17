@@ -41,7 +41,7 @@ import com.cy.codexui.UiConsts
 import com.cy.codexui.UiType
 import com.cy.codexui.codeSurface
 import com.cy.codexui.protocol.AppServerClient
-import com.cy.codexui.protocol.protocol.v2.BackgroundTerminal
+import com.cy.codexui.protocol.protocol.v2.ThreadBackgroundTerminal
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.icon.MiuixIcons
@@ -195,7 +195,7 @@ fun BackgroundTerminalsScreen(
  */
 @Composable
 private fun BackgroundTerminalRow(
-    terminal: BackgroundTerminal,
+    terminal: ThreadBackgroundTerminal,
     onTerminate: () -> Unit,
 ) {
     val colors = MiuixTheme.colorScheme
@@ -239,7 +239,8 @@ private fun BackgroundTerminalRow(
                 text = stringResource(
                     R.string.exec_terminals_row_meta,
                     terminal.processId,
-                    terminalAge(terminal.startedAt),
+                    terminal.osPid?.let { stringResource(R.string.exec_terminals_os_pid, it) }
+                        ?: stringResource(R.string.exec_terminals_os_pid_unknown),
                 ),
                 modifier = Modifier.fillMaxWidth(),
                 fontSize = UiType.Caption,
@@ -271,29 +272,4 @@ private fun BackgroundTerminalDivider() {
     )
 }
 
-/**
- * How long ago a terminal was started, as one of five buckets.
- *
- * Buckets rather than a live duration: this row answers "did I start this just now, or yesterday",
- * and a clock that kept a duration ticking would repaint the whole list every second for a number
- * nobody reads. Resolving the bucket through `stringResource` keeps the wording in the resource
- * files, where the other four relative-time labels live.
- *
- * @param startedAt epoch millis as `thread/backgroundTerminals/list` reports it; `0` means the
- *   server did not say, which is reported as exactly that instead of as 1970.
- */
-@Composable
-private fun terminalAge(startedAt: Long): String {
-    if (startedAt <= 0L) return stringResource(R.string.exec_terminals_age_unknown)
-    val elapsed = (System.currentTimeMillis() - startedAt).coerceAtLeast(0L)
-    val minutes = elapsed / 60_000L
-    val hours = minutes / 60L
-    val days = hours / 24L
-    return when {
-        minutes < 2L -> stringResource(R.string.exec_terminals_age_now)
-        minutes < 60L -> stringResource(R.string.exec_terminals_age_minutes, minutes)
-        hours < 24L -> stringResource(R.string.exec_terminals_age_hours, hours)
-        days < 7L -> stringResource(R.string.exec_terminals_age_days, days)
-        else -> stringResource(R.string.exec_terminals_age_weeks, days / 7L)
-    }
-}
+

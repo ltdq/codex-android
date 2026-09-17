@@ -329,8 +329,8 @@ class ChatWidget(
             }) { state.attachments.add(it) }
 
             is AppEvent.RemoveAttachment -> request({
-                client.removeAttachment(event.threadId, event.attachmentId)
-            }) { state.attachments.removeAll { it.id == event.attachmentId } }
+                client.removeAttachment(event.threadId, event.type, event.identityKey)
+            }) { state.attachments.removeAll { it.identityKey == event.identityKey } }
 
             is AppEvent.TerminateBackgroundTerminal -> request({
                 client.terminateBackgroundTerminal(event.threadId, event.processId)
@@ -422,7 +422,6 @@ class ChatWidget(
             is AppEvent.ResetMemory,
             is AppEvent.DetectExternalAgentConfig,
             is AppEvent.ImportExternalAgentConfig,
-            is AppEvent.RecordExternalAgentImportHistory,
             is AppEvent.UploadFeedback,
             is AppEvent.WindowsSandboxSetupStart,
             is AppEvent.WriteConfigValue,
@@ -768,13 +767,13 @@ class ChatWidget(
 
             // A hook that failed is worth a notice; one that succeeded is not, or a session with
             // hooks on would fill the transcript with a line per tool call.
-            is AppServerEvent.HookCompleted -> if (!event.delta.success) {
+            is AppServerEvent.HookCompleted -> if (event.delta.run.failed) {
                 state.addDiagnostic(
                     SessionDiagnostic(
                         severity = DiagnosticSeverity.Warning,
-                        message = event.delta.output,
+                        message = event.delta.run.statusMessage,
                         code = DiagnosticCode.HookFailed,
-                        args = listOf(event.delta.name),
+                        args = listOf(event.delta.run.eventName.ifEmpty { event.delta.run.id }),
                     ),
                 )
             }

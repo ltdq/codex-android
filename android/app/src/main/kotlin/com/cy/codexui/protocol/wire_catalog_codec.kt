@@ -10,6 +10,7 @@ import com.cy.codexui.protocol.protocol.required
 import com.cy.codexui.protocol.protocol.strings
 import com.cy.codexui.protocol.protocol.text
 import com.cy.codexui.protocol.protocol.v2.*
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 
 internal object WireCatalogCodec {
@@ -34,7 +35,15 @@ internal object WireCatalogCodec {
 
     fun plugin(o: JsonObject, marketplace: String) = PluginEntry(o.required("id"), o.required("name"),
         o.objectOrNull("interface")?.text("shortDescription") ?: o.objectOrNull("interface")?.text("description").orEmpty(),
-        o.bool("installed") == true, o.text("localVersion") ?: o.text("version").orEmpty(), marketplace)
+        o.bool("installed") == true, o.text("localVersion") ?: o.text("version").orEmpty(), marketplace,
+        remotePluginId = o.text("remotePluginId"),
+        shareContext = o.objectOrNull("shareContext")?.let { context ->
+            PluginShareContext(
+                shareUrl = context.text("shareUrl"),
+                discoverability = context.text("discoverability")?.let(PluginShareDiscoverability::fromWire),
+                sharePrincipals = (context["sharePrincipals"] as? JsonArray)?.map { WireCodec.pluginSharePrincipals(it.objectValue()) },
+            )
+        })
 
     fun marketplace(o: JsonObject): MarketplaceEntry {
         val name = o.required("name")

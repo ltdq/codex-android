@@ -171,42 +171,95 @@ data class PluginSkillReadParams(
 
 data class PluginSkillReadResponse(val contents: String? = null)
 
-/** How widely a shared plugin is discoverable. */
-sealed interface PluginShareDiscoverability {
-    data object Private : PluginShareDiscoverability
-    data object Workspace : PluginShareDiscoverability
-    data object Public : PluginShareDiscoverability
+/** How widely a shared plugin is discoverable; the wire values are uppercase. */
+enum class PluginShareDiscoverability(val wire: String) {
+    Listed("LISTED"),
+    Unlisted("UNLISTED"),
+    Private("PRIVATE"),
+    ;
+
+    companion object {
+        fun fromWire(value: String?): PluginShareDiscoverability =
+            entries.firstOrNull { it.wire == value } ?: Private
+    }
 }
 
-/** One installed plugin that the account has shared. */
-data class PluginShareEntry(
-    val remotePluginId: String,
-    val pluginName: String = "",
-    val discoverability: PluginShareDiscoverability = PluginShareDiscoverability.Private,
-    val shareTargets: List<String> = emptyList(),
+/** Who a share targets, and with which role. */
+data class PluginShareTarget(
+    /** `user`, `group` or `workspace`. */
+    val principalType: String,
+    val principalId: String,
+    /** `reader` or `editor`. */
+    val role: String = "reader",
 )
 
-/** `plugin/share/…`. */
+/** A resolved share principal; the server adds the display [name] and may report `owner`. */
+data class PluginSharePrincipal(
+    val principalType: String = "",
+    val principalId: String = "",
+    /** `reader`, `editor` or `owner`. */
+    val role: String = "reader",
+    val name: String = "",
+)
+
+/** The sharing context the server attaches to a plugin summary. */
+data class PluginShareContext(
+    val shareUrl: String? = null,
+    val discoverability: PluginShareDiscoverability? = null,
+    val sharePrincipals: List<PluginSharePrincipal>? = null,
+)
+
+/** One installed plugin that the account has shared or can share. */
+data class PluginShareEntry(
+    val plugin: PluginEntry,
+    /** Local checkout of this share, when one exists. */
+    val localPluginPath: String? = null,
+)
+
+/** `plugin/share/list`. */
 data class PluginShareListResponse(val data: List<PluginShareEntry> = emptyList())
 
+/**
+ * `plugin/share/save` params.
+ *
+ * [pluginPath] is the local plugin package; everything else is optional and only present when the
+ * caller is updating an existing share rather than creating one.
+ */
 data class PluginShareSaveParams(
     val pluginPath: String,
     val remotePluginId: String? = null,
-    val shareTargets: List<String>? = null,
     val discoverability: PluginShareDiscoverability? = null,
+    val shareTargets: List<PluginShareTarget>? = null,
 )
 
-data class PluginShareSaveResponse(val remotePluginId: String = "")
+data class PluginShareSaveResponse(
+    val remotePluginId: String = "",
+    val shareUrl: String = "",
+    val canPublishToWorkspace: Boolean? = null,
+)
 
 data class PluginShareDeleteParams(val remotePluginId: String)
 
 data class PluginShareCheckoutParams(val remotePluginId: String)
 
-data class PluginShareCheckoutResponse(val pluginPath: String = "")
+data class PluginShareCheckoutResponse(
+    val remotePluginId: String = "",
+    val pluginId: String = "",
+    val pluginName: String = "",
+    val pluginPath: String = "",
+    val marketplaceName: String = "",
+    val marketplacePath: String = "",
+    val remoteVersion: String? = null,
+)
 
 data class PluginShareUpdateTargetsParams(
     val remotePluginId: String,
-    val shareTargets: List<String> = emptyList(),
+    val discoverability: PluginShareDiscoverability,
+    val shareTargets: List<PluginShareTarget> = emptyList(),
+)
+
+data class PluginShareUpdateTargetsResponse(
+    val principals: List<PluginSharePrincipal> = emptyList(),
     val discoverability: PluginShareDiscoverability = PluginShareDiscoverability.Private,
 )
 

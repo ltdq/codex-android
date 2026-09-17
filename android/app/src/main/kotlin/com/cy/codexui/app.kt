@@ -72,6 +72,7 @@ import com.cy.codexui.protocol.AppServerEvent
 import com.cy.codexui.protocol.ConnectionState
 import kotlinx.serialization.json.JsonPrimitive
 import com.cy.codexui.protocol.protocol.v2.ConfigValueWriteParams
+import com.cy.codexui.protocol.protocol.v2.FeedbackUploadParams
 import com.cy.codexui.protocol.protocol.v2.LoginAccountResponse
 import com.cy.codexui.protocol.protocol.v2.ThreadSessionState
 import com.cy.codexui.protocol.protocol.v2.UserVerificationVerifyParams
@@ -239,7 +240,12 @@ class CodexApp(
             AppEvent.ReloadExternalAgentConfig -> {
                 // Two independent reads, so two requests: a detection failure must not stop the
                 // history from loading, which is what one chained call would have done.
-                request { client.detectExternalAgentConfig().onSuccess { catalog.externalAgentConfig = it } }
+                request {
+                    client.detectExternalAgentConfig().onSuccess {
+                        catalog.externalAgentConfig = it.items
+                        catalog.externalAgentConnectors = it.connectors
+                    }
+                }
                 request {
                     client.readExternalAgentImportHistories().onSuccess {
                         catalog.externalAgentImportHistories = it
@@ -304,13 +310,13 @@ class CodexApp(
 
             is AppEvent.CheckoutPluginShare -> load({
                 client.checkoutPluginShare(event.remotePluginId)
-            }) { path ->
-                catalog.pluginCheckoutPath = path
+            }) { checkout ->
+                catalog.pluginCheckoutPath = checkout.pluginPath
                 reloadPluginShares()
             }
 
             is AppEvent.UpdatePluginShareTargets -> request {
-                client.updatePluginShareTargets(event.remotePluginId, event.targets)
+                client.updatePluginShareTargets(event.remotePluginId, event.discoverability, event.targets)
                     .onSuccess { reloadPluginShares() }
             }
 
@@ -343,8 +349,11 @@ class CodexApp(
             }
 
             is AppEvent.SetMcpEventStream -> request {
-                if (event.streaming) client.startMcpEventStream(event.server) else
-                    client.stopMcpEventStream(event.server)
+                if (event.streaming) {
+                    client.startMcpEventStream(event.server, event.subscriptionId, event.name, event.arguments, event.threadId)
+                } else {
+                    client.stopMcpEventStream(event.subscriptionId)
+                }
             }
 
             is AppEvent.Login -> {
@@ -389,10 +398,10 @@ class CodexApp(
             }
 
             is AppEvent.SendAddCreditsNudgeEmail ->
-                request { client.sendAddCreditsNudgeEmail(event.email) }
+                request { client.sendAddCreditsNudgeEmail(event.creditType) }
 
-            is AppEvent.BedrockDiscover -> request { client.bedrockDiscover() }
-            is AppEvent.BedrockSetup -> request { client.bedrockSetup(event.region) }
+            AppEvent.BedrockDiscover -> request { client.bedrockDiscover() }
+            is AppEvent.BedrockSetup -> request { client.bedrockSetup(event.params) }
 
             // ---- sections -----------------------------------------------------
             is AppEvent.CreateSection -> request {
@@ -437,8 +446,8 @@ class CodexApp(
             }
 
             is AppEvent.AddEnvironment -> request {
-                client.addEnvironment(event.name, event.cwd).onSuccess {
-                    catalog.environments = (catalog.environments + event.name).distinct()
+                client.addEnvironment(event.environmentId, event.execServerUrl).onSuccess {
+                    catalog.environments = (catalog.environments + event.environmentId).distinct()
                 }
             }
 
@@ -536,19 +545,14 @@ class CodexApp(
             }
 
             AppEvent.DetectExternalAgentConfig -> request {
-                client.detectExternalAgentConfig().onSuccess { catalog.externalAgentConfig = it }
-            }
-
-            is AppEvent.ImportExternalAgentConfig -> request {
-                client.importExternalAgentConfig(event.itemIds).onSuccess {
-                    client.readExternalAgentImportHistories().onSuccess { histories ->
-                        catalog.externalAgentImportHistories = histories
-                    }
+                client.detectExternalAgentConfig().onSuccess {
+                    catalog.externalAgentConfig = it.items
+                    catalog.externalAgentConnectors = it.connectors
                 }
             }
 
-            is AppEvent.RecordExternalAgentImportHistory -> request {
-                client.recordExternalAgentImportHistory(event.id, event.summary).onSuccess {
+            is AppEvent.ImportExternalAgentConfig -> request {
+                client.importExternalAgentConfig(event.items).onSuccess {
                     client.readExternalAgentImportHistories().onSuccess { histories ->
                         catalog.externalAgentImportHistories = histories
                     }
@@ -556,7 +560,13 @@ class CodexApp(
             }
 
             is AppEvent.UploadFeedback -> request {
-                client.uploadFeedback(event.classification, event.reason, event.threadId)
+                client.uploadFeedback(
+                    FeedbackUploadParams(
+                        classification = event.classification,
+                        reason = event.reason,
+                        threadId = event.threadId,
+                    ),
+                )
             }
 
             // ---- windows sandbox -------------------------------------------------
@@ -830,7 +840,7 @@ class CodexApp(
                     client.windowsSandboxReadiness().onSuccess { catalog.windowsSandboxReadiness = it.status }
 
                 is AppServerEvent.ExternalAgentImportProgress -> catalog.externalAgentImport =
-                    ImportProgress(event.imported, event.total, event.label)
+                    externalImportProgress(event.results)
 
                 is AppServerEvent.ExternalAgentImportCompleted -> {
                     catalog.externalAgentImport = null
@@ -1483,6 +1493,20 @@ fun CodexScreen(
  * way out, not a replacement for the other two, and it is the one a thumb reaches for first on a
  * device whose only navigation control is a gesture.
  */
+/**
+ * Fold the import notifications' per-type results into the progress bar's shape.
+ *
+ * The wire reports successes and failures per item type and nothing else — there is no total — so
+ * the bar counts both, and the label names the types involved rather than an invented sentence.
+ */
+private fun externalImportProgress(
+    results: List<com.cy.codexui.protocol.protocol.v2.ExternalAgentConfigImportTypeResult>,
+): ImportProgress {
+    val done = results.sumOf { it.successes.size }
+    val total = results.sumOf { it.successes.size + it.failures.size }
+    return ImportProgress(done, total, results.joinToString(", ") { it.itemType })
+}
+
 @Composable
 private fun SheetPage(
     onDismiss: () -> Unit,

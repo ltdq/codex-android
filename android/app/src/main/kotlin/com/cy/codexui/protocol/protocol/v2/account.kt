@@ -98,21 +98,77 @@ data class WorkspaceMessage(
 
 /** `account/rateLimitResetCredit/consume`. */
 data class ConsumeRateLimitResetCreditParams(
+    /** Identifies one logical reset attempt; reuse it when retrying. */
     val idempotencyKey: String,
     val creditId: String? = null,
 )
 
+/** What a reset-credit redemption did. */
+enum class ConsumeRateLimitResetCreditOutcome(val wire: String) {
+    /** A credit was spent and the eligible windows were reset. */
+    Reset("reset"),
+
+    /** No current window is eligible for a reset. */
+    NothingToReset("nothingToReset"),
+
+    /** The account has no earned credits. */
+    NoCredit("noCredit"),
+
+    /** This idempotency key already completed a reset. */
+    AlreadyRedeemed("alreadyRedeemed"),
+    ;
+
+    companion object {
+        fun fromWire(value: String?): ConsumeRateLimitResetCreditOutcome =
+            entries.firstOrNull { it.wire == value } ?: NothingToReset
+    }
+}
+
 data class ConsumeRateLimitResetCreditResponse(
-    val consumed: Boolean = false,
-    val message: String? = null,
+    val outcome: ConsumeRateLimitResetCreditOutcome = ConsumeRateLimitResetCreditOutcome.NothingToReset,
 )
 
 /** `account/sendAddCreditsNudgeEmail`. */
-data class SendAddCreditsNudgeEmailParams(val email: String? = null)
+data class SendAddCreditsNudgeEmailParams(val creditType: AddCreditsNudgeCreditType)
 
-/** `account/bedrock/discover` and `account/bedrock/setup`. */
-data class BedrockDiscoverResponse(val regions: List<String> = emptyList())
+enum class AddCreditsNudgeCreditType(val wire: String) {
+    Credits("credits"),
+    UsageLimit("usage_limit"),
+}
 
-data class BedrockSetupParams(val region: String)
+data class SendAddCreditsNudgeEmailResponse(val status: AddCreditsNudgeEmailStatus = AddCreditsNudgeEmailStatus.Sent)
 
-data class BedrockSetupResponse(val configured: Boolean = false)
+enum class AddCreditsNudgeEmailStatus(val wire: String) {
+    Sent("sent"),
+    CooldownActive("cooldown_active"),
+    ;
+
+    companion object {
+        fun fromWire(value: String?): AddCreditsNudgeEmailStatus =
+            entries.firstOrNull { it.wire == value } ?: CooldownActive
+    }
+}
+
+/** `account/bedrock/discover`. */
+data class BedrockDiscoverResponse(
+    val profiles: List<BedrockAwsProfile> = emptyList(),
+    val environmentCredentials: List<BedrockEnvironmentCredential> = emptyList(),
+)
+
+data class BedrockAwsProfile(val name: String, val region: String? = null)
+
+data class BedrockEnvironmentCredential(
+    /** `accessKeys` or `bedrockApiKey`. */
+    val type: String = "",
+    val region: String? = null,
+)
+
+/**
+ * `account/bedrock/setup`, an internally-tagged union over how credentials are selected: an AWS
+ * profile on disk, or the process environment.
+ */
+sealed interface BedrockSetupParams {
+    data class Profile(val profile: String, val region: String) : BedrockSetupParams
+
+    data class Environment(val region: String) : BedrockSetupParams
+}

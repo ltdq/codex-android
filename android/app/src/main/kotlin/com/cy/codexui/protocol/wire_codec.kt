@@ -20,6 +20,7 @@ import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.doubleOrNull
+import kotlinx.serialization.json.intOrNull
 
 internal fun obj(vararg fields: Pair<String, Any?>): JsonObject =
     JsonObject(fields.filter { it.second != null }.associate { it.first to json(it.second) })
@@ -37,6 +38,7 @@ internal fun json(value: Any?): JsonElement = when (value) {
     is Float -> json(value.toDouble())
     is Number -> JsonPrimitive(value.toDouble())
     is List<*> -> JsonArray(value.map(::json))
+    is Map<*, *> -> JsonObject(value.entries.associate { (key, entry) -> key.toString() to json(entry) })
     else -> error("Unsupported JSON value: ${value.javaClass.name}")
 }
 
@@ -161,6 +163,138 @@ internal object WireCodec {
         }
         return RateLimits(window("primary", "Primary"), window("secondary", "Secondary"), o.objectOrNull("credits")?.text("balance")?.toDoubleOrNull()?.toInt())
     }
+
+    fun attachment(o: JsonObject) = ThreadAttachment(
+        id = o.required("id"),
+        attachmentType = o.text("attachmentType").orEmpty(),
+        identityKey = o.text("identityKey").orEmpty(),
+        payload = o["payload"] ?: JsonNull,
+        createdAt = o.long("createdAt") ?: 0L,
+    )
+
+    fun backgroundTerminal(o: JsonObject) = ThreadBackgroundTerminal(
+        itemId = o.required("itemId"),
+        processId = o.required("processId"),
+        command = o.text("command").orEmpty(),
+        cwd = o.text("cwd").orEmpty(),
+        osPid = o.long("osPid"),
+        cpuPercent = (o["cpuPercent"] as? JsonPrimitive)?.takeIf { !it.isString }?.doubleOrNull,
+        rssKb = o.long("rssKb"),
+    )
+
+    fun timelineEntry(value: JsonElement): TimelineEntry {
+        val o = value.objectValue()
+        val position = o.long("position") ?: 0L
+        val turnId = o.text("turnId").orEmpty()
+        return when (o.required("type")) {
+            "item" -> TimelineEntry.Item(position, turnId, item(o["item"]!!))
+            "realtime" -> TimelineEntry.Realtime(position, realtimeItem(o.objectOrNull("item")!!))
+            "turnStarted" -> TimelineEntry.TurnStarted(position, turnId, o.long("startedAt")?.times(1000))
+            "turnCompleted" -> TimelineEntry.TurnCompleted(position, turnId, TurnStatus.fromWire(o.required("status")),
+                o.objectOrNull("error")?.text("message"), o.long("startedAt")?.times(1000),
+                o.long("completedAt")?.times(1000), o.long("durationMs"))
+            else -> error("Unknown timeline entry type: ${o.text("type")}")
+        }
+    }
+
+    fun realtimeItem(o: JsonObject) = ThreadRealtimeItem(o.required("id"), o.text("realtimeSessionId").orEmpty(),
+        o.text("type").orEmpty(), o.text("role"), o.text("text"), o.text("turnId"), o.text("itemId"), o.text("outcome"))
+
+    fun hookMetadata(o: JsonObject) = HookMetadata(
+        key = o.required("key"), eventName = o.required("eventName"), handlerType = o.text("handlerType").orEmpty(),
+        command = o.text("command"), async = o.bool("async") == true, server = o.text("server"), tool = o.text("tool"),
+        matcher = o.text("matcher"), timeoutSec = o.long("timeoutSec") ?: 0L, statusMessage = o.text("statusMessage"),
+        additionalContextLimit = o.int("additionalContextLimit"), sourcePath = o.text("sourcePath").orEmpty(),
+        source = o.text("source").orEmpty(), pluginId = o.text("pluginId"), displayOrder = o.long("displayOrder") ?: 0L,
+        enabled = o.bool("enabled") != false, isManaged = o.bool("isManaged") == true,
+        currentHash = o.text("currentHash").orEmpty(), trustStatus = o.text("trustStatus").orEmpty(),
+    )
+
+    fun hookRun(o: JsonObject) = HookRunSummary(
+        id = o.required("id"), eventName = o.text("eventName").orEmpty(), handlerType = o.text("handlerType").orEmpty(),
+        executionMode = o.text("executionMode").orEmpty(), scope = o.text("scope").orEmpty(), sourcePath = o.text("sourcePath").orEmpty(),
+        source = o.text("source").orEmpty(), displayOrder = o.long("displayOrder") ?: 0L, status = o.text("status").orEmpty(),
+        statusMessage = o.text("statusMessage"), startedAt = o.long("startedAt") ?: 0L, completedAt = o.long("completedAt"),
+        durationMs = o.long("durationMs"), entries = o.array("entries").map { value -> value.objectValue().let {
+            HookOutputEntry(it.text("kind").orEmpty(), it.text("text").orEmpty()) } },
+    )
+
+    fun diagnostics(o: JsonObject) = ServerDiagnosticsResponse(
+        process = o.objectOrNull("process")?.let { p -> ServerDiagnosticsProcess(p.long("id") ?: 0L,
+            p.long("residentMemoryBytes"), p.long("physicalFootprintBytes")) } ?: ServerDiagnosticsProcess(),
+        gauges = o.array("gauges").map { value -> value.objectValue().let { ServerDiagnosticsGauge(it.required("name"), it.long("value") ?: 0L) } },
+    )
+
+    private fun migrationItem(o: JsonObject) = ExternalAgentConfigMigrationItem(
+        itemType = o.required("itemType"), description = o.required("description"), cwd = o.text("cwd"),
+        details = o.objectOrNull("details")?.let { d ->
+            MigrationDetails(
+                plugins = d.array("plugins").map { value -> value.objectValue().let {
+                    PluginsMigration(it.text("marketplaceName").orEmpty(), it.strings("pluginNames")) } },
+                skills = d.array("skills").map { named(it) }, sessions = d.array("sessions").map { value -> value.objectValue().let {
+                    SessionMigration(it.text("path").orEmpty(), it.text("cwd").orEmpty(), it.text("title")) } },
+                mcpServers = d.array("mcpServers").map { named(it) }, hooks = d.array("hooks").map { named(it) },
+                subagents = d.array("subagents").map { named(it) }, commands = d.array("commands").map { named(it) },
+                memory = d.strings("memory"),
+            )
+        },
+    )
+
+    private fun named(value: JsonElement) = NamedMigration(value.objectValue().text("name").orEmpty())
+
+    fun externalAgentConfigItem(value: JsonElement) = migrationItem(value.objectValue())
+
+    fun externalAgentImportSuccess(o: JsonObject) = ExternalAgentConfigImportSuccess(o.text("itemType").orEmpty(),
+        o.text("cwd"), o.text("source"), o.text("target"), o.text("title"))
+
+    fun externalAgentImportFailure(o: JsonObject) = ExternalAgentConfigImportFailure(o.text("itemType").orEmpty(),
+        o.text("errorType"), o.text("subErrorType"), o.text("failureStage").orEmpty(), o.text("message").orEmpty(),
+        o.text("cwd"), o.text("source"))
+
+    fun externalAgentImportTypeResult(o: JsonObject) = ExternalAgentConfigImportTypeResult(
+        itemType = o.text("itemType").orEmpty(),
+        successes = o.array("successes").map { externalAgentImportSuccess(it.objectValue()) },
+        failures = o.array("failures").map { externalAgentImportFailure(it.objectValue()) },
+    )
+
+    fun externalAgentImportHistory(o: JsonObject) = ExternalAgentConfigImportHistory(
+        importId = o.required("importId"), providerId = o.text("providerId"), completedAtMs = o.long("completedAtMs") ?: 0L,
+        successes = o.array("successes").map { externalAgentImportSuccess(it.objectValue()) },
+        failures = o.array("failures").map { externalAgentImportFailure(it.objectValue()) },
+    )
+
+    fun fuzzyResult(o: JsonObject) = FuzzyFileSearchResult(o.required("path"), o.text("matchType") ?: "file",
+        o.text("fileName").orEmpty(), o.text("root").orEmpty(), o.long("score") ?: 0L,
+        o.array("indices").mapNotNull { (it as? JsonPrimitive)?.takeIf { primitive -> !primitive.isString }?.intOrNull })
+
+    fun externalAgentConfigItemOut(item: ExternalAgentConfigMigrationItem): JsonObject = obj(
+        "itemType" to item.itemType, "description" to item.description, "cwd" to item.cwd,
+        "details" to item.details?.let { details -> obj(
+            "plugins" to details.plugins.map { obj("marketplaceName" to it.marketplaceName, "pluginNames" to it.pluginNames) }.takeIf { it.isNotEmpty() },
+            "skills" to details.skills.map { obj("name" to it.name) }.takeIf { it.isNotEmpty() },
+            "sessions" to details.sessions.map { obj("path" to it.path, "cwd" to it.cwd, "title" to it.title) }.takeIf { it.isNotEmpty() },
+            "mcpServers" to details.mcpServers.map { obj("name" to it.name) }.takeIf { it.isNotEmpty() },
+            "hooks" to details.hooks.map { obj("name" to it.name) }.takeIf { it.isNotEmpty() },
+            "subagents" to details.subagents.map { obj("name" to it.name) }.takeIf { it.isNotEmpty() },
+            "commands" to details.commands.map { obj("name" to it.name) }.takeIf { it.isNotEmpty() },
+            "memory" to details.memory.takeIf { it.isNotEmpty() },
+        ) },
+    )
+
+    fun externalAgentImportTypeResultOut(result: ExternalAgentConfigImportTypeResult): JsonObject = obj(
+        "itemType" to result.itemType,
+        "successes" to result.successes.map { obj("itemType" to it.itemType, "cwd" to it.cwd, "source" to it.source, "target" to it.target, "title" to it.title) },
+        "failures" to result.failures.map { obj("itemType" to it.itemType, "errorType" to it.errorType, "subErrorType" to it.subErrorType,
+            "failureStage" to it.failureStage, "message" to it.message, "cwd" to it.cwd, "source" to it.source) },
+    )
+
+    fun pluginShare(o: JsonObject) = PluginShareEntry(
+        plugin = WireCatalogCodec.plugin(o.objectOrNull("plugin")!!, ""),
+        localPluginPath = o.text("localPluginPath"),
+    )
+
+    fun pluginSharePrincipals(o: JsonObject) = PluginSharePrincipal(o.text("principalType").orEmpty(),
+        o.text("principalId").orEmpty(), o.text("role").orEmpty(), o.text("name").orEmpty())
 
     fun config(o: JsonObject): ConfigReadResponse = ConfigReadResponse(
         config = o["config"] ?: error("Missing config"),

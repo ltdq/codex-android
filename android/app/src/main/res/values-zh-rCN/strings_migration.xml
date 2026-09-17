@@ -26,11 +26,16 @@
     <string name="migration_history_empty">还没有导入记录</string>
     <string name="migration_history_empty_detail">无论导入由本客户端还是服务器执行，完成后都会在这里留下一行记录。</string>
     <string name="migration_history_time_format">M月d日 HH:mm</string>
-    <string name="migration_history_note">记录一条备注</string>
-    <string name="migration_history_note_detail">为客户端自己执行的导入留下一条审计记录</string>
-    <string name="migration_history_note_title">记录导入备注</string>
-    <string name="migration_history_note_summary">备注</string>
-    <string name="migration_history_note_placeholder">手工导入了 Claude Code 的 MCP 服务器</string>
-    <string name="migration_history_note_help">用一句话说明导入了什么；它会成为这条历史记录的标题。</string>
-    <string name="migration_history_note_save">记录</string>
+    <string name="migration_kind_agents_md">AGENTS.md</string>
+    <string name="migration_kind_config">配置</string>
+    <string name="migration_kind_skills">技能</string>
+    <string name="migration_kind_plugins">插件</string>
+    <string name="migration_kind_mcp_server_config">MCP 服务器</string>
+    <string name="migration_kind_subagents">子代理</string>
+    <string name="migration_kind_hooks">钩子</string>
+    <string name="migration_kind_commands">命令</string>
+    <string name="migration_kind_memory">记忆</string>
+    <string name="migration_kind_sessions">会话</string>
+    <string name="migration_kind_unknown">未知类型</string>
+    <string name="migration_history_counts">%1$d 项成功 · %2$d 项失败</string>
 </resources>

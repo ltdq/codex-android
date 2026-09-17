@@ -7,8 +7,8 @@ import com.cy.codexui.protocol.protocol.v2.AccountLoginCompletedNotification
 import com.cy.codexui.protocol.protocol.v2.AccountUsage
 import com.cy.codexui.protocol.protocol.v2.AppInfo
 import com.cy.codexui.protocol.protocol.v2.AttachmentType
-import com.cy.codexui.protocol.protocol.v2.BackgroundTerminal
 import com.cy.codexui.protocol.protocol.v2.BedrockDiscoverResponse
+import com.cy.codexui.protocol.protocol.v2.BedrockSetupParams
 import com.cy.codexui.protocol.protocol.v2.CatalogChanged
 import com.cy.codexui.protocol.protocol.v2.CollaborationModeEntry
 import com.cy.codexui.protocol.protocol.v2.CommandExecOutputDeltaNotification
@@ -41,7 +41,9 @@ import com.cy.codexui.protocol.protocol.v2.FuzzyFileSearchSessionUpdatedNotifica
 import com.cy.codexui.protocol.protocol.v2.GuardianApprovalReviewNotification
 import com.cy.codexui.protocol.protocol.v2.GuardianWarningNotification
 import com.cy.codexui.protocol.protocol.v2.HookCompletedNotification
-import com.cy.codexui.protocol.protocol.v2.HookEntry
+import com.cy.codexui.protocol.protocol.v2.FeedbackUploadParams
+import com.cy.codexui.protocol.protocol.v2.FeedbackUploadResponse
+import com.cy.codexui.protocol.protocol.v2.HookMetadata
 import com.cy.codexui.protocol.protocol.v2.HookStartedNotification
 import com.cy.codexui.protocol.protocol.v2.ItemTextDelta
 import com.cy.codexui.protocol.protocol.v2.LoginAccountParams
@@ -89,6 +91,7 @@ import com.cy.codexui.protocol.protocol.v2.StrictReviewRequiredNotification
 import com.cy.codexui.protocol.protocol.v2.TerminalInteraction
 import com.cy.codexui.protocol.protocol.v2.Thread
 import com.cy.codexui.protocol.protocol.v2.ThreadAttachment
+import com.cy.codexui.protocol.protocol.v2.ThreadBackgroundTerminal
 import com.cy.codexui.protocol.protocol.v2.ThreadGoalUpdated
 import com.cy.codexui.protocol.protocol.v2.ThreadMemoryMode
 import com.cy.codexui.protocol.protocol.v2.ThreadNameUpdated
@@ -121,6 +124,8 @@ import com.cy.codexui.protocol.protocol.v2.WindowsSandboxSetupStartResponse
 import com.cy.codexui.protocol.protocol.v2.WorkspaceMessage
 import com.cy.codexui.protocol.protocol.v2.WorldWritableWarningNotification
 import kotlinx.coroutines.flow.Flow
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
 /**
  * The typed event stream the transport produces.
  *
@@ -377,12 +382,17 @@ sealed interface AppServerEvent {
         override val threadId: String? get() = null
     }
 
-    data class ExternalAgentImportProgress(val imported: Int, val total: Int, val label: String) :
-        AppServerEvent {
+    data class ExternalAgentImportProgress(
+        val importId: String,
+        val results: List<com.cy.codexui.protocol.protocol.v2.ExternalAgentConfigImportTypeResult>,
+    ) : AppServerEvent {
         override val threadId: String? get() = null
     }
 
-    data class ExternalAgentImportCompleted(val imported: Int, val failed: Int) : AppServerEvent {
+    data class ExternalAgentImportCompleted(
+        val importId: String,
+        val results: List<com.cy.codexui.protocol.protocol.v2.ExternalAgentConfigImportTypeResult>,
+    ) : AppServerEvent {
         override val threadId: String? get() = null
     }
 
@@ -543,6 +553,17 @@ sealed interface ApprovalResponse {
     data class CurrentTime(val epochMillis: Long) : ApprovalResponse
 }
 
+/**
+ * What every unimplemented [AppServerClient] method answers with.
+ *
+ * A `Result.failure` rather than a thrown exception, so a call a backend cannot serve takes down
+ * one call and not the session. It sits outside the interface because it is not part of the
+ * contract: `AppServerClientBindingTest` walks the interface and would otherwise see it as a
+ * method the only backend fails to override.
+ */
+private fun <T> unsupported(method: String): Result<T> =
+    Result.failure(UnsupportedOperationException("$method is not supported by the embedded Android client"))
+
 enum class ElicitationAction(val wire: String) {
     Accept("accept"),
     Decline("decline"),
@@ -558,9 +579,6 @@ enum class ElicitationAction(val wire: String) {
  * down.
  */
 interface AppServerClient {
-
-    private fun <T> unsupported(method: String): Result<T> =
-        Result.failure(UnsupportedOperationException("$method is not supported by the embedded Android client"))
 
     /** `initialize` + the `initialized` notification. */
     suspend fun initialize(clientInfo: com.cy.codexui.protocol.protocol.v2.ClientInfo): Result<Unit>
@@ -605,7 +623,7 @@ interface AppServerClient {
     ): Result<Thread> = unsupported("updateThreadMetadata")
 
     /** `thread/inject_items`: splice raw response items into the thread's history. */
-    suspend fun injectThreadItems(threadId: String, items: List<String>): Result<Unit> = unsupported("injectThreadItems")
+    suspend fun injectThreadItems(threadId: String, items: List<JsonElement>): Result<Unit> = unsupported("injectThreadItems")
 
     /** `thread/shellCommand`: run a shell command as the *user*, outside the agent. */
     suspend fun runShellCommand(threadId: String, command: String): Result<Unit> = unsupported("runShellCommand")
@@ -666,13 +684,20 @@ interface AppServerClient {
         threadId: String,
         type: AttachmentType,
         identityKey: String,
-        payload: String? = null,
+        payload: JsonElement = JsonNull,
     ): Result<ThreadAttachment> = unsupported("addAttachment")
 
-    suspend fun removeAttachment(threadId: String, attachmentId: String): Result<Unit> = unsupported("removeAttachment")
+    /**
+     * `thread/attachment/remove`.
+     *
+     * An attachment is addressed by its type and identity key, not by the id the add response
+     * carried: the server keys the record by the caller-supplied identity, and the same identity
+     * added twice is one record.
+     */
+    suspend fun removeAttachment(threadId: String, type: AttachmentType, identityKey: String): Result<Unit> = unsupported("removeAttachment")
 
     // ---- thread/… background terminals ---------------------------------------
-    suspend fun listBackgroundTerminals(threadId: String): Result<List<BackgroundTerminal>> = unsupported("listBackgroundTerminals")
+    suspend fun listBackgroundTerminals(threadId: String): Result<List<ThreadBackgroundTerminal>> = unsupported("listBackgroundTerminals")
     suspend fun terminateBackgroundTerminal(threadId: String, processId: String): Result<Unit> = unsupported("terminateBackgroundTerminal")
     suspend fun cleanBackgroundTerminals(threadId: String): Result<Unit> = unsupported("cleanBackgroundTerminals")
 
@@ -713,9 +738,12 @@ interface AppServerClient {
     suspend fun readUsage(): Result<AccountUsage> = unsupported("readUsage")
     suspend fun readWorkspaceMessages(): Result<List<WorkspaceMessage>> = unsupported("readWorkspaceMessages")
     suspend fun consumeRateLimitResetCredit(creditId: String? = null): Result<ConsumeRateLimitResetCreditResponse> = unsupported("consumeRateLimitResetCredit")
-    suspend fun sendAddCreditsNudgeEmail(email: String? = null): Result<Unit> = unsupported("sendAddCreditsNudgeEmail")
+    suspend fun sendAddCreditsNudgeEmail(
+        creditType: com.cy.codexui.protocol.protocol.v2.AddCreditsNudgeCreditType,
+    ): Result<com.cy.codexui.protocol.protocol.v2.SendAddCreditsNudgeEmailResponse> = unsupported("sendAddCreditsNudgeEmail")
+
     suspend fun bedrockDiscover(): Result<BedrockDiscoverResponse> = unsupported("bedrockDiscover")
-    suspend fun bedrockSetup(region: String): Result<Unit> = unsupported("bedrockSetup")
+    suspend fun bedrockSetup(params: BedrockSetupParams): Result<Unit> = unsupported("bedrockSetup")
 
     // ---- fs/… -----------------------------------------------------------------
     suspend fun readFile(path: String): Result<ByteArray> = unsupported("readFile")
@@ -775,8 +803,22 @@ interface AppServerClient {
         threadId: String? = null,
     ): Result<McpServerToolCallResponse> = unsupported("callMcpTool")
 
-    suspend fun startMcpEventStream(server: String): Result<Unit> = unsupported("startMcpEventStream")
-    suspend fun stopMcpEventStream(server: String): Result<Unit> = unsupported("stopMcpEventStream")
+    /**
+     * `mcpServer/event/stream/start`: subscribe to one MCP server's notifications for a tool call.
+     *
+     * [subscriptionId] is client-chosen and is what [stopMcpEventStream] names; [name] and
+     * [arguments] identify the tool call the stream belongs to, matching the `mcpServer/tool/call`
+     * parameters.
+     */
+    suspend fun startMcpEventStream(
+        server: String,
+        subscriptionId: String,
+        name: String,
+        arguments: JsonElement,
+        threadId: String,
+    ): Result<Unit> = unsupported("startMcpEventStream")
+
+    suspend fun stopMcpEventStream(subscriptionId: String): Result<Unit> = unsupported("stopMcpEventStream")
 
     // ---- memory/… -------------------------------------------------------------
     suspend fun readMemoryStatus(): Result<MemoryStatusResponse> = unsupported("readMemoryStatus")
@@ -808,10 +850,21 @@ interface AppServerClient {
     suspend fun reconcilePlugins(): Result<List<PluginEntry>> = unsupported("reconcilePlugins")
     suspend fun searchPlugins(term: String): Result<List<PluginEntry>> = unsupported("searchPlugins")
     suspend fun listPluginShares(): Result<List<PluginShareEntry>> = unsupported("listPluginShares")
-    suspend fun savePluginShare(pluginPath: String, remotePluginId: String? = null): Result<String> = unsupported("savePluginShare")
+    suspend fun savePluginShare(
+        pluginPath: String,
+        remotePluginId: String? = null,
+    ): Result<com.cy.codexui.protocol.protocol.v2.PluginShareSaveResponse> = unsupported("savePluginShare")
+
     suspend fun deletePluginShare(remotePluginId: String): Result<Unit> = unsupported("deletePluginShare")
-    suspend fun checkoutPluginShare(remotePluginId: String): Result<String> = unsupported("checkoutPluginShare")
-    suspend fun updatePluginShareTargets(remotePluginId: String, targets: List<String>): Result<Unit> = unsupported("updatePluginShareTargets")
+    suspend fun checkoutPluginShare(
+        remotePluginId: String,
+    ): Result<com.cy.codexui.protocol.protocol.v2.PluginShareCheckoutResponse> = unsupported("checkoutPluginShare")
+
+    suspend fun updatePluginShareTargets(
+        remotePluginId: String,
+        discoverability: com.cy.codexui.protocol.protocol.v2.PluginShareDiscoverability,
+        targets: List<com.cy.codexui.protocol.protocol.v2.PluginShareTarget>,
+    ): Result<com.cy.codexui.protocol.protocol.v2.PluginShareUpdateTargetsResponse> = unsupported("updatePluginShareTargets")
     suspend fun addMarketplace(source: String, refName: String? = null): Result<MarketplaceEntry> = unsupported("addMarketplace")
     suspend fun removeMarketplace(name: String): Result<Unit> = unsupported("removeMarketplace")
     suspend fun upgradeMarketplace(name: String? = null): Result<List<String>> = unsupported("upgradeMarketplace")
@@ -893,10 +946,16 @@ interface AppServerClient {
     suspend fun deleteUserVerification(): Result<Unit> = unsupported("deleteUserVerification")
 
     // ---- external agent config migration -------------------------------------
-    suspend fun detectExternalAgentConfig(): Result<List<ExternalAgentConfigMigrationItem>> = unsupported("detectExternalAgentConfig")
-    suspend fun importExternalAgentConfig(itemIds: List<String>): Result<Int> = unsupported("importExternalAgentConfig")
+    suspend fun detectExternalAgentConfig(): Result<com.cy.codexui.protocol.protocol.v2.ExternalAgentConfigDetectResponse> = unsupported("detectExternalAgentConfig")
+
+    /** `externalAgentConfig/import`; the items come back from detect unchanged. */
+    suspend fun importExternalAgentConfig(items: List<ExternalAgentConfigMigrationItem>): Result<String> = unsupported("importExternalAgentConfig")
+
     suspend fun readExternalAgentImportHistories(): Result<List<ExternalAgentConfigImportHistory>> = unsupported("readExternalAgentImportHistories")
-    suspend fun recordExternalAgentImportHistory(id: String, summary: String): Result<Unit> = unsupported("recordExternalAgentImportHistory")
+
+    suspend fun recordExternalAgentImportHistory(
+        params: com.cy.codexui.protocol.protocol.v2.ExternalAgentConfigImportHistoryRecordParams,
+    ): Result<String> = unsupported("recordExternalAgentImportHistory")
 
     // ---- review, search, hooks, feedback, diagnostics ------------------------
     suspend fun startReview(threadId: String, target: ReviewTarget): Result<ReviewStartResponse> = unsupported("startReview")
@@ -904,8 +963,8 @@ interface AppServerClient {
     suspend fun startFuzzySearchSession(sessionId: String, roots: List<String> = emptyList()): Result<Unit> = unsupported("startFuzzySearchSession")
     suspend fun updateFuzzySearchSession(sessionId: String, query: String): Result<Unit> = unsupported("updateFuzzySearchSession")
     suspend fun stopFuzzySearchSession(sessionId: String): Result<Unit> = unsupported("stopFuzzySearchSession")
-    suspend fun listHooks(): Result<List<HookEntry>> = unsupported("listHooks")
-    suspend fun uploadFeedback(classification: String, reason: String? = null, threadId: String? = null): Result<String> = unsupported("uploadFeedback")
+    suspend fun listHooks(): Result<List<HookMetadata>> = unsupported("listHooks")
+    suspend fun uploadFeedback(params: FeedbackUploadParams): Result<FeedbackUploadResponse> = unsupported("uploadFeedback")
     suspend fun readServerDiagnostics(): Result<ServerDiagnosticsResponse> = unsupported("readServerDiagnostics")
 
     // ---- windowsSandbox/… ------------------------------------------------------
@@ -943,9 +1002,13 @@ data class ThreadTurnsPage(
 
 /** One `thread/searchOccurrences` hit. */
 data class OccurrenceMatch(
+    val turnId: String,
     val itemId: String,
     val snippet: String = "",
-    val offset: Int = 0,
+    /** Match range inside [snippet], in UTF-16 code units. */
+    val start: Int = 0,
+    val end: Int = 0,
+    val turnCursor: String = "",
 )
 
 sealed interface ConnectionState {

@@ -31,7 +31,7 @@ import com.cy.codexui.SurfaceHeader
 import com.cy.codexui.UiConsts
 import com.cy.codexui.UiType
 import com.cy.codexui.ValueRow
-import com.cy.codexui.protocol.protocol.v2.ServerDiagnosticGauge
+import com.cy.codexui.protocol.protocol.v2.ServerDiagnosticsGauge
 import com.cy.codexui.protocol.protocol.v2.ServerDiagnosticsProcess
 import com.cy.codexui.protocol.protocol.v2.ServerDiagnosticsResponse
 import com.cy.codexui.usageColor
@@ -145,10 +145,9 @@ fun DiagnosticsScreen(
 @Composable
 private fun diagnosticsSubtitle(diagnostics: ServerDiagnosticsResponse?): String = when {
     diagnostics == null -> stringResource(R.string.diagnostics_screen_subtitle_unknown)
-    diagnostics.process.version.isBlank() ->
-        stringResource(R.string.diagnostics_screen_subtitle_unversioned)
+    diagnostics.process.id <= 0L -> stringResource(R.string.diagnostics_screen_subtitle_unversioned)
 
-    else -> stringResource(R.string.diagnostics_screen_subtitle, diagnostics.process.version)
+    else -> stringResource(R.string.diagnostics_screen_subtitle, diagnostics.process.id)
 }
 
 /**
@@ -198,40 +197,22 @@ private fun DiagnosticsProcessCard(process: ServerDiagnosticsProcess) {
     ) {
         ValueRow(
             label = stringResource(R.string.diagnostics_process_pid),
-            value = if (process.pid > 0) process.pid.toString() else "",
+            value = formatGaugeValue(process.id.toDouble()),
             monospace = true,
         )
         CodexDivider()
         ValueRow(
-            label = stringResource(R.string.diagnostics_process_version),
-            value = process.version,
+            label = stringResource(R.string.diagnostics_process_resident),
+            value = process.residentMemoryBytes?.let(::formatBytes).orEmpty(),
             monospace = true,
         )
         CodexDivider()
         ValueRow(
-            label = stringResource(R.string.diagnostics_process_uptime),
-            value = uptimeLabel(process.uptimeSeconds),
+            label = stringResource(R.string.diagnostics_process_footprint),
+            value = process.physicalFootprintBytes?.let(::formatBytes).orEmpty(),
+            monospace = true,
         )
     }
-}
-
-/**
- * Uptime as days, hours and minutes.
- *
- * Seconds are dropped rather than shown: this is a "has the process been restarted lately" readout,
- * and a seconds digit would make it look like something to watch. All three components are one
- * formatted resource so a translation can order and punctuate them itself.
- *
- * @param seconds what the server reported; a negative value is clamped, because a clock that went
- *   backwards is not a reason to render "-1d".
- */
-@Composable
-private fun uptimeLabel(seconds: Long): String {
-    val total = seconds.coerceAtLeast(0L)
-    val days = total / 86_400
-    val hours = total % 86_400 / 3_600
-    val minutes = total % 3_600 / 60
-    return stringResource(R.string.diagnostics_process_uptime_value, days, hours, minutes)
 }
 
 /**
@@ -246,11 +227,11 @@ private fun uptimeLabel(seconds: Long): String {
  * @param gauges the list as the server sent it; empty is a real answer and gets a line of its own.
  */
 @Composable
-private fun DiagnosticsGaugesCard(gauges: List<ServerDiagnosticGauge>) {
+private fun DiagnosticsGaugesCard(gauges: List<ServerDiagnosticsGauge>) {
     val colors = MiuixTheme.colorScheme
     // The scale's unit. A list whose largest value is zero has no scale at all, so every bar is
     // drawn empty: "0 of 0" is not "all of it", and dividing by the peak would be a crash.
-    val peak = gauges.maxOfOrNull { it.value }?.takeIf { it > 0.0 } ?: 0.0
+    val peak = gauges.maxOfOrNull { it.value }?.takeIf { it > 0L } ?: 0L
 
     SectionCard(
         title = stringResource(R.string.diagnostics_gauges_section),
@@ -275,7 +256,7 @@ private fun DiagnosticsGaugesCard(gauges: List<ServerDiagnosticGauge>) {
             }
             Spacer(Modifier.height(UiConsts.Space8))
             Text(
-                text = stringResource(R.string.diagnostics_gauges_note, formatGaugeValue(peak)),
+                text = stringResource(R.string.diagnostics_gauges_note, formatGaugeValue(peak.toDouble())),
                 modifier = Modifier.padding(horizontal = UiConsts.Space4),
                 fontSize = UiType.Footnote,
                 lineHeight = UiType.FootnoteLine,
@@ -297,17 +278,17 @@ private fun DiagnosticsGaugesCard(gauges: List<ServerDiagnosticGauge>) {
  *   is clamped to 0..1 so a bar can never overrun its track.
  */
 @Composable
-private fun DiagnosticsGaugeRow(gauge: ServerDiagnosticGauge, peak: Double) {
+private fun DiagnosticsGaugeRow(gauge: ServerDiagnosticsGauge, peak: Long) {
     val colors = MiuixTheme.colorScheme
-    val fraction = if (peak > 0.0) {
-        (gauge.value / peak).toFloat().coerceIn(0f, 1f)
+    val fraction = if (peak > 0L) {
+        (gauge.value.toFloat() / peak.toFloat()).coerceIn(0f, 1f)
     } else {
         0f
     }
     Column(modifier = Modifier.fillMaxWidth()) {
         ValueRow(
             label = gauge.name,
-            value = formatGaugeValue(gauge.value),
+            value = formatGaugeValue(gauge.value.toDouble()),
             monospace = true,
         )
         LinearProgressIndicator(
@@ -343,6 +324,24 @@ private fun formatGaugeValue(value: Double): String {
     } else {
         String.format(Locale.US, "%.2f", value)
     }
+}
+
+/**
+ * A byte count the way the server reported it: whole binary units, two decimals at most.
+ *
+ * The server sends these two fields as raw bytes with no unit attached; binary units are what a
+ * memory reading is conventionally shown in, and a null field renders as the empty-value dash
+ * rather than as a zero the server never sent.
+ */
+private fun formatBytes(bytes: Long): String {
+    val units = listOf("B", "KiB", "MiB", "GiB", "TiB")
+    var value = bytes.toDouble()
+    var unit = 0
+    while (value >= 1024.0 && unit < units.lastIndex) {
+        value /= 1024.0
+        unit++
+    }
+    return if (unit == 0) "$bytes ${units[0]}" else String.format(Locale.US, "%.2f %s", value, units[unit])
 }
 
 /**

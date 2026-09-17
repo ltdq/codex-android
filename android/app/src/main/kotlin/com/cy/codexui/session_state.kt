@@ -18,7 +18,7 @@ import com.cy.codexui.protocol.protocol.v2.DiagnosticSeverity
 import com.cy.codexui.protocol.protocol.v2.ExperimentalFeatureEntry
 import com.cy.codexui.protocol.protocol.v2.ExternalAgentConfigImportHistory
 import com.cy.codexui.protocol.protocol.v2.ExternalAgentConfigMigrationItem
-import com.cy.codexui.protocol.protocol.v2.HookEntry
+import com.cy.codexui.protocol.protocol.v2.HookMetadata
 import com.cy.codexui.protocol.protocol.v2.LoginAccountResponse
 import com.cy.codexui.protocol.protocol.v2.MarketplaceEntry
 import com.cy.codexui.protocol.protocol.v2.McpServerStatusEntry
@@ -117,7 +117,7 @@ class SessionState {
 
     /** Long-running terminals the session started; the footer lists them. */
     val backgroundTerminals =
-        mutableStateListOf<com.cy.codexui.protocol.protocol.v2.BackgroundTerminal>()
+        mutableStateListOf<com.cy.codexui.protocol.protocol.v2.ThreadBackgroundTerminal>()
 
     /**
      * Text the composer is holding.
@@ -340,7 +340,7 @@ class CatalogState {
     var skills by mutableStateOf<List<SkillEntry>>(emptyList())
     var plugins by mutableStateOf<List<PluginEntry>>(emptyList())
     var apps by mutableStateOf<List<AppInfo>>(emptyList())
-    var hooks by mutableStateOf<List<HookEntry>>(emptyList())
+    var hooks by mutableStateOf<List<HookMetadata>>(emptyList())
     var account by mutableStateOf(AccountInfo())
     var rateLimits by mutableStateOf(RateLimits())
     var usage by mutableStateOf(AccountUsage())
@@ -450,6 +450,7 @@ class CatalogState {
 
     // ---- external agent migration ----------------------------------------------
     var externalAgentConfig by mutableStateOf<List<ExternalAgentConfigMigrationItem>>(emptyList())
+    var externalAgentConnectors by mutableStateOf<List<com.cy.codexui.protocol.protocol.v2.ExternalAgentDetectedConnectorCandidate>>(emptyList())
     var externalAgentImportHistories by mutableStateOf<List<ExternalAgentConfigImportHistory>>(
         emptyList(),
     )

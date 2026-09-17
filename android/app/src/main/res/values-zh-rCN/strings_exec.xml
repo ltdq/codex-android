@@ -66,18 +66,14 @@
     <string name="exec_terminals_command_unknown">服务器没有报告命令</string>
     <string name="exec_terminals_cwd_unknown">目录未知</string>
     <string name="exec_terminals_row_meta">%1$s · %2$s</string>
+    <string name="exec_terminals_os_pid">系统 PID %d</string>
+    <string name="exec_terminals_os_pid_unknown">系统 PID 未知</string>
     <string name="exec_terminals_terminate">终止</string>
     <string name="exec_terminals_read_failed">服务器没有响应</string>
     <string name="exec_terminals_retry">重新读取</string>
     <string name="exec_terminals_reading">读取中…</string>
 
     <!-- bottom_pane/unified_exec_footer.kt: how long ago a terminal was started. -->
-    <string name="exec_terminals_age_unknown">启动时间未知</string>
-    <string name="exec_terminals_age_now">刚刚启动</string>
-    <string name="exec_terminals_age_minutes">%1$d 分钟前</string>
-    <string name="exec_terminals_age_hours">%1$d 小时前</string>
-    <string name="exec_terminals_age_days">%1$d 天前</string>
-    <string name="exec_terminals_age_weeks">%1$d 周前</string>
     <string name="exec_command_terminal_stdin_label">发送给进程</string>
     <string name="exec_command_terminal_stdin_placeholder">一行内容，发送时会补一个换行</string>
     <string name="exec_command_terminal_stdin_send">发送</string>

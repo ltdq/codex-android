@@ -24,7 +24,7 @@ import com.cy.codexui.protocol.protocol.v2.SandboxMode
 import com.cy.codexui.protocol.protocol.v2.SkillScope
 import com.cy.codexui.protocol.protocol.v2.ThreadMemoryMode
 import com.cy.codexui.protocol.protocol.v2.ThreadStatus
-import com.cy.codexui.protocol.protocol.v2.TimelineEntryKind
+import com.cy.codexui.protocol.protocol.v2.TimelineEntry
 import com.cy.codexui.protocol.protocol.v2.TurnStatus
 import com.cy.codexui.protocol.protocol.v2.UserVerificationUnavailableReason
 import com.cy.codexui.protocol.protocol.v2.WriteStatus
@@ -312,12 +312,11 @@ fun LoginAppBrand.label(): String = stringResource(
 
 @Composable
 @ReadOnlyComposable
-fun TimelineEntryKind.label(): String = stringResource(
+fun TimelineEntry.label(): String = stringResource(
     when (this) {
-        TimelineEntryKind.Turn -> R.string.timeline_kind_turn
-        TimelineEntryKind.Item -> R.string.timeline_kind_item
-        TimelineEntryKind.Compaction -> R.string.timeline_kind_compaction
-        TimelineEntryKind.Goal -> R.string.timeline_kind_goal
+        is TimelineEntry.Item -> R.string.timeline_kind_item
+        is TimelineEntry.Realtime -> R.string.timeline_kind_realtime
+        is TimelineEntry.TurnStarted, is TimelineEntry.TurnCompleted -> R.string.timeline_kind_turn
     },
 )
 

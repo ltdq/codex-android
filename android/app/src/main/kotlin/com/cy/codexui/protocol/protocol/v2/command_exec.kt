@@ -84,39 +84,69 @@ data class CommandExecOutputDeltaNotification(
 // process/* — the same idea, but for a long-lived pty the client keeps talking to
 // ---------------------------------------------------------------------------------------------
 
-/** `process/spawn` params. */
+/**
+ * `process/spawn` params.
+ *
+ * [processHandle] is client-supplied and connection-scoped: it is how the follow-up
+ * `writeStdin`/`resizePty`/`kill` calls name this process, which is why the client returns the
+ * handle it generated rather than one from the server.
+ */
 data class ProcessSpawnParams(
     val command: List<String>,
+    val processHandle: String,
+    /** Absolute working directory for the process. */
     val cwd: String? = null,
-    val env: Map<String, String>? = null,
+    val tty: Boolean = false,
+    val streamStdin: Boolean = false,
+    val streamStdoutStderr: Boolean = false,
+    val outputBytesCap: Long? = null,
+    val timeoutMs: Long? = null,
+    val env: Map<String, String?>? = null,
     val size: TerminalSize? = null,
-    val tty: Boolean = true,
 )
 
-data class ProcessSpawnResponse(val processId: String)
-
 data class ProcessWriteStdinParams(
-    val processId: String,
+    val processHandle: String,
     val deltaBase64: String? = null,
     val closeStdin: Boolean = false,
 )
 
 data class ProcessResizePtyParams(
-    val processId: String,
+    val processHandle: String,
     val size: TerminalSize,
 )
 
-data class ProcessKillParams(val processId: String)
+data class ProcessKillParams(val processHandle: String)
+
+/** Which stream a `process/outputDelta` chunk belongs to. */
+enum class ProcessOutputStream(val wire: String) {
+    /** stdout stream; PTY mode multiplexes terminal output here. */
+    Stdout("stdout"),
+
+    Stderr("stderr"),
+    ;
+
+    companion object {
+        fun fromWire(value: String?): ProcessOutputStream =
+            entries.firstOrNull { it.wire == value } ?: Stdout
+    }
+}
 
 /** `process/outputDelta`. */
 data class ProcessOutputDeltaNotification(
-    val processId: String,
+    val processHandle: String,
+    val stream: ProcessOutputStream = ProcessOutputStream.Stdout,
     val deltaBase64: String = "",
-    val stream: CommandExecStream = CommandExecStream.Stdout,
+    /** True on the final streamed chunk when output was truncated by `outputBytesCap`. */
+    val capReached: Boolean = false,
 )
 
 /** `process/exited`. */
 data class ProcessExitedNotification(
-    val processId: String,
+    val processHandle: String,
     val exitCode: Int = 0,
+    val stdout: String = "",
+    val stdoutCapReached: Boolean = false,
+    val stderr: String = "",
+    val stderrCapReached: Boolean = false,
 )

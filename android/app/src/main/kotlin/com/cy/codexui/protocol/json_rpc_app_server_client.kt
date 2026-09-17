@@ -86,6 +86,7 @@ class JsonRpcAppServerClient(
     private val activeTurns = ConcurrentHashMap<String, String>()
     private val sessions = ConcurrentHashMap<String, ThreadSessionState>()
     private val marketplacePaths = ConcurrentHashMap<String, String>()
+    private val guardianDenials = ConcurrentHashMap<String, JsonElement>()
     private val lifecycle = Mutex()
     private var reader: Job? = null
     private var publisher: Job? = null
@@ -126,6 +127,7 @@ class JsonRpcAppServerClient(
         pending.values.forEach { it.completeExceptionally(error) }
         pending.clear()
         approvals.clear()
+        guardianDenials.clear()
         activeTurns.clear()
         sessions.clear()
         publisher?.cancel()
@@ -193,6 +195,7 @@ class JsonRpcAppServerClient(
                 pending.values.forEach { it.completeExceptionally(EOFException("App-server closed")) }
                 pending.clear()
                 approvals.clear()
+                guardianDenials.clear()
                 activeTurns.clear()
                 sessions.clear()
                 state.value = ConnectionState.Disconnected
@@ -258,6 +261,70 @@ class JsonRpcAppServerClient(
         if (name != null) setThreadName(threadId, name).getOrThrow()
         WireCodec.thread(rpc("thread/metadata/update", obj("threadId" to threadId, "projectId" to (projectId ?: JsonNull)))["thread"]!!)
     }
+    override suspend fun listThreadTimeline(threadId: String, cursor: String?, limit: Int?) = result {
+        val o = rpc("thread/timeline/list", obj("threadId" to threadId, "cursor" to cursor, "limit" to limit))
+        o.array("data").map(WireCodec::timelineEntry)
+    }
+    override suspend fun injectThreadItems(threadId: String, items: List<JsonElement>) = call("thread/inject_items", obj("threadId" to threadId, "items" to items))
+    override suspend fun searchThreadOccurrences(threadId: String, term: String) = result {
+        catalog("thread/searchOccurrences", obj("threadId" to threadId, "searchTerm" to term)).map { o ->
+            val range = o.objectOrNull("snippetMatchRange")
+            OccurrenceMatch(o.required("turnId"), o.required("itemId"), o.text("snippet").orEmpty(), range?.int("start") ?: 0,
+                range?.int("end") ?: 0, o.text("turnCursor").orEmpty())
+        }
+    }
+
+    /**
+     * `thread/approveGuardianDeniedAction`.
+     *
+     * The server takes the serialized `GuardianAssessmentEvent`, not an item id, so the client
+     * remembers the event it synthesized from `item/autoApprovalReview/completed` and looks it up
+     * by the item the review targeted.
+     */
+    override suspend fun approveGuardianDeniedAction(threadId: String, itemId: String) = result {
+        val event = guardianDenials[itemId] ?: error("No guardian denial is pending for item $itemId")
+        rpc("thread/approveGuardianDeniedAction", obj("threadId" to threadId, "event" to event))
+        Unit
+    }
+
+    // ---- thread/… attachments -------------------------------------------------
+    override suspend fun listAttachments(threadId: String) = result {
+        catalog("thread/attachment/list", obj("threadId" to threadId)).map(WireCodec::attachment)
+    }
+    override suspend fun addAttachment(threadId: String, type: AttachmentType, identityKey: String, payload: JsonElement) = result {
+        val o = rpc("thread/attachment/add", obj("threadId" to threadId, "attachmentType" to type.wire,
+            "identityKey" to identityKey, "payload" to payload))
+        WireCodec.attachment(o.objectOrNull("attachment") ?: error("Missing attachment"))
+    }
+    override suspend fun removeAttachment(threadId: String, type: AttachmentType, identityKey: String) = call("thread/attachment/remove",
+        obj("threadId" to threadId, "attachmentType" to type.wire, "identityKey" to identityKey))
+
+    // ---- thread/… background terminals ---------------------------------------
+    override suspend fun listBackgroundTerminals(threadId: String) = result {
+        catalog("thread/backgroundTerminals/list", obj("threadId" to threadId)).map(WireCodec::backgroundTerminal)
+    }
+    override suspend fun terminateBackgroundTerminal(threadId: String, processId: String) = result {
+        rpc("thread/backgroundTerminals/terminate", obj("threadId" to threadId, "processId" to processId))
+        Unit
+    }
+    override suspend fun cleanBackgroundTerminals(threadId: String) = call("thread/backgroundTerminals/clean", obj("threadId" to threadId))
+
+    // ---- thread/… realtime voice ---------------------------------------------
+    override suspend fun startRealtime(threadId: String, sdpOffer: String?) = result {
+        val transport = sdpOffer?.let { obj("type" to "webrtc", "sdp" to it) } ?: obj("type" to "websocket")
+        rpc("thread/realtime/start", obj("threadId" to threadId, "outputModality" to "audio", "transport" to transport))
+        Unit
+    }
+    override suspend fun stopRealtime(threadId: String) = result { rpc("thread/realtime/stop", obj("threadId" to threadId)); Unit }
+    override suspend fun listRealtimeVoices() = result {
+        val voices = rpc("thread/realtime/listVoices").objectOrNull("voices") ?: obj()
+        (voices.strings("v1") + voices.strings("v2")).distinct()
+    }
+    override suspend fun appendRealtimeText(threadId: String, text: String) = call("thread/realtime/appendText", obj("threadId" to threadId, "text" to text, "role" to "user"))
+    override suspend fun appendRealtimeSpeech(threadId: String, text: String) = call("thread/realtime/appendSpeech", obj("threadId" to threadId, "text" to text))
+    override suspend fun appendRealtimeAudio(threadId: String, audio: ThreadRealtimeAudioChunk) = call("thread/realtime/appendAudio",
+        obj("threadId" to threadId, "audio" to obj("data" to audio.data, "sampleRate" to audio.sampleRate, "numChannels" to audio.numChannels,
+            "samplesPerChannel" to audio.samplesPerChannel, "itemId" to audio.itemId)))
     override suspend fun moveThreadToSection(threadId: String, sectionId: String?) = call("thread/section/move", obj("threadId" to threadId, "sectionId" to (sectionId ?: JsonNull)))
     override suspend fun listSections() = result { catalog("threadSection/list").map(WireCatalogCodec::section) }
     override suspend fun createSection(name: String) = result { WireCatalogCodec.section(rpc("threadSection/create", obj("name" to name)).objectOrNull("section")!!) }
@@ -478,6 +545,171 @@ class JsonRpcAppServerClient(
     override suspend fun readMemoryStatus() = result { rpc("memory/status").let { MemoryStatusResponse(it.bool("v2Ready") == true, it.int("v2ConsolidatedThreads") ?: 0) } }
     override suspend fun resetMemory() = call("memory/reset", null)
 
+    // ---- account: reset credits, nudge e-mail, Bedrock ------------------------
+    override suspend fun consumeRateLimitResetCredit(creditId: String?) = result {
+        val o = rpc("account/rateLimitResetCredit/consume", obj("idempotencyKey" to UUID.randomUUID().toString(), "creditId" to creditId))
+        ConsumeRateLimitResetCreditResponse(ConsumeRateLimitResetCreditOutcome.fromWire(o.text("outcome")))
+    }
+    override suspend fun sendAddCreditsNudgeEmail(creditType: AddCreditsNudgeCreditType) = result {
+        val o = rpc("account/sendAddCreditsNudgeEmail", obj("creditType" to creditType.wire))
+        SendAddCreditsNudgeEmailResponse(AddCreditsNudgeEmailStatus.fromWire(o.text("status")))
+    }
+    override suspend fun bedrockDiscover() = result {
+        val o = rpc("account/bedrock/discover")
+        BedrockDiscoverResponse(
+            profiles = o.array("profiles").map { value -> value.objectValue().let { BedrockAwsProfile(it.required("name"), it.text("region")) } },
+            environmentCredentials = o.array("environmentCredentials").map { value -> value.objectValue().let {
+                BedrockEnvironmentCredential(it.text("type").orEmpty(), it.text("region")) } },
+        )
+    }
+    override suspend fun bedrockSetup(params: BedrockSetupParams) = result {
+        val body = when (params) {
+            is BedrockSetupParams.Profile -> obj("type" to "profile", "profile" to params.profile, "region" to params.region)
+            is BedrockSetupParams.Environment -> obj("type" to "environment", "region" to params.region)
+        }
+        rpc("account/bedrock/setup", body)
+        Unit
+    }
+
+    // ---- environments ---------------------------------------------------------
+    override suspend fun addEnvironment(environmentId: String, execServerUrl: String, connectTimeoutMs: Long?) = call("environment/add",
+        obj("environmentId" to environmentId, "execServerUrl" to execServerUrl, "connectTimeoutMs" to connectTimeoutMs))
+    override suspend fun readEnvironmentInfo(environmentId: String) = result {
+        val o = rpc("environment/info", obj("environmentId" to environmentId))
+        val shell = o.objectOrNull("shell")
+        EnvironmentInfoResponse(EnvironmentShellInfo(shell?.text("name").orEmpty(), shell?.text("path").orEmpty()), o.text("cwd"))
+    }
+    override suspend fun readEnvironmentStatus(environmentId: String) = result {
+        val o = rpc("environment/status", obj("environmentId" to environmentId))
+        EnvironmentStatusResponse(EnvironmentStatusKind.fromWire(o.text("status")), o.text("error"))
+    }
+
+    // ---- remote control -------------------------------------------------------
+    override suspend fun readRemoteControlStatus() = result { remoteControlStatus(rpc("remoteControl/status/read", null)) }
+    override suspend fun enableRemoteControl(ephemeral: Boolean) = result { remoteControlStatus(rpc("remoteControl/enable", obj("ephemeral" to ephemeral))) }
+    override suspend fun disableRemoteControl(ephemeral: Boolean) = result { remoteControlStatus(rpc("remoteControl/disable", obj("ephemeral" to ephemeral))) }
+    override suspend fun startRemoteControlPairing(manualCode: Boolean) = result {
+        val o = rpc("remoteControl/pairing/start", obj("manualCode" to manualCode))
+        RemoteControlPairingStartResponse(o.required("pairingCode"), o.text("manualPairingCode"), o.required("environmentId"), o.long("expiresAt") ?: 0L)
+    }
+    override suspend fun readRemoteControlPairing(pairingCode: String?, manualPairingCode: String?) = result {
+        val o = rpc("remoteControl/pairing/status", obj("pairingCode" to pairingCode, "manualPairingCode" to manualPairingCode))
+        RemoteControlPairingStatusResponse(o.bool("claimed") == true)
+    }
+    override suspend fun listRemoteControlClients(environmentId: String, cursor: String?, limit: Int?) = result {
+        val o = rpc("remoteControl/client/list", obj("environmentId" to environmentId, "cursor" to cursor, "limit" to limit))
+        RemoteControlClientsListResponse(o.array("data").map { value -> value.objectValue().let { client ->
+            RemoteControlClient(client.required("clientId"), client.text("displayName"), client.text("deviceType"), client.text("platform"),
+                client.text("osVersion"), client.text("deviceModel"), client.text("appVersion"), client.long("lastSeenAt"))
+        } }, o.text("nextCursor"))
+    }
+    override suspend fun revokeRemoteControlClient(environmentId: String, clientId: String) = call("remoteControl/client/revoke",
+        obj("environmentId" to environmentId, "clientId" to clientId))
+
+    private fun remoteControlStatus(o: JsonObject) = RemoteControlStatus(RemoteControlConnectionStatus.fromWire(o.text("status")),
+        o.text("serverName").orEmpty(), o.text("installationId").orEmpty(), o.text("environmentId"))
+
+    // ---- user verification ----------------------------------------------------
+    override suspend fun readUserVerificationStatus() = result {
+        val o = rpc("userVerification/status")
+        UserVerificationStatusResponse(o.text("credentialId"),
+            o.text("unavailableReason")?.let { UserVerificationUnavailableReason.entries.find { reason -> reason.wire == it } },
+            o.text("unavailableMessage"))
+    }
+    override suspend fun enrollUserVerification() = result {
+        val o = rpc("userVerification/enroll")
+        UserVerificationEnrollResponse(o.required("credentialId"), o.text("algorithm"), o.text("publicKey"))
+    }
+    override suspend fun verifyUserVerification(params: UserVerificationVerifyParams) = result {
+        val o = rpc("userVerification/verify", obj("challenge" to params.challenge, "title" to params.title, "description" to params.description))
+        val proof = o.objectOrNull("proof") ?: error("Missing verification proof")
+        UserVerificationVerifyResponse(UserVerificationProof(proof.required("credentialId"), proof.required("signature")))
+    }
+    override suspend fun cancelUserVerification(requestId: String) = call("userVerification/cancel", obj("requestId" to requestId))
+    override suspend fun deleteUserVerification() = call("userVerification/delete")
+
+    // ---- external agent config migration -------------------------------------
+    override suspend fun detectExternalAgentConfig() = result {
+        val o = rpc("externalAgentConfig/detect", obj("includeHome" to true, "cwds" to defaultWorkspace?.let(::listOf)))
+        ExternalAgentConfigDetectResponse(
+            items = o.array("items").map(WireCodec::externalAgentConfigItem),
+            connectors = o.array("connectors").map { value -> value.objectValue().let { c ->
+                ExternalAgentDetectedConnectorCandidate(c.required("name"), c.long("sessionCount") ?: 0L, c.text("source").orEmpty()) } },
+        )
+    }
+    override suspend fun importExternalAgentConfig(items: List<ExternalAgentConfigMigrationItem>) = result {
+        rpc("externalAgentConfig/import", obj("migrationItems" to items.map(WireCodec::externalAgentConfigItemOut), "source" to "android",
+            "providerId" to "android", "migrationSource" to "android")).required("importId")
+    }
+    override suspend fun readExternalAgentImportHistories() = result {
+        rpc("externalAgentConfig/import/readHistories", null).array("data").map { WireCodec.externalAgentImportHistory(it.objectValue()) }
+    }
+    override suspend fun recordExternalAgentImportHistory(params: ExternalAgentConfigImportHistoryRecordParams) = result {
+        rpc("externalAgentConfig/import/recordHistory", obj("providerId" to params.providerId,
+            "itemTypeResults" to params.itemTypeResults.map(WireCodec::externalAgentImportTypeResultOut))).required("importId")
+    }
+
+    // ---- fuzzy file search ----------------------------------------------------
+    override suspend fun fuzzyFileSearch(query: String, roots: List<String>) = result {
+        rpc("fuzzyFileSearch", obj("query" to query, "roots" to roots)).array("files").map { WireCodec.fuzzyResult(it.objectValue()) }
+    }
+    override suspend fun startFuzzySearchSession(sessionId: String, roots: List<String>) = call("fuzzyFileSearch/sessionStart",
+        obj("sessionId" to sessionId, "roots" to roots))
+    override suspend fun updateFuzzySearchSession(sessionId: String, query: String) = call("fuzzyFileSearch/sessionUpdate",
+        obj("sessionId" to sessionId, "query" to query))
+    override suspend fun stopFuzzySearchSession(sessionId: String) = call("fuzzyFileSearch/sessionStop", obj("sessionId" to sessionId))
+
+    // ---- hooks, feedback, diagnostics ----------------------------------------
+    override suspend fun listHooks() = result {
+        // `hooks/list` has no cursor: it answers with one entry per requested working directory.
+        rpc("hooks/list", obj("cwds" to defaultWorkspace?.let(::listOf))).array("data")
+            .flatMap { entry -> entry.objectValue().array("hooks") }
+            .map { WireCodec.hookMetadata(it.objectValue()) }
+    }
+    override suspend fun uploadFeedback(params: FeedbackUploadParams) = result {
+        val o = rpc("feedback/upload", obj("classification" to params.classification, "reason" to params.reason, "threadId" to params.threadId,
+            "includeLogs" to params.includeLogs, "extraLogFiles" to params.extraLogFiles, "tags" to params.tags))
+        FeedbackUploadResponse(o.required("threadId"), o.text("promptHash"))
+    }
+    override suspend fun readServerDiagnostics() = result { WireCodec.diagnostics(rpc("server/diagnostics")) }
+
+    // ---- mcpServer/… event streams -------------------------------------------
+    override suspend fun startMcpEventStream(server: String, subscriptionId: String, name: String, arguments: JsonElement, threadId: String) = call(
+        "mcpServer/event/stream/start", obj("threadId" to threadId, "server" to server, "subscriptionId" to subscriptionId,
+            "name" to name, "arguments" to arguments))
+    override suspend fun stopMcpEventStream(subscriptionId: String) = call("mcpServer/event/stream/stop", obj("subscriptionId" to subscriptionId))
+
+    // ---- plugin shares --------------------------------------------------------
+    override suspend fun listPluginShares() = result {
+        rpc("plugin/share/list").array("data").map { WireCodec.pluginShare(it.objectValue()) }
+    }
+    override suspend fun savePluginShare(pluginPath: String, remotePluginId: String?) = result {
+        val o = rpc("plugin/share/save", obj("pluginPath" to pluginPath, "remotePluginId" to remotePluginId))
+        PluginShareSaveResponse(o.required("remotePluginId"), o.text("shareUrl").orEmpty(), o.bool("canPublishToWorkspace"))
+    }
+    override suspend fun deletePluginShare(remotePluginId: String) = call("plugin/share/delete", obj("remotePluginId" to remotePluginId))
+    override suspend fun checkoutPluginShare(remotePluginId: String) = result {
+        val o = rpc("plugin/share/checkout", obj("remotePluginId" to remotePluginId))
+        PluginShareCheckoutResponse(o.required("remotePluginId"), o.required("pluginId"), o.required("pluginName"), o.required("pluginPath"),
+            o.required("marketplaceName"), o.required("marketplacePath"), o.text("remoteVersion"))
+    }
+    override suspend fun updatePluginShareTargets(remotePluginId: String, discoverability: PluginShareDiscoverability,
+        targets: List<PluginShareTarget>) = result {
+        val o = rpc("plugin/share/updateTargets", obj("remotePluginId" to remotePluginId, "discoverability" to discoverability.wire,
+            "shareTargets" to targets.map { obj("principalType" to it.principalType, "principalId" to it.principalId, "role" to it.role) }))
+        PluginShareUpdateTargetsResponse(o.array("principals").map { WireCodec.pluginSharePrincipals(it.objectValue()) },
+            PluginShareDiscoverability.fromWire(o.text("discoverability")))
+    }
+
+    // ---- windows sandbox ------------------------------------------------------
+    override suspend fun windowsSandboxReadiness() = result {
+        val status = rpc("windowsSandbox/readiness", null).text("status")
+        WindowsSandboxReadinessResponse(WindowsSandboxReadiness.entries.find { it.wire == status } ?: WindowsSandboxReadiness.NotConfigured)
+    }
+    override suspend fun windowsSandboxSetupStart(mode: WindowsSandboxSetupMode, cwd: String?) = result {
+        WindowsSandboxSetupStartResponse(rpc("windowsSandbox/setupStart", obj("mode" to mode.wire, "cwd" to cwd)).bool("started") == true)
+    }
+
     override suspend fun listProjects() = result { catalog("project/list").map(WireCatalogCodec::project) }
     override suspend fun readProject(projectId: String) = result { WireCatalogCodec.project(rpc("project/read", obj("projectId" to projectId)).objectOrNull("project")!!) }
     override suspend fun createProject(name: String, path: String) = result {
@@ -571,6 +803,28 @@ class JsonRpcAppServerClient(
     override suspend fun execResize(processId: String, rows: Int, cols: Int) = call("command/exec/resize", obj("processId" to processId, "size" to obj("rows" to rows, "cols" to cols)))
     override suspend fun execTerminate(processId: String) = call("command/exec/terminate", obj("processId" to processId))
 
+    /**
+     * `process/spawn`.
+     *
+     * The process handle is connection-scoped and client-supplied, so this client mints one and
+     * answers with it: the handle is what the three follow-up calls address, and upstream has no
+     * server-side id to read out of the response. A tty implies stdin and stdout streaming, so both
+     * flags follow [tty]; a buffered run still streams stdout because the response only carries the
+     * tail.
+     */
+    override suspend fun spawnProcess(command: List<String>, cwd: String?, tty: Boolean) = result {
+        val handle = UUID.randomUUID().toString()
+        val workingDirectory = cwd?.takeIf { it.isNotBlank() } ?: defaultWorkspace ?: error("A working directory is required to spawn a process")
+        rpc("process/spawn", obj("command" to command, "processHandle" to handle, "cwd" to workingDirectory,
+            "tty" to tty, "streamStdin" to tty, "streamStdoutStderr" to true))
+        handle
+    }
+    override suspend fun writeProcessStdin(processId: String, data: ByteArray?, closeStdin: Boolean) = call("process/writeStdin",
+        obj("processHandle" to processId, "deltaBase64" to data?.let { Base64.getEncoder().encodeToString(it) }, "closeStdin" to closeStdin))
+    override suspend fun resizeProcessPty(processId: String, rows: Int, cols: Int) = call("process/resizePty",
+        obj("processHandle" to processId, "size" to obj("rows" to rows, "cols" to cols)))
+    override suspend fun killProcess(processId: String) = call("process/kill", obj("processHandle" to processId))
+
     private suspend fun notification(method: String, p: JsonObject) {
         val threadId = p.text("threadId").orEmpty()
         val turnId = p.text("turnId").orEmpty()
@@ -641,7 +895,43 @@ class JsonRpcAppServerClient(
                 McpServerConnectionStatus.entries.find { it.wire == p.text("status") } ?: McpServerConnectionStatus.Starting, p.text("error")))
             "mcpServer/oauthLogin/completed" -> AppServerEvent.McpOauthLoginCompleted(McpServerOauthLoginCompletedNotification(p.required("name"), p.bool("success") == true, p.text("error")))
             "fs/changed" -> AppServerEvent.FsChangedEvent(FsChangedNotification(p.required("watchId"), p.strings("changedPaths")))
+            "thread/attachment/updated" -> AppServerEvent.ThreadAttachmentUpdated(threadId)
             "command/exec/outputDelta" -> AppServerEvent.CommandExecOutput(CommandExecOutputDeltaNotification(p.required("processId"), p.required("deltaBase64"), CommandExecStream.fromWire(p.text("stream")), p.bool("capReached") == true))
+            "process/outputDelta" -> AppServerEvent.ProcessOutputDelta(ProcessOutputDeltaNotification(p.required("processHandle"),
+                ProcessOutputStream.fromWire(p.text("stream")), p.required("deltaBase64"), p.bool("capReached") == true))
+            "process/exited" -> AppServerEvent.ProcessExited(ProcessExitedNotification(p.required("processHandle"), p.int("exitCode") ?: 0,
+                p.text("stdout").orEmpty(), p.bool("stdoutCapReached") == true, p.text("stderr").orEmpty(), p.bool("stderrCapReached") == true))
+            "hook/started" -> AppServerEvent.HookStarted(threadId, HookStartedNotification(threadId, p.text("turnId"), WireCodec.hookRun(p["run"]!!.objectValue())))
+            "hook/completed" -> AppServerEvent.HookCompleted(threadId, HookCompletedNotification(threadId, p.text("turnId"), WireCodec.hookRun(p["run"]!!.objectValue())))
+            "fuzzyFileSearch/sessionUpdated" -> AppServerEvent.FuzzySearchUpdated(FuzzyFileSearchSessionUpdatedNotification(p.required("sessionId"),
+                p.text("query").orEmpty(), p.array("files").map { WireCodec.fuzzyResult(it.objectValue()) }))
+            "fuzzyFileSearch/sessionCompleted" -> AppServerEvent.FuzzySearchCompleted(FuzzyFileSearchSessionCompletedNotification(p.required("sessionId")))
+            "item/autoApprovalReview/started", "item/autoApprovalReview/completed" -> {
+                val review = p.objectOrNull("review") ?: obj()
+                val status = review.text("status").orEmpty()
+                val notification = GuardianApprovalReviewNotification(threadId, p.text("turnId").orEmpty(), p.text("targetItemId").orEmpty(),
+                    status, review.text("rationale"))
+                if (method == "item/autoApprovalReview/completed") {
+                    // The approve call needs the core-shaped event, not the notification; synthesize
+                    // it here so the item's denial can be overridden later.
+                    p.text("targetItemId")?.let { target ->
+                        guardianDenials[target] = obj(
+                            "id" to p.required("reviewId"), "target_item_id" to target, "turn_id" to p.text("turnId").orEmpty(),
+                            "started_at_ms" to (p.long("startedAtMs") ?: 0L), "completed_at_ms" to (p.long("completedAtMs") ?: 0L),
+                            "status" to guardianStatus(status), "risk_level" to review.text("riskLevel"),
+                            "user_authorization" to review.text("userAuthorization"), "rationale" to review.text("rationale"),
+                            "decision_source" to "agent", "action" to (p["action"] ?: JsonNull),
+                        )
+                    }
+                    AppServerEvent.AutoApprovalReviewCompleted(threadId, notification)
+                } else {
+                    AppServerEvent.AutoApprovalReviewStarted(threadId, notification)
+                }
+            }
+            "externalAgentConfig/import/progress" -> AppServerEvent.ExternalAgentImportProgress(p.required("importId"),
+                p.array("itemTypeResults").map { WireCodec.externalAgentImportTypeResult(it.objectValue()) })
+            "externalAgentConfig/import/completed" -> AppServerEvent.ExternalAgentImportCompleted(p.required("importId"),
+                p.array("itemTypeResults").map { WireCodec.externalAgentImportTypeResult(it.objectValue()) })
             "android/transportError" -> throw IOException(p.required("message"))
             "android/transportLagged" -> throw IOException("App-server event stream lost ${p.long("skipped") ?: 0} messages; reconnect to reload the thread")
             "error" -> {
@@ -654,6 +944,13 @@ class JsonRpcAppServerClient(
             else -> null
         }
         if (event != null) eventQueue.send(event)
+    }
+
+    /** The v2 review status is camelCase; the core event the approve call takes is snake_case. */
+    private fun guardianStatus(v2: String): String = when (v2) {
+        "inProgress" -> "in_progress"
+        "timedOut" -> "timed_out"
+        else -> v2
     }
 
     private suspend fun serverRequest(id: JsonElement, method: String, p: JsonObject) {

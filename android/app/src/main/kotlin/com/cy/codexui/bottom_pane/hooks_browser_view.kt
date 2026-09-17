@@ -25,7 +25,12 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import com.cy.codexui.R
-import com.cy.codexui.protocol.protocol.v2.HookEntry
+import com.cy.codexui.protocol.protocol.v2.ConfigBatchWriteParams
+import com.cy.codexui.protocol.protocol.v2.ConfigEdit
+import com.cy.codexui.protocol.protocol.v2.HookMetadata
+import com.cy.codexui.protocol.protocol.v2.MergeStrategy
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import com.cy.codexui.AppEvent
 import com.cy.codexui.CatalogState
 import com.cy.codexui.SectionCard
@@ -114,7 +119,7 @@ fun HooksScreen(
 }
 
 @Composable
-private fun HooksRow(hook: HookEntry, onEvent: (AppEvent) -> Unit) {
+private fun HooksRow(hook: HookMetadata, onEvent: (AppEvent) -> Unit) {
     val colors = MiuixTheme.colorScheme
     Row(
         modifier = Modifier
@@ -125,7 +130,7 @@ private fun HooksRow(hook: HookEntry, onEvent: (AppEvent) -> Unit) {
         Column(modifier = Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text = hook.name,
+                    text = hook.key,
                     modifier = Modifier.weight(1f, fill = false),
                     fontSize = UiType.RowTitle,
                     lineHeight = UiType.RowTitleLine,
@@ -136,13 +141,13 @@ private fun HooksRow(hook: HookEntry, onEvent: (AppEvent) -> Unit) {
                 )
                 Spacer(Modifier.width(UiConsts.Space6))
                 HooksChip(
-                    text = hook.event,
+                    text = hook.eventName,
                     tint = if (hook.enabled) colors.primary else colors.disabledOnSurface,
                 )
             }
             Spacer(Modifier.height(UiConsts.Space5))
             Text(
-                text = hook.command,
+                text = hook.handlerSummary(),
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(HooksRowShape)
@@ -159,19 +164,39 @@ private fun HooksRow(hook: HookEntry, onEvent: (AppEvent) -> Unit) {
         Spacer(Modifier.width(UiConsts.Space10))
         Switch(
             checked = hook.enabled,
-            // A hook's on/off lives in the config file, so the toggle is a `config/value/write`
-            // against the key the hook was declared under. A write that a managed layer shadows
+            // A hook's on/off lives under `hooks.state."<key>".enabled`, so the toggle is one upsert
+            // into that table keyed by the hook's own identity. A write that a managed layer shadows
             // comes back `okOverridden`, which the caller surfaces rather than silently ignoring.
             onCheckedChange = { enabled ->
                 onEvent(
-                    AppEvent.WriteConfigValue(
-                        keyPath = "hooks.${'$'}{hook.id}.enabled",
-                        value = kotlinx.serialization.json.JsonPrimitive(enabled),
+                    AppEvent.WriteConfigBatch(
+                        ConfigBatchWriteParams(
+                            edits = listOf(
+                                ConfigEdit(
+                                    keyPath = "hooks.state",
+                                    value = buildJsonObject { put(hook.key, buildJsonObject { put("enabled", enabled) }) },
+                                    mergeStrategy = MergeStrategy.Upsert,
+                                ),
+                            ),
+                        ),
                     ),
                 )
             },
         )
     }
+}
+
+/**
+ * The handler line under a hook's key.
+ *
+ * Three shapes share one field on the wire — a shell command, an MCP tool, or a prompt/agent
+ * handler with no payload — so the row renders whichever is meaningful and never shows an empty
+ * code block for the variants that carry nothing.
+ */
+private fun HookMetadata.handlerSummary(): String = when {
+    command != null -> command
+    server != null && tool != null -> "$server/$tool"
+    else -> handlerType
 }
 
 @Composable

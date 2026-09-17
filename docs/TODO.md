@@ -15,28 +15,12 @@
 
 ## 1. 让已接线的入口真正工作（P0）
 
-- [ ] **59 / 166 个客户端方法没有实现。** `JsonRpcAppServerClient` 只 override 了 107 个，
-      其余落到 `protocol/app_server_client.kt:562` 的 `unsupported()`，调用只拿到
-      `Result.failure`。缺的族：`thread/timeline`、attachments、realtime（voice/audio）、
-      remote control、plugin shares、environments、user verification、external-agent config
-      import、fuzzy search、hooks 读取、background terminals、`process/*`（含 PTY）、feedback、
-      `readServerDiagnostics`、windows sandbox、bedrock。
-      其中 54 个在 UI 里已有调用点（hooks 页、`/status` 诊断页、附件托盘、realtime 页……），
-      真机上这些入口只会弹错误。`ClientRequestRegistryTest` 只校验「注册表 ↔ 接口」，
-      测不出实现类缺方法——需要一条校验绑定完整性的测试。
 - [ ] **`/diff` 是空操作**（`app.kt:656`），未提交/未跟踪改动不可达；客户端也没有对应的
       git diff 方法。
 - [ ] **FileChange 审批卡拿不到 patch。** 解码用的是上游不存在的字段
       （`json_rpc_app_server_client.kt:639` 的 `WireCodec.changes`、`approvals.kt:42`），
       真服务端不发送 → 审批卡 diff 为空（上游为 `threadId, turnId, itemId, startedAtMs,
       reason?, grantRoot?`）。
-- [ ] **hooks 通知没有生产者。** `HookStarted/HookCompleted` 有枚举和 handler，但
-      `json_rpc_app_server_client.kt` 里没有任何 `Hook` 解码；Kotlin 形状
-      `(threadId, hookId, name, event)` 也与上游 `{threadId, turnId?, run: HookRunSummary}`
-      不符（`protocol/protocol/v2/misc.kt:784-798`）。
-- [ ] **hooks 开关写死键名**：`bottom_pane/hooks_browser_view.kt:168` 的
-      `keyPath = "hooks.${'$'}{hook.id}.enabled"` 是字面量（`${'$'}` 把变量转义掉了），
-      上游键名是 `hooks.state`。
 - [ ] **不认识的 slash 命令当普通消息发给模型**（`app.kt:194-212`）：命令目录只有
       13 条建议 / 17 条识别，其余整串文本进模型。
 
@@ -51,7 +35,6 @@
 
   | Kotlin | 上游 | 后果 |
   | --- | --- | --- |
-  | `HookStarted/HookCompletedNotification(threadId, hookId, name, event)` | `{threadId, turnId?, run}` | `hookId` 服务端不发，整条丢 |
   | `ThreadMemoryMode { Disabled, Read, ReadWrite }` | `{ Enabled, Disabled }` | `"enabled"` 解不出正确模式（回退 `Disabled`）；写路径靠 `require` 绕开 |
   | `CommandExecutionApprovalDecision` 四值枚举 | 带负载联合（execpolicy / network-policy 修正） | 「同意并记住规则」不可达；`proposedNetworkPolicyAmendments` 无读取者 |
   | `FileChangeApprovalParams.changes` | 上游无此字段 | 审批卡 diff 为空 |
@@ -185,7 +168,7 @@
 ### 4.8 管理面
 
 - [ ] hooks 浏览器深度不足：无 trust 操作、无 review-needed 状态、无按事件分组与计数、
-      无 handler 细节；`HookEntry` 无 trust 字段。
+      无 handler 细节（`HookMetadata` 已带 `trustStatus`，但 UI 不显示也不写）。
 - [ ] MCP：`authStatus` 未建模（「去登录」按钮无法判断）、startup 进度与警告缺失、
       结果里的 image/audio/resource 投影缺失。
 - [ ] 插件目录：无按 marketplace 的 tab、无安装后鉴权流；`PluginEntry` 无 `enabled`。

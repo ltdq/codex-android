@@ -132,6 +132,7 @@
     <string name="timeline_kind_turn">Turn</string>
     <string name="timeline_kind_item">Item</string>
     <string name="timeline_kind_compaction">Compaction</string>
+    <string name="timeline_kind_realtime">Realtime</string>
     <string name="timeline_kind_goal">Goal</string>
 
     <!-- misc.kt: UserVerificationState -->

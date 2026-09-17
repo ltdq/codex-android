@@ -3,14 +3,18 @@ package com.cy.codexui.protocol
 import com.cy.codexui.protocol.protocol.Json
 import com.cy.codexui.protocol.protocol.array
 import com.cy.codexui.protocol.protocol.bool
+import com.cy.codexui.protocol.protocol.int
 import com.cy.codexui.protocol.protocol.long
 import com.cy.codexui.protocol.protocol.objectOrNull
 import com.cy.codexui.protocol.protocol.objectValue
 import com.cy.codexui.protocol.protocol.required
 import com.cy.codexui.protocol.protocol.text
 import com.cy.codexui.protocol.protocol.item.AgentMessageItem
+import com.cy.codexui.protocol.protocol.v2.AttachmentType
 import com.cy.codexui.protocol.protocol.v2.ClientInfo
 import com.cy.codexui.protocol.protocol.v2.CommandExecutionApprovalDecision
+import com.cy.codexui.protocol.protocol.v2.TimelineEntry
+import com.cy.codexui.protocol.protocol.v2.TurnStatus
 import com.cy.codexui.protocol.protocol.v2.UserInput
 import java.io.IOException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -342,6 +346,302 @@ class JsonRpcAppServerClientTest {
         client.respond(received.requestId, ApprovalResponse.Permissions(com.cy.codexui.protocol.protocol.v2.PermissionsApprovalDecision.Decline))
         val result = transport.sentResponse().objectOrNull("result")!!
         assertTrue(result.objectOrNull("permissions")!!.isEmpty())
+        client.close()
+    }
+
+    @Test
+    fun `attachments are addressed by identity and decode their payload`() = runTest {
+        val transport = HarnessTransport()
+        val client = JsonRpcAppServerClient(transport, backgroundScope)
+        client.initialize(ClientInfo("android", version = "1")).getOrThrow()
+        val listed = async { client.listAttachments("t").getOrThrow() }
+        val list = transport.request()
+        assertEquals("thread/attachment/list", list.required("method"))
+        assertEquals("t", list.objectOrNull("params")!!.required("threadId"))
+        transport.response(list, obj("data" to listOf(obj("id" to "a", "attachmentType" to "image", "identityKey" to "shot.png",
+            "payload" to obj("path" to "/tmp/shot.png"), "createdAt" to 17))))
+        val attachment = listed.await().single()
+        assertEquals("shot.png", attachment.identityKey)
+        assertEquals("image", attachment.attachmentType)
+        assertEquals(17L, attachment.createdAt)
+
+        val added = async { client.addAttachment("t", AttachmentType.File, "notes.txt", JsonPrimitive("/tmp/notes.txt")).getOrThrow() }
+        val add = transport.request()
+        assertEquals("thread/attachment/add", add.required("method"))
+        assertEquals("file", add.objectOrNull("params")!!.required("attachmentType"))
+        assertEquals("notes.txt", add.objectOrNull("params")!!.required("identityKey"))
+        transport.response(add, obj("outcome" to "created", "attachment" to obj("id" to "b", "attachmentType" to "file",
+            "identityKey" to "notes.txt", "payload" to "/tmp/notes.txt", "createdAt" to 1)))
+        assertEquals("notes.txt", added.await().identityKey)
+
+        val removed = async { client.removeAttachment("t", AttachmentType.File, "notes.txt").getOrThrow() }
+        val remove = transport.request()
+        assertEquals("thread/attachment/remove", remove.required("method"))
+        assertEquals("file", remove.objectOrNull("params")!!.required("attachmentType"))
+        assertNull(remove.objectOrNull("params")!!.text("attachmentId"))
+        transport.response(remove, obj())
+        removed.await()
+        client.close()
+    }
+
+    @Test
+    fun `timeline decodes every tagged entry variant`() = runTest {
+        val transport = HarnessTransport()
+        val client = JsonRpcAppServerClient(transport, backgroundScope)
+        client.initialize(ClientInfo("android", version = "1")).getOrThrow()
+        val timeline = async { client.listThreadTimeline("t").getOrThrow() }
+        val request = transport.request()
+        assertEquals("thread/timeline/list", request.required("method"))
+        transport.response(request, obj("data" to listOf(
+            obj("type" to "item", "position" to 1, "turnId" to "turn", "item" to obj("type" to "agentMessage", "id" to "item", "text" to "hi")),
+            obj("type" to "turnCompleted", "position" to 2, "turnId" to "turn", "status" to "completed", "durationMs" to 5, "startedAt" to 3, "completedAt" to 4),
+        )))
+        val entries = timeline.await()
+        assertEquals("hi", (assertIs<TimelineEntry.Item>(entries[0]).item as AgentMessageItem).text)
+        val completed = assertIs<TimelineEntry.TurnCompleted>(entries[1])
+        assertEquals(TurnStatus.Completed, completed.status)
+        assertEquals(5L, completed.durationMs)
+        client.close()
+    }
+
+    @Test
+    fun `background terminals, hooks and diagnostics decode their response envelopes`() = runTest {
+        val transport = HarnessTransport()
+        val client = JsonRpcAppServerClient(transport, backgroundScope)
+        client.initialize(ClientInfo("android", version = "1")).getOrThrow()
+        val terminals = async { client.listBackgroundTerminals("t").getOrThrow() }
+        transport.response(transport.request(), obj("data" to listOf(obj("itemId" to "i", "processId" to "p", "command" to "sleep 60",
+            "cwd" to "/workspace", "osPid" to 7, "cpuPercent" to 1.5, "rssKb" to 128))))
+        val terminal = terminals.await().single()
+        assertEquals("p", terminal.processId)
+        assertEquals(7L, terminal.osPid)
+
+        val terminate = async { client.terminateBackgroundTerminal("t", "p").getOrThrow() }
+        val terminateRequest = transport.request()
+        assertEquals("thread/backgroundTerminals/terminate", terminateRequest.required("method"))
+        transport.response(terminateRequest, obj("terminated" to false))
+        terminate.await()
+
+        val hooks = async { client.listHooks().getOrThrow() }
+        transport.response(transport.request(), obj("data" to listOf(obj("cwd" to "/workspace", "hooks" to listOf(
+            obj("key" to "k", "eventName" to "preToolUse", "handlerType" to "command", "command" to "echo hi", "enabled" to true, "trustStatus" to "trusted"),
+        )))))
+        assertEquals("echo hi", hooks.await().single().command)
+
+        val diagnostics = async { client.readServerDiagnostics().getOrThrow() }
+        transport.response(transport.request(), obj("process" to obj("id" to 9, "residentMemoryBytes" to 1024),
+            "gauges" to listOf(obj("name" to "threads.active", "value" to 2))))
+        val report = diagnostics.await()
+        assertEquals(9L, report.process.id)
+        assertEquals(2L, report.gauges.single().value)
+        client.close()
+    }
+
+    @Test
+    fun `process handle names the spawn and its notifications carry that handle`() = runTest {
+        val transport = HarnessTransport()
+        val client = JsonRpcAppServerClient(transport, backgroundScope)
+        client.initialize(ClientInfo("android", version = "1")).getOrThrow()
+        val spawned = async { client.spawnProcess(listOf("bash"), "/workspace", tty = true).getOrThrow() }
+        val request = transport.request()
+        assertEquals("process/spawn", request.required("method"))
+        val params = request.objectOrNull("params")!!
+        assertEquals(true, params.bool("tty"))
+        assertEquals("/workspace", params.required("cwd"))
+        transport.response(request, obj())
+        val handle = spawned.await()
+        assertEquals(params.required("processHandle"), handle)
+
+        val write = async { client.writeProcessStdin(handle, "ls\n".toByteArray(), closeStdin = true).getOrThrow() }
+        val writeRequest = transport.request()
+        assertEquals("process/writeStdin", writeRequest.required("method"))
+        assertEquals(handle, writeRequest.objectOrNull("params")!!.required("processHandle"))
+        assertTrue(writeRequest.objectOrNull("params")!!.bool("closeStdin")!!)
+        transport.response(writeRequest, obj())
+        write.await()
+
+        val resize = async { client.resizeProcessPty(handle, 30, 90).getOrThrow() }
+        val resizeRequest = transport.request()
+        assertEquals("process/resizePty", resizeRequest.required("method"))
+        val size = resizeRequest.objectOrNull("params")!!.objectOrNull("size")!!
+        assertEquals(30, size.int("rows"))
+        assertEquals(90, size.int("cols"))
+        transport.response(resizeRequest, obj())
+        resize.await()
+
+        val killed = async { client.killProcess(handle).getOrThrow() }
+        transport.response(transport.request(), obj())
+        killed.await()
+
+        val observed = async(UnconfinedTestDispatcher(testScheduler)) { client.events.first() }
+        transport.push("""{"method":"process/outputDelta","params":{"processHandle":"$handle","stream":"stdout","deltaBase64":"aGk=","capReached":false}}""")
+        assertEquals("aGk=", assertIs<AppServerEvent.ProcessOutputDelta>(observed.await()).delta.deltaBase64)
+        client.close()
+    }
+
+    @Test
+    fun `account, remote control and user verification decode their status enums`() = runTest {
+        val transport = HarnessTransport()
+        val client = JsonRpcAppServerClient(transport, backgroundScope)
+        client.initialize(ClientInfo("android", version = "1")).getOrThrow()
+        val credit = async { client.consumeRateLimitResetCredit("c").getOrThrow() }
+        val creditRequest = transport.request()
+        assertEquals("account/rateLimitResetCredit/consume", creditRequest.required("method"))
+        assertEquals("c", creditRequest.objectOrNull("params")!!.text("creditId"))
+        assertTrue(creditRequest.objectOrNull("params")!!.required("idempotencyKey").isNotEmpty())
+        transport.response(creditRequest, obj("outcome" to "noCredit"))
+        assertEquals(com.cy.codexui.protocol.protocol.v2.ConsumeRateLimitResetCreditOutcome.NoCredit, credit.await().outcome)
+
+        val nudge = async { client.sendAddCreditsNudgeEmail(com.cy.codexui.protocol.protocol.v2.AddCreditsNudgeCreditType.UsageLimit).getOrThrow() }
+        val nudgeRequest = transport.request()
+        assertEquals("usage_limit", nudgeRequest.objectOrNull("params")!!.required("creditType"))
+        transport.response(nudgeRequest, obj("status" to "cooldown_active"))
+        assertEquals(com.cy.codexui.protocol.protocol.v2.AddCreditsNudgeEmailStatus.CooldownActive, nudge.await().status)
+
+        val status = async { client.readRemoteControlStatus().getOrThrow() }
+        transport.response(transport.request(), obj("status" to "connected", "serverName" to "phone", "installationId" to "i", "environmentId" to JsonNull))
+        assertEquals(com.cy.codexui.protocol.protocol.v2.RemoteControlConnectionStatus.Connected, status.await().status)
+
+        val pairing = async { client.startRemoteControlPairing(manualCode = true).getOrThrow() }
+        val pairingRequest = transport.request()
+        assertEquals(true, pairingRequest.objectOrNull("params")!!.bool("manualCode"))
+        transport.response(pairingRequest, obj("pairingCode" to "abc", "manualPairingCode" to "1234", "environmentId" to "e", "expiresAt" to 99))
+        assertEquals("1234", pairing.await().manualPairingCode)
+
+        val verification = async { client.readUserVerificationStatus().getOrThrow() }
+        transport.response(transport.request(), obj("credentialId" to JsonNull, "unavailableReason" to "biometricsUnavailable", "unavailableMessage" to "no sensor"))
+        assertEquals(com.cy.codexui.protocol.protocol.v2.UserVerificationUnavailableReason.BiometricsUnavailable,
+            verification.await().unavailableReason)
+        client.close()
+    }
+
+    @Test
+    fun `plugin shares, feedback and windows sandbox decode server envelopes`() = runTest {
+        val transport = HarnessTransport()
+        val client = JsonRpcAppServerClient(transport, backgroundScope)
+        client.initialize(ClientInfo("android", version = "1")).getOrThrow()
+        val shares = async { client.listPluginShares().getOrThrow() }
+        transport.response(transport.request(), obj("data" to listOf(obj("plugin" to obj("id" to "p@m", "name" to "formatter",
+            "installed" to true, "remotePluginId" to "r", "shareContext" to obj("shareUrl" to "https://example.test/s",
+                "discoverability" to "UNLISTED", "sharePrincipals" to listOf(obj("principalType" to "user", "principalId" to "alice", "role" to "reader", "name" to "Alice")))),
+            "localPluginPath" to JsonNull))))
+        val share = shares.await().single()
+        assertEquals("r", share.plugin.remotePluginId)
+        assertNull(share.localPluginPath)
+        assertEquals("alice", share.plugin.shareContext!!.sharePrincipals!!.single().principalId)
+
+        val saved = async { client.savePluginShare("/plugins/p", null).getOrThrow() }
+        transport.response(transport.request(), obj("remotePluginId" to "r", "shareUrl" to "https://example.test/s", "canPublishToWorkspace" to true))
+        assertEquals("https://example.test/s", saved.await().shareUrl)
+
+        val checkout = async { client.checkoutPluginShare("r").getOrThrow() }
+        transport.response(transport.request(), obj("remotePluginId" to "r", "pluginId" to "p", "pluginName" to "formatter",
+            "pluginPath" to "/plugins/p", "marketplaceName" to "m", "marketplacePath" to "/m.json", "remoteVersion" to "1.0"))
+        assertEquals("/plugins/p", checkout.await().pluginPath)
+
+        val updated = async { client.updatePluginShareTargets("r", com.cy.codexui.protocol.protocol.v2.PluginShareDiscoverability.Private,
+            listOf(com.cy.codexui.protocol.protocol.v2.PluginShareTarget("user", "alice"))).getOrThrow() }
+        val updateRequest = transport.request()
+        assertEquals("PRIVATE", updateRequest.objectOrNull("params")!!.required("discoverability"))
+        transport.response(updateRequest, obj("principals" to emptyList<JsonElement>(), "discoverability" to "PRIVATE"))
+        assertEquals(com.cy.codexui.protocol.protocol.v2.PluginShareDiscoverability.Private, updated.await().discoverability)
+
+        val feedback = async { client.uploadFeedback(com.cy.codexui.protocol.protocol.v2.FeedbackUploadParams("bug", "Crash")).getOrThrow() }
+        transport.response(transport.request(), obj("threadId" to "t", "promptHash" to "abc"))
+        assertEquals("t", feedback.await().threadId)
+
+        val readiness = async { client.windowsSandboxReadiness().getOrThrow() }
+        transport.response(transport.request(), obj("status" to "notConfigured"))
+        assertEquals(com.cy.codexui.protocol.protocol.v2.WindowsSandboxReadiness.NotConfigured, readiness.await().status)
+        client.close()
+    }
+
+    @Test
+    fun `environment reads and external agent import carry upstream parameter names`() = runTest {
+        val transport = HarnessTransport()
+        val client = JsonRpcAppServerClient(transport, backgroundScope)
+        client.initialize(ClientInfo("android", version = "1")).getOrThrow()
+        val info = async { client.readEnvironmentInfo("remote").getOrThrow() }
+        val infoRequest = transport.request()
+        assertEquals("environment/info", infoRequest.required("method"))
+        assertEquals("remote", infoRequest.objectOrNull("params")!!.required("environmentId"))
+        transport.response(infoRequest, obj("shell" to obj("name" to "zsh", "path" to "/bin/zsh"), "cwd" to "file:///workspace"))
+        assertEquals("zsh", info.await().shell.name)
+
+        val status = async { client.readEnvironmentStatus("remote").getOrThrow() }
+        transport.response(transport.request(), obj("status" to "disconnected", "error" to "refused"))
+        assertEquals(com.cy.codexui.protocol.protocol.v2.EnvironmentStatusKind.Disconnected, status.await().status)
+
+        val detected = async { client.detectExternalAgentConfig().getOrThrow() }
+        transport.response(transport.request(), obj("items" to listOf(obj("itemType" to "SKILLS", "description" to "One skill",
+            "cwd" to JsonNull, "details" to obj("skills" to listOf(obj("name" to "skill"))))), "connectors" to emptyList<JsonElement>()))
+        val item = detected.await().items.single()
+        assertEquals("SKILLS", item.itemType)
+        assertEquals("skill", item.details!!.skills.single().name)
+
+        val imported = async { client.importExternalAgentConfig(listOf(item)).getOrThrow() }
+        val importRequest = transport.request()
+        assertEquals("externalAgentConfig/import", importRequest.required("method"))
+        assertEquals("SKILLS", importRequest.objectOrNull("params")!!.array("migrationItems").single().objectValue().required("itemType"))
+        transport.response(importRequest, obj("importId" to "imp-1"))
+        assertEquals("imp-1", imported.await())
+
+        val histories = async { client.readExternalAgentImportHistories().getOrThrow() }
+        transport.response(transport.request(), obj("data" to listOf(obj("importId" to "imp-1", "providerId" to "claude",
+            "completedAtMs" to 5, "successes" to listOf(obj("itemType" to "SKILLS")), "failures" to emptyList<JsonElement>()))))
+        assertEquals("imp-1", histories.await().single().importId)
+        client.close()
+    }
+
+    @Test
+    fun `guardian denials cache the event the approve call needs`() = runTest {
+        val transport = HarnessTransport()
+        val client = JsonRpcAppServerClient(transport, backgroundScope)
+        client.initialize(ClientInfo("android", version = "1")).getOrThrow()
+        val review = async(UnconfinedTestDispatcher(testScheduler)) { client.events.first() }
+        transport.push("""{"method":"item/autoApprovalReview/completed","params":{"threadId":"t","turnId":"turn","startedAtMs":1,"completedAtMs":2,"reviewId":"r","targetItemId":"item","review":{"status":"denied","riskLevel":"high","userAuthorization":"low","rationale":"rm -rf"},"decisionSource":"agent","action":{"type":"command","source":"shell","command":"rm -rf /","cwd":"/workspace"}}}""")
+        assertIs<AppServerEvent.AutoApprovalReviewCompleted>(review.await())
+        val approve = async { client.approveGuardianDeniedAction("t", "item").getOrThrow() }
+        val request = transport.request()
+        assertEquals("thread/approveGuardianDeniedAction", request.required("method"))
+        val event = request.objectOrNull("params")!!.objectOrNull("event")!!
+        assertEquals("denied", event.required("status"))
+        assertEquals("item", event.required("target_item_id"))
+        assertEquals("rm -rf /", event.objectOrNull("action")!!.required("command"))
+        transport.response(request, obj())
+        approve.await()
+        client.close()
+    }
+
+    @Test
+    fun `fuzzy search and its sessions use the upstream parameter names`() = runTest {
+        val transport = HarnessTransport()
+        val client = JsonRpcAppServerClient(transport, backgroundScope)
+        client.initialize(ClientInfo("android", version = "1")).getOrThrow()
+        val oneShot = async { client.fuzzyFileSearch("read", listOf("/workspace")).getOrThrow() }
+        transport.response(transport.request(), obj("files" to listOf(obj("path" to "/workspace/README.md", "matchType" to "file",
+            "fileName" to "README.md", "root" to "/workspace", "score" to 12, "indices" to listOf(0, 1)))))
+        assertEquals(12L, oneShot.await().single().score)
+
+        val started = async { client.startFuzzySearchSession("s", listOf("/workspace")).getOrThrow() }
+        val start = transport.request()
+        assertEquals("fuzzyFileSearch/sessionStart", start.required("method"))
+        assertEquals("s", start.objectOrNull("params")!!.required("sessionId"))
+        transport.response(start, obj())
+        started.await()
+
+        val updated = async { client.updateFuzzySearchSession("s", "read").getOrThrow() }
+        val update = transport.request()
+        assertEquals("fuzzyFileSearch/sessionUpdate", update.required("method"))
+        assertEquals("read", update.objectOrNull("params")!!.required("query"))
+        transport.response(update, obj())
+        updated.await()
+
+        val stopped = async { client.stopFuzzySearchSession("s").getOrThrow() }
+        val stop = transport.request()
+        assertEquals("fuzzyFileSearch/sessionStop", stop.required("method"))
+        transport.response(stop, obj())
+        stopped.await()
         client.close()
     }
 

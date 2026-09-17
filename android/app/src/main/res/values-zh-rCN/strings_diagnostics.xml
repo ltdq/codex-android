@@ -14,9 +14,8 @@
     <string name="diagnostics_screen_check">读取诊断信息</string>
     <string name="diagnostics_process_section">服务器进程</string>
     <string name="diagnostics_process_pid">进程 id</string>
-    <string name="diagnostics_process_version">版本</string>
-    <string name="diagnostics_process_uptime">运行时长</string>
-    <string name="diagnostics_process_uptime_value">%1$d 天 %2$d 小时 %3$d 分</string>
+    <string name="diagnostics_process_resident">常驻内存</string>
+    <string name="diagnostics_process_footprint">物理占用</string>
     <string name="diagnostics_gauges_section">指标</string>
     <string name="diagnostics_gauges_empty">服务器没有报告任何指标。</string>
     <string name="diagnostics_gauges_note">每根条表示该指标占这里最大值（%1$s）的比例，不是任何容量的百分比。</string>
