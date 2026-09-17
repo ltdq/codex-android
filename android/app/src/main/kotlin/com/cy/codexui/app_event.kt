@@ -1,7 +1,7 @@
 package com.cy.codexui
 
 import com.cy.codexui.protocol.ApprovalResponse
-import com.cy.codexui.protocol.protocol.JsonValue
+import kotlinx.serialization.json.JsonElement
 import com.cy.codexui.protocol.protocol.RequestId
 import com.cy.codexui.protocol.protocol.v2.AskForApproval
 import com.cy.codexui.protocol.protocol.v2.AttachmentType
@@ -310,7 +310,7 @@ sealed interface AppEvent {
     /** Persist the settings page's toggle through `config/value/write`. */
     data class WriteConfigValue(
         val keyPath: String,
-        val value: JsonValue,
+        val value: JsonElement,
         val merge: MergeStrategy = MergeStrategy.Replace,
     ) : AppEvent
 

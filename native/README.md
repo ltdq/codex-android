@@ -59,6 +59,14 @@ The in-process server performs its own initialize/initialized handshake. Kotlin
 must start its normal RPC requests after `nativeStart` returns. Shutdown stops
 pending work and rejects subsequent sends.
 
+Messages cross JNI as UTF-8 bytes plus a `JsonRpcMessageKind` tag (0 request,
+1 notification, 2 response, 3 error). `bridge.rs` deserializes each payload
+directly into the typed `ClientRequest` / `ClientNotification` / server-response
+type with one `serde_json` pass, and writes events with one `serde_json::to_vec`
+from the typed `ServerNotification`; no JSON-RPC envelope is materialized as an
+intermediate `serde_json::Value`. The byte transport also removes the Java string
+Modified UTF-8 conversion from the message path.
+
 ## Verification
 
 The host smoke runs real app-server requests without model inference: model and

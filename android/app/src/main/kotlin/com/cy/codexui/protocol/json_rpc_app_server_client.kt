@@ -1,8 +1,17 @@
 package com.cy.codexui.protocol
 
 import com.cy.codexui.protocol.protocol.Json
-import com.cy.codexui.protocol.protocol.JsonValue
 import com.cy.codexui.protocol.protocol.RequestId
+import com.cy.codexui.protocol.protocol.array
+import com.cy.codexui.protocol.protocol.bool
+import com.cy.codexui.protocol.protocol.int
+import com.cy.codexui.protocol.protocol.long
+import com.cy.codexui.protocol.protocol.objectOrNull
+import com.cy.codexui.protocol.protocol.objectValue
+import com.cy.codexui.protocol.protocol.required
+import com.cy.codexui.protocol.protocol.strings
+import com.cy.codexui.protocol.protocol.text
+import com.cy.codexui.protocol.protocol.wireText
 import com.cy.codexui.protocol.protocol.v2.*
 import java.io.EOFException
 import java.io.IOException
@@ -26,16 +35,38 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeout
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.put
+
+/**
+ * Which JSON-RPC envelope an outgoing message is.
+ *
+ * The envelope shape is the only thing a transport cannot infer from the text, and the native side
+ * uses it to deserialize straight into the typed request/notification/response instead of parsing an
+ * envelope and re-encoding its payload.
+ */
+enum class JsonRpcMessageKind(val code: Int) {
+    Request(0),
+    Notification(1),
+    Response(2),
+    Error(3),
+}
 
 /** Native start completes the app-server initialize/initialized handshake before returning. */
 interface JsonRpcTransport {
     suspend fun start()
-    suspend fun send(message: String)
+    suspend fun send(kind: JsonRpcMessageKind, message: String)
     suspend fun receive(): String?
     suspend fun close()
 }
 
-class AppServerRpcException(val code: Int, message: String, val data: JsonValue? = null) : Exception(message)
+class AppServerRpcException(val code: Int, message: String, val data: JsonElement? = null) : Exception(message)
 
 class JsonRpcAppServerClient(
     private val transport: JsonRpcTransport,
@@ -50,8 +81,8 @@ class JsonRpcAppServerClient(
     private val requestStream = Channel<ApprovalRequest>(Channel.UNLIMITED)
     override val requests: Flow<ApprovalRequest> = requestStream.receiveAsFlow()
     private val sequence = AtomicLong()
-    private val pending = ConcurrentHashMap<String, CompletableDeferred<JsonValue.Obj>>()
-    private val approvals = ConcurrentHashMap<String, Pair<JsonValue, JsonValue.Obj>>()
+    private val pending = ConcurrentHashMap<String, CompletableDeferred<JsonObject>>()
+    private val approvals = ConcurrentHashMap<String, Pair<JsonElement, JsonObject>>()
     private val activeTurns = ConcurrentHashMap<String, String>()
     private val sessions = ConcurrentHashMap<String, ThreadSessionState>()
     private val marketplacePaths = ConcurrentHashMap<String, String>()
@@ -111,13 +142,17 @@ class JsonRpcAppServerClient(
         Result.failure(error)
     }
 
-    private suspend fun rpc(method: String, params: JsonValue? = obj()): JsonValue.Obj {
+    private suspend fun rpc(method: String, params: JsonElement? = obj()): JsonObject {
         check(state.value == ConnectionState.Ready) { "App-server is not connected" }
         val id = "android-${sequence.incrementAndGet()}"
-        val response = CompletableDeferred<JsonValue.Obj>()
+        val response = CompletableDeferred<JsonObject>()
         pending[id] = response
         try {
-            transport.send(Json.write(obj("id" to id, "method" to method, "params" to params)))
+            transport.send(JsonRpcMessageKind.Request, Json.write(buildJsonObject {
+                put("id", id)
+                put("method", method)
+                if (params != null) put("params", params)
+            }))
             return try {
                 withTimeout(120_000) { response.await() }
             } catch (error: TimeoutCancellationException) {
@@ -128,7 +163,7 @@ class JsonRpcAppServerClient(
         }
     }
 
-    private suspend fun call(method: String, params: JsonValue? = obj()): Result<Unit> = result { rpc(method, params) }
+    private suspend fun call(method: String, params: JsonElement? = obj()): Result<Unit> = result { rpc(method, params) }
 
     private suspend fun dispatch(message: String) {
         val envelope = Json.parse(message).objectValue()
@@ -138,7 +173,7 @@ class JsonRpcAppServerClient(
             val awaiting = pending.remove(id.wireText()) ?: return
             val error = envelope.objectOrNull("error")
             if (error != null) awaiting.completeExceptionally(AppServerRpcException(error.int("code") ?: -32603, error.text("message") ?: "App-server request failed", error["data"]))
-            else if ("result" in envelope.fields) awaiting.complete((envelope["result"] as? JsonValue.Obj) ?: obj())
+            else if ("result" in envelope) awaiting.complete((envelope["result"] as? JsonObject) ?: obj())
             else awaiting.completeExceptionally(IOException("App-server response has no result or error"))
         } else if (method != null) {
             val params = envelope.objectOrNull("params") ?: obj()
@@ -191,7 +226,7 @@ class JsonRpcAppServerClient(
         turns.lastOrNull { it.status == TurnStatus.InProgress }?.let { activeTurns[threadId] = it.id }
         ThreadReadResponse(WireCodec.thread(o), turns.flatMap { it.items }, turns)
     }
-    private suspend fun session(method: String, params: JsonValue.Obj) = result {
+    private suspend fun session(method: String, params: JsonObject) = result {
         WireCodec.session(rpc(method, params)).also { sessions[it.threadId] = it }
     }
     override suspend fun startThread(cwd: String, model: String?) = session("thread/start", obj("cwd" to cwd.ifBlank { defaultWorkspace.orEmpty() }, "model" to model))
@@ -221,9 +256,9 @@ class JsonRpcAppServerClient(
     }
     override suspend fun updateThreadMetadata(threadId: String, name: String?, projectId: String?) = result {
         if (name != null) setThreadName(threadId, name).getOrThrow()
-        WireCodec.thread(rpc("thread/metadata/update", obj("threadId" to threadId, "projectId" to (projectId ?: JsonValue.Null)))["thread"]!!)
+        WireCodec.thread(rpc("thread/metadata/update", obj("threadId" to threadId, "projectId" to (projectId ?: JsonNull)))["thread"]!!)
     }
-    override suspend fun moveThreadToSection(threadId: String, sectionId: String?) = call("thread/section/move", obj("threadId" to threadId, "sectionId" to (sectionId ?: JsonValue.Null)))
+    override suspend fun moveThreadToSection(threadId: String, sectionId: String?) = call("thread/section/move", obj("threadId" to threadId, "sectionId" to (sectionId ?: JsonNull)))
     override suspend fun listSections() = result { catalog("threadSection/list").map(WireCatalogCodec::section) }
     override suspend fun createSection(name: String) = result { WireCatalogCodec.section(rpc("threadSection/create", obj("name" to name)).objectOrNull("section")!!) }
     override suspend fun updateSection(sectionId: String, name: String) = result { WireCatalogCodec.section(rpc("threadSection/update", obj("sectionId" to sectionId, "name" to name)).objectOrNull("section")!!) }
@@ -256,7 +291,7 @@ class JsonRpcAppServerClient(
         val current = sessions[threadId]
         val mode = collaborationMode?.let {
             obj("mode" to it.wire, "settings" to obj("model" to (model ?: current?.model ?: error("Load the thread before changing collaboration mode")),
-                "reasoning_effort" to (effort ?: current?.reasoningEffort)?.wire, "developer_instructions" to JsonValue.Null))
+                "reasoning_effort" to (effort ?: current?.reasoningEffort)?.wire, "developer_instructions" to JsonNull))
         }
         rpc("thread/settings/update", obj("threadId" to threadId, "model" to model, "effort" to effort?.wire, "approvalPolicy" to approvalPolicy?.wire,
             "collaborationMode" to mode, "personality" to personality?.wire))
@@ -269,7 +304,7 @@ class JsonRpcAppServerClient(
         val current = sessions[params.threadId]
         val collaboration = params.collaborationMode?.let { obj("mode" to it.wire, "settings" to obj(
             "model" to (params.model ?: current?.model ?: error("Load the thread before changing collaboration mode")),
-            "reasoning_effort" to (params.effort ?: current?.reasoningEffort)?.wire, "developer_instructions" to JsonValue.Null)) }
+            "reasoning_effort" to (params.effort ?: current?.reasoningEffort)?.wire, "developer_instructions" to JsonNull)) }
         val sandbox = params.sandboxPolicy?.let { policy -> when (policy.mode) {
             SandboxMode.DangerFullAccess -> obj("type" to "dangerFullAccess")
             SandboxMode.ReadOnly -> obj("type" to "readOnly", "networkAccess" to policy.networkAccess)
@@ -311,7 +346,7 @@ class JsonRpcAppServerClient(
         val wireTarget = when (target) {
             ReviewTarget.UncommittedChanges -> obj("type" to "uncommittedChanges")
             is ReviewTarget.BaseBranch -> obj("type" to "baseBranch", "branch" to target.branch)
-            is ReviewTarget.Commit -> obj("type" to "commit", "sha" to target.sha, "title" to (target.title ?: JsonValue.Null))
+            is ReviewTarget.Commit -> obj("type" to "commit", "sha" to target.sha, "title" to (target.title ?: JsonNull))
             is ReviewTarget.Custom -> obj("type" to "custom", "instructions" to target.instructions)
         }
         val o = rpc("review/start", obj("threadId" to threadId, "target" to wireTarget))
@@ -355,8 +390,8 @@ class JsonRpcAppServerClient(
 
     override suspend fun readConfig(cwd: String?, includeLayers: Boolean) = result { WireCodec.config(rpc("config/read", obj("cwd" to cwd, "includeLayers" to includeLayers))) }
     override suspend fun readConfigLayers() = readConfig().map { it.layers.orEmpty() }
-    override suspend fun readConfigRequirements() = result { ConfigRequirementsReadResponse(rpc("configRequirements/read", null)["requirements"] ?: JsonValue.Null) }
-    private fun configWritten(o: JsonValue.Obj) = ConfigWriteResponse(o.required("filePath"), WriteStatus.fromWire(o.text("status")), o.text("version").orEmpty())
+    override suspend fun readConfigRequirements() = result { ConfigRequirementsReadResponse(rpc("configRequirements/read", null)["requirements"] ?: JsonNull) }
+    private fun configWritten(o: JsonObject) = ConfigWriteResponse(o.required("filePath"), WriteStatus.fromWire(o.text("status")), o.text("version").orEmpty())
     override suspend fun writeConfigValue(params: ConfigValueWriteParams) = result {
         configWritten(rpc("config/value/write", obj("keyPath" to params.keyPath, "value" to params.value, "mergeStrategy" to params.mergeStrategy.wire, "filePath" to params.filePath, "expectedVersion" to params.expectedVersion)))
     }
@@ -381,11 +416,11 @@ class JsonRpcAppServerClient(
         models
     }
 
-    private suspend fun catalog(method: String, params: JsonValue.Obj = obj()): List<JsonValue.Obj> {
-        val values = mutableListOf<JsonValue.Obj>()
+    private suspend fun catalog(method: String, params: JsonObject = obj()): List<JsonObject> {
+        val values = mutableListOf<JsonObject>()
         var cursor: String? = null
         do {
-            val page = rpc(method, JsonValue.Obj(params.fields + obj("limit" to 100, "cursor" to cursor).fields))
+            val page = rpc(method, JsonObject(params + obj("limit" to 100, "cursor" to cursor)))
             values += page.array("data").map { it.objectValue() }
             val next = page.text("nextCursor")
             check(next == null || next != cursor) { "Catalog pagination did not advance: $method" }
@@ -393,8 +428,8 @@ class JsonRpcAppServerClient(
         } while (cursor != null)
         return values
     }
-    override suspend fun readModelProviderCapabilities() = result { rpc("modelProvider/capabilities/read").fields.mapNotNull { (name, value) ->
-        (value as? JsonValue.Bool)?.let { name to it.value }
+    override suspend fun readModelProviderCapabilities() = result { rpc("modelProvider/capabilities/read").mapNotNull { (name, value) ->
+        (value as? JsonPrimitive)?.takeIf { !it.isString }?.booleanOrNull?.let { name to it }
     }.toMap() }
     override suspend fun listPermissionProfiles() = result {
         catalog("permissionProfile/list").map { o -> PermissionProfileEntry(o.required("id"), o.required("id"), o.text("description").orEmpty()) }
@@ -423,7 +458,7 @@ class JsonRpcAppServerClient(
             val page = rpc("mcpServerStatus/list", obj("cursor" to cursor, "limit" to 100))
             servers += page.array("data").map { value -> value.objectValue().let { o -> McpServerStatusEntry(o.required("name"),
                 McpServerConnectionStatus.entries.find { it.wire == o.text("runtimeStatus") } ?: McpServerConnectionStatus.Starting,
-                o.objectOrNull("tools")?.fields?.size ?: 0, o.array("resources").size, o.text("toolsError")) } }
+                o.objectOrNull("tools")?.size ?: 0, o.array("resources").size, o.text("toolsError")) } }
             val next = page.text("nextCursor")
             check(next == null || next != cursor) { "MCP pagination did not advance" }
             cursor = next
@@ -463,7 +498,7 @@ class JsonRpcAppServerClient(
             "idempotencyKey" to UUID.randomUUID().toString())).objectOrNull("project")!!)
     }
 
-    private fun marketplaces(o: JsonValue.Obj): List<MarketplaceEntry> = o.array("marketplaces").map { WireCatalogCodec.marketplace(it.objectValue()) }.also { list ->
+    private fun marketplaces(o: JsonObject): List<MarketplaceEntry> = o.array("marketplaces").map { WireCatalogCodec.marketplace(it.objectValue()) }.also { list ->
         list.forEach { if (it.path.isNotBlank()) marketplacePaths[it.name] = it.path }
     }
     override suspend fun listPlugins(params: PluginListParams) = result {
@@ -475,7 +510,7 @@ class JsonRpcAppServerClient(
         val o = rpc("plugin/installed", obj("cwds" to (params.cwds ?: defaultWorkspace?.let(::listOf)), "installSuggestionPluginNames" to params.installSuggestionPluginNames))
         PluginInstalledResponse(marketplaces(o), WireCatalogCodec.marketplaceErrors(o))
     }
-    private fun pluginSelector(name: String, marketplace: String?): JsonValue.Obj {
+    private fun pluginSelector(name: String, marketplace: String?): JsonObject {
         val path = marketplace?.takeIf { it.startsWith('/') } ?: marketplacePaths[marketplace.orEmpty()]
         return obj("pluginName" to name, "marketplacePath" to path, "remoteMarketplaceName" to marketplace?.takeIf { path == null })
     }
@@ -536,7 +571,7 @@ class JsonRpcAppServerClient(
     override suspend fun execResize(processId: String, rows: Int, cols: Int) = call("command/exec/resize", obj("processId" to processId, "size" to obj("rows" to rows, "cols" to cols)))
     override suspend fun execTerminate(processId: String) = call("command/exec/terminate", obj("processId" to processId))
 
-    private suspend fun notification(method: String, p: JsonValue.Obj) {
+    private suspend fun notification(method: String, p: JsonObject) {
         val threadId = p.text("threadId").orEmpty()
         val turnId = p.text("turnId").orEmpty()
         val itemId = p.text("itemId").orEmpty()
@@ -621,9 +656,9 @@ class JsonRpcAppServerClient(
         if (event != null) eventQueue.send(event)
     }
 
-    private suspend fun serverRequest(id: JsonValue, method: String, p: JsonValue.Obj) {
+    private suspend fun serverRequest(id: JsonElement, method: String, p: JsonObject) {
         if (method == "currentTime/read") {
-            transport.send(Json.write(obj("id" to id, "result" to obj("currentTimeAt" to System.currentTimeMillis() / 1000))))
+            transport.send(JsonRpcMessageKind.Response, Json.write(obj("id" to id, "result" to obj("currentTimeAt" to System.currentTimeMillis() / 1000))))
             return
         }
         val key = id.wireText()
@@ -652,7 +687,7 @@ class JsonRpcAppServerClient(
             "item/tool/requestUserInput" -> {
                 val questions = p.array("questions").map { value ->
                     val q = value.objectValue()
-                    val options = (q["options"] as? JsonValue.Arr)?.values?.map { option ->
+                    val options = (q["options"] as? JsonArray)?.map { option ->
                         val o = option.objectValue()
                         ToolRequestUserInputOption(o.required("label"), o.text("description").orEmpty())
                     }
@@ -662,7 +697,7 @@ class JsonRpcAppServerClient(
             }
             "mcpServer/elicitation/request" -> {
                 val schema = p.objectOrNull("requestedSchema") ?: obj()
-                val fields = schema.objectOrNull("properties")?.fields.orEmpty().map { (name, value) ->
+                val fields = schema.objectOrNull("properties").orEmpty().map { (name, value) ->
                     val field = value.objectValue()
                     val options = field.strings("enum")
                     val kind = when {
@@ -680,7 +715,7 @@ class JsonRpcAppServerClient(
             else -> null
         }
         if (request == null) {
-            transport.send(Json.write(obj("id" to id, "error" to obj("code" to -32601, "message" to "Unsupported Android client request: $method"))))
+            transport.send(JsonRpcMessageKind.Error, Json.write(obj("id" to id, "error" to obj("code" to -32601, "message" to "Unsupported Android client request: $method"))))
         } else {
             approvals[key] = id to p
             requestStream.send(request)
@@ -694,7 +729,7 @@ class JsonRpcAppServerClient(
             is ApprovalResponse.FileChange -> obj("decision" to response.decision.wire)
             is ApprovalResponse.Permissions -> obj("permissions" to if (response.decision == PermissionsApprovalDecision.Decline) obj() else (params["permissions"] ?: obj()),
                 "scope" to if (response.decision == PermissionsApprovalDecision.AcceptForSession) "session" else "turn")
-            is ApprovalResponse.UserInput -> obj("answers" to JsonValue.Obj(response.answers.associate { it.questionId to obj("answers" to it.answers) }))
+            is ApprovalResponse.UserInput -> obj("answers" to JsonObject(response.answers.associate { it.questionId to obj("answers" to it.answers) }))
             is ApprovalResponse.Elicitation -> {
                 val properties = params.objectOrNull("requestedSchema")?.objectOrNull("properties")
                 val content = response.content.mapValues { (key, value) ->
@@ -705,14 +740,14 @@ class JsonRpcAppServerClient(
                         else -> json(value)
                     }
                 }
-                obj("action" to response.action.wire, "content" to if (response.action == ElicitationAction.Accept) JsonValue.Obj(content) else JsonValue.Null)
+                obj("action" to response.action.wire, "content" to if (response.action == ElicitationAction.Accept) JsonObject(content) else JsonNull)
             }
             is ApprovalResponse.DynamicTool -> obj("success" to response.result.success, "contentItems" to response.result.contentItems.map { obj("type" to "inputText", "text" to it) })
             is ApprovalResponse.Tokens -> obj("accessToken" to response.accessToken, "chatgptAccountId" to response.chatgptAccountId, "chatgptPlanType" to response.chatgptPlanType)
             is ApprovalResponse.Attestation -> obj("token" to response.token)
             is ApprovalResponse.CurrentTime -> obj("currentTimeAt" to response.epochMillis / 1000)
         }
-        transport.send(Json.write(obj("id" to id, "result" to body)))
+        transport.send(JsonRpcMessageKind.Response, Json.write(obj("id" to id, "result" to body)))
         approvals.remove(requestId.value)
     }
 }

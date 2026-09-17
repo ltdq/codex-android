@@ -4,7 +4,7 @@ use codex_app_server::in_process::{
 };
 use codex_app_server_protocol::{
     ClientInfo, ClientNotification, ClientRequest, InitializeCapabilities, InitializeParams,
-    JSONRPCMessage,
+    JSONRPCErrorError, RequestId,
 };
 use codex_arg0::Arg0DispatchPaths;
 use codex_config::{CloudConfigBundleLoader, LoaderOverrides, NoopThreadConfigLoader};
@@ -12,8 +12,8 @@ use codex_core::config::{ConfigBuilder, ConfigOverrides};
 use codex_exec_server::{EnvironmentManager, ExecServerRuntimePaths};
 use codex_feedback::CodexFeedback;
 use codex_protocol::protocol::SessionSource;
-use serde::Deserialize;
-use serde_json::{Value, json};
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -42,11 +42,74 @@ struct StartConfig {
     env: BTreeMap<String, String>,
 }
 
-/// Owns one real, in-process app-server and bounded JSON-RPC transport queues.
+/// One client message after exactly one serde parse.
+///
+/// The JNI caller tags the envelope kind, so a request becomes a typed [`ClientRequest`] without
+/// the JSON-RPC envelope ever being materialized as an intermediate `serde_json::Value`.
+enum Command {
+    Request(Box<ClientRequest>),
+    Notification(Box<ClientNotification>),
+    ServerResponse { id: RequestId, result: Value },
+    ServerError { id: RequestId, error: JSONRPCErrorError },
+}
+
+/// `{"id": …, "result": …}`, the client's answer to an app-server request.
+#[derive(Deserialize)]
+struct ClientServerResponse {
+    id: RequestId,
+    #[serde(default)]
+    result: Value,
+}
+
+/// `{"id": …, "error": …}`, the client's rejection of an app-server request.
+#[derive(Deserialize)]
+struct ClientServerError {
+    id: RequestId,
+    error: JSONRPCErrorError,
+}
+
+/// Outgoing `{"id": …, "result": …}`. `result` is borrowed so the tree the app-server produced is
+/// streamed into the string rather than copied into a new one.
+#[derive(Serialize)]
+struct ServerResponseEnvelope<'a> {
+    id: &'a RequestId,
+    result: &'a Value,
+}
+
+/// Outgoing `{"id": …, "error": …}`.
+#[derive(Serialize)]
+struct ServerErrorEnvelope<'a> {
+    id: &'a RequestId,
+    error: &'a JSONRPCErrorError,
+}
+
+#[derive(Serialize)]
+struct LaggedNotification {
+    method: &'static str,
+    params: LaggedParams,
+}
+
+#[derive(Serialize)]
+struct LaggedParams {
+    skipped: usize,
+}
+
+#[derive(Serialize)]
+struct TransportErrorNotification<'a> {
+    method: &'static str,
+    params: TransportErrorParams<'a>,
+}
+
+#[derive(Serialize)]
+struct TransportErrorParams<'a> {
+    message: &'a str,
+}
+
+/// Owns one real, in-process app-server and bounded byte-queue transport.
 pub struct Bridge {
     runtime: Option<Runtime>,
-    commands: mpsc::Sender<JSONRPCMessage>,
-    events: Mutex<mpsc::Receiver<String>>,
+    commands: mpsc::Sender<Command>,
+    events: Mutex<mpsc::Receiver<Vec<u8>>>,
     stop: Mutex<Option<oneshot::Sender<()>>>,
     worker: Mutex<Option<tokio::task::JoinHandle<()>>>,
     stopped: AtomicBool,
@@ -54,11 +117,11 @@ pub struct Bridge {
 
 impl Bridge {
     /// Initializes Codex, including its initialize/initialized handshake.
-    pub fn start(config_json: &str) -> Result<Self> {
+    pub fn start(config: &[u8]) -> Result<Self> {
         let _guard = START_LOCK
             .lock()
             .map_err(|_| anyhow!("startup lock poisoned"))?;
-        let mut settings: StartConfig = serde_json::from_str(config_json)?;
+        let mut settings: StartConfig = serde_json::from_slice(config)?;
         #[cfg(target_os = "android")]
         {
             let expected_shell = settings.toolchain_root.join("bin/bash");
@@ -141,21 +204,46 @@ impl Bridge {
         })
     }
 
-    pub fn send(&self, message: &str) -> Result<()> {
+    /// Sends one JSON-RPC request; serde deserializes it straight into [`ClientRequest`].
+    pub fn send_request(&self, message: &[u8]) -> Result<()> {
+        check_message_size(message)?;
+        let request = serde_json::from_slice(message).context("invalid JSON-RPC request")?;
+        self.enqueue(Command::Request(Box::new(request)))
+    }
+
+    /// Sends one JSON-RPC notification; serde deserializes it straight into [`ClientNotification`].
+    pub fn send_notification(&self, message: &[u8]) -> Result<()> {
+        check_message_size(message)?;
+        let notification = serde_json::from_slice(message).context("invalid JSON-RPC notification")?;
+        self.enqueue(Command::Notification(Box::new(notification)))
+    }
+
+    /// Sends the client's answer to an app-server request.
+    pub fn send_response(&self, message: &[u8]) -> Result<()> {
+        check_message_size(message)?;
+        let ClientServerResponse { id, result } =
+            serde_json::from_slice(message).context("invalid JSON-RPC response")?;
+        self.enqueue(Command::ServerResponse { id, result })
+    }
+
+    /// Sends the client's rejection of an app-server request.
+    pub fn send_error(&self, message: &[u8]) -> Result<()> {
+        check_message_size(message)?;
+        let ClientServerError { id, error } =
+            serde_json::from_slice(message).context("invalid JSON-RPC error")?;
+        self.enqueue(Command::ServerError { id, error })
+    }
+
+    fn enqueue(&self, command: Command) -> Result<()> {
         if self.stopped.load(Ordering::Acquire) {
             bail!("Codex runtime is closed");
         }
-        if message.len() > MAX_MESSAGE_BYTES {
-            bail!("JSON-RPC message exceeds 16 MiB");
-        }
-        let message = serde_json::from_str(message).context("invalid JSON-RPC message")?;
         self.commands
-            .try_send(message)
-            .context("Codex command queue unavailable")?;
-        Ok(())
+            .try_send(command)
+            .context("Codex command queue unavailable")
     }
 
-    pub fn receive(&self, timeout: Duration) -> Result<Option<String>> {
+    pub fn receive(&self, timeout: Duration) -> Result<Option<Vec<u8>>> {
         let mut events = self
             .events
             .lock()
@@ -220,6 +308,13 @@ impl Drop for Bridge {
             runtime.shutdown_timeout(Duration::from_secs(5));
         }
     }
+}
+
+fn check_message_size(message: &[u8]) -> Result<()> {
+    if message.len() > MAX_MESSAGE_BYTES {
+        bail!("JSON-RPC message exceeds 16 MiB");
+    }
+    Ok(())
 }
 
 async fn start_client(settings: StartConfig) -> Result<InProcessClientHandle> {
@@ -312,8 +407,8 @@ async fn start_client(settings: StartConfig) -> Result<InProcessClientHandle> {
 
 async fn run(
     mut client: InProcessClientHandle,
-    mut commands: mpsc::Receiver<JSONRPCMessage>,
-    events: mpsc::Sender<String>,
+    mut commands: mpsc::Receiver<Command>,
+    events: mpsc::Sender<Vec<u8>>,
     mut stop: oneshot::Receiver<()>,
 ) {
     let mut requests = JoinSet::new();
@@ -325,62 +420,48 @@ async fn run(
             command = commands.recv() => {
                 let Some(command) = command else { break };
                 match command {
-                    JSONRPCMessage::Request(request) => {
-                        let id = request.id.clone();
+                    Command::Request(request) => {
+                        let id = request.id().clone();
                         if requests.len() >= 64 {
-                            let _ = events.send(json!({"id":id,"error":{"code":-32001,"message":"too many in-flight requests"}}).to_string()).await;
+                            send_event(&events, error_bytes(&id, -32001, "too many in-flight requests")).await;
                             continue;
                         }
-                        let request = match ClientRequest::try_from(request) {
-                            Ok(request) => request,
-                            Err(error) => {
-                                let _ = events.send(json!({"id":id,"error":{"code":-32602,"message":error.to_string()}}).to_string()).await;
-                                continue;
-                            }
-                        };
                         let sender = client.sender();
                         let events = events.clone();
                         requests.spawn(async move {
-                            let response = match sender.request(request).await {
-                                Ok(Ok(result)) => json!({"id":id,"result":result}),
-                                Ok(Err(error)) => json!({"id":id,"error":error}),
-                                Err(error) => json!({"id":id,"error":{"code":-32603,"message":error.to_string()}}),
+                            let response = match sender.request(*request).await {
+                                Ok(Ok(result)) => serde_json::to_vec(&ServerResponseEnvelope { id: &id, result: &result }),
+                                Ok(Err(error)) => serde_json::to_vec(&ServerErrorEnvelope { id: &id, error: &error }),
+                                Err(error) => error_bytes(&id, -32603, &error.to_string()),
                             };
-                            let _ = events.send(response.to_string()).await;
+                            send_event(&events, response).await;
                         });
                     }
-                    JSONRPCMessage::Notification(notification) => {
-                        let result = serde_json::to_value(notification)
-                            .and_then(serde_json::from_value::<ClientNotification>)
-                            .map_err(anyhow::Error::from)
-                            .and_then(|notification| client.notify(notification).map_err(anyhow::Error::from));
-                        if let Err(error) = result {
-                            let _ = events.send(transport_error(&error.to_string())).await;
+                    Command::Notification(notification) => {
+                        if let Err(error) = client.notify(*notification) {
+                            send_event(&events, transport_error(&error.to_string())).await;
                         }
                     }
-                    JSONRPCMessage::Response(response) => {
-                        if let Err(error) = client.respond_to_server_request(response.id, response.result) {
-                            let _ = events.send(transport_error(&error.to_string())).await;
+                    Command::ServerResponse { id, result } => {
+                        if let Err(error) = client.respond_to_server_request(id, result) {
+                            send_event(&events, transport_error(&error.to_string())).await;
                         }
                     }
-                    JSONRPCMessage::Error(error) => {
-                        if let Err(error) = client.fail_server_request(error.id, error.error) {
-                            let _ = events.send(transport_error(&error.to_string())).await;
+                    Command::ServerError { id, error } => {
+                        if let Err(error) = client.fail_server_request(id, error) {
+                            send_event(&events, transport_error(&error.to_string())).await;
                         }
                     }
                 }
             }
             event = client.next_event() => {
-                let value: Result<Value, _> = match event {
-                    Some(InProcessServerEvent::ServerRequest(request)) => serde_json::to_value(request),
-                    Some(InProcessServerEvent::ServerNotification(notification)) => serde_json::to_value(notification),
-                    Some(InProcessServerEvent::Lagged { skipped }) => Ok(json!({"method":"android/transportLagged","params":{"skipped":skipped}})),
+                let message = match event {
+                    Some(InProcessServerEvent::ServerRequest(request)) => serde_json::to_vec(&*request),
+                    Some(InProcessServerEvent::ServerNotification(notification)) => serde_json::to_vec(&*notification),
+                    Some(InProcessServerEvent::Lagged { skipped }) => serde_json::to_vec(&LaggedNotification { method: "android/transportLagged", params: LaggedParams { skipped } }),
                     None => break,
                 };
-                if let Ok(value) = value
-                    && events.send(value.to_string()).await.is_err() {
-                    break;
-                }
+                send_event(&events, message).await;
             }
         }
     }
@@ -388,6 +469,27 @@ async fn run(
     let _ = client.shutdown().await;
 }
 
-fn transport_error(message: &str) -> String {
-    json!({"method":"android/transportError","params":{"message":message}}).to_string()
+/// Forwards one already-serialized event; a serialization error only drops that message.
+async fn send_event(events: &mpsc::Sender<Vec<u8>>, message: serde_json::Result<Vec<u8>>) {
+    if let Ok(message) = message {
+        let _ = events.send(message).await;
+    }
+}
+
+fn error_bytes(id: &RequestId, code: i64, message: &str) -> serde_json::Result<Vec<u8>> {
+    serde_json::to_vec(&ServerErrorEnvelope {
+        id,
+        error: &JSONRPCErrorError {
+            code,
+            message: message.to_string(),
+            data: None,
+        },
+    })
+}
+
+fn transport_error(message: &str) -> serde_json::Result<Vec<u8>> {
+    serde_json::to_vec(&TransportErrorNotification {
+        method: "android/transportError",
+        params: TransportErrorParams { message },
+    })
 }

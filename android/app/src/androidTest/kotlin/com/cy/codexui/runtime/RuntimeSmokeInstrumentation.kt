@@ -74,7 +74,10 @@ class RuntimeSmokeInstrumentation : Instrumentation() {
                                 listOf("${installation.root.path}/bin/bash", "-c",
                                     "set -e; git --version; rg --version; " +
                                         "python3 -c 'import ssl,sqlite3; print(\"python-ok\")'; " +
-                                        "bun --version; test -r \"\$GIT_SSL_CAINFO\"; " +
+                                        // `test -r` is not usable for app-private files on Android:
+                                        // access(2) returns EACCES even for the owning UID (SELinux),
+                                        // while an actual open succeeds. Open the bundle instead.
+                                        "bun --version; head -c 1 \"\$GIT_SSL_CAINFO\" >/dev/null; " +
                                         "printf 'toolchain-ok\\n'"),
                                 cwd = testDirectory.path,
                                 timeoutMs = 30_000,

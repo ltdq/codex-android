@@ -4,7 +4,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import com.cy.codexui.protocol.protocol.JsonValue
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
 import com.cy.codexui.protocol.protocol.item.ThreadItem
 import com.cy.codexui.protocol.protocol.v2.AccountInfo
 import com.cy.codexui.protocol.protocol.v2.AccountUsage
@@ -358,7 +359,7 @@ class CatalogState {
     val configSnapshot: ConfigSnapshot get() = config.snapshot
 
     /** `requirements.toml`, whose keys constrain what the page may offer. */
-    var configRequirements by mutableStateOf<JsonValue>(JsonValue.Obj(emptyMap()))
+    var configRequirements by mutableStateOf<JsonElement>(JsonObject(emptyMap()))
 
     /**
      * The last `config/…/write` result.

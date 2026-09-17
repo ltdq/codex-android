@@ -1,5 +1,7 @@
 package com.cy.codexui.protocol.protocol
 
+import kotlinx.serialization.json.JsonElement
+
 /**
  * JSON-RPC 2.0 envelopes used on the app-server wire.
  *
@@ -14,12 +16,12 @@ package com.cy.codexui.protocol.protocol
 data class JsonRpcRequest(
     val id: RequestId,
     val method: String,
-    val params: JsonValue? = null,
+    val params: JsonElement? = null,
 )
 
 data class JsonRpcResponse(
     val id: RequestId,
-    val result: JsonValue? = null,
+    val result: JsonElement? = null,
     val error: JsonRpcError? = null,
 ) {
     val isError: Boolean get() = error != null
@@ -27,13 +29,13 @@ data class JsonRpcResponse(
 
 data class JsonRpcNotification(
     val method: String,
-    val params: JsonValue? = null,
+    val params: JsonElement? = null,
 )
 
 data class JsonRpcError(
     val code: Int,
     val message: String,
-    val data: JsonValue? = null,
+    val data: JsonElement? = null,
 ) {
     companion object {
         const val ParseError = -32700

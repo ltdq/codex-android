@@ -70,7 +70,7 @@ import com.cy.codexui.onboarding.BedrockScreen
 import com.cy.codexui.protocol.AppServerClient
 import com.cy.codexui.protocol.AppServerEvent
 import com.cy.codexui.protocol.ConnectionState
-import com.cy.codexui.protocol.protocol.JsonValue
+import kotlinx.serialization.json.JsonPrimitive
 import com.cy.codexui.protocol.protocol.v2.ConfigValueWriteParams
 import com.cy.codexui.protocol.protocol.v2.LoginAccountResponse
 import com.cy.codexui.protocol.protocol.v2.ThreadSessionState
@@ -183,13 +183,13 @@ class CodexApp(
                 widget.action(event)
             }
             is AppEvent.SetModel -> if (widget.state.open) widget.action(event) else {
-                onAppEvent(AppEvent.WriteConfigValue("model", JsonValue.Str(event.model)))
+                onAppEvent(AppEvent.WriteConfigValue("model", JsonPrimitive(event.model)))
             }
             is AppEvent.SetReasoningEffort -> if (widget.state.open) widget.action(event) else {
-                onAppEvent(AppEvent.WriteConfigValue("model_reasoning_effort", JsonValue.Str(event.effort.wire)))
+                onAppEvent(AppEvent.WriteConfigValue("model_reasoning_effort", JsonPrimitive(event.effort.wire)))
             }
             is AppEvent.SetApprovalPolicy -> if (widget.state.open) widget.action(event) else {
-                onAppEvent(AppEvent.WriteConfigValue("approval_policy", JsonValue.Str(event.policy.wire)))
+                onAppEvent(AppEvent.WriteConfigValue("approval_policy", JsonPrimitive(event.policy.wire)))
             }
             is AppEvent.SubmitUserMessage -> {
                 if (!startupReady || creatingThread || widget.state.loading) return
@@ -330,7 +330,7 @@ class CodexApp(
                 client.writeConfigValue(
                     ConfigValueWriteParams(
                         keyPath = "apps.${event.appId}.installed",
-                        value = JsonValue.Bool(event.installed),
+                        value = JsonPrimitive(event.installed),
                     ),
                 ).onSuccess { client.listApps().onSuccess { fresh -> catalog.apps = fresh } }
             }

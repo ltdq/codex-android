@@ -8,14 +8,14 @@ use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
 fn request(bridge: &Bridge, id: i64, method: &str, params: Value) -> Result<Value> {
-    bridge.send(&json!({"id":id,"method":method,"params":params}).to_string())?;
+    bridge.send_request(&serde_json::to_vec(&json!({"id":id,"method":method,"params":params}))?)?;
     let deadline = Instant::now() + Duration::from_secs(60);
     loop {
         ensure!(Instant::now() < deadline, "timed out waiting for {method}");
         let Some(message) = bridge.receive(Duration::from_secs(1))? else {
             continue;
         };
-        let message: Value = serde_json::from_str(&message)?;
+        let message: Value = serde_json::from_slice(&message)?;
         if message.get("id") == Some(&json!(id)) {
             if let Some(error) = message.get("error") {
                 bail!("{method}: {error}");
@@ -33,9 +33,9 @@ fn request(bridge: &Bridge, id: i64, method: &str, params: Value) -> Result<Valu
 }
 
 fn shell_turn(bridge: &Bridge, thread_id: &str) -> Result<()> {
-    bridge.send(&json!({"id":9,"method":"thread/shellCommand","params":{
+    bridge.send_request(&serde_json::to_vec(&json!({"id":9,"method":"thread/shellCommand","params":{
         "threadId":thread_id,"command":"printf 'native-shell-ok:%s\\n' \"${BASH_VERSION:-missing}\"; command -v git","timeoutMs":10000
-    }}).to_string())?;
+    }}))?)?;
     let deadline = Instant::now() + Duration::from_secs(60);
     let mut acknowledged = false;
     let mut completed = false;
@@ -45,7 +45,7 @@ fn shell_turn(bridge: &Bridge, thread_id: &str) -> Result<()> {
         let Some(message) = bridge.receive(Duration::from_secs(1))? else {
             continue;
         };
-        let message: Value = serde_json::from_str(&message)?;
+        let message: Value = serde_json::from_slice(&message)?;
         if message.get("id") == Some(&json!(9)) {
             ensure!(
                 message.get("error").is_none(),
@@ -145,7 +145,7 @@ fn main() -> Result<()> {
         config["env"] = json!(environment);
         config
     };
-    let bridge = Bridge::start(&config.to_string())?;
+    let bridge = Bridge::start(&serde_json::to_vec(&config)?)?;
     println!("PASS initialize/initialized");
     let models = request(&bridge, 1, "model/list", json!({}))?;
     ensure!(
@@ -199,12 +199,12 @@ fn main() -> Result<()> {
     bridge.close()?;
     bridge.close()?;
     ensure!(
-        bridge.send("{}").is_err(),
+        bridge.send_request(b"{}").is_err(),
         "closed bridge accepted a message"
     );
     drop(bridge);
     println!("PASS shutdown");
-    let bridge = Bridge::start(&config.to_string())?;
+    let bridge = Bridge::start(&serde_json::to_vec(&config)?)?;
     request(&bridge, 6, "model/list", json!({}))?;
     // Upstream deliberately omits shell-only threads with empty previews from list.
     let history = request(

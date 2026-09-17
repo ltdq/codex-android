@@ -246,8 +246,6 @@
 
 - [ ] `AgentRosterEntry.statusLabel()/tone()` 两份定义里哪一份生效（取决于 import 优先级，
       未编译验证）。
-- [ ] JNI 字符串编码：`native/src/jni_api.rs` 走 jni crate 的 Modified UTF-8，
-      emoji / 非 BMP 字符是否安全未验证。
 - [ ] core 在 `danger-full-access` 下是否真的会走 fs helper / arg0 路径；无沙箱退化
       （`exec-server` 的 `process_sandbox` / `fs_sandbox`）未实测；真机 instrumentation
       不含 fs helper 与 tty。
@@ -258,8 +256,6 @@
 - [ ] `AgentMessageItem.questions` 是否被服务端用于回传答案（决定是否需要独立的
       `request_user_input` 结果 cell）。
 - [ ] 协议漂移的统计口径（同名类型、发明字段数）未按当前代码重算。
-- [ ] 真机结果没有留档：`artifacts/` 目前只有宿主机 `native-build.log`，
-      没有 `device-smoke.txt`（脚本会写，但需要连着设备跑一次）。
 
 ## 7. 不做
 

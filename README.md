@@ -58,7 +58,12 @@ Compose UI / CodexApp
 
 - `CodexApplication` 持有会话与协程，Activity 重建不会重启 native 会话。
 - JNI 启动在 IO 线程完成，使用上游 `initialize` / `initialized` 握手。
-- 请求 ID、通知流、服务端审批请求均通过 JSON-RPC 信封传递。
+- 通信在 JNI 边界只编解码一次 JSON：消息以 UTF-8 字节（`ByteArray`）传递，并带
+  `JsonRpcMessageKind`（request/notification/response/error）标记。Rust 按标记用 `serde_json`
+  直接反序列化成 typed `ClientRequest`/`ClientNotification`（不再解析 JSON-RPC 信封再转一次
+  `Value`），事件用 `serde_json::to_vec` 从 typed `ServerNotification` 一次写出；Kotlin 侧用
+  kotlinx.serialization 的 `JsonElement` 解析/编码一次。字节传输同时避免了 Java 字符串的
+  Modified UTF-8 转换，非 BMP 字符（emoji）不再经过变更编码。
 - 无本地演示账户、示例项目或脚本回放；配置、模型、会话和消息来自真实服务端。
 - 未登录也能启动，模型请求需要有效账户：账户页面提供 ChatGPT 设备码与 API key 两种登录。
   宿主机 Codex 凭据不会复制到设备。

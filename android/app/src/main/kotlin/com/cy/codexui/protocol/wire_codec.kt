@@ -1,46 +1,55 @@
 package com.cy.codexui.protocol
 
 import com.cy.codexui.protocol.protocol.Json
-import com.cy.codexui.protocol.protocol.JsonValue
+import com.cy.codexui.protocol.protocol.array
+import com.cy.codexui.protocol.protocol.bool
+import com.cy.codexui.protocol.protocol.int
+import com.cy.codexui.protocol.protocol.long
+import com.cy.codexui.protocol.protocol.objectOrNull
+import com.cy.codexui.protocol.protocol.objectValue
+import com.cy.codexui.protocol.protocol.required
+import com.cy.codexui.protocol.protocol.stringOrNull
+import com.cy.codexui.protocol.protocol.strings
+import com.cy.codexui.protocol.protocol.text
+import com.cy.codexui.protocol.protocol.wireText
 import com.cy.codexui.protocol.protocol.item.*
 import com.cy.codexui.protocol.protocol.v2.*
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.doubleOrNull
 
-internal fun obj(vararg fields: Pair<String, Any?>): JsonValue.Obj = JsonValue.Obj(
-    fields.filter { it.second != null }.associate { it.first to json(it.second) },
-)
+internal fun obj(vararg fields: Pair<String, Any?>): JsonObject =
+    JsonObject(fields.filter { it.second != null }.associate { it.first to json(it.second) })
 
-internal fun json(value: Any?): JsonValue = when (value) {
-    null -> JsonValue.Null
-    is JsonValue -> value
-    is String -> JsonValue.Str(value)
-    is Boolean -> JsonValue.Bool(value)
-    is Number -> JsonValue.Num(value.toDouble())
-    is List<*> -> JsonValue.Arr(value.map(::json))
+internal fun json(value: Any?): JsonElement = when (value) {
+    null -> JsonNull
+    is JsonElement -> value
+    is String -> JsonPrimitive(value)
+    is Boolean -> JsonPrimitive(value)
+    is Int -> JsonPrimitive(value)
+    is Long -> JsonPrimitive(value)
+    // Integral doubles become integer literals so `obj("limit" to 100.0)` does not put `100.0`
+    // into an integer field; non-integral values keep their decimal form.
+    is Double -> if (value.isFinite() && value == value.toLong().toDouble()) JsonPrimitive(value.toLong()) else JsonPrimitive(value)
+    is Float -> json(value.toDouble())
+    is Number -> JsonPrimitive(value.toDouble())
+    is List<*> -> JsonArray(value.map(::json))
     else -> error("Unsupported JSON value: ${value.javaClass.name}")
 }
 
-internal fun JsonValue.objectValue(): JsonValue.Obj = this as? JsonValue.Obj
-    ?: error("Expected JSON object")
-internal fun JsonValue.Obj.text(key: String): String? = (this[key] as? JsonValue.Str)?.value
-internal fun JsonValue.Obj.required(key: String): String = text(key) ?: error("Missing field: $key")
-internal fun JsonValue.Obj.long(key: String): Long? = (this[key] as? JsonValue.Num)?.toLong()
-internal fun JsonValue.Obj.int(key: String): Int? = (this[key] as? JsonValue.Num)?.toInt()
-internal fun JsonValue.Obj.bool(key: String): Boolean? = (this[key] as? JsonValue.Bool)?.value
-internal fun JsonValue.Obj.objectOrNull(key: String): JsonValue.Obj? = this[key] as? JsonValue.Obj
-internal fun JsonValue.Obj.array(key: String): List<JsonValue> = (this[key] as? JsonValue.Arr)?.values.orEmpty()
-internal fun JsonValue.Obj.strings(key: String): List<String> = array(key).mapNotNull { (it as? JsonValue.Str)?.value }
-internal fun JsonValue.wireText(): String = (this as? JsonValue.Str)?.value ?: Json.write(this)
-
 internal object WireCodec {
-    fun input(value: UserInput): JsonValue = when (value) {
-        is UserInput.Text -> obj("type" to "text", "text" to value.text, "text_elements" to emptyList<JsonValue>())
+    fun input(value: UserInput): JsonElement = when (value) {
+        is UserInput.Text -> obj("type" to "text", "text" to value.text, "text_elements" to emptyList<JsonElement>())
         is UserInput.Image -> obj("type" to "image", "url" to value.url)
         is UserInput.LocalImage -> obj("type" to "localImage", "path" to value.path)
         is UserInput.Skill -> obj("type" to "skill", "name" to value.name, "path" to value.path)
         is UserInput.Mention -> obj("type" to "mention", "name" to value.name, "path" to value.path)
     }
 
-    fun input(value: JsonValue): UserInput {
+    fun input(value: JsonElement): UserInput {
         val o = value.objectValue()
         return when (o.required("type")) {
             "text" -> UserInput.Text(o.required("text"))
@@ -52,9 +61,9 @@ internal object WireCodec {
         }
     }
 
-    fun status(value: JsonValue?): ThreadStatus {
-        val o = value as? JsonValue.Obj
-        return when (o?.text("type") ?: (value as? JsonValue.Str)?.value) {
+    fun status(value: JsonElement?): ThreadStatus {
+        val o = value as? JsonObject
+        return when (o?.text("type") ?: value?.stringOrNull()) {
             "active" -> ThreadStatus.Active(o?.strings("activeFlags").orEmpty().mapNotNull { flag -> ThreadActiveFlag.entries.find { it.wire == flag } })
             "notLoaded" -> ThreadStatus.NotLoaded
             "systemError" -> ThreadStatus.SystemError(o?.text("message").orEmpty())
@@ -62,7 +71,7 @@ internal object WireCodec {
         }
     }
 
-    fun thread(value: JsonValue, archived: Boolean = false): Thread {
+    fun thread(value: JsonElement, archived: Boolean = false): Thread {
         val o = value.objectValue()
         return Thread(
             id = o.required("id"), name = o.text("name"), preview = o.text("preview"),
@@ -73,13 +82,13 @@ internal object WireCodec {
         )
     }
 
-    fun turn(value: JsonValue): Turn {
+    fun turn(value: JsonElement): Turn {
         val o = value.objectValue()
-        return Turn(o.required("id"), o.array("items").map(::item), TurnStatus.fromWire(o.required("status")),
+        return Turn(o.required("id"), o.array("items").map { item(it) }, TurnStatus.fromWire(o.required("status")),
             (o.long("startedAt") ?: 0) * 1000, o.long("completedAt")?.times(1000))
     }
 
-    fun session(value: JsonValue.Obj): ThreadSessionState {
+    fun session(value: JsonObject): ThreadSessionState {
         val t = value["thread"]!!.objectValue()
         val sandbox = value.objectOrNull("sandbox")
         val mode = when (sandbox?.text("type")) {
@@ -100,17 +109,17 @@ internal object WireCodec {
         )
     }
 
-    fun changes(value: JsonValue.Obj): List<FileUpdateChange> = value.array("changes").map {
+    fun changes(value: JsonObject): List<FileUpdateChange> = value.array("changes").map {
         val o = it.objectValue()
         FileUpdateChange(o.required("path"), PatchChangeKind.fromWire(o.objectOrNull("kind")?.text("type") ?: o.text("kind").orEmpty()), o.text("diff").orEmpty())
     }
 
-    fun item(value: JsonValue): ThreadItem {
+    fun item(value: JsonElement): ThreadItem {
         val o = value.objectValue()
         val id = o.required("id")
         val status = o.text("status")
         return when (val type = o.required("type")) {
-            "userMessage" -> UserMessageItem(id, o.text("clientId"), o.array("content").map(::input))
+            "userMessage" -> UserMessageItem(id, o.text("clientId"), o.array("content").map { input(it) })
             "agentMessage" -> AgentMessageItem(id, o.text("text").orEmpty(), MessagePhase.entries.find { it.wire == o.text("phase") || (it == MessagePhase.FinalAnswer && o.text("phase") == "final_answer") })
             "plan" -> PlanItem(id, o.text("text").orEmpty())
             "reasoning" -> ReasoningItem(id, o.strings("summary"), o.strings("content"))
@@ -119,13 +128,13 @@ internal object WireCodec {
                 CommandExecutionStatus.fromWire(status.orEmpty()), aggregatedOutput = o.text("aggregatedOutput"), exitCode = o.int("exitCode"), durationMs = o.long("durationMs"))
             "fileChange" -> FileChangeItem(id, changes(o), PatchApplyStatus.fromWire(status.orEmpty()))
             "mcpToolCall" -> McpToolCallItem(id, o.required("server"), o.required("tool"), McpToolCallStatus.entries.find { it.wire == status } ?: McpToolCallStatus.InProgress,
-                o["arguments"]?.let(Json::write) ?: "{}", o["result"]?.takeUnless { it == JsonValue.Null }?.let(Json::write), o.objectOrNull("error")?.text("message"), o.long("durationMs"))
+                o["arguments"]?.let(Json::write) ?: "{}", o["result"]?.takeUnless { it == JsonNull }?.let(Json::write), o.objectOrNull("error")?.text("message"), o.long("durationMs"))
             "dynamicToolCall" -> DynamicToolCallItem(id, o.text("namespace"), o.required("tool"), o["arguments"]?.let(Json::write) ?: "{}",
-                DynamicToolCallStatus.entries.find { it.wire == status } ?: DynamicToolCallStatus.InProgress, o.array("contentItems").map(Json::write), o.bool("success"), o.long("durationMs"))
+                DynamicToolCallStatus.entries.find { it.wire == status } ?: DynamicToolCallStatus.InProgress, o.array("contentItems").map { Json.write(it) }, o.bool("success"), o.long("durationMs"))
             "collabAgentToolCall" -> CollabAgentToolCallItem(id, CollabAgentTool.entries.find { it.wire == o.text("tool") } ?: CollabAgentTool.SendInput,
                 CollabAgentToolCallStatus.entries.find { it.wire == status } ?: CollabAgentToolCallStatus.InProgress,
                 o.required("senderThreadId"), o.strings("receiverThreadIds"), o.text("prompt"), o.text("model"), o.text("reasoningEffort")?.let(ReasoningEffort::fromWire),
-                o.objectOrNull("agentsStates")?.fields.orEmpty().mapValues { (_, state) -> state.objectValue().let { CollabAgentState(AgentRunStatus.fromWire(it.required("status")), it.text("message")) } })
+                o.objectOrNull("agentsStates").orEmpty().mapValues { (_, state) -> state.objectValue().let { CollabAgentState(AgentRunStatus.fromWire(it.required("status")), it.text("message")) } })
             "subAgentActivity" -> SubAgentActivityItem(id, SubAgentActivityKind.entries.find { it.wire == o.text("kind") } ?: SubAgentActivityKind.Started, o.required("agentThreadId"), o.required("agentPath"))
             "webSearch" -> WebSearchItem(id, o.text("query") ?: o.objectOrNull("action")?.text("query").orEmpty())
             "imageView" -> ImageViewItem(id, o.required("path"))
@@ -140,28 +149,29 @@ internal object WireCodec {
         }
     }
 
-    fun account(o: JsonValue.Obj): AccountInfo {
+    fun account(o: JsonObject): AccountInfo {
         val a = o.objectOrNull("account") ?: return AccountInfo()
         return AccountInfo(a.text("email"), a.text("planType"), a.text("organization"), true)
     }
 
-    fun rateLimits(o: JsonValue.Obj): RateLimits {
+    fun rateLimits(o: JsonObject): RateLimits {
         fun window(key: String, label: String): RateLimitWindow? = o.objectOrNull(key)?.let {
-            RateLimitWindow(label, (it["usedPercent"] as? JsonValue.Num)?.value?.toFloat() ?: 0f, it.long("resetsAt")?.times(1000))
+            val usedPercent = (it["usedPercent"] as? JsonPrimitive)?.takeIf { primitive -> !primitive.isString }?.doubleOrNull ?: 0.0
+            RateLimitWindow(label, usedPercent.toFloat(), it.long("resetsAt")?.times(1000))
         }
         return RateLimits(window("primary", "Primary"), window("secondary", "Secondary"), o.objectOrNull("credits")?.text("balance")?.toDoubleOrNull()?.toInt())
     }
 
-    fun config(o: JsonValue.Obj): ConfigReadResponse = ConfigReadResponse(
+    fun config(o: JsonObject): ConfigReadResponse = ConfigReadResponse(
         config = o["config"] ?: error("Missing config"),
-        layers = (o["layers"] as? JsonValue.Arr)?.values?.map { value ->
+        layers = (o["layers"] as? JsonArray)?.map { value ->
             val layer = value.objectValue()
             val origin = layer.objectOrNull("name")
-            ConfigLayer(layer["config"] ?: JsonValue.Null, source(layer["name"]), layer.text("version").orEmpty(), layer.text("disabledReason"),
+            ConfigLayer(layer["config"] ?: JsonNull, source(layer["name"]), layer.text("version").orEmpty(), layer.text("disabledReason"),
                 origin?.text("file") ?: origin?.text("dotCodexFolder"))
         },
-        origins = o.objectOrNull("origins")?.fields.orEmpty().mapValues { (_, value) -> value.objectValue().let { ConfigLayerOrigin(source(it["name"]), it.text("version").orEmpty()) } },
+        origins = o.objectOrNull("origins").orEmpty().mapValues { (_, value) -> value.objectValue().let { ConfigLayerOrigin(source(it["name"]), it.text("version").orEmpty()) } },
     )
 
-    private fun source(value: JsonValue?): ConfigLayerSource = ConfigLayerSource.fromWire((value as? JsonValue.Str)?.value ?: (value as? JsonValue.Obj)?.text("type"))
+    private fun source(value: JsonElement?): ConfigLayerSource = ConfigLayerSource.fromWire(value?.stringOrNull() ?: (value as? JsonObject)?.text("type"))
 }

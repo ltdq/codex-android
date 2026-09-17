@@ -166,7 +166,7 @@ private fun HooksRow(hook: HookEntry, onEvent: (AppEvent) -> Unit) {
                 onEvent(
                     AppEvent.WriteConfigValue(
                         keyPath = "hooks.${'$'}{hook.id}.enabled",
-                        value = com.cy.codexui.protocol.protocol.JsonValue.Bool(enabled),
+                        value = kotlinx.serialization.json.JsonPrimitive(enabled),
                     ),
                 )
             },

@@ -5,6 +5,7 @@ composeMultiplatform = "1.12.0"
 miuix = "0.9.4-rc01"
 androidxActivity = "1.13.0"
 kotlinxCoroutines = "1.11.0"
+kotlinxSerialization = "1.11.0"
 junit = "4.13.2"
 
 [libraries]
@@ -13,6 +14,9 @@ androidx-activity-compose = { module = "androidx.activity:activity-compose", ver
 # Kotlin coroutines drive the transport and session reducer.
 kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "kotlinxCoroutines" }
 kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "kotlinxCoroutines" }
+# The protocol tree, parser and printer. One encode per outgoing message and one parse per
+# incoming message; the Rust half uses serde_json the same way.
+kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinxSerialization" }
 junit = { module = "junit:junit", version.ref = "junit" }
 
 miuix-ui = { module = "top.yukonga.miuix.kmp:miuix-ui-android", version.ref = "miuix" }

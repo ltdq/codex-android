@@ -1,7 +1,13 @@
 package com.cy.codexui.protocol
 
 import com.cy.codexui.protocol.protocol.Json
-import com.cy.codexui.protocol.protocol.JsonValue
+import com.cy.codexui.protocol.protocol.array
+import com.cy.codexui.protocol.protocol.bool
+import com.cy.codexui.protocol.protocol.long
+import com.cy.codexui.protocol.protocol.objectOrNull
+import com.cy.codexui.protocol.protocol.objectValue
+import com.cy.codexui.protocol.protocol.required
+import com.cy.codexui.protocol.protocol.text
 import com.cy.codexui.protocol.protocol.item.AgentMessageItem
 import com.cy.codexui.protocol.protocol.v2.ClientInfo
 import com.cy.codexui.protocol.protocol.v2.CommandExecutionApprovalDecision
@@ -16,6 +22,10 @@ import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import org.junit.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -28,16 +38,25 @@ import kotlin.test.assertTrue
 class JsonRpcAppServerClientTest {
     private class HarnessTransport : JsonRpcTransport {
         val incoming = Channel<Result<String?>>(Channel.UNLIMITED)
-        val outgoing = Channel<String>(Channel.UNLIMITED)
+        val outgoing = Channel<Pair<JsonRpcMessageKind, String>>(Channel.UNLIMITED)
         var starts = 0
         var closes = 0
         override suspend fun start() { starts++ }
-        override suspend fun send(message: String) { outgoing.send(message) }
+        override suspend fun send(kind: JsonRpcMessageKind, message: String) { outgoing.send(kind to message) }
         override suspend fun receive(): String? = incoming.receive().getOrThrow()
         override suspend fun close() { closes++ }
-        suspend fun request(): JsonValue.Obj = Json.parse(outgoing.receive()).objectValue()
-        suspend fun response(request: JsonValue.Obj, result: JsonValue.Obj) {
+        suspend fun request(): JsonObject {
+            val (kind, message) = outgoing.receive()
+            assertEquals(JsonRpcMessageKind.Request, kind)
+            return Json.parse(message).objectValue()
+        }
+        suspend fun response(request: JsonObject, result: JsonObject) {
             incoming.send(Result.success(Json.write(obj("id" to request["id"], "result" to result))))
+        }
+        suspend fun sentResponse(): JsonObject {
+            val (kind, message) = outgoing.receive()
+            assertEquals(JsonRpcMessageKind.Response, kind)
+            return Json.parse(message).objectValue()
         }
         suspend fun push(message: String) { incoming.send(Result.success(message)) }
     }
@@ -163,7 +182,7 @@ class JsonRpcAppServerClientTest {
         client.initialize(ClientInfo("android", version = "1")).getOrThrow()
         assertEquals(2, transport.starts)
         val retried = async { client.readAccount().getOrThrow() }
-        transport.response(transport.request(), obj("account" to JsonValue.Null))
+        transport.response(transport.request(), obj("account" to JsonNull))
         assertFalse(retried.await().loggedIn)
         client.close()
     }
@@ -178,8 +197,8 @@ class JsonRpcAppServerClientTest {
         val received = assertIs<ApprovalRequest.Exec>(approval.await())
         assertEquals("git status", received.params.command)
         client.respond(received.requestId, ApprovalResponse.CommandExecution(CommandExecutionApprovalDecision.Decline))
-        val response = transport.request()
-        assertEquals(JsonValue.Num(42.0), response["id"])
+        val response = transport.sentResponse()
+        assertEquals(JsonPrimitive(42), response["id"])
         assertEquals("decline", response.objectOrNull("result")!!.text("decision"))
         client.close()
     }
@@ -198,7 +217,7 @@ class JsonRpcAppServerClientTest {
         val received = assertIs<ApprovalRequest.Exec>(approval.await())
         assertEquals("new", received.requestId.value)
         client.respond(received.requestId, ApprovalResponse.CommandExecution(CommandExecutionApprovalDecision.Decline))
-        assertEquals(JsonValue.Str("new"), transport.request()["id"])
+        assertEquals(JsonPrimitive("new"), transport.sentResponse()["id"])
         client.close()
     }
 
@@ -212,11 +231,11 @@ class JsonRpcAppServerClientTest {
         val received = assertIs<ApprovalRequest.Elicitation>(approval.await())
         assertTrue(received.params.requestedSchema.fields.single { it.name == "count" }.required)
         client.respond(received.requestId, ApprovalResponse.Elicitation(ElicitationAction.Accept, mapOf("enabled" to "true", "count" to "3")))
-        val content = transport.request().objectOrNull("result")!!.objectOrNull("content")!!
-        assertEquals(JsonValue.Bool(true), content["enabled"])
-        assertEquals(JsonValue.Num(3.0), content["count"])
+        val content = transport.sentResponse().objectOrNull("result")!!.objectOrNull("content")!!
+        assertEquals(JsonPrimitive(true), content["enabled"])
+        assertEquals(JsonPrimitive(3), content["count"])
         transport.push("""{"id":"time","method":"currentTime/read","params":{"threadId":"t"}}""")
-        val response = transport.request().objectOrNull("result")!!
+        val response = transport.sentResponse().objectOrNull("result")!!
         assertTrue(response.long("currentTimeAt")!! in (System.currentTimeMillis() / 1000 - 2)..(System.currentTimeMillis() / 1000 + 2))
         assertNull(response["epochMillis"])
         client.close()
@@ -273,11 +292,11 @@ class JsonRpcAppServerClientTest {
         val request = transport.request()
         assertEquals("/marketplace.json", request.objectOrNull("params")!!.required("marketplacePath"))
         assertNull(request.objectOrNull("params")!!.text("remoteMarketplaceName"))
-        transport.response(request, obj("authPolicy" to "onInstall", "appsNeedingAuth" to emptyList<JsonValue>()))
+        transport.response(request, obj("authPolicy" to "onInstall", "appsNeedingAuth" to emptyList<JsonElement>()))
         val read = transport.request()
         assertEquals("plugin/read", read.required("method"))
         transport.response(read, obj("plugin" to obj("marketplaceName" to "local", "summary" to obj("id" to "formatter@local", "name" to "formatter", "installed" to true),
-            "skills" to emptyList<JsonValue>(), "apps" to emptyList<JsonValue>(), "mcpServers" to emptyList<JsonValue>())))
+            "skills" to emptyList<JsonElement>(), "apps" to emptyList<JsonElement>(), "mcpServers" to emptyList<JsonElement>())))
         assertTrue(install.await().installed)
         client.close()
     }
@@ -290,7 +309,7 @@ class JsonRpcAppServerClientTest {
         val logout = async { client.logout().getOrThrow() }
         val request = transport.request()
         assertEquals("account/logout", request.required("method"))
-        assertFalse("params" in request.fields)
+        assertFalse("params" in request)
         transport.response(request, obj())
         logout.await()
         client.close()
@@ -321,8 +340,8 @@ class JsonRpcAppServerClientTest {
         assertEquals(listOf("/workspace"), received.params.permissions.fileSystemWrite)
         assertTrue(received.params.permissions.network)
         client.respond(received.requestId, ApprovalResponse.Permissions(com.cy.codexui.protocol.protocol.v2.PermissionsApprovalDecision.Decline))
-        val result = transport.request().objectOrNull("result")!!
-        assertTrue(result.objectOrNull("permissions")!!.fields.isEmpty())
+        val result = transport.sentResponse().objectOrNull("result")!!
+        assertTrue(result.objectOrNull("permissions")!!.isEmpty())
         client.close()
     }
 
@@ -341,7 +360,7 @@ class JsonRpcAppServerClientTest {
         transport.push(delta)
         val account = transport.request()
         repeat(300) { transport.push(delta) }
-        transport.response(account, obj("account" to JsonValue.Null))
+        transport.response(account, obj("account" to JsonNull))
         assertIs<AppServerEvent.AgentMessageDelta>(observed.await())
         assertEquals(0L, testScheduler.currentTime)
         client.close()

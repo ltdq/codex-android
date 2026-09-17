@@ -179,6 +179,9 @@ dependencies {
     // The transport and session reducer use coroutines.
     implementation(libs.kotlinx.coroutines.android)
 
+    // Wire JSON: kotlinx.serialization's JsonElement tree, parser and printer.
+    implementation(libs.kotlinx.serialization.json)
+
     // Protocol-level tests are plain JVM code: the JSON-RPC codec, the unified-diff parser, the
     // agent-roster fold must hold without a device.
     testImplementation(kotlin("test"))

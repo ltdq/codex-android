@@ -1,8 +1,8 @@
 use crate::Bridge;
-use anyhow::{Result, anyhow};
+use anyhow::{Result, anyhow, bail};
 use jni::JNIEnv;
-use jni::objects::{JObject, JString};
-use jni::sys::{jint, jlong, jstring};
+use jni::objects::{JByteArray, JObject};
+use jni::sys::{jbyteArray, jint, jlong};
 use std::collections::HashMap;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::atomic::{AtomicI64, Ordering};
@@ -49,10 +49,10 @@ fn boundary<T: Default>(
 pub extern "system" fn Java_com_cy_codexui_runtime_NativeBridge_nativeStart(
     mut env: JNIEnv,
     _object: JObject,
-    config: JString,
+    config: JByteArray,
 ) -> jlong {
     boundary(&mut env, |env| {
-        let config: String = env.get_string(&config)?.into();
+        let config = env.convert_byte_array(&config)?;
         let runtime = std::thread::Builder::new()
             .name("codex-start".into())
             .stack_size(16 * 1024 * 1024)
@@ -69,16 +69,25 @@ pub extern "system" fn Java_com_cy_codexui_runtime_NativeBridge_nativeStart(
     })
 }
 
+/// `kind` is `JsonRpcMessageKind`: 0 request, 1 notification, 2 response, 3 error.
 #[unsafe(no_mangle)]
 pub extern "system" fn Java_com_cy_codexui_runtime_NativeBridge_nativeSend(
     mut env: JNIEnv,
     _object: JObject,
     handle: jlong,
-    message: JString,
+    kind: jint,
+    message: JByteArray,
 ) {
     boundary(&mut env, |env| {
-        let message: String = env.get_string(&message)?.into();
-        bridge(handle)?.send(&message)
+        let message = env.convert_byte_array(&message)?;
+        let runtime = bridge(handle)?;
+        match kind {
+            0 => runtime.send_request(&message),
+            1 => runtime.send_notification(&message),
+            2 => runtime.send_response(&message),
+            3 => runtime.send_error(&message),
+            _ => bail!("invalid JSON-RPC message kind: {kind}"),
+        }
     });
 }
 
@@ -88,11 +97,11 @@ pub extern "system" fn Java_com_cy_codexui_runtime_NativeBridge_nativeReceive(
     _object: JObject,
     handle: jlong,
     timeout_millis: jint,
-) -> jstring {
+) -> jbyteArray {
     boundary(&mut env, |env| {
         let timeout = Duration::from_millis(timeout_millis.max(0) as u64);
         match bridge(handle)?.receive(timeout)? {
-            Some(message) => Ok(env.new_string(message)?.into_raw()),
+            Some(message) => Ok(env.byte_array_from_slice(&message)?.into_raw()),
             None => Ok(std::ptr::null_mut()),
         }
     })
