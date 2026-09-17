@@ -188,8 +188,12 @@ dependencies {
     // Protocol-level tests are plain JVM code: the JSON-RPC codec, the unified-diff parser, the
     // agent-roster fold must hold without a device.
     testImplementation(kotlin("test"))
+    // Constructor parameters of the protocol data classes, read for the schema-drift check.
+    testImplementation(kotlin("reflect"))
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
+    // Reads the precomputed experimental schema export (zstd-compressed JSON).
+    testImplementation(libs.zstd.jni)
 
     implementation(libs.miuix.ui)
     implementation(libs.miuix.preference)

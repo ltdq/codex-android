@@ -169,7 +169,7 @@ class ChatWidget(
                 onLoaded(Result.failure(error))
                 return@launch
             }
-            val history = client.readThread(threadId)
+            val history = client.readThread(com.cy.codexui.protocol.protocol.v2.ThreadReadParams(threadId))
             if (version != loadVersion) return@launch
             history.onSuccess { response ->
                 if (version != loadVersion) return@onSuccess
@@ -204,7 +204,7 @@ class ChatWidget(
     /** Start a fresh thread in [cwd]. */
     fun newThread(cwd: String) {
         scope.launch {
-            client.startThread(cwd)
+            client.startThread(com.cy.codexui.protocol.protocol.v2.ThreadStartParams(cwd = cwd))
                 .onSuccess { session ->
                     state.beginLoad(session.threadId)
                     turnDiff.reset()
@@ -964,7 +964,7 @@ class ChatWidget(
         scope.launch {
             repeat(3) {
                 val revision = eventRevision
-                val response = client.readThread(threadId).getOrElse {
+                val response = client.readThread(com.cy.codexui.protocol.protocol.v2.ThreadReadParams(threadId)).getOrElse {
                     if (version == loadVersion) state.addDiagnostic(SessionDiagnostic(
                         severity = DiagnosticSeverity.Error,
                         code = DiagnosticCode.ThreadLoadFailed,

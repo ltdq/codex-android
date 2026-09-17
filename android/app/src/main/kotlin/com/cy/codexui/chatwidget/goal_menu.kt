@@ -97,7 +97,7 @@ fun GoalSheet(
         } else {
             val usage = stringResource(
                 R.string.goal_sheet_usage,
-                formatTokens(goal.tokensUsed),
+                formatTokens(goal.tokensUsed.toLong()),
                 formatGoalDuration(goal.timeUsedSeconds),
             )
             Row(

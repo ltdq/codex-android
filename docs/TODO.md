@@ -9,40 +9,12 @@
 ## 0. 现状基线
 
 工具链、JNI in-process app-server、Kotlin 协议编解码与 Compose UI 骨架都已接线，
-`scripts/device-smoke-test.sh` 在真机上验证工具链安装、JNI 启动、账户/配置/模型/会话读取、
-`command/exec`、apply_patch、shell 消息流与重启恢复（不发模型请求）。下面的顺序是
-「先把协议形状对齐上游，再上真机验证，最后是功能与可选的架构扩展」。
+`UpstreamSchemaTest` 离线比对 Kotlin 协议类型与上游 schema（字段名、必填方向、枚举 wire 值、
+方法集合），`scripts/device-smoke-test.sh` 在真机上验证工具链安装、JNI 启动、
+账户/配置/模型/会话读取、`command/exec`、apply_patch、shell 消息流与重启恢复（不发模型请求）。
+下面的顺序是「先上真机验证，最后是功能与可选的架构扩展」。
 
-## 1. 协议保真（P0）
-
-- [ ] **补一条对照上游 schema 的字段级测试**：输入 `codex/codex-rs/app-server-protocol/schema/json/`
-      （或 `schema/precomputed/app-server-exports-experimental.json.zst`），断言
-      Kotlin 类型字段名 ⊆ 上游字段名（允许丢字段，禁止发明）、必填/可选一致、枚举 wire 值一致，
-      并断言 `ClientRequestMethod` / `ServerNotificationMethod` / `ServerRequestMethod`
-      的 wire 集合与上游完全相等。现有覆盖率测试都是自指的，这类问题一条都测不出。
-- [ ] **已确认的 wire 漂移**（改完上一条测试后应全部变红）：
-
-  | Kotlin | 上游 | 后果 |
-  | --- | --- | --- |
-  | `ThreadMemoryMode { Disabled, Read, ReadWrite }` | `{ Enabled, Disabled }` | `"enabled"` 解不出正确模式（回退 `Disabled`）；写路径靠 `require` 绕开 |
-  | `CommandExecutionApprovalDecision` 四值枚举 | 带负载联合（execpolicy / network-policy 修正） | 「同意并记住规则」不可达；`proposedNetworkPolicyAmendments` 无读取者 |
-  | `RateLimits(primary, secondary, credits: Int?)`、`RateLimitWindow(label, …)` | `RateLimitSnapshot` + `{usedPercent, windowDurationMins, resetsAt}`、credits 是对象 | `label` 是自造；丢 `limitId` 分桶、`accountId`、reset credits |
-  | `AccountInfo(email, planType, organization, loggedIn)` | `Account` tagged union（apiKey / chatgpt / amazonBedrock） | `organization` 上游不存在；丢 `requiresOpenaiAuth` |
-  | `Thread` 12 字段 | 29+ 字段（`projectId`/`agentNickname`/`agentRole`/`parentThreadId`/`gitInfo`/`source`…） | 多 agent、projects 页缺数据来源；`archived`/`gitBranch` 是自造 |
-  | `ThreadTokenUsage` 扁平（`total` 已能解码） | `{ total, last, modelContextWindow }` | 丢 `last` 与 `cacheWriteInputTokens` |
-  | `ModelPreset` 无 `serviceTiers` / `defaultServiceTier` / `hidden` / `inputModalities` | 上游有 | service tier 选择不可达 |
-  | `InitializeResponse`、`McpResourceReadResponse`、`WorkspaceMessage` 等 | 同名不同物 | 握手响应解不出来 |
-- [ ] **通知注册表漂移**：`ServerNotificationMethod` 79 条 vs 上游 84 条，缺
-      `mcpServer/event/stream/notification`、`model/safetyBuffering/updated`、
-      `thread/realtime/item/transcript/delta` 的登记（这三个 `AppServerEvent` 变体已存在）；
-      `rawResponse*` 两条上游自己忽略，保留忽略即可；`server_messages.kt` 注释里的数字要改。
-- [ ] **接口签名比上游窄**：`listThreads` 缺 `cursor/limit/sortKey/sortDirection/…`（无法分页）、
-      `listThreadItems` 缺 `turnId/sortDirection`、`listThreadTurns` 缺 `itemsView`、
-      `readThread` 缺 `includeTurns`、`startThread` 缺 `config/sandbox/permissions/…`
-      （`protocol/app_server_client.kt:578-595`）。
-- [ ] `McpElicitationRequest.Url` 模式无人读取（命中 0），URL 型 elicitation 会被当表单渲染。
-
-## 2. 真机与真实账户验证（P0，需要账户 + 网络）
+## 1. 真机与真实账户验证（P0，需要账户 + 网络）
 
 离线 smoke 刻意不发模型请求，以下必须用真实账户跑一遍：
 
@@ -55,9 +27,9 @@
       diff 只解析追加段），但这批改动只在 JVM 测试里验证过，仍需真机 trace 确认。
 - [ ] 进程被系统回收后的恢复、以及 `transportLagged` 之后的重新同步。
 
-## 3. UI 功能缺口
+## 2. UI 功能缺口
 
-### 3.1 渲染
+### 2.1 渲染
 
 - [ ] markdown 表格、数学、删除线、H4-H6、setext、分隔线、缩进代码块、嵌套列表、硬换行
       （`markdown_stream.kt` 手写扫描器，无 table/math 代码）。
@@ -75,21 +47,20 @@
 - [ ] safety buffering 通知是显式 no-op（`chatwidget.kt:814`）。
 - [ ] 诊断上限 20 条且静默丢弃（`session_state.kt:230,234`），无按 model slug 去重。
 
-### 3.2 diff
+### 2.2 diff
 
 - [ ] 缺 rename（`old → new`）、`⋮` hunk 分隔（现在直接渲染 `diff --git` / `@@`）、
       路径按 cwd / git root / home 相对化、tab 展开、`\ No newline at end of file` 处理。
 
-### 3.3 审批
+### 2.3 审批
 
-- [ ] execpolicy / network-policy 修正决策不可表达（protocol 层就没有负载）。
 - [ ] approvals reviewer 选择缺失：`approvalsReviewer` 只在协议与 client 里，
       `AskForApproval` 无 `AutoReview`（`protocol/protocol/v2/config_types.kt:9-14`），无 UI。
 - [ ] 「输入中延后」门控缺失：上游在用户打字后延迟 1 秒再弹审批（`bottom_pane/mod.rs`）。
 - [ ] 跨线程待审批提示、可操作内联 banner 缺失。
 - [ ] guardian review 的 `+N more` 聚合缺失。
 
-### 3.4 多 agent 与会话编排
+### 2.4 多 agent 与会话编排
 
 - [ ] `AgentPickerSheet` 未挂载（`app/agent_picker.kt:182` 只有定义）；
       `AgentRosterEntry.statusLabel()/tone()` 在 `app/agents_overview.kt:136` 与
@@ -110,7 +81,7 @@
 - [ ] turn 级活动指示器（计时器、折行的工具细节、hook 状态槽位）、turn 完成分隔行、
       标题生成中指示、`InProgress` item 收尾、misalignment 策略缺失。
 
-### 3.5 登录与 onboarding
+### 2.5 登录与 onboarding
 
 - [ ] 登录本身已可用（`status/account.kt:148-221`：设备码 + API key + 取消 + 错误态），
       但缺首次启动引导/欢迎屏，只在提交时按 `loggedIn` 拦一次（`app.kt:205`）。
@@ -123,11 +94,11 @@
 - [ ] OSS provider 选择缺失。
 - [ ] API key 存在 `auth.json`，未用 Keystore/EncryptedSharedPreferences（未深入验证）。
 
-### 3.6 平台能力（当前在 `app/src/main` 里命中 0）
+### 2.6 平台能力（当前在 `app/src/main` 里命中 0）
 
 - [ ] 剪贴板：复制消息、复制代码块、状态卡复制、`/copy`（`ClipboardManager` 命中 0）。
 - [ ] 系统通知：`POST_NOTIFICATIONS` 未申请，无 channel（上游有按类型白名单）。
-- [ ] 打开链接（同 §3.1）。
+- [ ] 打开链接（同 §2.1）。
 - [ ] 图片通路：picker 是 `OpenDocument("*/*")` 且只插 `@path` 文本；composer 只构造
       `UserInput.Text`（`rendering.kt:463`），`onMentionPicked = {}`，`TextElement` 从不构造；
       缺 `LocalImage`、路径粘贴识别、`[Image #N]` 占位、32 MiB 上限。
@@ -137,7 +108,7 @@
       主题界面（32 个内置主题 + `.tmTheme` 不可达）、版本/更新感知（`BuildConfig` 未引用）。
 - [ ] feedback 披露：不设 `includeLogs`、丢弃 `reportId`、分类是自由文本。
 
-### 3.7 命令与输入
+### 2.7 命令与输入
 
 - [ ] 命令目录 14 条建议 / 22 条识别 vs 上游约 60 条；`/plan` 无 dispatch 分支、无
       `SetCollaborationMode` 事件、`catalog.collaborationModes` 从不读取 → 计划/目标模式
@@ -152,7 +123,7 @@
 - [ ] 提交被拒时草稿被清空（上游保留草稿）；composer 无法被禁用（父级拥有输入权 /
       子 agent 线程时应禁用并换占位符）。
 
-### 3.8 管理面
+### 2.8 管理面
 
 - [ ] hooks 浏览器深度不足：无 trust 操作、无 review-needed 状态、无按事件分组与计数、
       无 handler 细节（`HookMetadata` 已带 `trustStatus`，但 UI 不显示也不写）。
@@ -160,34 +131,34 @@
       结果里的 image/audio/resource 投影缺失。
 - [ ] 插件目录：无按 marketplace 的 tab、无安装后鉴权流；`PluginEntry` 无 `enabled`。
 - [ ] app-link 的 install URL / 确认屏 / 连接器鉴权流缺失。
-- [ ] memories 模式无 UI（`SetThreadMemoryMode` 无生产者）；`ThreadMemoryMode` 值集还要按上游改。
+- [ ] memories 模式无 UI（`SetThreadMemoryMode` 无生产者）。
 - [ ] service tier / fast 模式无 UI；`/status` 打开的是 `server/diagnostics`，
       而会话状态读出缺失。
 
-### 3.9 状态与用量
+### 2.9 状态与用量
 
 - [ ] 状态卡字段窄于上游：缺权限摘要、`AGENTS.md` 摘要、model provider、thread name、
       协作模式行、费率条与过期警告、credits/spend-control、按线程 credits/USD、
-      各类 token 拆分（部分字段 protocol 层就没有，见 §1）。
+      各类 token 拆分（protocol 已携带，UI 未展示）。
 - [ ] 费率恢复逻辑缺失（高用量换模型提示、用量警告、恢复期暂挂）；`DiagnosticCode`
       12 个码里没有费率/用量限制码。
-- [ ] reset credits / credits nudge 不可达（事件无发射点，credit 列表也拿不到）。
+- [ ] reset credits / credits nudge 不可达（无 UI 入口；`account/rateLimitResetCredit/consume` 已绑定）。
 - [ ] 客户端设置项只有 3 个 SharedPreferences 键，无动效/主题/通知设置。
 
-### 3.10 死代码与只写不读（顺手清理）
+### 2.10 死代码与只写不读（顺手清理）
 
 - [ ] 零引用：`theme/running_outline.kt`（119 行）、`Motion.LoopMs`、
       `Motion.StreamCommitIntervalMs`、`FuzzySearchSession`、`ModelSheet`/`EffortSheet`、
       `CommandPopup`/`FileSearchPopup`（composer 改用带键盘游标的私有列表；`PopupShell`
       仍被两者共用）。
 - [ ] 只写不读：`catalog.elicitationCount`、`SessionDiagnostic.willRetry`、
-      `workspaceMessages`、`configRequirements`、`TextElement`、`McpElicitationRequest.Url`。
+      `workspaceMessages`、`configRequirements`、`TextElement`。
 - [ ] 只有 handler 没有生产者的 `AppEvent`：`UnsubscribeThread`、`UpdateThreadMetadata`、
       `InjectThreadItems`、`ApproveGuardianDeniedAction`、`SetThreadMemoryMode`、`SteerTurn`、
       `UpdateTurnSettings`、`SetPermissionProfile`、`UpdateThreadSettings`、`AddAttachment`。
       （`DismissApproval` 不在内：审批框有意不可关闭，它不是缺陷。）
 
-## 4. Native / 宿主侧
+## 3. Native / 宿主侧
 
 - [ ] **后端只有 Embedded(in-process) 一种。** LocalDaemon（UDS / `ws://127.0.0.1`）与
       Remote（`ws://host:port`）都没有实现：无 websocket 依赖、无 endpoint 发现、
@@ -205,7 +176,7 @@
 - [ ] **PTY / 交互式命令不支持**：`json_rpc_app_server_client.kt:531` 显式
       `require(!tty)`，`process/spawn|write|resize|kill` 全在未实现列表里。
 - [ ] **markdown 交给 Rust**（`libcodex_fmt.so`，pulldown-cmark + syntect）未做；
-      当前选定的是 §3.1 的 Kotlin 增量实现，只有需要 syntect 高亮时才值得再评估 Rust。
+      当前选定的是 §2.1 的 Kotlin 增量实现，只有需要 syntect 高亮时才值得再评估 Rust。
       若做，要先解决 oniguruma/two-face 依赖
       （`toolchain/env.sh` 里的 `ONIGURUMA_VER` 目前无人引用，`jq.sh` 会删掉头文件）
       与高亮上限（上游 >512 KiB / >10 000 行跳过）。
@@ -215,7 +186,7 @@
 - [ ] **16 KB 页对齐没有门禁**：`native/build.sh:16-18` 只校验自己产出的两个 `.so`，
       toolchain 侧没有 `readelf` 检查（实测 bash/git/curl 都是 `0x4000`）。
 
-## 5. 未验证 / 未知
+## 4. 未验证 / 未知
 
 - [ ] `AgentRosterEntry.statusLabel()/tone()` 两份定义里哪一份生效（取决于 import 优先级，
       未编译验证）。
@@ -228,9 +199,8 @@
 - [ ] 真机上 diff "显示更多" 分页的滚动位置与长文件 jank 未验证；无截图测试做像素对比。
 - [ ] `AgentMessageItem.questions` 是否被服务端用于回传答案（决定是否需要独立的
       `request_user_input` 结果 cell）。
-- [ ] 协议漂移的统计口径（同名类型、发明字段数）未按当前代码重算。
 
-## 6. 不做
+## 5. 不做
 
 - 终端专有机制：vim 模态与键位重绑、crossterm 原始键事件、bracketed paste / Kitty 协议、
   终端光标与 scrollback 重排、ANSI/OSC 标记、终端标题与调色板、BEL/OSC 9、OSC-52、
@@ -257,7 +227,7 @@
 | hooks 通知负载 | `app-server-protocol/src/protocol/v2/hook.rs` |
 
 上游事实：`ServerNotification` 共 84 条，其中 `rawResponse*` 两条上游 TUI 自己也忽略；
-`app-server-protocol` 的 `schema/` 可直接作为 §1 那条测试的输入。
+`app-server-protocol` 的 `schema/` 是 `UpstreamSchemaTest` 的输入；它离线比对 Kotlin 类型与上游 schema。
 
 ## 附录 B：有意分歧（不是缺口）
 

@@ -1,21 +1,69 @@
 package com.cy.codexui.protocol.protocol.v2
 
 import com.cy.codexui.protocol.protocol.item.ThreadItem
+import kotlinx.serialization.json.JsonElement
 
-/** One row of `thread/list`: metadata only, no transcript. */
+/**
+ * One row of `thread/list`: metadata only, no transcript.
+ *
+ * Mirrors `v2::Thread`. The client carries the fields its surfaces render and drops the rest
+ * (`source`, `turns`, `environments`, `extra`, …), which the schema allows: a Kotlin type may have
+ * fewer fields than upstream, but a field it does carry must use the upstream wire name.
+ *
+ * `createdAt`/`updatedAt`/`recencyAt` arrive as Unix **seconds** and are decoded to epoch millis,
+ * because that is what the sidebar's relative-time formatting reads.
+ */
 data class Thread(
+    /** Identifier for this thread. Codex-generated thread IDs are UUIDv7. */
     val id: String,
+    /** Usually the first user message in the thread, if available. */
+    val preview: String,
+    /** Model provider used for this thread, for example `openai`. */
+    val modelProvider: String,
+    val createdAt: Long,
+    val updatedAt: Long,
+    /** Working directory captured for the thread. */
+    val cwd: String,
+    val status: ThreadStatus,
+    /** Version of the CLI that created the thread. */
+    val cliVersion: String,
+    /** Whether the thread is ephemeral and should not be materialized on disk. */
+    val ephemeral: Boolean,
+    /** Canonical project assignment owned by app-server, if any. Nullable, but always present. */
+    val projectId: String?,
+    /** Session id shared by threads that belong to the same session tree. */
+    val sessionId: String,
+    /** Optional user-facing thread title. */
     val name: String? = null,
-    val preview: String? = null,
-    val modelProvider: String = "openai",
-    val createdAt: Long = 0L,
-    val updatedAt: Long = 0L,
-    val cwd: String = "",
-    val status: ThreadStatus = ThreadStatus.Idle,
-    val archived: Boolean = false,
-    val sectionId: String? = null,
+    /** Source thread id when this thread was created by forking another thread. */
     val forkedFromId: String? = null,
-    val gitBranch: String? = null,
+    /** Optional Git metadata captured when the thread was created. */
+    val gitInfo: GitInfo? = null,
+    /** Current configured model when loaded, otherwise the latest persisted model. */
+    val model: String? = null,
+    /** Current configured reasoning effort when loaded, otherwise the latest persisted effort. */
+    val reasoningEffort: ReasoningEffort? = null,
+    /** `[UNSTABLE]` Path to the thread on disk. */
+    val path: String? = null,
+    /** Persisted thread history contract selected when this thread was created. */
+    val historyMode: String = "legacy",
+    /** Unix timestamp (in seconds) used for recency ordering. */
+    val recencyAt: Long? = null,
+    /** Originator recorded when the thread was created. */
+    val originator: String? = null,
+    /** Set when this thread is a sub-agent of another thread. */
+    val parentThreadId: String? = null,
+    /** Random unique nickname assigned to an AgentControl-spawned sub-agent. */
+    val agentNickname: String? = null,
+    /** Role assigned to an AgentControl-spawned sub-agent. */
+    val agentRole: String? = null,
+)
+
+/** Optional Git metadata captured when a thread was created. */
+data class GitInfo(
+    val branch: String? = null,
+    val originUrl: String? = null,
+    val sha: String? = null,
 )
 
 sealed interface ThreadStatus {
@@ -63,43 +111,171 @@ enum class TurnStatus(val wire: String) {
     }
 }
 
+/** One bucket of token accounting. Mirrors `TokenUsageBreakdown`. */
+data class TokenUsageBreakdown(
+    val totalTokens: Long,
+    val inputTokens: Long,
+    val cachedInputTokens: Long,
+    val outputTokens: Long,
+    val reasoningOutputTokens: Long,
+    /** Present in newer servers; older payloads simply omit it. */
+    val cacheWriteInputTokens: Long = 0,
+) {
+    companion object {
+        val Empty = TokenUsageBreakdown(0, 0, 0, 0, 0)
+    }
+}
+
 /**
  * Token accounting for one thread, straight from `thread/tokenUsage/updated`.
  *
- * Field names follow `schema/typescript/v2/ThreadTokenUsage.ts`.
+ * Mirrors `v2::ThreadTokenUsage`: [total] is the lifetime counter, [last] the most recent turn, and
+ * [modelContextWindow] the denominator for the context meter.
  */
 data class ThreadTokenUsage(
-    val totalTokens: Int = 0,
-    val inputTokens: Int = 0,
-    val cachedInputTokens: Int = 0,
-    val outputTokens: Int = 0,
-    val reasoningOutputTokens: Int = 0,
-    val modelContextWindow: Int? = null,
+    val total: TokenUsageBreakdown,
+    val last: TokenUsageBreakdown,
+    val modelContextWindow: Long? = null,
 ) {
     val usedFraction: Float
         get() = modelContextWindow?.takeIf { it > 0 }?.let {
-            (totalTokens.toFloat() / it.toFloat()).coerceIn(0f, 1f)
+            (total.totalTokens.toFloat() / it.toFloat()).coerceIn(0f, 1f)
         } ?: 0f
+
+    companion object {
+        val Empty = ThreadTokenUsage(TokenUsageBreakdown.Empty, TokenUsageBreakdown.Empty)
+    }
 }
+
+/** One `thread/list` sweep: active rows plus, when the scope asked for them, archived rows. */
+data class ThreadListing(
+    val threads: List<Thread> = emptyList(),
+    /** Ids of the rows that came from the archived half of the listing. */
+    val archivedIds: Set<String> = emptySet(),
+)
+
+/** `thread/list` params. Mirrors `v2::ThreadListParams`; every field is optional upstream. */
+data class ThreadListParams(
+    val archived: Boolean? = null,
+    val cursor: String? = null,
+    val cwd: String? = null,
+    val limit: Int? = null,
+    val modelProviders: List<String>? = null,
+    val originators: List<String>? = null,
+    val searchTerm: String? = null,
+    val sectionId: String? = null,
+    val sortDirection: SortDirection? = null,
+    val sortKey: ThreadSortKey? = null,
+    val sourceKinds: List<String>? = null,
+    val useStateDbOnly: Boolean? = null,
+)
+
+enum class SortDirection(val wire: String) {
+    Asc("asc"),
+    Desc("desc"),
+}
+
+enum class ThreadSortKey(val wire: String) {
+    CreatedAt("created_at"),
+    UpdatedAt("updated_at"),
+    RecencyAt("recency_at"),
+    SectionPosition("section_position"),
+}
+
+/** `thread/items/list` params. */
+data class ThreadItemsListParams(
+    val threadId: String,
+    val cursor: String? = null,
+    val limit: Int? = null,
+    val sortDirection: SortDirection? = null,
+    val turnId: String? = null,
+)
+
+/** `thread/turns/list` params. */
+data class ThreadTurnsListParams(
+    val threadId: String,
+    val cursor: String? = null,
+    val itemsView: TurnItemsView? = null,
+    val limit: Int? = null,
+    val sortDirection: SortDirection? = null,
+)
+
+/** Which item payloads `thread/turns/list` inlines; mirrors `TurnItemsView`. */
+enum class TurnItemsView(val wire: String) {
+    NotLoaded("notLoaded"),
+    Summary("summary"),
+    Full("full"),
+}
+
+/** `thread/read` params. */
+data class ThreadReadParams(
+    val threadId: String,
+    val includeTurns: Boolean? = null,
+)
+
+/**
+ * `thread/start` params.
+ *
+ * Mirrors `v2::ThreadStartParams`. The client carries the knobs its settings surfaces expose; the
+ * remaining upstream fields (`baseInstructions`, `config`, `serviceName`, `threadSource`, …) are
+ * dropped rather than invented.
+ */
+data class ThreadStartParams(
+    val cwd: String? = null,
+    val model: String? = null,
+    val modelProvider: String? = null,
+    val approvalPolicy: AskForApproval? = null,
+    val approvalsReviewer: String? = null,
+    val sandbox: SandboxPolicy? = null,
+    val personality: Personality? = null,
+    val serviceTier: String? = null,
+    val ephemeral: Boolean? = null,
+    val developerInstructions: String? = null,
+    val baseInstructions: String? = null,
+    val sessionStartSource: String? = null,
+    /** Per-thread config overrides, as raw JSON: the server owns the key space. */
+    val config: JsonElement? = null,
+)
 
 /** `threadSection/…`: a user-defined group of threads in the sidebar. */
 data class ThreadSection(
     val id: String,
     val name: String,
-    val position: Int = 0,
 )
 
-/** `model/list` entry. */
+/**
+ * `model/list` entry.
+ *
+ * Mirrors `v2::Model`. `contextWindow` is deliberately absent: the wire has no such field, the
+ * session's own window arrives through [ThreadTokenUsage.modelContextWindow].
+ */
 data class ModelPreset(
     val id: String,
     val model: String,
     val displayName: String,
-    val description: String = "",
-    val defaultReasoningEffort: ReasoningEffort = ReasoningEffort.Medium,
-    val supportedReasoningEfforts: List<ReasoningEffort> = ReasoningEffort.entries,
-    val isDefault: Boolean = false,
-    val contextWindow: Int = 256_000,
+    val description: String,
+    val defaultReasoningEffort: ReasoningEffort,
+    val supportedReasoningEfforts: List<ReasoningEffort>,
+    val isDefault: Boolean,
+    val hidden: Boolean,
+    val defaultServiceTier: String? = null,
+    val serviceTiers: List<ModelServiceTier> = emptyList(),
+    val inputModalities: List<InputModality> = emptyList(),
 )
+
+/** One selectable speed tier of a model. Mirrors `ModelServiceTier`. */
+data class ModelServiceTier(
+    val id: String,
+    val name: String,
+    val description: String,
+)
+
+/** Input kinds a model accepts. Mirrors `InputModality`. */
+enum class InputModality(val wire: String) {
+    Text("text"),
+    Image("image"),
+    Audio("audio"),
+}
 
 /** `permissionProfile/list` entry. */
 data class PermissionProfileEntry(
@@ -121,16 +297,20 @@ data class ExperimentalFeatureEntry(
 /** `mcpServerStatus/list` entry. */
 data class McpServerStatusEntry(
     val name: String,
-    val status: McpServerConnectionStatus = McpServerConnectionStatus.Ready,
+    val status: McpServerConnectionStatus = McpServerConnectionStatus.NotStarted,
     val tools: Int = 0,
     val resources: Int = 0,
     val error: String? = null,
 )
 
+/** Mirrors upstream `McpServerConnectionStatus`. */
 enum class McpServerConnectionStatus(val wire: String) {
+    NotStarted("notStarted"),
     Starting("starting"),
-    Ready("ready"),
+    Connected("connected"),
+    AuthenticationRequired("authenticationRequired"),
     Failed("failed"),
+    Cancelled("cancelled"),
     Disabled("disabled"),
 }
 
@@ -144,10 +324,21 @@ data class SkillEntry(
     val scope: SkillScope = SkillScope.User,
 )
 
+/** Mirrors upstream `SkillScope`; a repo-scoped skill travels as `repo`, not `project`. */
 enum class SkillScope(val wire: String) {
     User("user"),
-    Project("project"),
+    Project("repo"),
     System("system"),
+    Admin("admin"),
+    ;
+
+    companion object {
+        fun fromWire(value: String?): SkillScope = when (value) {
+            // `project` is a legacy spelling the server no longer sends.
+            "project" -> Project
+            else -> entries.firstOrNull { it.wire == value } ?: User
+        }
+    }
 }
 
 /** `plugin/list` entry: the parts of `PluginSummary` this client renders. */
@@ -214,25 +405,107 @@ data class HooksListEntry(
 
 data class HookErrorInfo(val path: String = "", val message: String = "")
 
-/** `account/read` response. */
-data class AccountInfo(
-    val email: String? = null,
-    val planType: String? = null,
-    val organization: String? = null,
-    val loggedIn: Boolean = false,
+/**
+ * `account/read` response. Mirrors `GetAccountResponse`.
+ *
+ * [requiresOpenaiAuth] is the field a signed-out surface needs: it says whether OpenAI
+ * authentication is required at all (Bedrock and API-key accounts answer `false`), which is what
+ * decides if the sign-in call to action is shown.
+ */
+data class AccountReadResponse(
+    val requiresOpenaiAuth: Boolean,
+    val account: Account? = null,
 )
 
-/** `account/rateLimits/read` response. */
-data class RateLimits(
+/**
+ * The signed-in account. Mirrors the `Account` tagged union: [ApiKey], [Chatgpt] and
+ * [AmazonBedrock] are the three variants the wire defines.
+ */
+sealed interface Account {
+    /** An API-key account carries no identity fields. */
+    data object ApiKey : Account
+
+    data class Chatgpt(val email: String?, val planType: String) : Account
+
+    data class AmazonBedrock(val usesCodexManagedCredentials: Boolean = false) : Account
+}
+
+/**
+ * `account/rateLimits/read` response. Mirrors `GetAccountRateLimitsResponse`.
+ *
+ * [rateLimits] is the backward-compatible single bucket; [rateLimitsByLimitId] keys the same shape
+ * by metered `limit_id` (for example `codex`), which is what multi-bucket UIs read.
+ */
+data class AccountRateLimits(
+    val rateLimits: RateLimitSnapshot = RateLimitSnapshot(),
+    val rateLimitsByLimitId: Map<String, RateLimitSnapshot>? = null,
+    val accountId: String? = null,
+    val rateLimitResetCredits: RateLimitResetCreditsSummary? = null,
+    val ordinaryUsageAllowed: Boolean? = null,
+)
+
+/** One rate-limit bucket. Mirrors `RateLimitSnapshot`; every field is optional. */
+data class RateLimitSnapshot(
     val primary: RateLimitWindow? = null,
     val secondary: RateLimitWindow? = null,
-    val credits: Int? = null,
+    val credits: CreditsSnapshot? = null,
+    val limitId: String? = null,
+    val limitName: String? = null,
+    val planType: String? = null,
+    val rateLimitReachedType: String? = null,
+    val spendControlReached: Boolean? = null,
+    val normalModelSlug: String? = null,
+) {
+    /**
+     * Fold a sparse `account/rateLimits/updated` into this snapshot.
+     *
+     * The notification only carries what the server could supply; a missing field means
+     * "unchanged", not "cleared", so this must not be a plain replace.
+     */
+    fun mergedWith(update: RateLimitSnapshot): RateLimitSnapshot = copy(
+        primary = update.primary ?: primary,
+        secondary = update.secondary ?: secondary,
+        credits = update.credits ?: credits,
+        limitId = update.limitId ?: limitId,
+        limitName = update.limitName ?: limitName,
+        planType = update.planType ?: planType,
+        rateLimitReachedType = update.rateLimitReachedType ?: rateLimitReachedType,
+        spendControlReached = update.spendControlReached ?: spendControlReached,
+        normalModelSlug = update.normalModelSlug ?: normalModelSlug,
+    )
+}
+
+/** One window inside a bucket. Mirrors `RateLimitWindow`. */
+data class RateLimitWindow(
+    /** Percentage used, 0–100. */
+    val usedPercent: Long,
+    val windowDurationMins: Long? = null,
+    /** Epoch millis; decoded from the wire's Unix seconds. */
+    val resetsAt: Long? = null,
 )
 
-data class RateLimitWindow(
-    val label: String,
-    val usedPercent: Float,
-    val resetsAt: Long? = null,
+/** Mirrors `CreditsSnapshot`. */
+data class CreditsSnapshot(
+    val hasCredits: Boolean,
+    val unlimited: Boolean,
+    val balance: String? = null,
+)
+
+/** Mirrors `RateLimitResetCreditsSummary`. */
+data class RateLimitResetCreditsSummary(
+    val availableCount: Long,
+    val credits: List<RateLimitResetCredit>? = null,
+)
+
+/** Mirrors `RateLimitResetCredit`. */
+data class RateLimitResetCredit(
+    val id: String,
+    val status: String,
+    val resetType: String,
+    val grantedAt: Long,
+    val title: String? = null,
+    val description: String? = null,
+    val expiresAt: Long? = null,
 )
 
 /** `account/usage/read` response. */

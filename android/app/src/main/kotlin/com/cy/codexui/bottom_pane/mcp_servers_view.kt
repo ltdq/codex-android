@@ -61,7 +61,7 @@ fun McpScreen(
 ) {
     val colors = MiuixTheme.colorScheme
     val servers = catalog.mcpServers
-    val ready = servers.count { it.status == McpServerConnectionStatus.Ready }
+    val ready = servers.count { it.status == McpServerConnectionStatus.Connected }
 
     Column(
         modifier = modifier
@@ -249,8 +249,14 @@ private val McpRowShape = RoundedCornerShape(UiConsts.RowCorner)
 
 /** Connection state → the same four tones the transcript's status dots use. */
 private fun mcpTone(status: McpServerConnectionStatus): ThreadStatusTone = when (status) {
-    McpServerConnectionStatus.Ready -> ThreadStatusTone.Done
-    McpServerConnectionStatus.Starting -> ThreadStatusTone.Waiting
+    McpServerConnectionStatus.Connected -> ThreadStatusTone.Done
+    McpServerConnectionStatus.NotStarted,
+    McpServerConnectionStatus.Starting,
+    McpServerConnectionStatus.AuthenticationRequired,
+    -> ThreadStatusTone.Waiting
+
     McpServerConnectionStatus.Failed -> ThreadStatusTone.Failed
-    McpServerConnectionStatus.Disabled -> ThreadStatusTone.Idle
+    McpServerConnectionStatus.Cancelled,
+    McpServerConnectionStatus.Disabled,
+    -> ThreadStatusTone.Idle
 }

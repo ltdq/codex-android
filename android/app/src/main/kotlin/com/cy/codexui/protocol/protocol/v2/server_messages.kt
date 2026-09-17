@@ -3,9 +3,10 @@ package com.cy.codexui.protocol.protocol.v2
 /**
  * `ServerNotification` — the 82 methods the server pushes at the client.
  *
- * Mirrors the generated `ServerNotification.json`. Notifications that only matter to desktop
- * surfaces (realtime voice, Windows sandbox, world-writable warnings) are declared so the
- * dispatcher has a total mapping, but the phone ignores them.
+ * Mirrors the generated `ServerNotification.json`, and [entries] is asserted equal to it by
+ * `UpstreamSchemaTest`. Notifications that only matter to desktop surfaces (realtime voice,
+ * Windows sandbox, world-writable warnings) are declared so the dispatcher has a total mapping,
+ * but the phone ignores them.
  */
 enum class ServerNotificationMethod(val wire: String) {
     // item/…
@@ -78,6 +79,7 @@ enum class ServerNotificationMethod(val wire: String) {
     ThreadRealtimeItemStarted("thread/realtime/item/started"),
     ThreadRealtimeItemCompleted("thread/realtime/item/completed"),
     ThreadRealtimeItemAdded("thread/realtime/itemAdded"),
+    ThreadRealtimeItemTranscriptDelta("thread/realtime/item/transcript/delta"),
     ThreadRealtimeTranscriptDelta("thread/realtime/transcript/delta"),
     ThreadRealtimeTranscriptDone("thread/realtime/transcript/done"),
     ThreadRealtimeOutputAudioDelta("thread/realtime/outputAudio/delta"),
@@ -92,6 +94,8 @@ enum class ServerNotificationMethod(val wire: String) {
     HookCompleted("hook/completed"),
     ModelProviderAuthRecoveryStarted("modelProvider/authRecoveryStarted"),
     ModelProviderAuthRecoveryCompleted("modelProvider/authRecoveryCompleted"),
+    ModelSafetyBufferingUpdated("model/safetyBuffering/updated"),
+    McpServerEventStreamNotification("mcpServer/event/stream/notification"),
     ProcessOutputDelta("process/outputDelta"),
     ProcessExited("process/exited"),
     FsChanged("fs/changed"),
@@ -110,10 +114,11 @@ enum class ServerNotificationMethod(val wire: String) {
 }
 
 /**
- * `ServerRequest` — the 10 requests that must be answered.
+ * `ServerRequest` — the 11 requests that must be answered.
  *
- * A client that ignores one of these leaves the agent blocked forever. The transport either
- * delivers a typed request to the UI or returns an explicit unsupported-method error.
+ * Mirrors the experimental-inclusive upstream set. A client that ignores one of these leaves the
+ * agent blocked forever. The transport either delivers a typed request to the UI or returns an
+ * explicit unsupported-method error.
  */
 enum class ServerRequestMethod(val wire: String) {
     CommandExecutionApproval("item/commandExecution/requestApproval"),
@@ -124,6 +129,7 @@ enum class ServerRequestMethod(val wire: String) {
     McpServerElicitation("mcpServer/elicitation/request"),
     AccountChatgptAuthTokensRefresh("account/chatgptAuthTokens/refresh"),
     AttestationGenerate("attestation/generate"),
+    CurrentTimeRead("currentTime/read"),
     ExecCommandApproval("execCommandApproval"),
     ApplyPatchApproval("applyPatchApproval"),
     ;
@@ -135,18 +141,39 @@ enum class ServerRequestMethod(val wire: String) {
     }
 }
 
-/** Decision the user can hand back for a command execution approval. */
-enum class CommandExecutionApprovalDecision(val wire: String) {
-    Accept("accept"),
-    AcceptForSession("acceptForSession"),
-    Decline("decline"),
-    Cancel("cancel"),
-    ;
+/**
+ * Decision the user can hand back for a command execution approval.
+ *
+ * Mirrors the upstream union: four plain-string decisions plus two payload-carrying ones — the
+ * execpolicy amendment ("accept and remember this rule") and the network-policy amendment ("allow
+ * or deny this host from now on"). A four-value enum cannot represent the payload variants, which
+ * is why "accept and remember" was unreachable before.
+ */
+sealed interface CommandExecutionApprovalDecision {
+    data object Accept : CommandExecutionApprovalDecision
 
-    companion object {
-        fun fromWire(value: String): CommandExecutionApprovalDecision? =
-            entries.firstOrNull { it.wire == value }
-    }
+    data object AcceptForSession : CommandExecutionApprovalDecision
+
+    data object Decline : CommandExecutionApprovalDecision
+
+    data object Cancel : CommandExecutionApprovalDecision
+
+    data class AcceptWithExecpolicyAmendment(val execpolicyAmendment: List<String>) :
+        CommandExecutionApprovalDecision
+
+    data class ApplyNetworkPolicyAmendment(val networkPolicyAmendment: NetworkPolicyAmendment) :
+        CommandExecutionApprovalDecision
+}
+
+/** One persistent host rule: mirrors `NetworkPolicyAmendment`. */
+data class NetworkPolicyAmendment(
+    val action: NetworkPolicyRuleAction,
+    val host: String,
+)
+
+enum class NetworkPolicyRuleAction(val wire: String) {
+    Allow("allow"),
+    Deny("deny"),
 }
 
 /** Decision the user can hand back for a file-change approval. */
@@ -179,7 +206,13 @@ enum class PermissionsApprovalDecision(val wire: String) {
 /** Answer to a single `request_user_input` question. */
 data class UserInputAnswer(val questionId: String, val answers: List<String>)
 
-/** `McpServerElicitationRequestParams` collapsed into the three forms the protocol defines. */
+/**
+ * `McpServerElicitationRequestParams`, split by the `mode` tag.
+ *
+ * The wire is a four-variant union (three schema flavours plus the URL redirect); the schema
+ * flavours collapse into [Form] because this client renders the flattened schema either way, while
+ * [Url] must stay its own variant: it has no fields to submit, only a page to open and an accept.
+ */
 sealed interface McpElicitationRequest {
     val serverName: String
     val message: String
@@ -187,8 +220,10 @@ sealed interface McpElicitationRequest {
     data class Form(
         override val serverName: String,
         override val message: String,
-        val fields: List<McpElicitationField>,
-    ) : McpElicitationRequest
+        val requestedSchema: McpElicitationSchema = McpElicitationSchema(),
+    ) : McpElicitationRequest {
+        val fields: List<McpElicitationField> get() = requestedSchema.fields
+    }
 
     data class Url(
         override val serverName: String,

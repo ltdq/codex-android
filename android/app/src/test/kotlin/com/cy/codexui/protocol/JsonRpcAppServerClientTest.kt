@@ -8,6 +8,7 @@ import com.cy.codexui.protocol.protocol.long
 import com.cy.codexui.protocol.protocol.objectOrNull
 import com.cy.codexui.protocol.protocol.objectValue
 import com.cy.codexui.protocol.protocol.required
+import com.cy.codexui.protocol.protocol.strings
 import com.cy.codexui.protocol.protocol.text
 import com.cy.codexui.protocol.protocol.item.AgentMessageItem
 import com.cy.codexui.protocol.protocol.v2.AttachmentType
@@ -79,10 +80,12 @@ class JsonRpcAppServerClientTest {
         val accountRequest = transport.request()
         val configRequest = transport.request()
         transport.response(configRequest, obj("config" to obj("model" to "test-model")))
-        transport.response(accountRequest, obj("account" to obj("type" to "chatgpt", "email" to "user@example.test", "planType" to "pro")))
+        transport.response(accountRequest, obj("account" to obj("type" to "chatgpt", "email" to "user@example.test", "planType" to "pro"),
+            "requiresOpenaiAuth" to true))
         assertEquals("test-model", config.await().snapshot.model)
-        assertEquals("user@example.test", account.await().email)
-        assertTrue(account.await().loggedIn)
+        assertEquals("user@example.test", (account.await().account as com.cy.codexui.protocol.protocol.v2.Account.Chatgpt).email)
+        assertTrue(account.await().account != null)
+        assertTrue(account.await().requiresOpenaiAuth)
         client.close()
     }
 
@@ -91,9 +94,19 @@ class JsonRpcAppServerClientTest {
         val transport = HarnessTransport()
         val client = JsonRpcAppServerClient(transport, backgroundScope)
         client.initialize(ClientInfo("android", version = "1")).getOrThrow()
-        val listing = async { client.listThreads(true).getOrThrow() }
+        val listing = async {
+            client.listThreads(
+                com.cy.codexui.protocol.protocol.v2.ThreadListParams(
+                    archived = true, sortKey = com.cy.codexui.protocol.protocol.v2.ThreadSortKey.UpdatedAt,
+                    sortDirection = com.cy.codexui.protocol.protocol.v2.SortDirection.Desc, limit = 5,
+                ),
+            ).getOrThrow()
+        }
         val first = transport.request()
         assertFalse(first.objectOrNull("params")!!.bool("archived")!!)
+        assertEquals("updated_at", first.objectOrNull("params")!!.text("sortKey"))
+        assertEquals("desc", first.objectOrNull("params")!!.text("sortDirection"))
+        assertEquals(5, first.objectOrNull("params")!!.int("limit"))
         transport.response(first, obj("data" to listOf(obj("id" to "one", "createdAt" to 17, "status" to obj("type" to "idle"))), "nextCursor" to "page-two"))
         val second = transport.request()
         assertEquals("page-two", second.objectOrNull("params")!!.text("cursor"))
@@ -102,9 +115,9 @@ class JsonRpcAppServerClientTest {
         assertTrue(archive.objectOrNull("params")!!.bool("archived")!!)
         transport.response(archive, obj("data" to listOf(obj("id" to "old"))))
         val threads = listing.await()
-        assertEquals(listOf("one", "two", "old"), threads.map { it.id })
-        assertEquals(17_000L, threads.first().createdAt)
-        assertTrue(threads.last().archived)
+        assertEquals(listOf("one", "two", "old"), threads.threads.map { it.id })
+        assertEquals(17_000L, threads.threads.first().createdAt)
+        assertEquals(setOf("old"), threads.archivedIds)
         client.close()
     }
 
@@ -113,7 +126,7 @@ class JsonRpcAppServerClientTest {
         val transport = HarnessTransport()
         val client = JsonRpcAppServerClient(transport, backgroundScope)
         client.initialize(ClientInfo("android", version = "1")).getOrThrow()
-        val read = async { client.readThread("t").getOrThrow() }
+        val read = async { client.readThread(com.cy.codexui.protocol.protocol.v2.ThreadReadParams("t")).getOrThrow() }
         transport.response(transport.request(), obj("thread" to obj("id" to "t", "turns" to listOf(
             obj("id" to "turn", "status" to "inProgress", "items" to listOf(obj("type" to "agentMessage", "id" to "item", "text" to "Partial"))),
         ))))
@@ -188,7 +201,7 @@ class JsonRpcAppServerClientTest {
         assertEquals(2, transport.starts)
         val retried = async { client.readAccount().getOrThrow() }
         transport.response(transport.request(), obj("account" to JsonNull))
-        assertFalse(retried.await().loggedIn)
+        assertNull(retried.await().account)
         client.close()
     }
 
@@ -255,7 +268,7 @@ class JsonRpcAppServerClientTest {
         val approval = async { client.requests.first() }
         transport.push("""{"id":"form","method":"mcpServer/elicitation/request","params":{"threadId":"t","serverName":"test","mode":"form","message":"Settings","requestedSchema":{"properties":{"enabled":{"type":"boolean"},"count":{"type":"integer"}},"required":["count"]}}}""")
         val received = assertIs<ApprovalRequest.Elicitation>(approval.await())
-        assertTrue(received.params.requestedSchema.fields.single { it.name == "count" }.required)
+        assertTrue((received.params as com.cy.codexui.protocol.protocol.v2.McpElicitationRequest.Form).requestedSchema.fields.single { it.name == "count" }.required)
         client.respond(received.requestId, ApprovalResponse.Elicitation(ElicitationAction.Accept, mapOf("enabled" to "true", "count" to "3")))
         val content = transport.sentResponse().objectOrNull("result")!!.objectOrNull("content")!!
         assertEquals(JsonPrimitive(true), content["enabled"])
@@ -664,6 +677,140 @@ class JsonRpcAppServerClientTest {
         assertEquals("fuzzyFileSearch/sessionStop", stop.required("method"))
         transport.response(stop, obj())
         stopped.await()
+        client.close()
+    }
+
+    @Test
+    fun `command approval decodes decisions and encodes the payload variants`() = runTest {
+        val transport = HarnessTransport()
+        val client = JsonRpcAppServerClient(transport, backgroundScope)
+        client.initialize(ClientInfo("android", version = "1")).getOrThrow()
+        val approval = async { client.requests.first() }
+        transport.push(
+            """{"id":"amend","method":"item/commandExecution/requestApproval","params":{"threadId":"t","turnId":"turn","itemId":"cmd","command":"curl https://example.test","cwd":"/workspace","proposedExecpolicyAmendment":["curl","https://example.test"],"proposedNetworkPolicyAmendments":[{"action":"allow","host":"example.test"}],"availableDecisions":["accept",{"acceptWithExecpolicyAmendment":{"execpolicy_amendment":["curl"]}},{"applyNetworkPolicyAmendment":{"network_policy_amendment":{"action":"allow","host":"example.test"}}}],"commandActions":[{"type":"unknown","command":"curl https://example.test"}]}}""",
+        )
+        val received = assertIs<ApprovalRequest.Exec>(approval.await())
+        assertEquals(listOf("curl", "https://example.test"), received.params.proposedExecpolicyAmendment)
+        assertEquals("example.test", received.params.proposedNetworkPolicyAmendments.single().host)
+        assertEquals(3, received.params.availableDecisions.size)
+        assertEquals(com.cy.codexui.protocol.protocol.v2.CommandAction.Unknown("curl https://example.test"), received.params.commandActions.single())
+
+        client.respond(received.requestId, ApprovalResponse.CommandExecution(
+            CommandExecutionApprovalDecision.AcceptWithExecpolicyAmendment(listOf("curl"))))
+        val amendment = transport.sentResponse().objectOrNull("result")!!
+            .objectOrNull("decision")!!.objectOrNull("acceptWithExecpolicyAmendment")!!
+        assertEquals(listOf("curl"), amendment.strings("execpolicy_amendment"))
+        client.close()
+    }
+
+    @Test
+    fun `URL elicitation keeps its own mode instead of rendering as a form`() = runTest {
+        val transport = HarnessTransport()
+        val client = JsonRpcAppServerClient(transport, backgroundScope)
+        client.initialize(ClientInfo("android", version = "1")).getOrThrow()
+        val approval = async { client.requests.first() }
+        transport.push("""{"id":"url","method":"mcpServer/elicitation/request","params":{"threadId":"t","serverName":"docs","mode":"url","message":"Authorize","url":"https://example.test/auth","elicitationId":"e-1"}}""")
+        val received = assertIs<ApprovalRequest.Elicitation>(approval.await())
+        val payload = assertIs<com.cy.codexui.protocol.protocol.v2.McpElicitationRequest.Url>(received.params)
+        assertEquals("https://example.test/auth", payload.url)
+        assertEquals("e-1", payload.elicitationId)
+
+        client.respond(received.requestId, ApprovalResponse.Elicitation(ElicitationAction.Accept))
+        val result = transport.sentResponse().objectOrNull("result")!!
+        assertEquals("accept", result.text("action"))
+        assertEquals(JsonNull, result["content"])
+        client.close()
+    }
+
+    @Test
+    fun `rate limits decode windows, credits and the account envelope`() = runTest {
+        val transport = HarnessTransport()
+        val client = JsonRpcAppServerClient(transport, backgroundScope)
+        client.initialize(ClientInfo("android", version = "1")).getOrThrow()
+        val limits = async { client.readRateLimits().getOrThrow() }
+        transport.response(transport.request(), obj(
+            "rateLimits" to obj("primary" to obj("usedPercent" to 42, "windowDurationMins" to 300, "resetsAt" to 99),
+                "credits" to obj("hasCredits" to true, "unlimited" to false, "balance" to "12.5"), "limitId" to "codex"),
+            "accountId" to "acct",
+        ))
+        val decoded = limits.await()
+        assertEquals(42L, decoded.rateLimits.primary!!.usedPercent)
+        assertEquals(300L, decoded.rateLimits.primary!!.windowDurationMins)
+        assertEquals(99_000L, decoded.rateLimits.primary!!.resetsAt)
+        assertEquals("12.5", decoded.rateLimits.credits!!.balance)
+        assertEquals("codex", decoded.rateLimits.limitId)
+        assertEquals("acct", decoded.accountId)
+        client.close()
+    }
+
+    @Test
+    fun `token usage decodes the nested breakdowns`() = runTest {
+        val transport = HarnessTransport()
+        val client = JsonRpcAppServerClient(transport, backgroundScope)
+        client.initialize(ClientInfo("android", version = "1")).getOrThrow()
+        val event = async(UnconfinedTestDispatcher(testScheduler)) { client.events.first() }
+        transport.push("""{"method":"thread/tokenUsage/updated","params":{"threadId":"t","turnId":"turn","tokenUsage":{"total":{"totalTokens":100,"inputTokens":60,"cachedInputTokens":10,"outputTokens":30,"reasoningOutputTokens":5,"cacheWriteInputTokens":7},"last":{"totalTokens":40,"inputTokens":20,"cachedInputTokens":4,"outputTokens":16,"reasoningOutputTokens":2},"modelContextWindow":1000}}}""")
+        val usage = assertIs<AppServerEvent.ThreadTokenUsageEvent>(event.await()).delta.usage
+        assertEquals(100L, usage.total.totalTokens)
+        assertEquals(40L, usage.last.totalTokens)
+        assertEquals(7L, usage.total.cacheWriteInputTokens)
+        assertEquals(1000L, usage.modelContextWindow)
+        assertEquals(0.1f, usage.usedFraction)
+        client.close()
+    }
+
+    @Test
+    fun `memory mode and rollout compression use their upstream wire shapes`() = runTest {
+        val transport = HarnessTransport()
+        val client = JsonRpcAppServerClient(transport, backgroundScope)
+        client.initialize(ClientInfo("android", version = "1")).getOrThrow()
+        val memory = async { client.setThreadMemoryMode("t", com.cy.codexui.protocol.protocol.v2.ThreadMemoryMode.Enabled).getOrThrow() }
+        val memoryRequest = transport.request()
+        assertEquals("thread/memoryMode/set", memoryRequest.required("method"))
+        assertEquals("enabled", memoryRequest.objectOrNull("params")!!.required("mode"))
+        transport.response(memoryRequest, obj())
+        memory.await()
+
+        val compress = async { client.compressRollout().getOrThrow() }
+        val compressRequest = transport.request()
+        assertEquals("rollout/compress", compressRequest.required("method"))
+        assertFalse("params" in compressRequest)
+        transport.response(compressRequest, obj())
+        compress.await()
+        client.close()
+    }
+
+    @Test
+    fun `workspace messages decode their upstream field names`() = runTest {
+        val transport = HarnessTransport()
+        val client = JsonRpcAppServerClient(transport, backgroundScope)
+        client.initialize(ClientInfo("android", version = "1")).getOrThrow()
+        val messages = async { client.readWorkspaceMessages().getOrThrow() }
+        transport.response(transport.request(), obj("messages" to listOf(obj("messageId" to "m1", "messageType" to "headline",
+            "messageBody" to "hi", "createdAt" to 5))))
+        val message = messages.await().single()
+        assertEquals("m1", message.messageId)
+        assertEquals(com.cy.codexui.protocol.protocol.v2.WorkspaceMessageType.Headline, message.messageType)
+        assertEquals(5_000L, message.createdAt)
+        client.close()
+    }
+
+    @Test
+    fun `model presets carry service tiers and input modalities`() = runTest {
+        val transport = HarnessTransport()
+        val client = JsonRpcAppServerClient(transport, backgroundScope)
+        client.initialize(ClientInfo("android", version = "1")).getOrThrow()
+        val models = async { client.listModels().getOrThrow() }
+        transport.response(transport.request(), obj("data" to listOf(obj("id" to "gpt", "model" to "gpt", "displayName" to "GPT",
+            "description" to "one", "defaultReasoningEffort" to "medium",
+            "supportedReasoningEfforts" to listOf(obj("reasoningEffort" to "low")), "isDefault" to true, "hidden" to false,
+            "defaultServiceTier" to "fast", "serviceTiers" to listOf(obj("id" to "fast", "name" to "Fast", "description" to "faster")),
+            "inputModalities" to listOf("text", "image")))))
+        val preset = models.await().single()
+        assertEquals("fast", preset.defaultServiceTier)
+        assertEquals("Fast", preset.serviceTiers.single().name)
+        assertEquals(listOf(com.cy.codexui.protocol.protocol.v2.InputModality.Text,
+            com.cy.codexui.protocol.protocol.v2.InputModality.Image), preset.inputModalities)
         client.close()
     }
 

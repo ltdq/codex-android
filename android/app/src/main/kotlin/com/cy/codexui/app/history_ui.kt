@@ -157,7 +157,7 @@ fun ThreadHistoryScreen(
             finding = true
             client.searchThreads(words, includeArchived = true)
                 .onSuccess {
-                    found = it
+                    found = it.threads
                     failed = null
                 }
                 .onFailure {
@@ -249,7 +249,7 @@ fun ThreadHistoryScreen(
     ) {
         SurfaceHeader(
             title = stringResource(R.string.history_ui_title),
-            subtitle = selected?.let { it.name ?: it.preview ?: it.id }
+            subtitle = selected?.let { it.name ?: it.preview.ifBlank { it.id } }
                 ?: stringResource(R.string.history_ui_no_thread),
             leading = { SurfaceBackButton(stringResource(R.string.history_ui_back), onBack) },
         )
@@ -317,7 +317,7 @@ fun ThreadHistoryScreen(
                     else -> matches.forEachIndexed { position, thread ->
                         if (position > 0) CodexDivider()
                         ActionRow(
-                            title = thread.name ?: thread.preview ?: thread.id,
+                            title = thread.name ?: thread.preview.ifBlank { thread.id },
                             subtitle = thread.cwd.ifEmpty { null },
                             trailing = updatedAtLabel(thread.updatedAt),
                             tint = if (thread.id == threadId) colors.primary else null,
@@ -546,11 +546,11 @@ private suspend fun fetchPage(
     tab: HistoryTab,
     cursor: String?,
 ): Result<HistoryPage> = when (tab) {
-    HistoryTab.Items -> client.listThreadItems(threadId, cursor, PageLimit).map { page ->
+    HistoryTab.Items -> client.listThreadItems(com.cy.codexui.protocol.protocol.v2.ThreadItemsListParams(threadId, cursor, PageLimit)).map { page ->
         HistoryPage(page.items.map { HistoryPageRow.Item(it) }, page.nextCursor)
     }
 
-    HistoryTab.Turns -> client.listThreadTurns(threadId, cursor, PageLimit).map { page ->
+    HistoryTab.Turns -> client.listThreadTurns(com.cy.codexui.protocol.protocol.v2.ThreadTurnsListParams(threadId, cursor, limit = PageLimit)).map { page ->
         HistoryPage(page.turns.map { HistoryPageRow.TurnRow(it) }, page.nextCursor)
     }
 

@@ -214,8 +214,13 @@ data class ModelRerouted(
     val reason: String,
 )
 
-/** `account/rateLimits/updated`. */
-data class RateLimitsUpdated(val rateLimits: RateLimits)
+/**
+ * `account/rateLimits/updated`.
+ *
+ * A sparse rolling update: fields the server could not supply are absent, not zero, so a reader
+ * merges them into the last `account/rateLimits/read` snapshot instead of replacing it.
+ */
+data class RateLimitsUpdated(val rateLimits: RateLimitSnapshot)
 
 /** `mcpServer/startupStatus/updated`. */
 data class McpStartupStatusUpdated(

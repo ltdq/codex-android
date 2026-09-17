@@ -73,14 +73,19 @@ internal object WireCodec {
         }
     }
 
-    fun thread(value: JsonElement, archived: Boolean = false): Thread {
+    fun thread(value: JsonElement): Thread {
         val o = value.objectValue()
         return Thread(
-            id = o.required("id"), name = o.text("name"), preview = o.text("preview"),
-            modelProvider = o.text("modelProvider").orEmpty(), createdAt = (o.long("createdAt") ?: 0) * 1000,
-            updatedAt = (o.long("updatedAt") ?: 0) * 1000, cwd = o.text("cwd").orEmpty(), status = status(o["status"]),
-            archived = archived, sectionId = o.objectOrNull("section")?.text("id"), forkedFromId = o.text("forkedFromId"),
-            gitBranch = o.objectOrNull("gitInfo")?.text("branch"),
+            id = o.required("id"), preview = o.text("preview").orEmpty(), modelProvider = o.text("modelProvider").orEmpty(),
+            createdAt = (o.long("createdAt") ?: 0) * 1000, updatedAt = (o.long("updatedAt") ?: 0) * 1000,
+            cwd = o.text("cwd").orEmpty(), status = status(o["status"]), cliVersion = o.text("cliVersion").orEmpty(),
+            ephemeral = o.bool("ephemeral") == true, projectId = o.text("projectId"), sessionId = o.text("sessionId").orEmpty(),
+            name = o.text("name"), forkedFromId = o.text("forkedFromId"),
+            gitInfo = o.objectOrNull("gitInfo")?.let { GitInfo(it.text("branch"), it.text("originUrl"), it.text("sha")) },
+            model = o.text("model"), reasoningEffort = o.text("reasoningEffort")?.let(ReasoningEffort::fromWire),
+            path = o.text("path"), historyMode = o.text("historyMode") ?: "legacy",
+            recencyAt = o.long("recencyAt")?.times(1000), originator = o.text("originator"),
+            parentThreadId = o.text("parentThreadId"), agentNickname = o.text("agentNickname"), agentRole = o.text("agentRole"),
         )
     }
 
@@ -151,18 +156,50 @@ internal object WireCodec {
         }
     }
 
-    fun account(o: JsonObject): AccountInfo {
-        val a = o.objectOrNull("account") ?: return AccountInfo()
-        return AccountInfo(a.text("email"), a.text("planType"), a.text("organization"), true)
+    fun account(o: JsonObject): AccountReadResponse {
+        // `requiresOpenaiAuth` is required upstream; a malformed response is the only way to miss
+        // it, and treating that as "auth required" is the safe default.
+        val requires = o.bool("requiresOpenaiAuth") ?: true
+        val a = o.objectOrNull("account") ?: return AccountReadResponse(requires)
+        val account = when (a.required("type")) {
+            "apiKey" -> Account.ApiKey
+            "chatgpt" -> Account.Chatgpt(a.text("email"), a.text("planType").orEmpty())
+            "amazonBedrock" -> Account.AmazonBedrock(a.bool("usesCodexManagedCredentials") == true)
+            else -> null
+        }
+        return AccountReadResponse(requires, account)
     }
 
-    fun rateLimits(o: JsonObject): RateLimits {
-        fun window(key: String, label: String): RateLimitWindow? = o.objectOrNull(key)?.let {
-            val usedPercent = (it["usedPercent"] as? JsonPrimitive)?.takeIf { primitive -> !primitive.isString }?.doubleOrNull ?: 0.0
-            RateLimitWindow(label, usedPercent.toFloat(), it.long("resetsAt")?.times(1000))
-        }
-        return RateLimits(window("primary", "Primary"), window("secondary", "Secondary"), o.objectOrNull("credits")?.text("balance")?.toDoubleOrNull()?.toInt())
-    }
+    fun rateLimitWindow(o: JsonObject): RateLimitWindow = RateLimitWindow(
+        usedPercent = o.long("usedPercent") ?: 0L,
+        windowDurationMins = o.long("windowDurationMins"),
+        resetsAt = o.long("resetsAt")?.times(1000),
+    )
+
+    fun rateLimitSnapshot(o: JsonObject): RateLimitSnapshot = RateLimitSnapshot(
+        primary = o.objectOrNull("primary")?.let(::rateLimitWindow),
+        secondary = o.objectOrNull("secondary")?.let(::rateLimitWindow),
+        credits = o.objectOrNull("credits")?.let { CreditsSnapshot(it.bool("hasCredits") == true, it.bool("unlimited") == true, it.text("balance")) },
+        limitId = o.text("limitId"), limitName = o.text("limitName"), planType = o.text("planType"),
+        rateLimitReachedType = o.text("rateLimitReachedType"), spendControlReached = o.bool("spendControlReached"),
+        normalModelSlug = o.text("normalModelSlug"),
+    )
+
+    fun accountRateLimits(o: JsonObject): AccountRateLimits = AccountRateLimits(
+        rateLimits = o.objectOrNull("rateLimits")?.let(::rateLimitSnapshot) ?: RateLimitSnapshot(),
+        rateLimitsByLimitId = o.objectOrNull("rateLimitsByLimitId")?.mapValues { (_, value) -> rateLimitSnapshot(value.objectValue()) },
+        accountId = o.text("accountId"),
+        rateLimitResetCredits = o.objectOrNull("rateLimitResetCredits")?.let { summary ->
+            RateLimitResetCreditsSummary(
+                availableCount = summary.long("availableCount") ?: 0L,
+                credits = (summary["credits"] as? JsonArray)?.map { value -> value.objectValue().let { credit ->
+                    RateLimitResetCredit(credit.required("id"), credit.text("status").orEmpty(), credit.text("resetType").orEmpty(),
+                        credit.long("grantedAt") ?: 0L, credit.text("title"), credit.text("description"), credit.long("expiresAt"))
+                } },
+            )
+        },
+        ordinaryUsageAllowed = o.bool("ordinaryUsageAllowed"),
+    )
 
     fun attachment(o: JsonObject) = ThreadAttachment(
         id = o.required("id"),

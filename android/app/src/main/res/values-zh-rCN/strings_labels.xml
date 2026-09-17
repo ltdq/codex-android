@@ -32,13 +32,17 @@
 
     <!-- thread_data.kt: McpServerConnectionStatus -->
     <string name="mcp_connection_status_starting">启动中</string>
-    <string name="mcp_connection_status_ready">已连接</string>
+    <string name="mcp_connection_status_not_started">未启动</string>
+    <string name="mcp_connection_status_connected">已连接</string>
+    <string name="mcp_connection_status_auth_required">需要登录</string>
     <string name="mcp_connection_status_failed">失败</string>
+    <string name="mcp_connection_status_cancelled">已取消</string>
     <string name="mcp_connection_status_disabled">已禁用</string>
 
     <!-- thread_data.kt: SkillScope -->
     <string name="skill_scope_user">个人</string>
     <string name="skill_scope_project">项目</string>
+    <string name="skill_scope_admin">管理</string>
     <string name="skill_scope_system">内置</string>
 
     <!-- server_messages.kt: CommandExecutionApprovalDecision -->
@@ -46,6 +50,9 @@
     <string name="command_approval_decision_accept_for_session">本会话总是允许</string>
     <string name="command_approval_decision_decline">拒绝</string>
     <string name="command_approval_decision_cancel">取消本轮</string>
+    <string name="command_approval_decision_accept_execpolicy">允许并记住规则</string>
+    <string name="command_approval_decision_allow_host">永久允许该主机</string>
+    <string name="command_approval_decision_deny_host">永久拒绝该主机</string>
 
     <!-- server_messages.kt: FileChangeApprovalDecision -->
     <string name="file_change_approval_decision_accept">允许</string>
@@ -116,9 +123,8 @@
     <string name="write_status_overridden">已保存，但被覆盖</string>
 
     <!-- misc.kt: ThreadMemoryMode -->
+    <string name="memory_mode_enabled">开启</string>
     <string name="memory_mode_disabled">关闭</string>
-    <string name="memory_mode_read">只读</string>
-    <string name="memory_mode_read_write">读写</string>
 
     <!-- misc.kt: AttachmentType -->
     <string name="attachment_type_image">图片</string>

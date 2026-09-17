@@ -31,6 +31,7 @@
     <string name="approval_overlay_field_reason">理由</string>
     <string name="approval_overlay_field_actions">操作</string>
     <string name="approval_overlay_field_permission_rule">记住这条规则</string>
+    <string name="approval_overlay_field_network_rule">网络规则</string>
     <string name="approval_overlay_field_grant_root">授予根目录</string>
     <string name="approval_overlay_field_tool">工具</string>
 
@@ -85,6 +86,8 @@
     <string name="mcp_server_elicitation_boolean_off">未开启</string>
     <string name="mcp_server_elicitation_enum_unavailable">可选值暂不可用</string>
     <string name="mcp_server_elicitation_empty_form">这个表单没有需要填写的字段。</string>
+    <string name="mcp_server_elicitation_url_message">这个 MCP 服务需要在浏览器中完成确认。</string>
+    <string name="mcp_server_elicitation_url_open">打开链接并同意</string>
 
     <!-- RequestUserInputView.kt -->
     <string name="request_user_input_view_other">其他（自行填写）</string>

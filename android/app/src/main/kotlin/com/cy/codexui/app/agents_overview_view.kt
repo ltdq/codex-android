@@ -181,7 +181,7 @@ private fun TokenMeter(tokens: Int, busiestTokens: Int) {
         )
         Text(
             text = if (tokens > 0) {
-                formatTokens(tokens)
+                formatTokens(tokens.toLong())
             } else {
                 stringResource(R.string.agents_overview_tokens_none)
             },

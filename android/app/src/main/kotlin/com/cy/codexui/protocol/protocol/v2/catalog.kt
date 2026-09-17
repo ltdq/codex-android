@@ -1,5 +1,8 @@
 package com.cy.codexui.protocol.protocol.v2
 
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
+
 /**
  * The catalog families: plugins, marketplaces, apps, skills config, MCP tools and memory.
  *
@@ -376,10 +379,18 @@ data class McpResourceReadParams(
     val threadId: String? = null,
 )
 
-data class McpResourceReadResponse(
-    val uri: String = "",
+/** One resource body. Mirrors `ResourceContent`: either inline [text] or base64 [blob]. */
+data class ResourceContent(
+    val uri: String,
     val mimeType: String? = null,
     val text: String? = null,
+    val blob: String? = null,
+)
+
+/** `mcpServer/resource/read` response. Mirrors upstream: a list of contents, not one flat body. */
+data class McpResourceReadResponse(
+    val contents: List<ResourceContent>,
+    val originCallId: String? = null,
 )
 
 /** `mcpServer/oauthLogin/completed`. */
@@ -400,9 +411,16 @@ data class McpServerEventStreamStopParams(
     val threadId: String? = null,
 )
 
+/** `mcpServer/event/stream/notification`: one server-pushed JSON-RPC notification. */
 data class McpServerEventStreamNotification(
-    val server: String,
-    val event: String = "",
+    val subscriptionId: String,
+    val notification: McpServerEventNotification,
+)
+
+/** The inner `{method, params}` pair of an event-stream notification, verbatim from the server. */
+data class McpServerEventNotification(
+    val method: String,
+    val params: JsonElement = JsonNull,
 )
 
 // ---------------------------------------------------------------------------------------------

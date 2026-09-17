@@ -602,7 +602,7 @@ private fun RuntimeTranscript(app: CodexApp, modifier: Modifier) {
                     CodexButton(stringResource(R.string.runtime_retry), { app.openThread(session.threadId) })
                     CodexButton(stringResource(R.string.runtime_new_thread), { app.onAppEvent(AppEvent.NewThread()) })
                 }
-                !app.catalog.account.loggedIn -> {
+                app.catalog.account.account == null -> {
                     CodexButton(stringResource(R.string.runtime_sign_in), { app.openSurface(Surface.Account) })
                 }
                 else -> {
@@ -1136,7 +1136,7 @@ private fun AgentsOverviewPane(
         onSelect = onSelect,
         onDismiss = onDismiss,
         onDismissFinished = onDismissFinished,
-        totalTokens = session.usage.totalTokens,
+        totalTokens = session.usage.total.totalTokens,
     )
 }
 

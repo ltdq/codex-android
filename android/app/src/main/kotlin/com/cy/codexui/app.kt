@@ -233,7 +233,7 @@ class CodexApp(
                     // Plain text, an upload, or a path that happens to begin with a slash.
                     else -> Unit
                 }
-                if (!catalog.account.loggedIn) {
+                if (catalog.account.account == null) {
                     openSurface(Surface.Account)
                 } else if (!widget.state.open) {
                     createThread(inputs = event.inputs)
@@ -417,7 +417,7 @@ class CodexApp(
                 client.logout().onSuccess {
                     catalog.pendingLogin = null
                     catalog.usageLoaded = false
-                    catalog.rateLimits = com.cy.codexui.protocol.protocol.v2.RateLimits()
+                    catalog.rateLimits = com.cy.codexui.protocol.protocol.v2.AccountRateLimits()
                     client.readAccount().onSuccess { fresh -> catalog.account = fresh }
                 }
             }
@@ -757,8 +757,8 @@ class CodexApp(
     private fun refreshThreads() {
         val archived = threads.includeArchived
         request {
-            client.listThreads(archived).onSuccess {
-                if (threads.includeArchived == archived) threads.threads = it
+            client.listThreads(com.cy.codexui.protocol.protocol.v2.ThreadListParams(archived = archived)).onSuccess {
+                if (threads.includeArchived == archived) threads.applyListing(it)
             }
         }
     }
@@ -831,13 +831,23 @@ class CodexApp(
                 is AppServerEvent.ThreadStatusChangedEvent -> threads.threads = threads.threads.map {
                     if (it.id == event.threadId) it.copy(status = event.delta.status) else it
                 }
-                is AppServerEvent.ThreadArchived,
-                is AppServerEvent.ThreadUnarchived,
+                is AppServerEvent.ThreadArchived -> {
+                    threads.markArchived(event.threadId, true)
+                    client.listThreads(com.cy.codexui.protocol.protocol.v2.ThreadListParams(archived = threads.includeArchived))
+                        .onSuccess { threads.applyListing(it) }
+                }
+                is AppServerEvent.ThreadUnarchived -> {
+                    threads.markArchived(event.threadId, false)
+                    client.listThreads(com.cy.codexui.protocol.protocol.v2.ThreadListParams(archived = threads.includeArchived))
+                        .onSuccess { threads.applyListing(it) }
+                }
                 is AppServerEvent.ThreadDeleted -> {
-                    client.listThreads(threads.includeArchived).onSuccess { threads.threads = it }
+                    client.listThreads(com.cy.codexui.protocol.protocol.v2.ThreadListParams(archived = threads.includeArchived))
+                        .onSuccess { threads.applyListing(it) }
                 }
                 is AppServerEvent.AccountUpdated -> catalog.account = event.account
-                is AppServerEvent.RateLimitsUpdatedEvent -> catalog.rateLimits = event.rateLimits
+                is AppServerEvent.RateLimitsUpdatedEvent ->
+                    catalog.rateLimits = catalog.rateLimits.copy(rateLimits = catalog.rateLimits.rateLimits.mergedWith(event.rateLimits))
                 is AppServerEvent.AccountLoginCompleted -> {
                     catalog.pendingLogin = null
                     catalog.loginError = event.delta.error
@@ -907,7 +917,7 @@ class CodexApp(
         when (next) {
             Surface.Account -> {
                 onAppEvent(AppEvent.ReloadAccount)
-                if (catalog.account.loggedIn) {
+                if (catalog.account.account != null) {
                     onAppEvent(AppEvent.ReloadRateLimits)
                     onAppEvent(AppEvent.ReloadUsage)
                 }
@@ -994,14 +1004,14 @@ class CodexApp(
         creatingThread = true
         scope.launch {
             try {
-                client.startThread(cwd?.takeIf { it.isNotBlank() } ?: defaultWorkspace)
+                client.startThread(com.cy.codexui.protocol.protocol.v2.ThreadStartParams(cwd = cwd?.takeIf { it.isNotBlank() } ?: defaultWorkspace))
                     .onSuccess { session ->
                         widget.bind(session)
                         preferences.edit().putString(KeySelectedSession, session.threadId).apply()
                         closeAllSurfaces()
                         if (inputs != null) widget.action(AppEvent.SubmitUserMessage(inputs))
                         afterCreated?.invoke()
-                        client.listThreads(threads.includeArchived).onSuccess { threads.threads = it }
+                        client.listThreads(com.cy.codexui.protocol.protocol.v2.ThreadListParams(archived = threads.includeArchived)).onSuccess { threads.applyListing(it) }
                     }
                     .onFailure {
                         snackbar.showSnackbar(it.message ?: context.getString(R.string.shell_request_failed))
@@ -1048,7 +1058,7 @@ class CodexApp(
                     version = "1.0",
                 ),
                 ).getOrThrow()
-                threads.threads = client.listThreads().getOrThrow()
+                threads.applyListing(client.listThreads().getOrThrow())
                 catalog.account = client.readAccount().getOrThrow()
                 client.listModels().onSuccess { catalog.models = it }
                 reloadConfig()

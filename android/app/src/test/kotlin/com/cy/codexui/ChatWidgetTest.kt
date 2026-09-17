@@ -20,6 +20,7 @@ import com.cy.codexui.protocol.protocol.v2.ThreadStatus
 import com.cy.codexui.protocol.protocol.v2.Thread
 import com.cy.codexui.protocol.protocol.v2.ThreadReadResponse
 import com.cy.codexui.protocol.protocol.v2.ThreadTokenUsage
+import com.cy.codexui.protocol.protocol.v2.TokenUsageBreakdown
 import com.cy.codexui.protocol.protocol.v2.TurnStatus
 import com.cy.codexui.protocol.protocol.item.AgentMessageItem
 import com.cy.codexui.protocol.protocol.item.CommandExecutionItem
@@ -128,7 +129,7 @@ class ChatWidgetTest {
 
     @Test
     fun `open reports persisted thread metadata and history without a preview`() = runTest {
-        val thread = Thread("shell-only", preview = "", cwd = "/workspace")
+        val thread = testThread("shell-only", preview = "", cwd = "/workspace")
         val actual = CommandExecutionItem("actual", "pwd", "/workspace", aggregatedOutput = "/workspace\n", exitCode = 0)
         val client = TestClient().apply {
             resumeResult = Result.success(ThreadSessionState(threadId = thread.id))
@@ -182,17 +183,20 @@ class ChatWidgetTest {
     fun `compaction reloads real history without inventing token usage`() = runTest {
         val actual = AgentMessageItem("actual", "Persisted history")
         val client = TestClient().apply {
-            historyResult = Result.success(ThreadReadResponse(Thread("thread"), listOf(actual)))
+            historyResult = Result.success(ThreadReadResponse(testThread("thread"), listOf(actual)))
         }
         val widget = ChatWidget(client, backgroundScope)
         widget.bind(ThreadSessionState(threadId = "thread"))
-        widget.state.applyUsage(ThreadTokenUsage(totalTokens = 8_000, outputTokens = 500))
+        widget.state.applyUsage(ThreadTokenUsage(
+            total = TokenUsageBreakdown(8_000, 0, 0, 500, 0),
+            last = TokenUsageBreakdown(8_000, 0, 0, 500, 0),
+        ))
         widget.state.upsert(AgentMessageItem("old", "Old history"))
         widget.attach()
         client.events.emit(AppServerEvent.ThreadCompacted("thread", null))
         runCurrent()
         assertEquals(listOf(actual), widget.state.items.toList())
-        assertEquals(8_000, widget.state.usage.totalTokens)
+        assertEquals(8_000L, widget.state.usage.total.totalTokens)
     }
 
     @Test
@@ -270,10 +274,17 @@ class ChatWidgetTest {
         override suspend fun initialize(clientInfo: ClientInfo) = Result.success(Unit)
         override suspend fun startTurn(threadId: String, inputs: List<UserInput>) = turnResult
         override suspend fun resumeThread(threadId: String) = resumeResult
-        override suspend fun readThread(threadId: String) = historyResult
+        override suspend fun readThread(params: com.cy.codexui.protocol.protocol.v2.ThreadReadParams) = historyResult
         override suspend fun respond(requestId: RequestId, response: ApprovalResponse) {
             check(!rejectResponse) { "connection lost" }
         }
         override suspend fun close() = Unit
     }
+
+    /** A `thread/list` row with everything the wire always sends filled in. */
+    private fun testThread(id: String, preview: String = "", cwd: String = "") = com.cy.codexui.protocol.protocol.v2.Thread(
+        id = id, preview = preview, modelProvider = "openai", createdAt = 0L, updatedAt = 0L, cwd = cwd,
+        status = com.cy.codexui.protocol.protocol.v2.ThreadStatus.Idle, cliVersion = "1.0", ephemeral = false,
+        projectId = null, sessionId = id,
+    )
 }

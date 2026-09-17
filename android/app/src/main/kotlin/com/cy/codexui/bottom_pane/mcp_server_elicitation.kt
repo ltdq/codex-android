@@ -23,6 +23,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -32,9 +33,11 @@ import com.cy.codexui.protocol.ApprovalRequest
 import com.cy.codexui.protocol.ElicitationAction
 import com.cy.codexui.protocol.protocol.v2.McpElicitationField
 import com.cy.codexui.protocol.protocol.v2.McpElicitationFieldKind
+import com.cy.codexui.protocol.protocol.v2.McpElicitationRequest
 import com.cy.codexui.label
 import com.cy.codexui.UiConsts
 import com.cy.codexui.UiType
+import com.cy.codexui.codeSurface
 import com.cy.codexui.pressableRow
 import com.cy.codexui.raisedSurface
 import top.yukonga.miuix.kmp.basic.Icon
@@ -68,6 +71,9 @@ private val BooleanRowShape = RoundedCornerShape(UiConsts.CornerControl)
 private val RequiredBadgeShape = RoundedCornerShape(UiConsts.CornerChip)
 private val FieldControlGap = UiConsts.Space8
 
+/** The URL a redirect-mode elicitation points at; a code surface, like every other payload. */
+private val UrlShape = RoundedCornerShape(UiConsts.CornerControl)
+
 @Composable
 internal fun McpElicitationForm(
     request: ApprovalRequest.Elicitation,
@@ -75,8 +81,35 @@ internal fun McpElicitationForm(
     onDecline: () -> Unit,
     busy: Boolean = false,
 ) {
-    val params = request.params
-    val fields = params.requestedSchema.fields
+    // The two wire modes are different interactions: a schema form to fill in, or a page to open
+    // and accept. Rendering the URL variant as an empty form lost the URL entirely, which is why it
+    // gets its own body.
+    when (val payload = request.params) {
+        is McpElicitationRequest.Url -> McpElicitationUrl(
+            payload = payload,
+            onAccept = { onSubmit(emptyMap()) },
+            onDecline = onDecline,
+            busy = busy,
+        )
+
+        is McpElicitationRequest.Form -> McpElicitationFields(
+            payload = payload,
+            onSubmit = onSubmit,
+            onDecline = onDecline,
+            busy = busy,
+        )
+    }
+}
+
+@Composable
+private fun McpElicitationFields(
+    payload: McpElicitationRequest.Form,
+    onSubmit: (Map<String, String>) -> Unit,
+    onDecline: () -> Unit,
+    busy: Boolean,
+) {
+    val params = payload.requestedSchema
+    val fields = params.fields
     // fieldName -> current raw value; seeded from the schema's `value`.
     val values = remember(fields) {
         mutableStateMapOf<String, String>().apply {
@@ -90,9 +123,9 @@ internal fun McpElicitationForm(
 
     Column(modifier = Modifier.fillMaxWidth()) {
         ApprovalScrollBody {
-            if (params.message.isNotBlank()) {
+            if (payload.message.isNotBlank()) {
                 Text(
-                    text = params.message,
+                    text = payload.message,
                     modifier = Modifier.fillMaxWidth(),
                     fontSize = UiType.Body,
                     lineHeight = UiType.BodyLine,
@@ -130,6 +163,57 @@ internal fun McpElicitationForm(
             onConfirm = {
                 submitted = true
                 onSubmit(fields.associate { it.name to values[it.name].orEmpty().trim() })
+            },
+            onCancel = onDecline,
+        )
+    }
+}
+
+/**
+ * URL-mode elicitation: the server wants the user to visit a page, not to fill a schema.
+ *
+ * Accepting opens the page in the browser and answers `accept`; there is nothing to submit, so the
+ * action and the navigation are the same button press.
+ */
+@Composable
+private fun McpElicitationUrl(
+    payload: McpElicitationRequest.Url,
+    onAccept: () -> Unit,
+    onDecline: () -> Unit,
+    busy: Boolean,
+) {
+    val colors = MiuixTheme.colorScheme
+    val uriHandler = LocalUriHandler.current
+    Column(modifier = Modifier.fillMaxWidth()) {
+        ApprovalScrollBody {
+            Text(
+                text = payload.message.ifBlank { stringResource(R.string.mcp_server_elicitation_url_message) },
+                modifier = Modifier.fillMaxWidth(),
+                fontSize = UiType.Body,
+                lineHeight = UiType.BodyLine,
+                color = colors.onSurfaceSecondary,
+            )
+            Spacer(Modifier.height(UiConsts.DialogFieldGap))
+            Text(
+                text = payload.url,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(codeSurface(), UrlShape)
+                    .padding(horizontal = UiConsts.Space12, vertical = UiConsts.Space10),
+                fontSize = UiType.Code,
+                lineHeight = UiType.CodeLine,
+                fontFamily = FontFamily.Monospace,
+                color = colors.primary,
+            )
+        }
+        Spacer(Modifier.height(UiConsts.DialogFooterGap))
+        FormButtons(
+            confirmLabel = stringResource(R.string.mcp_server_elicitation_url_open),
+            enabled = payload.url.isNotBlank(),
+            busy = busy,
+            onConfirm = {
+                runCatching { uriHandler.openUri(payload.url) }
+                onAccept()
             },
             onCancel = onDecline,
         )

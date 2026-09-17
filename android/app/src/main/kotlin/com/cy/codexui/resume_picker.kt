@@ -88,8 +88,8 @@ fun SessionListScreen(
     var renamingSection by remember { mutableStateOf<String?>(null) }
     var creatingSection by remember { mutableStateOf(false) }
 
-    val visible = remember(threads.threads, showArchived) {
-        threads.threads.filter { showArchived || !it.archived }
+    val visible = remember(threads.threads, threads.archivedIds, showArchived) {
+        threads.threads.filter { showArchived || it.id !in threads.archivedIds }
     }
 
     Column(modifier = modifier.fillMaxSize()) {
@@ -150,11 +150,11 @@ fun SessionListScreen(
                 val thread = visible[index]
                 SessionCard(
                     title = thread.name ?: thread.id.takeLast(8),
-                    preview = thread.preview ?: stringResource(R.string.session_list_no_preview),
+                    preview = thread.preview.ifBlank { stringResource(R.string.session_list_no_preview) },
                     cwd = thread.cwd,
-                    branch = thread.gitBranch,
+                    branch = thread.gitInfo?.branch,
                     updatedAt = thread.updatedAt,
-                    archived = thread.archived,
+                    archived = thread.id in threads.archivedIds,
                     selected = thread.id == app.widget.state.threadId,
                     renameDraft = if (renamed == thread.id) renameDraft else null,
                     onRenameDraft = { renameDraft = it },
@@ -172,7 +172,7 @@ fun SessionListScreen(
                         renamed = null
                     },
                     onArchiveToggle = {
-                        app.onAppEvent(AppEvent.ArchiveThread(thread.id, !thread.archived))
+                        app.onAppEvent(AppEvent.ArchiveThread(thread.id, thread.id !in threads.archivedIds))
                     },
                     onDelete = { app.onAppEvent(AppEvent.DeleteThread(thread.id)) },
                     sections = threads.sections,
@@ -342,7 +342,7 @@ private fun SessionCard(
                     color = colors.onSurfaceVariantSummary,
                     maxLines = 1,
                 )
-                sections.sortedBy { it.position }.forEach { section ->
+                sections.forEach { section ->
                     SessionAction(label = section.name, onClick = { onMoveToSection(section.id) })
                 }
                 SessionAction(
@@ -377,7 +377,7 @@ private fun SectionsCard(
         icon = MiuixIcons.GridView,
         trailing = sections.size.toString(),
     ) {
-        sections.sortedBy { it.position }.forEachIndexed { index, section ->
+        sections.forEachIndexed { index, section ->
             if (index > 0) CodexDivider()
             if (renaming == section.id) {
                 Row(

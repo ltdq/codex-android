@@ -44,10 +44,12 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import com.cy.codexui.R
-import com.cy.codexui.protocol.protocol.v2.AccountInfo
+import com.cy.codexui.protocol.protocol.v2.Account
+import com.cy.codexui.protocol.protocol.v2.AccountRateLimits
+import com.cy.codexui.protocol.protocol.v2.AccountReadResponse
 import com.cy.codexui.protocol.protocol.v2.AccountUsage
+import com.cy.codexui.protocol.protocol.v2.CreditsSnapshot
 import com.cy.codexui.protocol.protocol.v2.RateLimitWindow
-import com.cy.codexui.protocol.protocol.v2.RateLimits
 import com.cy.codexui.AppEvent
 import com.cy.codexui.CatalogState
 import com.cy.codexui.CodexButton
@@ -101,7 +103,11 @@ fun AccountScreen(
     Column(modifier = modifier.fillMaxSize().background(MiuixTheme.colorScheme.background)) {
         SurfaceHeader(
             title = stringResource(R.string.account_screen_title),
-            subtitle = if (account.loggedIn) account.email else stringResource(R.string.account_screen_not_signed_in),
+            subtitle = if (account.signedIn) {
+                account.email ?: account.planType ?: stringResource(R.string.account_screen_signed_in)
+            } else {
+                stringResource(R.string.account_screen_not_signed_in)
+            },
             leading = { AccountBackButton(onBack) },
             trailing = {
                 IconButton(
@@ -110,7 +116,7 @@ fun AccountScreen(
                         // from three endpoints and any one of them can fail on its own, which is
                         // why the app re-reads them independently.
                         onEvent(AppEvent.ReloadAccount)
-                        if (account.loggedIn) {
+                        if (account.signedIn) {
                             onEvent(AppEvent.ReloadRateLimits)
                             onEvent(AppEvent.ReloadUsage)
                         }
@@ -133,7 +139,7 @@ fun AccountScreen(
             verticalArrangement = Arrangement.spacedBy(UiConsts.SectionGap),
         ) {
             AccountLoginSection(account)
-            if (account.loggedIn) {
+            if (account.signedIn) {
                 AccountLimitSection(rateLimits)
                 if (catalog.usageLoaded) AccountUsageSection(usage)
                 AccountLogoutSection(loggedIn = true, onLogout = { onEvent(AppEvent.Logout) })
@@ -220,14 +226,32 @@ private fun AccountSignIn(catalog: CatalogState, onEvent: (AppEvent) -> Unit) {
     }
 }
 
+/** The address of a ChatGPT account; the other variants have no identity to show. */
+private val AccountReadResponse.email: String? get() = (account as? Account.Chatgpt)?.email
+
+/** The first line of the account card: a ChatGPT address, or the variant's own name. */
+@Composable
+@ReadOnlyComposable
+private fun accountIdentity(response: AccountReadResponse): String = when (val account = response.account) {
+    is Account.Chatgpt -> account.email ?: stringResource(R.string.account_screen_email_unbound)
+    Account.ApiKey -> stringResource(R.string.account_screen_api_key)
+    is Account.AmazonBedrock -> stringResource(R.string.account_screen_bedrock)
+    null -> stringResource(R.string.account_screen_email_unbound)
+}
+
+/** The plan slug of a ChatGPT account; API-key and Bedrock accounts do not carry one. */
+private val AccountReadResponse.planType: String? get() = (account as? Account.Chatgpt)?.planType
+
+private val AccountReadResponse.signedIn: Boolean get() = account != null
+
 /** 登录状态: mirrors the status card's `Account:` row (`{email} ({plan})`). */
 @Composable
-private fun AccountLoginSection(account: AccountInfo) {
+private fun AccountLoginSection(account: AccountReadResponse) {
     val colors = MiuixTheme.colorScheme
     SectionCard(
         title = stringResource(R.string.account_screen_sign_in_status),
         icon = MiuixIcons.Community,
-        trailing = if (account.loggedIn) {
+        trailing = if (account.signedIn) {
             stringResource(R.string.account_screen_signed_in)
         } else {
             stringResource(R.string.account_screen_not_signed_in)
@@ -240,7 +264,7 @@ private fun AccountLoginSection(account: AccountInfo) {
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 AccountText(
-                    account.email ?: stringResource(R.string.account_screen_email_unbound),
+                    accountIdentity(account),
                     size = UiType.RowTitle,
                     weight = FontWeight.Medium,
                     maxLines = 1,
@@ -252,20 +276,16 @@ private fun AccountLoginSection(account: AccountInfo) {
                 )
             }
             AccountChip(
-                text = if (account.loggedIn) {
+                text = if (account.signedIn) {
                     stringResource(R.string.account_screen_online)
                 } else {
                     stringResource(R.string.account_screen_offline)
                 },
-                tint = if (account.loggedIn) colors.primary else colors.disabledOnSurface,
+                tint = if (account.signedIn) colors.primary else colors.disabledOnSurface,
             )
         }
-        if (account.loggedIn) {
+        if (account.signedIn) {
             Spacer(Modifier.height(UiConsts.Space6))
-            AccountInfoLine(
-                stringResource(R.string.account_screen_organization),
-                account.organization ?: stringResource(R.string.account_screen_personal_workspace),
-            )
             AccountInfoLine(
                 stringResource(R.string.account_screen_plan),
                 account.planType ?: stringResource(R.string.account_screen_plan_chatgpt),
@@ -276,20 +296,24 @@ private fun AccountLoginSection(account: AccountInfo) {
 
 /** 用量限额: the primary/secondary windows, drawn as meters instead of the TUI's 20-cell bar. */
 @Composable
-private fun AccountLimitSection(limits: RateLimits) {
+private fun AccountLimitSection(limits: AccountRateLimits) {
     val colors = MiuixTheme.colorScheme
+    val snapshot = limits.rateLimits
     SectionCard(title = stringResource(R.string.account_screen_rate_limits), icon = MiuixIcons.Store) {
-        val windows = listOfNotNull(limits.primary, limits.secondary)
+        val windows = listOfNotNull(
+            snapshot.primary?.let { it to (snapshot.limitName ?: stringResource(R.string.account_screen_rate_limit_primary)) },
+            snapshot.secondary?.let { it to stringResource(R.string.account_screen_rate_limit_secondary) },
+        )
         if (windows.isEmpty()) AccountNote(stringResource(R.string.account_screen_rate_limits_empty))
-        windows.forEachIndexed { index, window ->
+        windows.forEachIndexed { index, (window, label) ->
             if (index > 0) Spacer(Modifier.height(UiConsts.Space11))
-            AccountRateMeter(window)
+            AccountRateMeter(label, window)
         }
-        if (limits.credits != null) {
+        snapshot.credits?.let { credits ->
             Spacer(Modifier.height(UiConsts.Space11))
             AccountInfoLine(
                 stringResource(R.string.account_screen_credits),
-                stringResource(R.string.account_screen_credits_value, limits.credits),
+                accountCreditsText(credits),
             )
         }
         Spacer(Modifier.height(UiConsts.Space2))
@@ -301,13 +325,23 @@ private fun AccountLimitSection(limits: RateLimits) {
     }
 }
 
+/** `unlimited` outranks the balance, and no credits at all is its own sentence. */
 @Composable
-private fun AccountRateMeter(window: RateLimitWindow) {
+@ReadOnlyComposable
+private fun accountCreditsText(credits: CreditsSnapshot): String = when {
+    credits.unlimited -> stringResource(R.string.account_screen_credits_unlimited)
+    !credits.hasCredits -> stringResource(R.string.account_screen_credits_none)
+    credits.balance != null -> stringResource(R.string.account_screen_credits_balance, credits.balance)
+    else -> stringResource(R.string.account_screen_credits_none)
+}
+
+@Composable
+private fun AccountRateMeter(label: String, window: RateLimitWindow) {
     val colors = MiuixTheme.colorScheme
-    val fraction = window.usedPercent.coerceIn(0f, 1f)
+    val fraction = (window.usedPercent / 100f).coerceIn(0f, 1f)
     Column(modifier = Modifier.fillMaxWidth()) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            AccountText(window.label, Modifier.weight(1f), size = UiType.Body, weight = FontWeight.Medium)
+            AccountText(label, Modifier.weight(1f), size = UiType.Body, weight = FontWeight.Medium)
             AccountText(
                 stringResource(R.string.account_screen_percent, (fraction * 100).roundToInt()),
                 size = UiType.Body,
@@ -342,7 +376,7 @@ private fun AccountUsageSection(usage: AccountUsage) {
     SectionCard(
         title = stringResource(R.string.account_screen_usage),
         icon = MiuixIcons.Store,
-        trailing = formatTokens(usage.totalTokens),
+        trailing = formatTokens(usage.totalTokens.toLong()),
     ) {
         if (usage.dailyBuckets.isEmpty()) AccountNote(stringResource(R.string.account_screen_usage_empty))
         if (usage.dailyBuckets.isNotEmpty()) {
@@ -367,7 +401,7 @@ private fun AccountUsageSection(usage: AccountUsage) {
             AccountText(
                 text = stringResource(
                     R.string.account_screen_usage_peak,
-                    formatTokens(usage.dailyBuckets.maxOf { it.tokens }),
+                    formatTokens(usage.dailyBuckets.maxOf { it.tokens }.toLong()),
                     usage.dailyBuckets.size,
                 ),
                 size = UiType.Footnote,

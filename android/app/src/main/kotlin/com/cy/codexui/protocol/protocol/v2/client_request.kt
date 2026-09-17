@@ -1,14 +1,19 @@
 package com.cy.codexui.protocol.protocol.v2
 
+import kotlinx.serialization.json.JsonElement
+
 /**
  * `ClientRequest` — the 163 methods the client may call.
  *
  * The count is the *experimental-inclusive* one, because [InitializeCapabilities.experimentalApi]
  * defaults to `true` here exactly as it does in the TUI. `app-server-protocol/schema/json/
  * ClientRequest.json` is generated with `experimental_api = false` and therefore lists only the 101
- * stable methods; the remaining 62 are the ones tagged `#[experimental("…")]` in
+ * stable methods; the remaining ones are tagged `#[experimental("…")]` in
  * `codex-rs/app-server-protocol/src/protocol/common.rs`. The authoritative full list is the
- * project's own `schema/precomputed/app-server-exports-experimental.json.zst`.
+ * project's own `schema/precomputed/app-server-exports-experimental.json.zst`, which lists 164:
+ * the one method deliberately left out of the registry is `mock/experimentalMethod`, an upstream
+ * test scaffold that no product client should call. `UpstreamSchemaTest` asserts the difference is
+ * exactly that one method.
  *
  * The enum doubles as the request registry so a call site can never invent a method name that the
  * server does not implement. Answering a server-initiated request is *not* in here: that is a
@@ -223,6 +228,7 @@ enum class ClientRequestMethod(val wire: String) {
 
     // review / search / misc
     ReviewStart("review/start"),
+    RolloutCompress("rollout/compress"),
     FuzzyFileSearch("fuzzyFileSearch"),
     FuzzyFileSearchSessionStart("fuzzyFileSearch/sessionStart"),
     FuzzyFileSearchSessionUpdate("fuzzyFileSearch/sessionUpdate"),
@@ -252,18 +258,21 @@ enum class ClientNotificationMethod(val wire: String) {
     Initialized("initialized"),
 }
 
-/** Capabilities the client declares at handshake time. */
+/** Capabilities the client declares at handshake time. Mirrors `InitializeCapabilities`. */
 data class InitializeCapabilities(
     /** Receives experimental methods and fields. The TUI itself declares `true`. */
     val experimentalApi: Boolean = true,
     val requestAttestation: Boolean = false,
     val mcpServerOpenaiFormElicitation: Boolean = false,
     val optOutNotificationMethods: List<String>? = null,
+    /** MCP extension settings declared by this client. */
+    val extensions: Map<String, JsonElement>? = null,
 )
 
+/** `initialize` params. Mirrors v1 `InitializeParams`: capabilities are optional. */
 data class InitializeParams(
     val clientInfo: ClientInfo,
-    val capabilities: InitializeCapabilities = InitializeCapabilities(),
+    val capabilities: InitializeCapabilities? = null,
 )
 
 data class ClientInfo(
@@ -272,14 +281,15 @@ data class ClientInfo(
     val version: String,
 )
 
+/**
+ * `initialize` response. Mirrors v1 `InitializeResponse`.
+ *
+ * The handshake itself is completed by the native transport before it returns, so nothing in the
+ * app decodes this today; the type is carried so the schema match covers the wire.
+ */
 data class InitializeResponse(
-    val serverInfo: ServerInfo,
-    val capabilities: ServerCapabilities = ServerCapabilities(),
-)
-
-data class ServerInfo(val name: String, val version: String)
-
-data class ServerCapabilities(
-    val experimentalApi: Boolean = true,
-    val requestAttestation: Boolean = false,
+    val userAgent: String,
+    val codexHome: String,
+    val platformFamily: String,
+    val platformOs: String,
 )

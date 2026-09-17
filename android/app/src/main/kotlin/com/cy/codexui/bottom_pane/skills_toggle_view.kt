@@ -44,6 +44,7 @@ import top.yukonga.miuix.kmp.icon.extended.ChevronBackward
 import top.yukonga.miuix.kmp.icon.extended.Community
 import top.yukonga.miuix.kmp.icon.extended.FolderFill
 import top.yukonga.miuix.kmp.icon.extended.Layers
+import top.yukonga.miuix.kmp.icon.extended.Lock
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
@@ -217,4 +218,5 @@ private fun skillsScopeIcon(scope: SkillScope): ImageVector = when (scope) {
     SkillScope.User -> MiuixIcons.Community
     SkillScope.Project -> MiuixIcons.FolderFill
     SkillScope.System -> MiuixIcons.Layers
+    SkillScope.Admin -> MiuixIcons.Lock
 }

@@ -32,13 +32,17 @@
 
     <!-- thread_data.kt: McpServerConnectionStatus -->
     <string name="mcp_connection_status_starting">Starting</string>
-    <string name="mcp_connection_status_ready">Connected</string>
+    <string name="mcp_connection_status_not_started">Not started</string>
+    <string name="mcp_connection_status_connected">Connected</string>
+    <string name="mcp_connection_status_auth_required">Sign-in required</string>
     <string name="mcp_connection_status_failed">Failed</string>
+    <string name="mcp_connection_status_cancelled">Cancelled</string>
     <string name="mcp_connection_status_disabled">Disabled</string>
 
     <!-- thread_data.kt: SkillScope -->
     <string name="skill_scope_user">Personal</string>
     <string name="skill_scope_project">Project</string>
+    <string name="skill_scope_admin">Admin</string>
     <string name="skill_scope_system">Built-in</string>
 
     <!-- server_messages.kt: CommandExecutionApprovalDecision -->
@@ -46,6 +50,9 @@
     <string name="command_approval_decision_accept_for_session">Allow for this session</string>
     <string name="command_approval_decision_decline">Deny</string>
     <string name="command_approval_decision_cancel">Cancel turn</string>
+    <string name="command_approval_decision_accept_execpolicy">Allow and remember rule</string>
+    <string name="command_approval_decision_allow_host">Always allow this host</string>
+    <string name="command_approval_decision_deny_host">Always deny this host</string>
 
     <!-- server_messages.kt: FileChangeApprovalDecision -->
     <string name="file_change_approval_decision_accept">Allow</string>
@@ -116,9 +123,8 @@
     <string name="write_status_overridden">Saved, but overridden</string>
 
     <!-- misc.kt: ThreadMemoryMode -->
+    <string name="memory_mode_enabled">On</string>
     <string name="memory_mode_disabled">Off</string>
-    <string name="memory_mode_read">Read only</string>
-    <string name="memory_mode_read_write">Read and write</string>
 
     <!-- misc.kt: AttachmentType -->
     <string name="attachment_type_image">Image</string>

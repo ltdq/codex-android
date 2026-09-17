@@ -412,7 +412,7 @@ private fun UsageSection(
 ) {
     val colors = MiuixTheme.colorScheme
     val fraction = usage.usedFraction
-    val total = usage.modelContextWindow ?: usage.totalTokens.coerceAtLeast(1)
+    val total = usage.modelContextWindow ?: usage.total.totalTokens.coerceAtLeast(1)
     SectionCard(
         title = stringResource(R.string.status_card_context_title),
         icon = MiuixIcons.Layers,
@@ -423,7 +423,7 @@ private fun UsageSection(
     ) {
         Row(verticalAlignment = Alignment.Bottom) {
             Text(
-                text = formatTokens(usage.totalTokens),
+                text = formatTokens(usage.total.totalTokens),
                 fontSize = totalSize,
                 lineHeight = totalLineHeight,
                 fontWeight = FontWeight.SemiBold,
@@ -454,9 +454,9 @@ private fun UsageSection(
         Text(
             text = stringResource(
                 R.string.status_card_usage_tokens,
-                formatTokens(usage.inputTokens),
-                formatTokens(usage.outputTokens),
-                formatTokens(usage.cachedInputTokens),
+                formatTokens(usage.total.inputTokens),
+                formatTokens(usage.total.outputTokens),
+                formatTokens(usage.total.cachedInputTokens),
             ),
             fontSize = detailSize,
             lineHeight = detailLineHeight,
@@ -1272,7 +1272,7 @@ fun BackChevron(
 /** Token counts are unreadable raw; `128400` becomes `128.4K`. */
 @Composable
 @ReadOnlyComposable
-internal fun formatTokens(tokens: Int): String = when {
+internal fun formatTokens(tokens: Long): String = when {
     tokens >= 1_000_000 -> stringResource(
         R.string.status_card_tokens_millions,
         String.format(Locale.US, "%.1f", tokens / 1_000_000f),

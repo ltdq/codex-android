@@ -62,7 +62,7 @@
     <string name="model_sheet_effort_sheet_subtitle">越高推理越充分，响应也越慢</string>
     <string name="model_sheet_effort_current">当前 %1$s · %2$s</string>
     <string name="model_sheet_default_badge">默认</string>
-    <string name="model_sheet_context">上下文 %1$s · 默认 %2$s</string>
+    <string name="model_sheet_context">默认 %1$s</string>
     <string name="model_sheet_selected_model">已选模型</string>
     <string name="model_sheet_selected_effort">已选强度</string>
     <string name="model_sheet_hint_minimal">几乎不推理，最快</string>

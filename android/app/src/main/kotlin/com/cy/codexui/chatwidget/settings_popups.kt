@@ -138,7 +138,7 @@ fun SettingsScreen(
                         SettingsApprovalSection(config, onEvent)
                     }
 
-                    SettingsTab.Session -> SettingsSessionSection(config, session.usage, preset)
+                    SettingsTab.Session -> SettingsSessionSection(config, session.usage)
                     SettingsTab.Library -> SettingsLibrarySection(onOpenEntry)
                 }
             }
@@ -399,10 +399,6 @@ private fun SettingsModelSection(
                 title = model.displayName,
                 summary = listOfNotNull(
                     model.description.ifEmpty { model.model },
-                    stringResource(
-                        R.string.settings_screen_model_context,
-                        formatTokens(model.contextWindow),
-                    ),
                     stringResource(R.string.settings_screen_model_default).takeIf { model.isDefault },
                 ).joinToString(" · "),
                 selected = model.model == currentModel,
@@ -490,7 +486,7 @@ private fun SettingsApprovalSection(config: ThreadSessionState, onEvent: (AppEve
 
 /** 6. 会话信息: thread identity, the instruction sources, and the context meter. */
 @Composable
-private fun SettingsSessionSection(config: ThreadSessionState, usage: ThreadTokenUsage, preset: ModelPreset?) {
+private fun SettingsSessionSection(config: ThreadSessionState, usage: ThreadTokenUsage) {
     SettingsGroup(stringResource(R.string.settings_group_session)) {
         BasicComponent(
             title = stringResource(R.string.settings_screen_session_id),
@@ -528,9 +524,9 @@ private fun SettingsSessionSection(config: ThreadSessionState, usage: ThreadToke
         }
     }
 
-    val window = usage.modelContextWindow ?: preset?.contextWindow ?: 0
+    val window = usage.modelContextWindow ?: 0
     if (window > 0) {
-        val fraction = (usage.totalTokens.toFloat() / window.toFloat()).coerceIn(0f, 1f)
+        val fraction = (usage.total.totalTokens.toFloat() / window.toFloat()).coerceIn(0f, 1f)
         SettingsGroup(stringResource(R.string.settings_group_context)) {
             // The meter rides the row's own bottom slot, so it stays attached to the number it
             // describes instead of floating in a section of its own.
@@ -538,7 +534,7 @@ private fun SettingsSessionSection(config: ThreadSessionState, usage: ThreadToke
                 title = stringResource(R.string.settings_screen_context_window),
                 summary = stringResource(
                     R.string.settings_screen_context_usage,
-                    formatTokens(usage.totalTokens),
+                    formatTokens(usage.total.totalTokens),
                     formatTokens(window),
                     (fraction * 100).roundToInt(),
                 ),
@@ -554,15 +550,15 @@ private fun SettingsSessionSection(config: ThreadSessionState, usage: ThreadToke
                     )
                 },
             )
-            if (usage.cachedInputTokens > 0) {
+            if (usage.total.cachedInputTokens > 0) {
                 HorizontalDivider()
                 BasicComponent(
                     title = stringResource(R.string.settings_screen_io_cached),
                     endActions = {
                         MonoValue(
-                            "${formatTokens(usage.inputTokens)} / " +
-                                "${formatTokens(usage.outputTokens)} / " +
-                                formatTokens(usage.cachedInputTokens),
+                            "${formatTokens(usage.total.inputTokens)} / " +
+                                "${formatTokens(usage.total.outputTokens)} / " +
+                                formatTokens(usage.total.cachedInputTokens),
                         )
                     },
                 )

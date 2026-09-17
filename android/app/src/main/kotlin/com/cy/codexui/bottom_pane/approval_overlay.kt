@@ -46,6 +46,7 @@ import com.cy.codexui.protocol.ElicitationAction
 import com.cy.codexui.protocol.protocol.v2.CommandAction
 import com.cy.codexui.protocol.protocol.v2.CommandExecutionApprovalDecision
 import com.cy.codexui.protocol.protocol.v2.CommandExecutionApprovalParams
+import com.cy.codexui.protocol.protocol.v2.McpElicitationRequest
 import com.cy.codexui.protocol.protocol.v2.DynamicToolCallParams
 import com.cy.codexui.protocol.protocol.v2.DynamicToolCallResponse
 import com.cy.codexui.protocol.protocol.v2.FileChangeApprovalDecision
@@ -314,7 +315,7 @@ private fun approvalTitle(request: ApprovalRequest): String = when (request) {
     is ApprovalRequest.Permissions -> stringResource(R.string.approval_overlay_permissions_title)
     is ApprovalRequest.UserInput -> stringResource(R.string.approval_overlay_user_input_title)
     is ApprovalRequest.Elicitation -> {
-        val schemaTitle = request.params.requestedSchema.title
+        val schemaTitle = (request.params as? McpElicitationRequest.Form)?.requestedSchema?.title.orEmpty()
         if (schemaTitle.isBlank()) {
             stringResource(R.string.approval_overlay_elicitation_title_fallback)
         } else {
@@ -423,7 +424,11 @@ private fun decisionsFor(
                 label = decision.label(),
                 role = when (decision) {
                     CommandExecutionApprovalDecision.Accept -> ButtonRole.Primary
-                    CommandExecutionApprovalDecision.AcceptForSession -> ButtonRole.Secondary
+                    CommandExecutionApprovalDecision.AcceptForSession,
+                    is CommandExecutionApprovalDecision.AcceptWithExecpolicyAmendment,
+                    is CommandExecutionApprovalDecision.ApplyNetworkPolicyAmendment,
+                    -> ButtonRole.Secondary
+
                     else -> ButtonRole.Destructive
                 },
                 onClick = { decide(ApprovalResponse.CommandExecution(decision)) },
@@ -562,10 +567,19 @@ private fun ExecBody(params: CommandExecutionApprovalParams) {
                 value = actions.joinToString(stringResource(R.string.approval_overlay_list_separator)),
             )
         }
-        params.proposedExecpolicyAmendment?.takeIf { it.isNotBlank() }?.let {
+        params.proposedExecpolicyAmendment?.takeIf { it.isNotEmpty() }?.let { rules ->
             TextBlock(
                 label = stringResource(R.string.approval_overlay_field_permission_rule),
-                value = it,
+                value = rules.joinToString(stringResource(R.string.approval_overlay_list_separator)),
+                accent = true,
+            )
+        }
+        if (params.proposedNetworkPolicyAmendments.isNotEmpty()) {
+            TextBlock(
+                label = stringResource(R.string.approval_overlay_field_network_rule),
+                value = params.proposedNetworkPolicyAmendments.joinToString(
+                    stringResource(R.string.approval_overlay_list_separator),
+                ) { amendment -> "${amendment.action.wire} ${amendment.host}" },
                 accent = true,
             )
         }

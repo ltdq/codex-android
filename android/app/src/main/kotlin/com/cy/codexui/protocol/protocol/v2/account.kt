@@ -83,18 +83,33 @@ data class AccountLoginCompletedNotification(
     val error: String? = null,
 )
 
-/** `account/workspaceMessages/read` response. */
+/** `account/workspaceMessages/read` response. Mirrors `GetWorkspaceMessagesResponse`. */
 data class WorkspaceMessagesResponse(
-    val featureEnabled: Boolean = false,
-    val messages: List<WorkspaceMessage> = emptyList(),
+    val featureEnabled: Boolean,
+    val messages: List<WorkspaceMessage>,
 )
 
+/** One account-level notice. Mirrors `WorkspaceMessage`. */
 data class WorkspaceMessage(
-    val id: String,
-    val title: String,
-    val body: String = "",
-    val severity: DiagnosticSeverity = DiagnosticSeverity.Info,
+    val messageId: String,
+    val messageType: WorkspaceMessageType,
+    val messageBody: String,
+    /** Server-side render kind; an unknown future value decodes to [WorkspaceMessageType.Unknown]. */
+    val createdAt: Long? = null,
+    val archivedAt: Long? = null,
 )
+
+enum class WorkspaceMessageType(val wire: String) {
+    Headline("headline"),
+    Announcement("announcement"),
+    Unknown("unknown"),
+    ;
+
+    companion object {
+        fun fromWire(value: String?): WorkspaceMessageType =
+            entries.firstOrNull { it.wire == value } ?: Unknown
+    }
+}
 
 /** `account/rateLimitResetCredit/consume`. */
 data class ConsumeRateLimitResetCreditParams(

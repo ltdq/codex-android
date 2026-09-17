@@ -61,7 +61,7 @@ fun SubAgentThreadScreen(
     var loaded by remember(threadId) { mutableStateOf(false) }
 
     LaunchedEffect(threadId) {
-        client.readThread(threadId).onSuccess { response ->
+        client.readThread(com.cy.codexui.protocol.protocol.v2.ThreadReadParams(threadId)).onSuccess { response ->
             items = response.items
             name = response.thread.name
         }

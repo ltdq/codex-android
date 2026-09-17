@@ -29,9 +29,11 @@ class ClientRequestRegistryTest {
     /**
      * Every client request the protocol defines, and the [AppServerClient] function that issues it.
      *
-     * The count is the experimental-inclusive one: `InitializeCapabilities.experimentalApi` defaults
-     * to `true` here exactly as it does in the TUI, so the 62 methods tagged experimental upstream
-     * are part of the surface, not an appendix to it.
+     * The set is the experimental-inclusive one: `InitializeCapabilities.experimentalApi` defaults
+     * to `true` here exactly as it does in the TUI, so the methods tagged experimental upstream are
+     * part of the surface, not an appendix to it. The one method deliberately left out is
+     * `mock/experimentalMethod`, an upstream test scaffold no product client should call;
+     * `UpstreamSchemaTest` pins that the difference is exactly that method.
      */
     private val wireToClientMethod: Map<String, String> = mapOf(
         "account/bedrock/discover" to "bedrockDiscover",
@@ -129,6 +131,7 @@ class ClientRequestRegistryTest {
         "remoteControl/pairing/status" to "readRemoteControlPairing",
         "remoteControl/status/read" to "readRemoteControlStatus",
         "review/start" to "startReview",
+        "rollout/compress" to "compressRollout",
         "server/diagnostics" to "readServerDiagnostics",
         "skills/config/write" to "writeSkillConfig",
         "skills/extraRoots/set" to "setSkillExtraRoots",

@@ -20,15 +20,15 @@ data class CommandExecutionApprovalParams(
     val command: String? = null,
     val cwd: String? = null,
     val commandActions: List<CommandAction> = emptyList(),
-    val proposedExecpolicyAmendment: String? = null,
-    val proposedNetworkPolicyAmendments: List<String> = emptyList(),
-    val availableDecisions: List<CommandExecutionApprovalDecision> =
-        listOf(
-            CommandExecutionApprovalDecision.Accept,
-            CommandExecutionApprovalDecision.AcceptForSession,
-            CommandExecutionApprovalDecision.Decline,
-            CommandExecutionApprovalDecision.Cancel,
-        ),
+    /** Rules that accepting with the execpolicy amendment would install, as whole rules. */
+    val proposedExecpolicyAmendment: List<String>? = null,
+    /** Host rules `ApplyNetworkPolicyAmendment` can enact; an empty list means none proposed. */
+    val proposedNetworkPolicyAmendments: List<NetworkPolicyAmendment> = emptyList(),
+    /**
+     * Which decisions the server will accept. Empty means the server did not say, and the UI falls
+     * back to accept / decline.
+     */
+    val availableDecisions: List<CommandExecutionApprovalDecision> = emptyList(),
 )
 
 /**
@@ -75,17 +75,6 @@ data class ToolRequestUserInputParams(
     val itemId: String,
     val questions: List<ToolRequestUserInputQuestion>,
     val isBlocking: Boolean = true,
-)
-
-data class McpElicitationParams(
-    val threadId: String,
-    val turnId: String? = null,
-    val serverName: String,
-    val mode: String = "form",
-    val message: String = "",
-    val requestedSchema: McpElicitationSchema = McpElicitationSchema(),
-    val url: String? = null,
-    val elicitationId: String? = null,
 )
 
 /** Flattened JSON Schema handed to the elicitation form renderer. */

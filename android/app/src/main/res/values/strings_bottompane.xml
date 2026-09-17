@@ -31,6 +31,7 @@
     <string name="approval_overlay_field_reason">Reason</string>
     <string name="approval_overlay_field_actions">Actions</string>
     <string name="approval_overlay_field_permission_rule">Permission rule</string>
+    <string name="approval_overlay_field_network_rule">Network rule</string>
     <string name="approval_overlay_field_grant_root">Grant root</string>
     <string name="approval_overlay_field_tool">Tool</string>
 
@@ -85,6 +86,8 @@
     <string name="mcp_server_elicitation_boolean_off">Off</string>
     <string name="mcp_server_elicitation_enum_unavailable">Options unavailable</string>
     <string name="mcp_server_elicitation_empty_form">This form has no fields to fill in.</string>
+    <string name="mcp_server_elicitation_url_message">This MCP server needs confirmation in a browser.</string>
+    <string name="mcp_server_elicitation_url_open">Open link and accept</string>
 
     <!-- RequestUserInputView.kt -->
     <string name="request_user_input_view_other">None of the above</string>

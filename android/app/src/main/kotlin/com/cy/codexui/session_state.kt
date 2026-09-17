@@ -12,7 +12,7 @@ import kotlinx.serialization.json.JsonObject
 import com.cy.codexui.protocol.protocol.item.AgentMessageItem
 import com.cy.codexui.protocol.protocol.item.PlanItem
 import com.cy.codexui.protocol.protocol.item.ThreadItem
-import com.cy.codexui.protocol.protocol.v2.AccountInfo
+import com.cy.codexui.protocol.protocol.v2.AccountReadResponse
 import com.cy.codexui.protocol.protocol.v2.AccountUsage
 import com.cy.codexui.protocol.protocol.v2.AppInfo
 import com.cy.codexui.protocol.protocol.v2.CollaborationModeEntry
@@ -35,13 +35,14 @@ import com.cy.codexui.protocol.protocol.v2.PluginEntry
 import com.cy.codexui.protocol.protocol.v2.PluginShareEntry
 import com.cy.codexui.protocol.protocol.v2.ProjectEntry
 import com.cy.codexui.protocol.protocol.v2.QueuedSubmission
-import com.cy.codexui.protocol.protocol.v2.RateLimits
+import com.cy.codexui.protocol.protocol.v2.AccountRateLimits
 import com.cy.codexui.protocol.protocol.v2.RemoteControlClient
 import com.cy.codexui.protocol.protocol.v2.RemoteControlStatus
 import com.cy.codexui.protocol.protocol.v2.ServerDiagnosticsResponse
 import com.cy.codexui.protocol.protocol.v2.SkillEntry
 import com.cy.codexui.protocol.protocol.v2.Thread
 import com.cy.codexui.protocol.protocol.v2.ThreadGoalUpdated
+import com.cy.codexui.protocol.protocol.v2.ThreadListing
 import com.cy.codexui.protocol.protocol.v2.ThreadSection
 import com.cy.codexui.protocol.protocol.v2.ThreadSessionState
 import com.cy.codexui.protocol.protocol.v2.ThreadStatus
@@ -108,7 +109,7 @@ class SessionState {
     var turnDiff by mutableStateOf<List<FileDiff>>(emptyList(), referentialEqualityPolicy())
         private set
 
-    var usage by mutableStateOf(ThreadTokenUsage())
+    var usage by mutableStateOf(ThreadTokenUsage.Empty)
         private set
 
     /** Objective of the running goal, when goal mode is on. */
@@ -256,7 +257,7 @@ class SessionState {
         itemsRevision++
         plan.clear()
         turnDiff = emptyList()
-        usage = ThreadTokenUsage()
+        usage = ThreadTokenUsage.Empty
         goal = null
         queued.clear()
         diagnostics.clear()
@@ -444,8 +445,8 @@ class CatalogState {
     var plugins by mutableStateOf<List<PluginEntry>>(emptyList())
     var apps by mutableStateOf<List<AppInfo>>(emptyList())
     var hooks by mutableStateOf<List<HookMetadata>>(emptyList())
-    var account by mutableStateOf(AccountInfo())
-    var rateLimits by mutableStateOf(RateLimits())
+    var account by mutableStateOf(AccountReadResponse(requiresOpenaiAuth = false))
+    var rateLimits by mutableStateOf(AccountRateLimits())
     var usage by mutableStateOf(AccountUsage())
     var usageLoaded by mutableStateOf(false)
 
@@ -601,8 +602,27 @@ class CatalogState {
 class ThreadListState {
     var threads by mutableStateOf<List<Thread>>(emptyList())
     var sections by mutableStateOf<List<ThreadSection>>(emptyList())
+
+    /**
+     * Ids of the rows that came from the archived half of the listing.
+     *
+     * The wire's `Thread` has no archived flag: the scope a row was fetched under is the only thing
+     * that knows, so the client keeps it next to the list rather than inventing a field.
+     */
+    var archivedIds by mutableStateOf<Set<String>>(emptySet())
+        private set
+
     var includeArchived by mutableStateOf(false)
     var loading by mutableStateOf(false)
+
+    fun applyListing(listing: ThreadListing) {
+        threads = listing.threads
+        archivedIds = listing.archivedIds
+    }
+
+    fun markArchived(threadId: String, archived: Boolean) {
+        archivedIds = if (archived) archivedIds + threadId else archivedIds - threadId
+    }
 
     /**
      * Group threads by working directory, newest first, matching the sidebar's project groups.

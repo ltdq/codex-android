@@ -106,13 +106,13 @@ object SidebarModel {
     fun projects(threads: ThreadListState, includeArchived: Boolean): List<SidebarProject> =
         threads.grouped().mapNotNull { group ->
             val sessions = group.threads
-                .filter { includeArchived || !it.archived }
+                .filter { includeArchived || it.id !in threads.archivedIds }
                 .map { thread ->
                     SidebarSession(
                         id = thread.id,
-                        title = thread.name ?: thread.preview ?: thread.id.takeLast(6),
+                        title = thread.name ?: thread.preview.ifBlank { thread.id.takeLast(6) },
                         date = relativeTime(thread.updatedAt),
-                        archived = thread.archived,
+                        archived = thread.id in threads.archivedIds,
                         running = thread.status is com.cy.codexui.protocol.protocol.v2.ThreadStatus.Active,
                     )
                 }

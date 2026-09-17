@@ -371,10 +371,10 @@ data class TurnSettingsUpdateParams(
     val serviceTier: String? = null,
 )
 
+/** Mirrors upstream `ThreadMemoryMode`: the server has two modes, not three. */
 enum class ThreadMemoryMode(val wire: String) {
+    Enabled("enabled"),
     Disabled("disabled"),
-    Read("read"),
-    ReadWrite("readWrite"),
     ;
 
     companion object {
@@ -947,9 +947,15 @@ data class ModelVerificationNotification(
     val verified: Boolean = true,
 )
 
+/** `model/safetyBuffering/updated` — the server paused or resumed buffering a turn. */
 data class ModelSafetyBufferingUpdatedNotification(
-    val threadId: String?,
-    val buffering: Boolean = false,
+    val threadId: String,
+    val turnId: String,
+    val model: String,
+    val reasons: List<String> = emptyList(),
+    val useCases: List<String> = emptyList(),
+    val showBufferingUi: Boolean = false,
+    val fasterModel: String? = null,
 )
 
 data class TurnModerationMetadataNotification(

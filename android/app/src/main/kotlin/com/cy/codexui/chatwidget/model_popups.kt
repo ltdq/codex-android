@@ -258,7 +258,6 @@ private fun ModelRow(
             Text(
                 text = stringResource(
                     R.string.model_sheet_context,
-                    formatTokens(preset.contextWindow),
                     preset.defaultReasoningEffort.label(),
                 ),
                 modifier = Modifier.padding(top = UiConsts.Space2),

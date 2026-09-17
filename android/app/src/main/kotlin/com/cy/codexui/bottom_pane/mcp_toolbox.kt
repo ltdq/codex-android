@@ -108,13 +108,15 @@ fun McpToolboxScreen(
     val callFailureText = stringResource(R.string.mcp_toolbox_tool_failed)
 
     // The stream being listed is the app's, not a private one: the switch only asks for it, so the
-    // notifications are picked back out of the client's single event flow. Only this server's are
-    // kept, and only the most recent ones — a chatty server must not grow this page's
-    // composition without bound.
+    // notifications are picked back out of the client's single event flow. The wire notification
+    // names its stream by subscription id, which is minted by whoever started it — the app, not
+    // this page — so what can be shown here is the method of each pushed notification. Only the
+    // most recent ones are kept: a chatty server must not grow this page's composition without
+    // bound.
     LaunchedEffect(server, client) {
         client.events.collect { event ->
-            if (event is AppServerEvent.McpServerEvent && event.delta.server == server) {
-                streamEvents += event.delta.event
+            if (event is AppServerEvent.McpServerEvent) {
+                streamEvents += event.delta.notification.method
                 if (streamEvents.size > StreamEventLimit) streamEvents.removeAt(0)
             }
         }
@@ -217,9 +219,10 @@ fun McpToolboxScreen(
 /**
  * The resource half: a uri in, one resource body out.
  *
- * `mcpServer/resource/read` answers with the uri it resolved, the mime type it found and an
- * optional text body. The mime type is shown rather than guessed from the body, because a server
- * that answers `application/json` and one that answers nothing at all look the same otherwise.
+ * `mcpServer/resource/read` answers with a list of `contents`, each with the uri it resolved, the
+ * mime type it found and either text or base64 bytes. The first content is rendered; the mime type
+ * is shown rather than guessed from the body, because a server that answers `application/json` and
+ * one that answers nothing at all look the same otherwise.
  */
 @Composable
 private fun ResourceCard(
@@ -254,19 +257,22 @@ private fun ResourceCard(
             ServerFailure(text = failure)
         }
         if (response != null) {
+            // A read may answer with several contents; the page renders the first, which is the
+            // one a single-uri request returns in practice.
+            val content = response.contents.firstOrNull()
             Spacer(Modifier.height(UiConsts.Space8))
             ValueRow(
                 label = stringResource(R.string.mcp_toolbox_resource_uri_label),
-                value = response.uri,
+                value = content?.uri.orEmpty(),
                 monospace = true,
             )
             CodexDivider()
             ValueRow(
                 label = stringResource(R.string.mcp_toolbox_resource_mime),
-                value = response.mimeType.orEmpty(),
+                value = content?.mimeType.orEmpty(),
             )
             Spacer(Modifier.height(UiConsts.Space8))
-            val body = response.text
+            val body = content?.text
             if (body.isNullOrEmpty()) {
                 // A resource may carry no text (it is bytes, or it is empty). Saying so is the
                 // difference between "the server had nothing" and "the page lost it".

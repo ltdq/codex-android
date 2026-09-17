@@ -9,6 +9,7 @@ import com.cy.codexui.protocol.protocol.long
 import com.cy.codexui.protocol.protocol.objectOrNull
 import com.cy.codexui.protocol.protocol.objectValue
 import com.cy.codexui.protocol.protocol.required
+import com.cy.codexui.protocol.protocol.stringOrNull
 import com.cy.codexui.protocol.protocol.strings
 import com.cy.codexui.protocol.protocol.text
 import com.cy.codexui.protocol.protocol.wireText
@@ -203,12 +204,20 @@ class JsonRpcAppServerClient(
         }
     }
 
-    private suspend fun threadPages(archived: Boolean, term: String? = null): List<Thread> {
+    private fun threadListParams(params: ThreadListParams, archived: Boolean, cursor: String?): JsonObject = obj(
+        "archived" to archived, "cursor" to cursor, "cwd" to params.cwd,
+        "limit" to (params.limit ?: 100), "modelProviders" to params.modelProviders, "originators" to params.originators,
+        "searchTerm" to params.searchTerm, "sectionId" to params.sectionId,
+        "sortDirection" to params.sortDirection?.wire, "sortKey" to params.sortKey?.wire,
+        "sourceKinds" to params.sourceKinds, "useStateDbOnly" to params.useStateDbOnly,
+    )
+
+    private suspend fun threadPages(params: ThreadListParams, archived: Boolean): List<Thread> {
         val threads = mutableListOf<Thread>()
-        var cursor: String? = null
+        var cursor = params.cursor
         do {
-            val page = rpc("thread/list", obj("archived" to archived, "cursor" to cursor, "limit" to 100, "searchTerm" to term))
-            threads += page.array("data").map { WireCodec.thread(it, archived) }
+            val page = rpc("thread/list", threadListParams(params, archived, cursor))
+            threads += page.array("data").map(WireCodec::thread)
             val next = page.text("nextCursor")
             check(next == null || next != cursor) { "Thread pagination did not advance" }
             cursor = next
@@ -216,23 +225,33 @@ class JsonRpcAppServerClient(
         return threads
     }
 
-    override suspend fun listThreads(includeArchived: Boolean) = result {
-        threadPages(false) + if (includeArchived) threadPages(true) else emptyList()
+    override suspend fun listThreads(params: ThreadListParams) = result {
+        val active = threadPages(params, archived = false)
+        val archived = if (params.archived == true) threadPages(params, archived = true) else emptyList()
+        ThreadListing(active + archived, archived.mapTo(mutableSetOf()) { it.id })
     }
-    override suspend fun searchThreads(term: String, includeArchived: Boolean) = result {
-        threadPages(false, term) + if (includeArchived) threadPages(true, term) else emptyList()
-    }
+    override suspend fun searchThreads(term: String, includeArchived: Boolean) = listThreads(
+        ThreadListParams(searchTerm = term, archived = includeArchived),
+    )
     override suspend fun listLoadedThreads() = result { rpc("thread/loaded/list").strings("data") }
-    override suspend fun readThread(threadId: String) = result {
-        val o = rpc("thread/read", obj("threadId" to threadId, "includeTurns" to true)).get("thread")!!.objectValue()
-        val turns = o.array("turns").map(WireCodec::turn)
-        turns.lastOrNull { it.status == TurnStatus.InProgress }?.let { activeTurns[threadId] = it.id }
+    override suspend fun readThread(params: ThreadReadParams) = result {
+        val includeTurns = params.includeTurns ?: true
+        val o = rpc("thread/read", obj("threadId" to params.threadId, "includeTurns" to includeTurns)).get("thread")!!.objectValue()
+        val turns = if (includeTurns) o.array("turns").map(WireCodec::turn) else emptyList()
+        turns.lastOrNull { it.status == TurnStatus.InProgress }?.let { activeTurns[params.threadId] = it.id }
         ThreadReadResponse(WireCodec.thread(o), turns.flatMap { it.items }, turns)
     }
     private suspend fun session(method: String, params: JsonObject) = result {
         WireCodec.session(rpc(method, params)).also { sessions[it.threadId] = it }
     }
-    override suspend fun startThread(cwd: String, model: String?) = session("thread/start", obj("cwd" to cwd.ifBlank { defaultWorkspace.orEmpty() }, "model" to model))
+    override suspend fun startThread(params: ThreadStartParams) = session("thread/start", obj(
+        "cwd" to (params.cwd?.takeIf { it.isNotBlank() } ?: defaultWorkspace.orEmpty()), "model" to params.model,
+        "modelProvider" to params.modelProvider, "approvalPolicy" to params.approvalPolicy?.wire,
+        "approvalsReviewer" to params.approvalsReviewer, "sandbox" to params.sandbox?.let(::sandboxPolicyJson),
+        "personality" to params.personality?.wire, "serviceTier" to params.serviceTier, "ephemeral" to params.ephemeral,
+        "developerInstructions" to params.developerInstructions, "baseInstructions" to params.baseInstructions,
+        "sessionStartSource" to params.sessionStartSource, "config" to params.config,
+    ))
     override suspend fun resumeThread(threadId: String) = session("thread/resume", obj("threadId" to threadId))
     override suspend fun forkThread(threadId: String) = session("thread/fork", obj("threadId" to threadId))
     override suspend fun archiveThread(threadId: String) = call("thread/archive", obj("threadId" to threadId))
@@ -242,16 +261,18 @@ class JsonRpcAppServerClient(
     override suspend fun compactThread(threadId: String) = call("thread/compact/start", obj("threadId" to threadId))
     override suspend fun runShellCommand(threadId: String, command: String) = call("thread/shellCommand", obj("threadId" to threadId, "command" to command))
     override suspend fun unsubscribeThread(threadId: String) = call("thread/unsubscribe", obj("threadId" to threadId))
-    override suspend fun listThreadItems(threadId: String, cursor: String?, limit: Int?) = result {
-        val o = rpc("thread/items/list", obj("threadId" to threadId, "cursor" to cursor, "limit" to limit))
+    override suspend fun listThreadItems(params: ThreadItemsListParams) = result {
+        val o = rpc("thread/items/list", obj("threadId" to params.threadId, "cursor" to params.cursor, "limit" to params.limit,
+            "sortDirection" to params.sortDirection?.wire, "turnId" to params.turnId))
         ThreadItemsPage(o.array("data").map { WireCodec.item(it.objectValue()["item"] ?: it) }, o.text("nextCursor"))
     }
-    override suspend fun listThreadTurns(threadId: String, cursor: String?, limit: Int?) = result {
-        val o = rpc("thread/turns/list", obj("threadId" to threadId, "cursor" to cursor, "limit" to limit))
+    override suspend fun listThreadTurns(params: ThreadTurnsListParams) = result {
+        val o = rpc("thread/turns/list", obj("threadId" to params.threadId, "cursor" to params.cursor, "limit" to params.limit,
+            "itemsView" to params.itemsView?.wire, "sortDirection" to params.sortDirection?.wire))
         ThreadTurnsPage(o.array("data").map(WireCodec::turn), o.text("nextCursor"))
     }
     override suspend fun revertThread(threadId: String, itemId: String?) = result {
-        val history = readThread(threadId).getOrThrow()
+        val history = readThread(ThreadReadParams(threadId)).getOrThrow()
         val turn = if (itemId == null) history.turns.lastOrNull() else history.turns.find { turn -> turn.items.any { it.id == itemId } }
         requireNotNull(turn) { "The selected message is no longer in this thread" }
         rpc("thread/revert", obj("threadId" to threadId, "beforeTurnId" to turn.id))
@@ -366,18 +387,21 @@ class JsonRpcAppServerClient(
             reasoningEffort = effort ?: current.reasoningEffort, approvalPolicy = approvalPolicy ?: current.approvalPolicy, collaborationMode = collaborationMode ?: current.collaborationMode)
         Unit
     }
+    /** One encoder for `SandboxPolicy`, shared by `thread/start` and `thread/settings/update`. */
+    private fun sandboxPolicyJson(policy: SandboxPolicy): JsonObject = when (policy.mode) {
+        SandboxMode.DangerFullAccess -> obj("type" to "dangerFullAccess")
+        SandboxMode.ReadOnly -> obj("type" to "readOnly", "networkAccess" to policy.networkAccess)
+        SandboxMode.WorkspaceWrite -> obj("type" to "workspaceWrite", "writableRoots" to policy.writableRoots, "networkAccess" to policy.networkAccess,
+            "excludeTmpdirEnvVar" to policy.excludeTmpdirEnvVar, "excludeSlashTmp" to policy.excludeSlashTmp)
+    }
+
     override suspend fun updateThreadSettingsFull(params: ThreadSettingsUpdateParams) = result {
         require(params.approvalPolicy != AskForApproval.Granular) { "Granular approval requires an explicit permissions configuration" }
         val current = sessions[params.threadId]
         val collaboration = params.collaborationMode?.let { obj("mode" to it.wire, "settings" to obj(
             "model" to (params.model ?: current?.model ?: error("Load the thread before changing collaboration mode")),
             "reasoning_effort" to (params.effort ?: current?.reasoningEffort)?.wire, "developer_instructions" to JsonNull)) }
-        val sandbox = params.sandboxPolicy?.let { policy -> when (policy.mode) {
-            SandboxMode.DangerFullAccess -> obj("type" to "dangerFullAccess")
-            SandboxMode.ReadOnly -> obj("type" to "readOnly", "networkAccess" to policy.networkAccess)
-            SandboxMode.WorkspaceWrite -> obj("type" to "workspaceWrite", "writableRoots" to policy.writableRoots, "networkAccess" to policy.networkAccess,
-                "excludeTmpdirEnvVar" to policy.excludeTmpdirEnvVar, "excludeSlashTmp" to policy.excludeSlashTmp)
-        } }
+        val sandbox = params.sandboxPolicy?.let(::sandboxPolicyJson)
         rpc("thread/settings/update", obj("threadId" to params.threadId, "model" to params.model, "effort" to params.effort?.wire,
             "approvalPolicy" to params.approvalPolicy?.wire, "approvalsReviewer" to params.approvalsReviewer, "summary" to params.summary,
             "sandboxPolicy" to sandbox, "permissions" to params.permissions, "collaborationMode" to collaboration, "personality" to params.personality?.wire,
@@ -393,8 +417,7 @@ class JsonRpcAppServerClient(
         Unit
     }
     override suspend fun setThreadMemoryMode(threadId: String, mode: ThreadMemoryMode) = result {
-        require(mode != ThreadMemoryMode.Read) { "The server supports enabled or disabled memory, not read-only mode" }
-        rpc("thread/memoryMode/set", obj("threadId" to threadId, "mode" to if (mode == ThreadMemoryMode.Disabled) "disabled" else "enabled"))
+        rpc("thread/memoryMode/set", obj("threadId" to threadId, "mode" to mode.wire))
         Unit
     }
     override suspend fun startTurn(threadId: String, inputs: List<UserInput>) = result {
@@ -424,6 +447,7 @@ class JsonRpcAppServerClient(
     }
 
     override suspend fun readAccount() = result { WireCodec.account(rpc("account/read")) }
+    override suspend fun compressRollout() = result { rpc("rollout/compress", null); Unit }
     override suspend fun login(params: LoginAccountParams) = result {
         val body = when (params) {
             is LoginAccountParams.ApiKey -> obj("type" to "apiKey", "apiKey" to params.apiKey)
@@ -445,14 +469,15 @@ class JsonRpcAppServerClient(
     }
     override suspend fun cancelLogin(loginId: String) = call("account/login/cancel", obj("loginId" to loginId))
     override suspend fun logout() = call("account/logout", null)
-    override suspend fun readRateLimits() = result { WireCodec.rateLimits(rpc("account/rateLimits/read").objectOrNull("rateLimits") ?: error("Missing rate limits")) }
+    override suspend fun readRateLimits() = result { WireCodec.accountRateLimits(rpc("account/rateLimits/read")) }
     override suspend fun readUsage() = result {
         val o = rpc("account/usage/read")
         AccountUsage(o.array("dailyUsageBuckets").map { it.objectValue().let { bucket -> UsageBucket(bucket.required("startDate"), bucket.int("tokens") ?: 0) } },
             o.objectOrNull("summary")?.int("lifetimeTokens") ?: 0)
     }
     override suspend fun readWorkspaceMessages() = result { rpc("account/workspaceMessages/read", null).array("messages").map { value -> value.objectValue().let {
-        WorkspaceMessage(it.required("messageId"), it.required("messageType"), it.required("messageBody"))
+        WorkspaceMessage(it.required("messageId"), WorkspaceMessageType.fromWire(it.text("messageType")), it.required("messageBody"),
+            it.long("createdAt")?.times(1000), it.long("archivedAt")?.times(1000))
     } } }
 
     override suspend fun readConfig(cwd: String?, includeLayers: Boolean) = result { WireCodec.config(rpc("config/read", obj("cwd" to cwd, "includeLayers" to includeLayers))) }
@@ -473,9 +498,15 @@ class JsonRpcAppServerClient(
         var cursor: String? = null
         do {
             val page = rpc("model/list", obj("limit" to 100, "cursor" to cursor))
-            models += page.array("data").map { value -> value.objectValue().let { o -> ModelPreset(o.required("id"), o.required("model"), o.required("displayName"), o.text("description").orEmpty(),
-                ReasoningEffort.fromWire(o.required("defaultReasoningEffort")), o.array("supportedReasoningEfforts").map { ReasoningEffort.fromWire(it.objectValue().required("reasoningEffort")) }, o.bool("isDefault") == true,
-                o.int("contextWindow") ?: 0) } }
+            models += page.array("data").map { value -> value.objectValue().let { o -> ModelPreset(
+                id = o.required("id"), model = o.required("model"), displayName = o.required("displayName"), description = o.required("description"),
+                defaultReasoningEffort = ReasoningEffort.fromWire(o.required("defaultReasoningEffort")),
+                supportedReasoningEfforts = o.array("supportedReasoningEfforts").map { ReasoningEffort.fromWire(it.objectValue().required("reasoningEffort")) },
+                isDefault = o.bool("isDefault") == true, hidden = o.bool("hidden") == true,
+                defaultServiceTier = o.text("defaultServiceTier"),
+                serviceTiers = o.array("serviceTiers").map { tier -> tier.objectValue().let { ModelServiceTier(it.required("id"), it.required("name"), it.required("description")) } },
+                inputModalities = o.strings("inputModalities").mapNotNull { wire -> InputModality.entries.find { it.wire == wire } },
+            ) } }
             val next = page.text("nextCursor")
             check(next == null || next != cursor) { "Model pagination did not advance" }
             cursor = next
@@ -539,8 +570,13 @@ class JsonRpcAppServerClient(
         McpServerToolCallResponse(Json.write(o), o.bool("isError") == true)
     }
     override suspend fun readMcpResource(server: String, uri: String) = result {
-        val contents = rpc("mcpServer/resource/read", obj("server" to server, "uri" to uri)).array("contents").map { it.objectValue() }
-        McpResourceReadResponse(uri, contents.firstOrNull()?.text("mimeType"), contents.mapNotNull { it.text("text") }.takeIf { it.isNotEmpty() }?.joinToString("\n"))
+        val o = rpc("mcpServer/resource/read", obj("server" to server, "uri" to uri))
+        McpResourceReadResponse(
+            contents = o.array("contents").map { value -> value.objectValue().let { content ->
+                ResourceContent(content.required("uri"), content.text("mimeType"), content.text("text"), content.text("blob"))
+            } },
+            originCallId = o.text("originCallId"),
+        )
     }
     override suspend fun readMemoryStatus() = result { rpc("memory/status").let { MemoryStatusResponse(it.bool("v2Ready") == true, it.int("v2ConsolidatedThreads") ?: 0) } }
     override suspend fun resetMemory() = call("memory/reset", null)
@@ -876,9 +912,9 @@ class JsonRpcAppServerClient(
             }
             "thread/tokenUsage/updated" -> {
                 val usage = p.objectOrNull("tokenUsage")!!
-                val total = usage.objectOrNull("total") ?: obj()
-                AppServerEvent.ThreadTokenUsageEvent(threadId, ThreadTokenUsageUpdated(threadId, p.text("turnId"), ThreadTokenUsage(total.int("totalTokens") ?: 0, total.int("inputTokens") ?: 0,
-                    total.int("cachedInputTokens") ?: 0, total.int("outputTokens") ?: 0, total.int("reasoningOutputTokens") ?: 0, usage.int("modelContextWindow"))))
+                AppServerEvent.ThreadTokenUsageEvent(threadId, ThreadTokenUsageUpdated(threadId, p.text("turnId"),
+                    ThreadTokenUsage(usage.objectOrNull("total")?.let(::breakdown) ?: TokenUsageBreakdown.Empty,
+                        usage.objectOrNull("last")?.let(::breakdown) ?: TokenUsageBreakdown.Empty, usage.long("modelContextWindow"))))
             }
             "serverRequest/resolved" -> {
                 val id = p["requestId"]?.wireText().orEmpty()
@@ -887,12 +923,22 @@ class JsonRpcAppServerClient(
             }
             "account/updated" -> { scope.launch { readAccount().onSuccess { eventQueue.send(AppServerEvent.AccountUpdated(it)) } }; null }
             "account/login/completed" -> AppServerEvent.AccountLoginCompleted(AccountLoginCompletedNotification(p.bool("success") == true, p.text("loginId"), p.text("error")))
-            "account/rateLimits/updated" -> AppServerEvent.RateLimitsUpdatedEvent(WireCodec.rateLimits(p.objectOrNull("rateLimits")!!))
+            "account/rateLimits/updated" -> AppServerEvent.RateLimitsUpdatedEvent(WireCodec.rateLimitSnapshot(p.objectOrNull("rateLimits")!!))
             "skills/changed" -> AppServerEvent.SkillsChanged(CatalogChanged())
             "app/list/updated" -> AppServerEvent.AppListUpdated(CatalogChanged())
             "model/rerouted" -> AppServerEvent.ModelReroutedEvent(threadId, ModelRerouted(threadId, p.required("fromModel"), p.required("toModel"), p.required("reason")))
             "mcpServer/startupStatus/updated" -> AppServerEvent.McpStartupStatusEvent(McpStartupStatusUpdated(p.required("name"),
                 McpServerConnectionStatus.entries.find { it.wire == p.text("status") } ?: McpServerConnectionStatus.Starting, p.text("error")))
+            "mcpServer/event/stream/notification" -> AppServerEvent.McpServerEvent(McpServerEventStreamNotification(
+                subscriptionId = p.required("subscriptionId"),
+                notification = p.objectOrNull("notification")?.let { n -> McpServerEventNotification(n.required("method"), n["params"] ?: JsonNull) }
+                    ?: McpServerEventNotification("unknown"),
+            ))
+            "model/safetyBuffering/updated" -> AppServerEvent.ModelSafetyBufferingUpdated(ModelSafetyBufferingUpdatedNotification(
+                threadId = threadId, turnId = turnId, model = p.text("model").orEmpty(), reasons = p.strings("reasons"),
+                useCases = p.strings("useCases"), showBufferingUi = p.bool("showBufferingUi") == true, fasterModel = p.text("fasterModel"),
+            ))
+            "thread/realtime/item/transcript/delta" -> AppServerEvent.RealtimeItemTranscriptDelta(threadId, p.required("itemId"), p.required("delta"))
             "mcpServer/oauthLogin/completed" -> AppServerEvent.McpOauthLoginCompleted(McpServerOauthLoginCompletedNotification(p.required("name"), p.bool("success") == true, p.text("error")))
             "fs/changed" -> AppServerEvent.FsChangedEvent(FsChangedNotification(p.required("watchId"), p.strings("changedPaths")))
             "thread/attachment/updated" -> AppServerEvent.ThreadAttachmentUpdated(threadId)
@@ -946,6 +992,71 @@ class JsonRpcAppServerClient(
         if (event != null) eventQueue.send(event)
     }
 
+    /** One element of a request's `commandActions`; an unknown future tag is dropped, not faked. */
+    private fun commandAction(value: JsonElement): CommandAction? {
+        val o = value.objectValue()
+        return when (o.text("type")) {
+            "read" -> CommandAction.Read(o.required("command"), o.required("name"), o.required("path"))
+            "listFiles" -> CommandAction.ListFiles(o.required("command"), o.text("path"))
+            "search" -> CommandAction.Search(o.required("command"), o.text("query"), o.text("path"))
+            "unknown" -> CommandAction.Unknown(o.required("command"))
+            else -> null
+        }
+    }
+
+    private fun networkPolicyAmendment(value: JsonElement): NetworkPolicyAmendment? {
+        val o = value.objectValue()
+        val action = NetworkPolicyRuleAction.entries.find { it.wire == o.text("action") } ?: return null
+        return NetworkPolicyAmendment(action, o.required("host"))
+    }
+
+    /**
+     * One `availableDecisions` element.
+     *
+     * The wire union mixes bare strings with single-key objects, so the string form is probed
+     * first; an element that is neither a known decision string nor a known payload key is dropped
+     * rather than guessed at.
+     */
+    private fun approvalDecision(value: JsonElement): CommandExecutionApprovalDecision? {
+        value.stringOrNull()?.let { wire ->
+            return when (wire) {
+                "accept" -> CommandExecutionApprovalDecision.Accept
+                "acceptForSession" -> CommandExecutionApprovalDecision.AcceptForSession
+                "decline" -> CommandExecutionApprovalDecision.Decline
+                "cancel" -> CommandExecutionApprovalDecision.Cancel
+                else -> null
+            }
+        }
+        val o = value as? JsonObject ?: return null
+        o.objectOrNull("acceptWithExecpolicyAmendment")?.let { amendment ->
+            return CommandExecutionApprovalDecision.AcceptWithExecpolicyAmendment(amendment.strings("execpolicy_amendment"))
+        }
+        o.objectOrNull("applyNetworkPolicyAmendment")?.let { amendment ->
+            return amendment.objectOrNull("network_policy_amendment")?.let(::networkPolicyAmendment)
+                ?.let(CommandExecutionApprovalDecision::ApplyNetworkPolicyAmendment)
+        }
+        return null
+    }
+
+    /** Encode a command-execution decision back into the upstream union. */
+    private fun decisionBody(decision: CommandExecutionApprovalDecision): JsonElement = when (decision) {
+        CommandExecutionApprovalDecision.Accept -> JsonPrimitive("accept")
+        CommandExecutionApprovalDecision.AcceptForSession -> JsonPrimitive("acceptForSession")
+        CommandExecutionApprovalDecision.Decline -> JsonPrimitive("decline")
+        CommandExecutionApprovalDecision.Cancel -> JsonPrimitive("cancel")
+        is CommandExecutionApprovalDecision.AcceptWithExecpolicyAmendment ->
+            obj("acceptWithExecpolicyAmendment" to obj("execpolicy_amendment" to decision.execpolicyAmendment))
+        is CommandExecutionApprovalDecision.ApplyNetworkPolicyAmendment ->
+            obj("applyNetworkPolicyAmendment" to obj("network_policy_amendment" to obj(
+                "action" to decision.networkPolicyAmendment.action.wire, "host" to decision.networkPolicyAmendment.host)))
+    }
+
+    private fun breakdown(o: JsonObject) = TokenUsageBreakdown(
+        totalTokens = o.long("totalTokens") ?: 0L, inputTokens = o.long("inputTokens") ?: 0L,
+        cachedInputTokens = o.long("cachedInputTokens") ?: 0L, outputTokens = o.long("outputTokens") ?: 0L,
+        reasoningOutputTokens = o.long("reasoningOutputTokens") ?: 0L, cacheWriteInputTokens = o.long("cacheWriteInputTokens") ?: 0L,
+    )
+
     /** The v2 review status is camelCase; the core event the approve call takes is snake_case. */
     private fun guardianStatus(v2: String): String = when (v2) {
         "inProgress" -> "in_progress"
@@ -966,7 +1077,11 @@ class JsonRpcAppServerClient(
         val time = p.long("startedAtMs") ?: System.currentTimeMillis()
         val request = when (method) {
             "item/commandExecution/requestApproval" -> ApprovalRequest.Exec(requestId, thread, turn, item, time,
-                CommandExecutionApprovalParams(thread, turn, item, time, p.text("approvalId"), p.text("environmentId"), p.text("reason"), p.text("command"), p.text("cwd")))
+                CommandExecutionApprovalParams(thread, turn, item, time, p.text("approvalId"), p.text("environmentId"), p.text("reason"), p.text("command"), p.text("cwd"),
+                    commandActions = p.array("commandActions").mapNotNull { commandAction(it) },
+                    proposedExecpolicyAmendment = p.strings("proposedExecpolicyAmendment").takeIf { it.isNotEmpty() },
+                    proposedNetworkPolicyAmendments = p.array("proposedNetworkPolicyAmendments").mapNotNull { networkPolicyAmendment(it) },
+                    availableDecisions = p.array("availableDecisions").mapNotNull { approvalDecision(it) }))
             "item/fileChange/requestApproval" -> ApprovalRequest.ApplyPatch(requestId, thread, turn, item, time,
                 FileChangeApprovalParams(thread, turn, item, time, p.text("reason"), p.text("grantRoot")))
             "item/permissions/requestApproval" -> {
@@ -1006,8 +1121,14 @@ class JsonRpcAppServerClient(
                     McpElicitationField(name, field.text("title") ?: name, field.text("description").orEmpty(), kind,
                         name in schema.strings("required"), options, field["default"]?.wireText().orEmpty())
                 }
-                ApprovalRequest.Elicitation(requestId, thread, p.text("turnId"), item, time, McpElicitationParams(thread, p.text("turnId"), p.required("serverName"),
-                    p.text("mode") ?: "form", p.text("message").orEmpty(), McpElicitationSchema(schema.text("title").orEmpty(), fields), p.text("url"), p.text("elicitationId")))
+                val serverName = p.required("serverName")
+                val message = p.text("message").orEmpty()
+                val payload = if (p.text("mode") == "url") {
+                    McpElicitationRequest.Url(serverName, message, p.required("url"), p.required("elicitationId"))
+                } else {
+                    McpElicitationRequest.Form(serverName, message, McpElicitationSchema(schema.text("title").orEmpty(), fields))
+                }
+                ApprovalRequest.Elicitation(requestId, thread, p.text("turnId"), item, time, payload)
             }
             else -> null
         }
@@ -1022,7 +1143,7 @@ class JsonRpcAppServerClient(
     override suspend fun respond(requestId: RequestId, response: ApprovalResponse) {
         val (id, params) = approvals[requestId.value] ?: error("Approval is no longer pending")
         val body = when (response) {
-            is ApprovalResponse.CommandExecution -> obj("decision" to response.decision.wire)
+            is ApprovalResponse.CommandExecution -> obj("decision" to decisionBody(response.decision))
             is ApprovalResponse.FileChange -> obj("decision" to response.decision.wire)
             is ApprovalResponse.Permissions -> obj("permissions" to if (response.decision == PermissionsApprovalDecision.Decline) obj() else (params["permissions"] ?: obj()),
                 "scope" to if (response.decision == PermissionsApprovalDecision.AcceptForSession) "session" else "turn")
@@ -1037,7 +1158,10 @@ class JsonRpcAppServerClient(
                         else -> json(value)
                     }
                 }
-                obj("action" to response.action.wire, "content" to if (response.action == ElicitationAction.Accept) JsonObject(content) else JsonNull)
+                // A URL-mode accept carries no content: the accept *is* the answer. A form accept
+                // with no fields is the same shape, so an empty map is sent as null, not `{}`.
+                obj("action" to response.action.wire,
+                    "content" to if (response.action == ElicitationAction.Accept && content.isNotEmpty()) JsonObject(content) else JsonNull)
             }
             is ApprovalResponse.DynamicTool -> obj("success" to response.result.success, "contentItems" to response.result.contentItems.map { obj("type" to "inputText", "text" to it) })
             is ApprovalResponse.Tokens -> obj("accessToken" to response.accessToken, "chatgptAccountId" to response.chatgptAccountId, "chatgptPlanType" to response.chatgptPlanType)

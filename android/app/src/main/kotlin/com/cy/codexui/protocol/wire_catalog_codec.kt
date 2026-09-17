@@ -25,11 +25,7 @@ internal object WireCatalogCodec {
     fun section(o: JsonObject) = ThreadSection(o.required("id"), o.required("name"))
 
     fun skill(o: JsonObject) = SkillEntry(o.text("path") ?: o.required("name"), o.required("name"), o.text("description").orEmpty(),
-        o.text("path").orEmpty(), o.bool("enabled") != false, when (o.text("scope")) {
-            "repo", "project" -> SkillScope.Project
-            "system", "admin" -> SkillScope.System
-            else -> SkillScope.User
-        })
+        o.text("path").orEmpty(), o.bool("enabled") != false, SkillScope.fromWire(o.text("scope")))
 
     fun app(o: JsonObject) = AppInfo(o.required("id"), o.required("name"), o.text("description").orEmpty(), o.bool("isAccessible") == true)
 

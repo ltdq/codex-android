@@ -2,7 +2,7 @@ package com.cy.codexui.protocol
 
 import com.cy.codexui.protocol.protocol.RequestId
 import com.cy.codexui.protocol.protocol.item.ThreadItem
-import com.cy.codexui.protocol.protocol.v2.AccountInfo
+import com.cy.codexui.protocol.protocol.v2.AccountReadResponse
 import com.cy.codexui.protocol.protocol.v2.AccountLoginCompletedNotification
 import com.cy.codexui.protocol.protocol.v2.AccountUsage
 import com.cy.codexui.protocol.protocol.v2.AppInfo
@@ -49,7 +49,7 @@ import com.cy.codexui.protocol.protocol.v2.ItemTextDelta
 import com.cy.codexui.protocol.protocol.v2.LoginAccountParams
 import com.cy.codexui.protocol.protocol.v2.LoginAccountResponse
 import com.cy.codexui.protocol.protocol.v2.MarketplaceEntry
-import com.cy.codexui.protocol.protocol.v2.McpElicitationParams
+import com.cy.codexui.protocol.protocol.v2.McpElicitationRequest
 import com.cy.codexui.protocol.protocol.v2.McpResourceReadResponse
 import com.cy.codexui.protocol.protocol.v2.McpServerEventStreamNotification
 import com.cy.codexui.protocol.protocol.v2.McpServerOauthLoginCompletedNotification
@@ -76,7 +76,8 @@ import com.cy.codexui.protocol.protocol.v2.ProcessOutputDeltaNotification
 import com.cy.codexui.protocol.protocol.v2.ProjectChangedNotification
 import com.cy.codexui.protocol.protocol.v2.ProjectEntry
 import com.cy.codexui.protocol.protocol.v2.QueuedSubmission
-import com.cy.codexui.protocol.protocol.v2.RateLimits
+import com.cy.codexui.protocol.protocol.v2.AccountRateLimits
+import com.cy.codexui.protocol.protocol.v2.RateLimitSnapshot
 import com.cy.codexui.protocol.protocol.v2.RemoteControlClientsListResponse
 import com.cy.codexui.protocol.protocol.v2.RemoteControlPairingStartResponse
 import com.cy.codexui.protocol.protocol.v2.RemoteControlPairingStatusResponse
@@ -96,7 +97,13 @@ import com.cy.codexui.protocol.protocol.v2.ThreadGoalUpdated
 import com.cy.codexui.protocol.protocol.v2.ThreadMemoryMode
 import com.cy.codexui.protocol.protocol.v2.ThreadNameUpdated
 import com.cy.codexui.protocol.protocol.v2.ThreadQueueChanged
+import com.cy.codexui.protocol.protocol.v2.ThreadItemsListParams
+import com.cy.codexui.protocol.protocol.v2.ThreadListParams
+import com.cy.codexui.protocol.protocol.v2.ThreadListing
+import com.cy.codexui.protocol.protocol.v2.ThreadReadParams
 import com.cy.codexui.protocol.protocol.v2.ThreadReadResponse
+import com.cy.codexui.protocol.protocol.v2.ThreadStartParams
+import com.cy.codexui.protocol.protocol.v2.ThreadTurnsListParams
 import com.cy.codexui.protocol.protocol.v2.ThreadRealtimeAudioChunk
 import com.cy.codexui.protocol.protocol.v2.ThreadReverted
 import com.cy.codexui.protocol.protocol.v2.ThreadSection
@@ -297,7 +304,7 @@ sealed interface AppServerEvent {
         AppServerEvent
 
     // ---- account, model, catalogs --------------------------------------------
-    data class AccountUpdated(val account: AccountInfo) : AppServerEvent {
+    data class AccountUpdated(val account: AccountReadResponse) : AppServerEvent {
         override val threadId: String? get() = null
     }
 
@@ -305,7 +312,7 @@ sealed interface AppServerEvent {
         override val threadId: String? get() = null
     }
 
-    data class RateLimitsUpdatedEvent(val rateLimits: RateLimits) : AppServerEvent {
+    data class RateLimitsUpdatedEvent(val rateLimits: RateLimitSnapshot) : AppServerEvent {
         override val threadId: String? get() = null
     }
 
@@ -463,7 +470,7 @@ sealed interface ApprovalRequest {
         override val turnId: String?,
         override val itemId: String,
         override val receivedAt: Long,
-        val params: McpElicitationParams,
+        val params: McpElicitationRequest,
     ) : ApprovalRequest
 
     data class DynamicTool(
@@ -593,10 +600,17 @@ interface AppServerClient {
     suspend fun respond(requestId: RequestId, response: ApprovalResponse)
 
     // ---- thread/… lifecycle ---------------------------------------------------
-    suspend fun listThreads(includeArchived: Boolean = false): Result<List<Thread>> = unsupported("listThreads")
+    /**
+     * `thread/list`.
+     *
+     * When [ThreadListParams.archived] is true the listing spans both scopes, and which rows came
+     * from the archived half is reported by [ThreadListing.archivedIds]: the wire's `Thread` has no
+     * archived flag, so the scope a row was fetched under is the only thing that knows.
+     */
+    suspend fun listThreads(params: ThreadListParams = ThreadListParams()): Result<ThreadListing> = unsupported("listThreads")
     suspend fun listLoadedThreads(): Result<List<String>> = unsupported("listLoadedThreads")
-    suspend fun readThread(threadId: String): Result<ThreadReadResponse> = unsupported("readThread")
-    suspend fun startThread(cwd: String, model: String? = null): Result<ThreadSessionState> = unsupported("startThread")
+    suspend fun readThread(params: ThreadReadParams): Result<ThreadReadResponse> = unsupported("readThread")
+    suspend fun startThread(params: ThreadStartParams): Result<ThreadSessionState> = unsupported("startThread")
     suspend fun resumeThread(threadId: String): Result<ThreadSessionState> = unsupported("resumeThread")
     suspend fun forkThread(threadId: String): Result<ThreadSessionState> = unsupported("forkThread")
     suspend fun archiveThread(threadId: String): Result<Unit> = unsupported("archiveThread")
@@ -607,10 +621,10 @@ interface AppServerClient {
     suspend fun revertThread(threadId: String, itemId: String?): Result<Unit> = unsupported("revertThread")
 
     /** `thread/items/list`: one page of items, for hydrating a long transcript. */
-    suspend fun listThreadItems(threadId: String, cursor: String? = null, limit: Int? = null): Result<ThreadItemsPage> = unsupported("listThreadItems")
+    suspend fun listThreadItems(params: ThreadItemsListParams): Result<ThreadItemsPage> = unsupported("listThreadItems")
 
     /** `thread/turns/list`: one page of turns. */
-    suspend fun listThreadTurns(threadId: String, cursor: String? = null, limit: Int? = null): Result<ThreadTurnsPage> = unsupported("listThreadTurns")
+    suspend fun listThreadTurns(params: ThreadTurnsListParams): Result<ThreadTurnsPage> = unsupported("listThreadTurns")
 
     /** `thread/timeline/list`: the sparse index behind the scrubber. */
     suspend fun listThreadTimeline(threadId: String, cursor: String? = null, limit: Int? = null): Result<List<TimelineEntry>> = unsupported("listThreadTimeline")
@@ -632,7 +646,7 @@ interface AppServerClient {
     suspend fun approveGuardianDeniedAction(threadId: String, itemId: String): Result<Unit> = unsupported("approveGuardianDeniedAction")
 
     /** `thread/search` across every thread. */
-    suspend fun searchThreads(term: String, includeArchived: Boolean = false): Result<List<Thread>> = unsupported("searchThreads")
+    suspend fun searchThreads(term: String, includeArchived: Boolean = false): Result<ThreadListing> = unsupported("searchThreads")
 
     /** `thread/searchOccurrences` inside one thread. */
     suspend fun searchThreadOccurrences(threadId: String, term: String): Result<List<OccurrenceMatch>> = unsupported("searchThreadOccurrences")
@@ -730,11 +744,11 @@ interface AppServerClient {
     suspend fun deleteSection(sectionId: String): Result<Unit> = unsupported("deleteSection")
 
     // ---- account/… ------------------------------------------------------------
-    suspend fun readAccount(): Result<AccountInfo> = unsupported("readAccount")
+    suspend fun readAccount(): Result<AccountReadResponse> = unsupported("readAccount")
     suspend fun login(params: LoginAccountParams): Result<LoginAccountResponse> = unsupported("login")
     suspend fun cancelLogin(loginId: String): Result<Unit> = unsupported("cancelLogin")
     suspend fun logout(): Result<Unit> = unsupported("logout")
-    suspend fun readRateLimits(): Result<RateLimits> = unsupported("readRateLimits")
+    suspend fun readRateLimits(): Result<AccountRateLimits> = unsupported("readRateLimits")
     suspend fun readUsage(): Result<AccountUsage> = unsupported("readUsage")
     suspend fun readWorkspaceMessages(): Result<List<WorkspaceMessage>> = unsupported("readWorkspaceMessages")
     suspend fun consumeRateLimitResetCredit(creditId: String? = null): Result<ConsumeRateLimitResetCreditResponse> = unsupported("consumeRateLimitResetCredit")
@@ -959,6 +973,14 @@ interface AppServerClient {
 
     // ---- review, search, hooks, feedback, diagnostics ------------------------
     suspend fun startReview(threadId: String, target: ReviewTarget): Result<ReviewStartResponse> = unsupported("startReview")
+
+    /**
+     * `rollout/compress` (experimental).
+     *
+     * Acknowledges the trigger, not completion: the server's background pass may skip while a
+     * maintenance lock or cooldown is active.
+     */
+    suspend fun compressRollout(): Result<Unit> = unsupported("compressRollout")
     suspend fun fuzzyFileSearch(query: String, roots: List<String> = emptyList()): Result<List<FuzzyFileSearchResult>> = unsupported("fuzzyFileSearch")
     suspend fun startFuzzySearchSession(sessionId: String, roots: List<String> = emptyList()): Result<Unit> = unsupported("startFuzzySearchSession")
     suspend fun updateFuzzySearchSession(sessionId: String, query: String): Result<Unit> = unsupported("updateFuzzySearchSession")

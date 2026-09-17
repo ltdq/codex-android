@@ -49,7 +49,7 @@ fun AgentsOverview(
     onSelect: (String) -> Unit,
     onDismiss: () -> Unit,
     onDismissFinished: () -> Unit,
-    totalTokens: Int = 0,
+    totalTokens: Long = 0L,
 ) {
     val colors = MiuixTheme.colorScheme
     val shown = remember(roster, totalTokens) {
@@ -100,8 +100,8 @@ fun AgentsOverview(
 }
 
 /** The main agent's usage *is* the thread total; subagent usage is what the stream reported. */
-private fun tokensOf(agent: AgentRosterEntry, totalTokens: Int): Int =
-    if (agent.role == AgentRole.Main && totalTokens > 0) totalTokens else agent.tokens
+private fun tokensOf(agent: AgentRosterEntry, totalTokens: Long): Int =
+    if (agent.role == AgentRole.Main && totalTokens > 0) totalTokens.coerceAtMost(Int.MAX_VALUE.toLong()).toInt() else agent.tokens
 
 /** Label for a server agent state, in the wording the TUI dashboard uses. */
 @Composable

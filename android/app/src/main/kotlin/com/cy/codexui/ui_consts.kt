@@ -16,6 +16,7 @@ import com.cy.codexui.protocol.protocol.v2.FileChangeApprovalDecision
 import com.cy.codexui.protocol.protocol.v2.GoalStatus
 import com.cy.codexui.protocol.protocol.v2.LoginAppBrand
 import com.cy.codexui.protocol.protocol.v2.McpServerConnectionStatus
+import com.cy.codexui.protocol.protocol.v2.NetworkPolicyRuleAction
 import com.cy.codexui.protocol.protocol.v2.PermissionsApprovalDecision
 import com.cy.codexui.protocol.protocol.v2.Personality
 import com.cy.codexui.protocol.protocol.v2.ReasoningEffort
@@ -98,9 +99,12 @@ fun TurnStatus.label(): String = stringResource(
 @ReadOnlyComposable
 fun McpServerConnectionStatus.label(): String = stringResource(
     when (this) {
+        McpServerConnectionStatus.NotStarted -> R.string.mcp_connection_status_not_started
         McpServerConnectionStatus.Starting -> R.string.mcp_connection_status_starting
-        McpServerConnectionStatus.Ready -> R.string.mcp_connection_status_ready
+        McpServerConnectionStatus.Connected -> R.string.mcp_connection_status_connected
+        McpServerConnectionStatus.AuthenticationRequired -> R.string.mcp_connection_status_auth_required
         McpServerConnectionStatus.Failed -> R.string.mcp_connection_status_failed
+        McpServerConnectionStatus.Cancelled -> R.string.mcp_connection_status_cancelled
         McpServerConnectionStatus.Disabled -> R.string.mcp_connection_status_disabled
     },
 )
@@ -112,6 +116,7 @@ fun SkillScope.label(): String = stringResource(
         SkillScope.User -> R.string.skill_scope_user
         SkillScope.Project -> R.string.skill_scope_project
         SkillScope.System -> R.string.skill_scope_system
+        SkillScope.Admin -> R.string.skill_scope_admin
     },
 )
 
@@ -126,6 +131,14 @@ fun CommandExecutionApprovalDecision.label(): String = stringResource(
             R.string.command_approval_decision_accept_for_session
         CommandExecutionApprovalDecision.Decline -> R.string.command_approval_decision_decline
         CommandExecutionApprovalDecision.Cancel -> R.string.command_approval_decision_cancel
+        is CommandExecutionApprovalDecision.AcceptWithExecpolicyAmendment ->
+            R.string.command_approval_decision_accept_execpolicy
+        is CommandExecutionApprovalDecision.ApplyNetworkPolicyAmendment ->
+            if (networkPolicyAmendment.action == NetworkPolicyRuleAction.Allow) {
+                R.string.command_approval_decision_allow_host
+            } else {
+                R.string.command_approval_decision_deny_host
+            }
     },
 )
 
@@ -286,9 +299,8 @@ fun WriteStatus.label(): String = stringResource(
 @ReadOnlyComposable
 fun ThreadMemoryMode.label(): String = stringResource(
     when (this) {
+        ThreadMemoryMode.Enabled -> R.string.memory_mode_enabled
         ThreadMemoryMode.Disabled -> R.string.memory_mode_disabled
-        ThreadMemoryMode.Read -> R.string.memory_mode_read
-        ThreadMemoryMode.ReadWrite -> R.string.memory_mode_read_write
     },
 )
 
