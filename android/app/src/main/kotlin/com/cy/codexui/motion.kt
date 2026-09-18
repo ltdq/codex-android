@@ -22,41 +22,61 @@ import androidx.compose.ui.unit.sp
  * are supposed to move together end up 20ms apart, which reads as one of them lagging.
  */
 object Motion {
+    /**
+     * Client "reduce motion" preference, set from [com.cy.codexui.theme.Appearance].
+     *
+     * A global rather than a parameter because every call site reads a spec from this object during
+     * composition: when the preference flips, the theme recomposes the tree and each new spec is
+     * built without motion. `snap` is a completed animation, not a short one, so nothing lags by a
+     * frame when the toggle is on.
+     */
+    var reduced: Boolean = false
+
+    private fun <T> motion(spec: androidx.compose.animation.core.FiniteAnimationSpec<T>) =
+        if (reduced) androidx.compose.animation.core.snap() else spec
+
     /** Panels and drawers: critically damped, medium-low stiffness, no overshoot. */
-    val Panel = spring<Float>(dampingRatio = 1f, stiffness = Spring.StiffnessMediumLow)
+    val Panel: androidx.compose.animation.core.FiniteAnimationSpec<Float>
+        get() = motion(spring<Float>(dampingRatio = 1f, stiffness = Spring.StiffnessMediumLow))
 
     /** Same spring for `Dp` targets (widths, heights, corner radii). */
-    val PanelDp = spring<Dp>(
-        dampingRatio = 1f,
-        stiffness = Spring.StiffnessMediumLow,
-    )
+    val PanelDp: androidx.compose.animation.core.FiniteAnimationSpec<Dp>
+        get() = motion(spring<Dp>(dampingRatio = 1f, stiffness = Spring.StiffnessMediumLow))
 
     /**
      * A panel that is being dragged or snapped into place: a touch of damping so the settle keeps
      * the momentum of the gesture instead of stopping dead.
      */
-    val PanelSettle = spring<Float>(dampingRatio = 0.9f, stiffness = Spring.StiffnessMedium)
+    val PanelSettle: androidx.compose.animation.core.FiniteAnimationSpec<Float>
+        get() = motion(spring<Float>(dampingRatio = 0.9f, stiffness = Spring.StiffnessMedium))
 
     /** Selection and press feedback: fast, no bounce. */
-    val Press = tween<Float>(durationMillis = PressMs)
+    val Press: androidx.compose.animation.core.FiniteAnimationSpec<Float>
+        get() = motion(tween<Float>(durationMillis = PressMs))
 
     /** Same curve for a `Dp` target that moves with a press. */
-    val PressDp = tween<Dp>(durationMillis = PressMs)
+    val PressDp: androidx.compose.animation.core.FiniteAnimationSpec<Dp>
+        get() = motion(tween<Dp>(durationMillis = PressMs))
 
     /** Colour changes on chips, buttons and status pills. */
-    val Tint = tween<androidx.compose.ui.graphics.Color>(durationMillis = TintMs)
+    val Tint: androidx.compose.animation.core.FiniteAnimationSpec<androidx.compose.ui.graphics.Color>
+        get() = motion(tween<androidx.compose.ui.graphics.Color>(durationMillis = TintMs))
 
     /** Opacity changes that are not a colour: dimming an answered request, fading a scrim. */
-    val Fade = tween<Float>(durationMillis = TintMs)
+    val Fade: androidx.compose.animation.core.FiniteAnimationSpec<Float>
+        get() = motion(tween<Float>(durationMillis = TintMs))
 
     /** Chevrons and disclosure arrows. */
-    val Disclosure = tween<Float>(durationMillis = DisclosureMs)
+    val Disclosure: androidx.compose.animation.core.FiniteAnimationSpec<Float>
+        get() = motion(tween<Float>(durationMillis = DisclosureMs))
 
     /** List content that fades in behind a growing panel. */
-    val ListFadeIn = tween<Float>(durationMillis = ContentEnterMs, delayMillis = 140)
+    val ListFadeIn: androidx.compose.animation.core.FiniteAnimationSpec<Float>
+        get() = motion(tween<Float>(durationMillis = ContentEnterMs, delayMillis = 140))
 
     /** List content on the way out; no delay, the panel is already shrinking. */
-    val ListFadeOut = tween<Float>(durationMillis = ExitMs)
+    val ListFadeOut: androidx.compose.animation.core.FiniteAnimationSpec<Float>
+        get() = motion(tween<Float>(durationMillis = ExitMs))
 
     /** Anything entering the screen: a sheet, a card, a row that expands. */
     val EnterEasing: Easing = LinearOutSlowInEasing
@@ -65,10 +85,12 @@ object Motion {
     val ExitEasing: Easing = FastOutSlowInEasing
 
     /** A `tween` that enters, so no call site has to spell out the pair. */
-    val Enter = tween<Float>(durationMillis = EnterMs, easing = EnterEasing)
+    val Enter: androidx.compose.animation.core.FiniteAnimationSpec<Float>
+        get() = motion(tween<Float>(durationMillis = EnterMs, easing = EnterEasing))
 
     /** A `tween` that leaves. */
-    val Exit = tween<Float>(durationMillis = ExitMs, easing = ExitEasing)
+    val Exit: androidx.compose.animation.core.FiniteAnimationSpec<Float>
+        get() = motion(tween<Float>(durationMillis = ExitMs, easing = ExitEasing))
 
     /** Streaming text: the cadence the transcript commits buffered deltas at. */
     const val StreamCommitIntervalMs = 33L

@@ -210,6 +210,7 @@ class JsonRpcAppServerClient(
         "searchTerm" to params.searchTerm, "sectionId" to params.sectionId,
         "sortDirection" to params.sortDirection?.wire, "sortKey" to params.sortKey?.wire,
         "sourceKinds" to params.sourceKinds, "useStateDbOnly" to params.useStateDbOnly,
+        "parentThreadId" to params.parentThreadId, "ancestorThreadId" to params.ancestorThreadId,
     )
 
     private suspend fun threadPages(params: ThreadListParams, archived: Boolean): List<Thread> {
@@ -477,6 +478,10 @@ class JsonRpcAppServerClient(
         AccountUsage(o.array("dailyUsageBuckets").map { it.objectValue().let { bucket -> UsageBucket(bucket.required("startDate"), bucket.int("tokens") ?: 0) } },
             o.objectOrNull("summary")?.int("lifetimeTokens") ?: 0)
     }
+    override suspend fun readThreadUsage(threadId: String) = result {
+        val o = rpc("account/usage/read", obj("threadId" to threadId))
+        WireCodec.threadUsage(o.objectOrNull("threadUsage") ?: error("account/usage/read answered without threadUsage"))
+    }
     override suspend fun readWorkspaceMessages() = result { rpc("account/workspaceMessages/read", null).array("messages").map { value -> value.objectValue().let {
         WorkspaceMessage(it.required("messageId"), WorkspaceMessageType.fromWire(it.text("messageType")), it.required("messageBody"),
             it.long("createdAt")?.times(1000), it.long("archivedAt")?.times(1000))
@@ -702,8 +707,16 @@ class JsonRpcAppServerClient(
     override suspend fun listHooks() = result {
         // `hooks/list` has no cursor: it answers with one entry per requested working directory.
         rpc("hooks/list", obj("cwds" to defaultWorkspace?.let(::listOf))).array("data")
-            .flatMap { entry -> entry.objectValue().array("hooks") }
-            .map { WireCodec.hookMetadata(it.objectValue()) }
+            .map { entry ->
+                val o = entry.objectValue()
+                HooksListEntry(
+                    cwd = o.text("cwd").orEmpty(),
+                    hooks = o.array("hooks").map { WireCodec.hookMetadata(it.objectValue()) },
+                    warnings = o.strings("warnings"),
+                    errors = o.array("errors").map { value -> value.objectValue().let {
+                        HookErrorInfo(it.text("path").orEmpty(), it.text("message").orEmpty()) } },
+                )
+            }
     }
     override suspend fun uploadFeedback(params: FeedbackUploadParams) = result {
         val o = rpc("feedback/upload", obj("classification" to params.classification, "reason" to params.reason, "threadId" to params.threadId,
@@ -787,8 +800,13 @@ class JsonRpcAppServerClient(
     }
     override suspend fun readPlugin(name: String, marketplace: String?) = result { WireCatalogCodec.pluginDetail(rpc("plugin/read", pluginSelector(name, marketplace)).objectOrNull("plugin")!!) }
     override suspend fun installPlugin(name: String, marketplace: String?) = result {
-        rpc("plugin/install", pluginSelector(name, marketplace))
-        readPlugin(name, marketplace).getOrThrow().toEntry()
+        val o = rpc("plugin/install", pluginSelector(name, marketplace))
+        PluginInstallResponse(
+            authPolicy = PluginAuthPolicy.fromWire(o.text("authPolicy")),
+            appsNeedingAuth = o.array("appsNeedingAuth").map {
+                WireCatalogCodec.appSummary(it.objectValue())
+            },
+        )
     }
     override suspend fun uninstallPlugin(pluginId: String) = call("plugin/uninstall", obj("pluginId" to pluginId))
     override suspend fun readPluginSkill(marketplace: String, pluginId: String, skillName: String) = result {

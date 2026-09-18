@@ -6,6 +6,8 @@
     <string name="chat_empty_slash_hint">输入 / 查看斜杠命令</string>
     <string name="chat_loading_history">正在载入会话历史…</string>
     <string name="chat_transcript_assistant_label">Codex</string>
+    <string name="transcript_load_earlier">加载更早的消息</string>
+    <string name="transcript_load_earlier_loading">正在加载更早的消息…</string>
     <string name="chat_composer_hint_open">向 Codex 发送消息…</string>
     <string name="chat_composer_hint_empty">选择一个会话开始</string>
 
@@ -47,6 +49,34 @@
     <string name="status_card_usage_tokens">输入 %1$s · 输出 %2$s · 缓存 %3$s</string>
     <string name="status_card_usage_of_total">/ %1$s</string>
     <string name="status_card_compacted_note">已压缩为摘要，历史条目已折叠</string>
+    <string name="status_card_service_tier_label">服务等级</string>
+    <string name="status_card_service_tier_default">默认</string>
+    <string name="status_card_collaboration_label">协作模式</string>
+    <string name="status_card_model_provider_label">模型提供方</string>
+    <string name="status_card_access_label">访问权限</string>
+    <string name="status_card_access_network">网络</string>
+    <string name="status_card_agents_md_label">AGENTS.md</string>
+    <string name="status_card_forked_from_label">分叉自</string>
+    <string name="status_card_none">无</string>
+    <string name="status_card_usage_tokens_more">推理 %1$s · 缓存写入 %2$s</string>
+    <string name="status_card_rate_title">速率限制</string>
+    <string name="status_card_rate_primary">主要限额</string>
+    <string name="status_card_rate_secondary">次要限额</string>
+    <string name="status_card_rate_resets">%1$s 重置</string>
+    <string name="status_card_credits_label">Credits</string>
+    <string name="status_card_credits_unlimited">无限</string>
+    <string name="status_card_credits_none">无</string>
+    <string name="status_card_credits_remaining">剩余 %1$s</string>
+    <string name="status_card_reset_credits_label">重置额度</string>
+    <string name="status_card_spend_control">消费控制</string>
+    <string name="status_card_spend_control_value">%1$s / %2$s · 剩余 %3$d%%</string>
+    <string name="status_card_spend_control_reached">已达上限</string>
+    <string name="status_card_rate_updated">%1$s 前更新</string>
+    <string name="status_card_rate_stale">%1$s 前更新 · 可能已过期</string>
+    <string name="status_card_add_credits">邮件提醒我补充 credits</string>
+    <string name="status_card_add_credits_sent">请求已发送。</string>
+    <string name="status_card_add_credits_cooldown">近期已发送过请求。</string>
+    <string name="status_card_add_credits_failed">无法发送请求。</string>
     <string name="status_card_compact_action">压缩</string>
     <string name="status_card_compacted_action">已压缩</string>
     <string name="status_card_model_title">模型与思考强度</string>
@@ -99,4 +129,18 @@
     <string name="plugins_detail_apps">App</string>
     <string name="plugins_detail_skill_loading">读取中…</string>
     <string name="plugins_detail_skill_failed">插件没有返回这个 Skill。</string>
+
+    <!-- RateLimitNudgeSheet.kt -->
+    <string name="rate_limit_nudge_title">接近费率上限</string>
+    <string name="rate_limit_nudge_subtitle">切换到 %1$s 以降低额度消耗？</string>
+    <string name="rate_limit_nudge_body">当前模型接近用量上限。低成本模型在大多数回合里表现相同。</string>
+    <string name="rate_limit_nudge_switch">切换到 %1$s</string>
+    <string name="rate_limit_nudge_keep">继续使用当前模型</string>
+    <string name="rate_limit_nudge_never">继续使用当前模型（不再提示）</string>
+
+    <!-- TrustProjectSheet.kt -->
+    <string name="trust_project_title">信任这个目录？</string>
+    <string name="trust_project_body">Codex 可以读取、修改并在这里运行文件。只有确认这是你自己的项目目录时才信任它。</string>
+    <string name="trust_project_confirm">信任并继续</string>
+    <string name="trust_project_cancel">取消</string>
 </resources>

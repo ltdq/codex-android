@@ -15,6 +15,7 @@
     <string name="runtime_new_thread">新建会话</string>
     <string name="runtime_sign_in">登录</string>
     <string name="runtime_login_chatgpt">使用 ChatGPT 登录</string>
+    <string name="runtime_login_device_code">使用设备码登录</string>
     <string name="runtime_api_key">OpenAI API 密钥</string>
     <string name="runtime_login_api_key">使用 API 密钥登录</string>
     <string name="runtime_login_waiting">等待完成登录</string>

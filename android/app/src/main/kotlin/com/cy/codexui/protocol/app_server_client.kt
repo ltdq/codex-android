@@ -44,6 +44,7 @@ import com.cy.codexui.protocol.protocol.v2.HookCompletedNotification
 import com.cy.codexui.protocol.protocol.v2.FeedbackUploadParams
 import com.cy.codexui.protocol.protocol.v2.FeedbackUploadResponse
 import com.cy.codexui.protocol.protocol.v2.HookMetadata
+import com.cy.codexui.protocol.protocol.v2.HooksListEntry
 import com.cy.codexui.protocol.protocol.v2.HookStartedNotification
 import com.cy.codexui.protocol.protocol.v2.ItemTextDelta
 import com.cy.codexui.protocol.protocol.v2.LoginAccountParams
@@ -66,6 +67,7 @@ import com.cy.codexui.protocol.protocol.v2.ModelVerificationNotification
 import com.cy.codexui.protocol.protocol.v2.PermissionProfileEntry
 import com.cy.codexui.protocol.protocol.v2.PluginDetail
 import com.cy.codexui.protocol.protocol.v2.PluginEntry
+import com.cy.codexui.protocol.protocol.v2.PluginInstallResponse
 import com.cy.codexui.protocol.protocol.v2.PluginInstalledParams
 import com.cy.codexui.protocol.protocol.v2.PluginInstalledResponse
 import com.cy.codexui.protocol.protocol.v2.PluginListParams
@@ -112,6 +114,7 @@ import com.cy.codexui.protocol.protocol.v2.ThreadSettingsUpdated
 import com.cy.codexui.protocol.protocol.v2.ThreadStatus
 import com.cy.codexui.protocol.protocol.v2.ThreadStatusChanged
 import com.cy.codexui.protocol.protocol.v2.ThreadTokenUsageUpdated
+import com.cy.codexui.protocol.protocol.v2.ThreadUsage
 import com.cy.codexui.protocol.protocol.v2.TimelineEntry
 import com.cy.codexui.protocol.protocol.v2.TurnDiffUpdated
 import com.cy.codexui.protocol.protocol.v2.TurnModerationMetadataNotification
@@ -750,6 +753,9 @@ interface AppServerClient {
     suspend fun logout(): Result<Unit> = unsupported("logout")
     suspend fun readRateLimits(): Result<AccountRateLimits> = unsupported("readRateLimits")
     suspend fun readUsage(): Result<AccountUsage> = unsupported("readUsage")
+
+    /** Estimated credits/USD for one thread; `account/usage/read` with a `threadId`. */
+    suspend fun readThreadUsage(threadId: String): Result<ThreadUsage> = unsupported("readThreadUsage")
     suspend fun readWorkspaceMessages(): Result<List<WorkspaceMessage>> = unsupported("readWorkspaceMessages")
     suspend fun consumeRateLimitResetCredit(creditId: String? = null): Result<ConsumeRateLimitResetCreditResponse> = unsupported("consumeRateLimitResetCredit")
     suspend fun sendAddCreditsNudgeEmail(
@@ -858,7 +864,7 @@ interface AppServerClient {
     ): Result<PluginInstalledResponse> = unsupported("listInstalledPlugins")
 
     suspend fun readPlugin(name: String, marketplace: String? = null): Result<PluginDetail> = unsupported("readPlugin")
-    suspend fun installPlugin(name: String, marketplace: String? = null): Result<PluginEntry?> = unsupported("installPlugin")
+    suspend fun installPlugin(name: String, marketplace: String? = null): Result<PluginInstallResponse> = unsupported("installPlugin")
     suspend fun uninstallPlugin(pluginId: String): Result<Unit> = unsupported("uninstallPlugin")
     suspend fun readPluginSkill(marketplace: String, pluginId: String, skillName: String): Result<String?> = unsupported("readPluginSkill")
     suspend fun reconcilePlugins(): Result<List<PluginEntry>> = unsupported("reconcilePlugins")
@@ -985,7 +991,7 @@ interface AppServerClient {
     suspend fun startFuzzySearchSession(sessionId: String, roots: List<String> = emptyList()): Result<Unit> = unsupported("startFuzzySearchSession")
     suspend fun updateFuzzySearchSession(sessionId: String, query: String): Result<Unit> = unsupported("updateFuzzySearchSession")
     suspend fun stopFuzzySearchSession(sessionId: String): Result<Unit> = unsupported("stopFuzzySearchSession")
-    suspend fun listHooks(): Result<List<HookMetadata>> = unsupported("listHooks")
+    suspend fun listHooks(): Result<List<HooksListEntry>> = unsupported("listHooks")
     suspend fun uploadFeedback(params: FeedbackUploadParams): Result<FeedbackUploadResponse> = unsupported("uploadFeedback")
     suspend fun readServerDiagnostics(): Result<ServerDiagnosticsResponse> = unsupported("readServerDiagnostics")
 

@@ -20,7 +20,11 @@ import androidx.compose.ui.unit.Dp
 import com.cy.codexui.R
 import com.cy.codexui.protocol.protocol.v2.AgentRunStatus
 import com.cy.codexui.protocol.protocol.v2.SubAgentActivityKind
+import com.cy.codexui.protocol.protocol.v2.Thread
+import com.cy.codexui.protocol.protocol.v2.ThreadTokenUsage
 import com.cy.codexui.status.formatTokens
+import com.cy.codexui.label
+import com.cy.codexui.tone
 import com.cy.codexui.ModalSheet
 import com.cy.codexui.ThreadStatusTone
 import com.cy.codexui.UiConsts
@@ -52,10 +56,7 @@ fun AgentsOverview(
     totalTokens: Long = 0L,
 ) {
     val colors = MiuixTheme.colorScheme
-    val shown = remember(roster, totalTokens) {
-        roster.map { agent -> agent to tokensOf(agent, totalTokens) }
-    }
-    val busiest = shown.maxOfOrNull { it.second }?.coerceAtLeast(1) ?: 1
+    val busiest = remember(roster) { roster.maxOfOrNull { it.tokens }?.coerceAtLeast(1) ?: 1 }
     val close = LocalDismissState.current
     ModalSheet(
         show = show,
@@ -83,7 +84,7 @@ fun AgentsOverview(
                 color = colors.onSurfaceVariantSummary,
             )
         } else {
-            shown.forEach { (agent, tokens) ->
+            roster.forEach { agent ->
                 AgentRosterRow(
                     entry = agent,
                     selected = agent.threadId == activeThreadId,
@@ -91,17 +92,13 @@ fun AgentsOverview(
                         onSelect(agent.threadId)
                         close?.invoke()
                     },
-                    tokens = tokens,
+                    tokens = agent.tokens,
                     busiestTokens = busiest,
                 )
             }
         }
     }
 }
-
-/** The main agent's usage *is* the thread total; subagent usage is what the stream reported. */
-private fun tokensOf(agent: AgentRosterEntry, totalTokens: Long): Int =
-    if (agent.role == AgentRole.Main && totalTokens > 0) totalTokens.coerceAtMost(Int.MAX_VALUE.toLong()).toInt() else agent.tokens
 
 /** Label for a server agent state, in the wording the TUI dashboard uses. */
 @Composable
@@ -129,12 +126,14 @@ internal fun SubAgentActivityKind.label(): String = when (this) {
 /**
  * What the row should say. The collab `agentsStates` map is the server's own last word on an
  * agent, so it wins over the coarser activity event; activity only fills the gap before the first
- * collab update arrives.
+ * collab update arrives. A thread status from `thread/list` is preferred over activity too: it is
+ * the thread's own liveness, not a one-off progress event.
  */
 @Composable
 @ReadOnlyComposable
 internal fun AgentRosterEntry.statusLabel(): String = when {
     status != null -> status.label()
+    threadStatus != null -> threadStatus.label()
     activity != null -> activity.label()
     role == AgentRole.Main -> stringResource(R.string.agents_overview_status_main_thread)
     else -> stringResource(R.string.agents_overview_status_idle)
@@ -149,10 +148,28 @@ internal fun AgentRosterEntry.tone(): ThreadStatusTone = when {
     status == AgentRunStatus.PendingInit -> ThreadStatusTone.Waiting
     status == AgentRunStatus.Interrupted -> ThreadStatusTone.Waiting
     status == AgentRunStatus.Shutdown -> ThreadStatusTone.Idle
+    threadStatus != null -> threadStatus.tone()
     activity == SubAgentActivityKind.Completed -> ThreadStatusTone.Done
     activity != null -> ThreadStatusTone.Running
     else -> ThreadStatusTone.Idle
 }
+
+/**
+ * Fold server-side per-thread facts into one roster row.
+ *
+ * The transcript fold only sees collab items; `thread/list` (scoped by `ancestorThreadId`) and
+ * `thread/tokenUsage/updated` are the only sources for an agent's liveness and lifetime usage, so
+ * every overview surface applies them here rather than inventing numbers in the fold itself.
+ */
+internal fun AgentRosterEntry.withThreadMetadata(
+    thread: Thread?,
+    usage: ThreadTokenUsage?,
+): AgentRosterEntry = copy(
+    threadStatus = thread?.status ?: threadStatus,
+    tokens = (usage?.total?.totalTokens ?: 0L)
+        .coerceIn(0L, Int.MAX_VALUE.toLong())
+        .toInt(),
+)
 
 /** Small round agent/environment status dot shared by the overview and the picker. */
 @Composable

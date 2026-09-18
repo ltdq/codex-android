@@ -17,6 +17,7 @@
     <string name="runtime_new_thread">New conversation</string>
     <string name="runtime_sign_in">Sign in</string>
     <string name="runtime_login_chatgpt">Sign in with ChatGPT</string>
+    <string name="runtime_login_device_code">Sign in with a device code</string>
     <string name="runtime_api_key">OpenAI API key</string>
     <string name="runtime_login_api_key">Sign in with API key</string>
     <string name="runtime_login_waiting">Waiting for sign-in to complete</string>

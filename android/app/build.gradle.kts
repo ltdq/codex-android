@@ -42,7 +42,9 @@ android {
     buildFeatures {
         compose = true
         aidl = false
-        buildConfig = false
+        // The settings page and the initialize handshake report the packaged version, so the app
+        // has to know it at runtime.
+        buildConfig = true
         shaders = false
     }
 

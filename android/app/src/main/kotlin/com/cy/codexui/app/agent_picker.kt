@@ -8,22 +8,26 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.ReadOnlyComposable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshots.Snapshot
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.DpSize
 import com.cy.codexui.R
+import com.cy.codexui.SessionState
 import com.cy.codexui.protocol.protocol.item.CollabAgentToolCallItem
 import com.cy.codexui.protocol.protocol.item.SubAgentActivityItem
 import com.cy.codexui.protocol.protocol.item.ThreadItem
 import com.cy.codexui.protocol.protocol.v2.AgentRunStatus
 import com.cy.codexui.protocol.protocol.v2.ReasoningEffort
 import com.cy.codexui.protocol.protocol.v2.SubAgentActivityKind
+import com.cy.codexui.protocol.protocol.v2.ThreadStatus
 import com.cy.codexui.ModalSheet
 import com.cy.codexui.UiConsts
 import com.cy.codexui.UiType
@@ -74,6 +78,14 @@ data class AgentRosterEntry(
     val effort: ReasoningEffort?,
     val tokens: Int = 0,
     val itemId: String?,
+    /**
+     * Server-reported thread status from `thread/list` / `thread/status/changed`.
+     *
+     * Separate from [status]: that one is the collab tool's view of the agent's run, this one is the
+     * thread's own liveness. A subagent that finished its collab run can still have a live thread,
+     * and the dashboard prefers the thread's answer when the two disagree.
+     */
+    val threadStatus: ThreadStatus? = null,
 )
 
 /**
@@ -264,5 +276,49 @@ fun AgentPickerSheet(
     }
 }
 
-private fun AgentRosterEntry.matches(needle: String): Boolean =
+internal fun AgentRosterEntry.matches(needle: String): Boolean =
     name.contains(needle, true) || task?.contains(needle, true) == true || threadId.contains(needle, true)
+
+/**
+ * The agent roster folded out of the transcript, at most once per [SessionState.itemsRevision].
+ *
+ * The point of the dedicated type is what is *not* observed: the fold reads the revision and
+ * nothing else, so an item write only schedules a recalculation, and the screen that reads the
+ * roster is invalidated only when the folded value actually differs. During a turn the transcript
+ * is written on every delta and the roster normally does not change at all, so none of those
+ * writes recompose the caller.
+ */
+@Composable
+internal fun rememberAgentRoster(
+    session: SessionState,
+    mainAgentLabel: String,
+    subAgentNameFormat: String,
+): List<AgentRosterEntry> {
+    val state = remember(session, mainAgentLabel, subAgentNameFormat) {
+        AgentRosterMemo(session, mainAgentLabel, subAgentNameFormat)
+    }
+    return state.roster
+}
+
+private class AgentRosterMemo(
+    private val session: SessionState,
+    private val mainAgentLabel: String,
+    private val subAgentNameFormat: String,
+) {
+    private var revision = -1
+    private var cached: List<AgentRosterEntry> = emptyList()
+    private val state = derivedStateOf {
+        val current = session.itemsRevision
+        if (current != revision) {
+            revision = current
+            // The list itself is read without a read observer: the revision above is the memo's
+            // only dependency, and the fold runs once per revision rather than once per reader.
+            cached = Snapshot.withoutReadObservation {
+                deriveAgentRoster(session.items, session.threadId, mainAgentLabel, subAgentNameFormat)
+            }
+        }
+        cached
+    }
+
+    val roster: List<AgentRosterEntry> get() = state.value
+}

@@ -51,6 +51,8 @@
     <string name="mcp_cell_duration">Took %1$s</string>
     <string name="mcp_cell_waiting_for_result">Waiting for result…</string>
     <string name="mcp_cell_tool_call_failed">Tool call failed</string>
+    <string name="tool_cell_returned_image">Returned image</string>
+    <string name="tool_cell_audio_content">&lt;audio content&gt;</string>
     <string name="mcp_cell_no_output">No output</string>
     <string name="mcp_cell_status_calling">Calling</string>
     <string name="mcp_cell_status_called">Called</string>
@@ -119,4 +121,16 @@
 
     <!-- TranscriptCell.kt -->
     <string name="transcript_cell_assistant_name">Codex</string>
+
+    <!-- Clipboard.kt / CopySheet.kt -->
+    <string name="clipboard_copied">Copied %1$s</string>
+    <string name="clipboard_copy_code">Copy code</string>
+    <string name="clipboard_copy_message">Copy message</string>
+    <string name="clipboard_copy_status">Copy status</string>
+    <string name="copy_sheet_title">Copy</string>
+    <string name="copy_sheet_whole_response">Whole response</string>
+    <string name="copy_sheet_code_block">Code block %1$d</string>
+    <string name="copy_sheet_code_block_language">Code block %1$d (%2$s)</string>
+    <string name="copy_sheet_status">Session status</string>
+    <string name="copy_sheet_nothing">Nothing to copy yet</string>
 </resources>

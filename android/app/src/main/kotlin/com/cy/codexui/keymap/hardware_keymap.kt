@@ -65,9 +65,11 @@ enum class KeyContext { Global, Chat, Composer, Popup }
 /**
  * What a chord means, wire-agnostic: the host decides whether it can act on it.
  *
- * [HistoryOlder] and [HistoryNewer] are declared for the TUI's draft history (`editor.move_up` and
- * `editor.move_down` in keymap.rs) but are deliberately unbound: a focused multi-line text field
- * owns Up/Down for caret movement, and this change will not trade that for a draft history.
+ * [HistoryOlder] and [HistoryNewer] are the reverse-search pair (`history_search_previous` /
+ * `history_search_next` in keymap.rs): Ctrl+R begins or walks toward older drafts, Ctrl+S walks
+ * back. Up and Down stay unbound because a focused multi-line field owns them for caret movement.
+ * [CopyLastResponse] and [OpenExternalEditor] are host hooks: the composer cannot reach the
+ * clipboard or start an activity, so the host passes a callback and the chord is inert without one.
  */
 enum class KeyAction {
     Submit,
@@ -82,6 +84,8 @@ enum class KeyAction {
     ClearFocus,
     HistoryOlder,
     HistoryNewer,
+    CopyLastResponse,
+    OpenExternalEditor,
 }
 
 object CodexKeymap {
@@ -161,6 +165,13 @@ object CodexKeymap {
         KeyChord(CodexKeys.char('?')) to KeyAction.ShowShortcuts,
         KeyChord(CodexKeys.char('?'), shift = true) to KeyAction.ShowShortcuts,
         KeyChord(CodexKeys.ESCAPE) to KeyAction.ClearFocus,
+        // `history_search_previous` / `history_search_next`.
+        KeyChord(CodexKeys.char('r'), ctrl = true) to KeyAction.HistoryOlder,
+        KeyChord(CodexKeys.char('s'), ctrl = true) to KeyAction.HistoryNewer,
+        // `composer.copy_last_response` and `composer.open_external_editor`; the clipboard and the
+        // editor activity belong to the host, so these actions are inert without a callback.
+        KeyChord(CodexKeys.char('o'), ctrl = true) to KeyAction.CopyLastResponse,
+        KeyChord(CodexKeys.char('g'), ctrl = true) to KeyAction.OpenExternalEditor,
     )
 
     /**

@@ -12,9 +12,26 @@ class SlashCommandsTest {
     @Test
     fun `clicking a suggestion matches a recognized command`() {
         assertEquals(
-            SlashCommands.All.map { it.name }.toSet(),
+            SlashCommands.Known,
             CodexApp.ComposerCommands,
         )
+    }
+
+    @Test
+    fun `aliases resolve to their command and stay out of the bare list`() {
+        assertEquals("stop", SlashCommands.find("clean")?.name)
+        assertEquals("cd", SlashCommands.find("cwd")?.name)
+        assertEquals("cd", SlashCommands.find("pwd")?.name)
+        assertEquals(listOf("stop"), SlashCommands.filter("/clean").map { it.name })
+        assertEquals(
+            SlashCommands.All,
+            SlashCommands.filter("/"),
+        )
+    }
+
+    @Test
+    fun `an alias prefix does not offer the hidden alias`() {
+        assertEquals(listOf("clear"), SlashCommands.filter("/cle").map { it.name })
     }
 
     @Test

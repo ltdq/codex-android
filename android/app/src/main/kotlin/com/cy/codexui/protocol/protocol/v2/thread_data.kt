@@ -170,6 +170,10 @@ data class ThreadListParams(
     val sortKey: ThreadSortKey? = null,
     val sourceKinds: List<String>? = null,
     val useStateDbOnly: Boolean? = null,
+    /** Experimental `thread/list.parentThreadId`: direct children of one thread. */
+    val parentThreadId: String? = null,
+    /** Experimental `thread/list.ancestorThreadId`: spawned descendants at any depth. */
+    val ancestorThreadId: String? = null,
 )
 
 enum class SortDirection(val wire: String) {
@@ -387,6 +391,8 @@ data class PluginEntry(
     val installed: Boolean = false,
     val version: String = "",
     val marketplace: String = "",
+    /** Whether the plugin is currently active in the config; toggled via `config/value/write`. */
+    val enabled: Boolean = true,
     /** Backend remote plugin identifier, when the plugin service published one. */
     val remotePluginId: String? = null,
     /** Remote sharing context, when this account has shared the plugin. */
@@ -493,6 +499,8 @@ data class RateLimitSnapshot(
     val rateLimitReachedType: String? = null,
     val spendControlReached: Boolean? = null,
     val normalModelSlug: String? = null,
+    /** Per-account spend control: `used` against `limit`, as the backend reports it. */
+    val individualLimit: SpendControlLimitSnapshot? = null,
 ) {
     /**
      * Fold a sparse `account/rateLimits/updated` into this snapshot.
@@ -510,8 +518,47 @@ data class RateLimitSnapshot(
         rateLimitReachedType = update.rateLimitReachedType ?: rateLimitReachedType,
         spendControlReached = update.spendControlReached ?: spendControlReached,
         normalModelSlug = update.normalModelSlug ?: normalModelSlug,
+        individualLimit = update.individualLimit ?: individualLimit,
     )
 }
+
+/**
+ * `RateLimitSnapshot.individualLimit`. Mirrors `SpendControlLimitSnapshot`.
+ *
+ * Every field is required upstream; the backend reports spend-control only for accounts that have
+ * one, so the whole object is optional on the snapshot.
+ */
+data class SpendControlLimitSnapshot(
+    val limit: String = "",
+    val remainingPercent: Int = 0,
+    val resetsAt: Long = 0L,
+    val used: String = "",
+)
+
+/**
+ * `account/usage/read` answer when a `threadId` is passed. Mirrors `v2::ThreadUsage`.
+ *
+ * Credits are micros, so the formatter divides once rather than carrying a float through the state.
+ */
+data class ThreadUsage(
+    val threadId: String,
+    val estimatedUsageCreditsMicros: Long = 0L,
+    val estimatedUsageUsdMicros: Long? = null,
+    val groups: List<ThreadUsageGroup> = emptyList(),
+)
+
+/** One model/effort bucket inside [ThreadUsage]. Mirrors `ThreadUsageBreakdownGroup`. */
+data class ThreadUsageGroup(
+    val model: String? = null,
+    val reasoningEffort: String? = null,
+    val speed: String? = null,
+    val totalTokens: Long? = null,
+    val inputTokens: Long? = null,
+    val cachedInputTokens: Long? = null,
+    val netNewInputTokens: Long? = null,
+    val outputTokens: Long? = null,
+    val estimatedUsageCreditsMicros: Long = 0L,
+)
 
 /** One window inside a bucket. Mirrors `RateLimitWindow`. */
 data class RateLimitWindow(

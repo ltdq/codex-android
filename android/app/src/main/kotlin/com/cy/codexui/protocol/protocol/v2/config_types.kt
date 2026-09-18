@@ -119,6 +119,11 @@ data class ThreadSessionState(
     val parentThreadId: String? = null,
     /** Whether the server accepts direct turn input; `null` when the capability is unavailable. */
     val canAcceptDirectInput: Boolean? = null,
+    /**
+     * Cursor for `thread/items/list` with `sortDirection: desc`, when the resume response offered
+     * one. Its first page includes the item the cursor names.
+     */
+    val itemsBackwardsCursor: String? = null,
 ) {
     val displayName: String get() = threadName ?: cwd.substringAfterLast('/').ifEmpty { threadId }
 

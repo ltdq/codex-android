@@ -201,10 +201,26 @@ private fun AccountSignIn(catalog: CatalogState, onEvent: (AppEvent) -> Unit) {
                 )
             }
         } else {
+            // The browser flow's callback is served by the in-process app-server on
+            // `http://localhost:<port>`, which the device's own browser can reach, so Android needs
+            // no custom scheme or `onNewIntent` handoff. The same parameters the TUI sends.
             CodexButton(
                 stringResource(R.string.runtime_login_chatgpt),
+                {
+                    onEvent(
+                        AppEvent.Login(
+                            LoginAccountParams.Chatgpt(useHostedLoginSuccessPage = false),
+                        ),
+                    )
+                },
+                Modifier.fillMaxWidth(),
+                enabled = !catalog.loginLoading,
+            )
+            CodexButton(
+                stringResource(R.string.runtime_login_device_code),
                 { onEvent(AppEvent.Login(LoginAccountParams.ChatgptDeviceCode)) },
                 Modifier.fillMaxWidth(),
+                role = ButtonRole.Secondary,
                 enabled = !catalog.loginLoading,
             )
             CodexTextField(

@@ -22,14 +22,18 @@ import com.cy.codexui.protocol.protocol.v2.DiagnosticSeverity
 import com.cy.codexui.protocol.protocol.v2.ExperimentalFeatureEntry
 import com.cy.codexui.protocol.protocol.v2.ExternalAgentConfigImportHistory
 import com.cy.codexui.protocol.protocol.v2.ExternalAgentConfigMigrationItem
+import com.cy.codexui.protocol.protocol.v2.FuzzyFileSearchResult
+import com.cy.codexui.protocol.protocol.v2.HookErrorInfo
 import com.cy.codexui.protocol.protocol.v2.HookMetadata
 import com.cy.codexui.protocol.protocol.v2.LoginAccountResponse
 import com.cy.codexui.protocol.protocol.v2.MarketplaceEntry
 import com.cy.codexui.protocol.protocol.v2.McpServerStatusEntry
 import com.cy.codexui.protocol.protocol.v2.MemoryStatusResponse
 import com.cy.codexui.protocol.protocol.v2.ModelPreset
+import com.cy.codexui.protocol.protocol.v2.AppSummary
 import com.cy.codexui.protocol.protocol.v2.PermissionProfileEntry
 import com.cy.codexui.protocol.protocol.v2.PlanStep
+import com.cy.codexui.protocol.protocol.v2.PluginAuthPolicy
 import com.cy.codexui.protocol.protocol.v2.PluginEntry
 import com.cy.codexui.protocol.protocol.v2.PluginShareEntry
 import com.cy.codexui.protocol.protocol.v2.ProjectEntry
@@ -336,6 +340,19 @@ class SessionState {
         }
     }
 
+    /**
+     * Put older items in front of the transcript, as a `thread/items/list` page does.
+     *
+     * Items already present are dropped: a backwards page can overlap the snapshot `thread/read`
+     * returned, and the copy already here is the one the live stream has been reconciled against.
+     */
+    fun prepend(older: List<ThreadItem>) {
+        val fresh = older.filter { candidate -> items.none { it.id == candidate.id } }
+        if (fresh.isEmpty()) return
+        items.addAll(0, fresh)
+        itemsRevision++
+    }
+
     fun item(id: String): ThreadItem? = items.firstOrNull { it.id == id }
 
     fun addDiagnostic(diagnostic: SessionDiagnostic) {
@@ -494,6 +511,13 @@ data class ImportProgress(val imported: Int, val total: Int, val label: String)
  * settings_popups,plugin_catalog}.rs`; the phone keeps them in one place because the surfaces are
  * separate screens rather than mutually exclusive overlays.
  */
+/** The post-install connector setup: which plugin, which apps, and when auth is requested. */
+data class PluginInstallAuthFlow(
+    val pluginName: String,
+    val apps: List<AppSummary>,
+    val authPolicy: PluginAuthPolicy,
+)
+
 class CatalogState {
     var models by mutableStateOf<List<ModelPreset>>(emptyList())
     var permissionProfiles by mutableStateOf<List<PermissionProfileEntry>>(emptyList())
@@ -506,8 +530,46 @@ class CatalogState {
     var plugins by mutableStateOf<List<PluginEntry>>(emptyList())
     var apps by mutableStateOf<List<AppInfo>>(emptyList())
     var hooks by mutableStateOf<List<HookMetadata>>(emptyList())
+
+    /** Parse warnings/errors from the last `hooks/list`; surfaces the ones [hooks] cannot show. */
+    var hookWarnings by mutableStateOf<List<String>>(emptyList())
+    var hookErrors by mutableStateOf<List<HookErrorInfo>>(emptyList())
+
+    /**
+     * Lifetime token usage per thread, straight from `thread/tokenUsage/updated`.
+     *
+     * Kept for every thread the server reports, not just the open one: the agents dashboard needs
+     * subagent usage while a different thread is streaming, and the usage event carries its thread
+     * id precisely so clients can do that.
+     */
+    var threadUsage by mutableStateOf<Map<String, ThreadTokenUsage>>(emptyMap())
+
+    /** Subagent threads of the open thread, from a `thread/list` scoped by `ancestorThreadId`. */
+    var agentThreads by mutableStateOf<List<Thread>>(emptyList())
+
+    /**
+     * The connector setup a `plugin/install` asked for, or null when none is pending.
+     *
+     * `plugin/install` answers with `appsNeedingAuth`; the install is complete, but the plugin
+     * cannot run until those apps are authorized, so the page walks the user through them.
+     */
+    var pluginInstallAuth by mutableStateOf<PluginInstallAuthFlow?>(null)
+
+    /** Files from the last `fuzzyFileSearch/sessionUpdated`, for the composer's `@` popup. */
+    var mentionFiles by mutableStateOf<List<FuzzyFileSearchResult>>(emptyList())
+
+    /** Whether a debounced session update is in flight; the popup may show a spinner for it. */
+    var mentionSearching by mutableStateOf(false)
     var account by mutableStateOf(AccountReadResponse(requiresOpenaiAuth = false))
     var rateLimits by mutableStateOf(AccountRateLimits())
+
+    /**
+     * When [rateLimits] was last refreshed, on the wall clock.
+     *
+     * Rate-limit windows come from the server with a reset time but no fetch stamp, so without this
+     * a card left open overnight shows yesterday's percentages as if they were current.
+     */
+    var rateLimitsUpdatedAtMs by mutableStateOf(0L)
     var usage by mutableStateOf(AccountUsage())
     var usageLoaded by mutableStateOf(false)
 

@@ -50,6 +50,18 @@ class KeymapTest {
     }
 
     @Test
+    fun `ctrl r and ctrl s drive the reverse history search`() {
+        assertEquals(KeyAction.HistoryOlder, CodexKeymap.resolve(KeyContext.Composer, char('r', ctrl = true)))
+        assertEquals(KeyAction.HistoryNewer, CodexKeymap.resolve(KeyContext.Composer, char('s', ctrl = true)))
+    }
+
+    @Test
+    fun `ctrl o and ctrl g reach the host copy and editor hooks`() {
+        assertEquals(KeyAction.CopyLastResponse, CodexKeymap.resolve(KeyContext.Composer, char('o', ctrl = true)))
+        assertEquals(KeyAction.OpenExternalEditor, CodexKeymap.resolve(KeyContext.Composer, char('g', ctrl = true)))
+    }
+
+    @Test
     fun `popup chords move accept and dismiss`() {
         assertEquals(KeyAction.PopupPrev, CodexKeymap.resolve(KeyContext.Popup, KeyChord(CodexKeys.UP)))
         assertEquals(KeyAction.PopupNext, CodexKeymap.resolve(KeyContext.Popup, KeyChord(CodexKeys.DOWN)))

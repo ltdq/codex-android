@@ -47,14 +47,18 @@ import com.cy.codexui.ChatWidget
 import com.cy.codexui.CodexScreen
 import com.cy.codexui.Surface
 import com.cy.codexui.ThreadListState
+import com.cy.codexui.app.AgentsScreen
 import com.cy.codexui.app.DiagnosticsScreen
+import com.cy.codexui.app.SUB_AGENT_SOURCE_KINDS
 import com.cy.codexui.app.EnvironmentDetailScreen
 import com.cy.codexui.app.deriveAgentRoster
 import com.cy.codexui.app.ProjectsScreen
+import com.cy.codexui.app.SessionStatusScreen
 import com.cy.codexui.app.SubAgentScreen
 import com.cy.codexui.app.SubAgentThreadScreen
 import com.cy.codexui.app.ThreadHistoryScreen
 import com.cy.codexui.app.UserVerificationScreen
+import com.cy.codexui.app.WorktreesScreen
 import com.cy.codexui.bottom_pane.AppsScreen
 import com.cy.codexui.bottom_pane.BackgroundTerminalsScreen
 import com.cy.codexui.bottom_pane.ExecCommandScreen
@@ -101,6 +105,7 @@ import com.cy.codexui.protocol.protocol.v2.FeedbackUploadParams
 import com.cy.codexui.protocol.protocol.v2.MergeStrategy
 import com.cy.codexui.protocol.protocol.v2.LoginAccountResponse
 import com.cy.codexui.protocol.protocol.v2.ThreadSessionState
+import com.cy.codexui.protocol.protocol.v2.TurnStatus
 import com.cy.codexui.protocol.protocol.v2.UserVerificationVerifyParams
 import com.cy.codexui.status.AccountScreen
 import com.cy.codexui.status.RemoteControlScreen
@@ -108,6 +113,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -191,7 +198,47 @@ class CodexApp(
     var creatingThread by mutableStateOf(false)
         private set
     private var observersStarted = false
+
+    /** The live `fuzzyFileSearch` session behind [mentionSuggestions], if one is open. */
+    private var mentionSessionId: String? = null
+    private var mentionSessionStart: Job? = null
+    private var mentionUpdateJob: Job? = null
+
+    /** Whether the rate-limit model prompt was already offered in this process. */
+    private var rateLimitNudgeShown = false
+
+    /** Input held while a post-rate-limit recovery read is in flight. */
+    private var recoverySubmission: List<com.cy.codexui.protocol.protocol.v2.UserInput>? = null
+
+    /** The in-flight recovery read; new input queues behind it instead of starting a turn. */
+    private var rateLimitRecoveryJob: Job? = null
+
     var goalMenuOpen by mutableStateOf(false)
+
+    /** Whether the `/copy` picker is on screen; it reads the last response and the status. */
+    var copyMenuOpen by mutableStateOf(false)
+
+    /** The live `@`-mention query while the token is in the draft, or `null` when it is gone. */
+    var mentionQuery by mutableStateOf<String?>(null)
+        private set
+
+    /** The rows the composer's `@` popup shows; rebuilt when the query or the search results move. */
+    var mentionSuggestions by mutableStateOf<List<MentionSuggestion>>(emptyList())
+        private set
+
+    /** The pending "switch model for lower usage" prompt, or null when none is waiting. */
+    var rateLimitNudge by mutableStateOf<RateLimitNudge?>(null)
+        private set
+
+    /**
+     * A folder waiting for a trust decision, with the action to resume when it is granted.
+     *
+     * Mirrors `tui/src/onboarding/trust_directory.rs`: a thread cannot start or resume in a folder
+     * that is not under a trusted project, and the folder is recorded by writing
+     * `projects."<path>".trust_level = "trusted"` through `config/batchWrite`.
+     */
+    var trustRequest by mutableStateOf<TrustRequest?>(null)
+        private set
 
     /**
      * The highest usage threshold already announced per rate-limit window.
@@ -242,20 +289,33 @@ class CodexApp(
             }
             is AppEvent.SubmitUserMessage -> {
                 if (!startupReady || creatingThread || widget.state.loading) return
+                // A turn that died on a usage limit is followed by a limits read; input arriving
+                // inside that window is held and submitted once the fresh numbers are in, the
+                // pause `hold_rate_limit_recovery` applies upstream.
+                if (rateLimitRecoveryJob?.isActive == true) {
+                    recoverySubmission = event.inputs
+                    return
+                }
                 val commandText = event.inputs.singleOrNull()?.let {
                     (it as? com.cy.codexui.protocol.protocol.v2.UserInput.Text)?.text?.trim()
                 }
+                // Every text submission feeds the composer's reverse search, commands included;
+                // upstream's history records the submitted line the same way.
+                commandText?.let { ComposerHistory.record(context, it) }
                 when (val input = commandText?.let { classifySlashInput(it, ComposerCommands) }) {
                     is SlashInput.Command -> {
                         // Upstream rejects an unavailable command at submission and keeps the draft
-                        // (`reject_slash_command_if_unavailable`); the popup still lists it.
+                        // (`reject_slash_command_if_unavailable`); the popup still lists it. The
+                        // check repeats in [runSlashCommand] because that is also the path a popup
+                        // tap takes.
                         val spec = SlashCommands.find(input.name)
+                        val name = spec?.name ?: input.name
                         if (spec != null && widget.state.running && !spec.availableDuringTask) {
-                            reportUnavailableCommand(spec.name)
+                            reportUnavailableCommand(name)
                             return
                         }
-                        runSlashCommand(AppEvent.SubmitSlashCommand(input.name, input.args))
-                        if (input.name != "shell") widget.state.applyDraft("")
+                        runSlashCommand(AppEvent.SubmitSlashCommand(name, input.args))
+                        if (name != "shell") widget.state.applyDraft("")
                         return
                     }
 
@@ -297,6 +357,7 @@ class CodexApp(
             AppEvent.ReloadAccount -> load({ client.readAccount() }) { catalog.account = it }
             AppEvent.ReloadRateLimits -> load({ client.readRateLimits() }) {
                 catalog.rateLimits = it
+                catalog.rateLimitsUpdatedAtMs = System.currentTimeMillis()
                 warnRateLimits()
             }
             AppEvent.ReloadUsage -> load({ client.readUsage() }) { catalog.usage = it; catalog.usageLoaded = true }
@@ -306,7 +367,11 @@ class CodexApp(
             AppEvent.ReloadPlugins -> request { reloadPlugins() }
             AppEvent.ReloadPluginShares -> load({ client.listPluginShares() }) { catalog.pluginShares = it }
             AppEvent.ReloadApps -> load({ client.listApps() }) { catalog.apps = it }
-            AppEvent.ReloadHooks -> load({ client.listHooks() }) { catalog.hooks = it }
+            AppEvent.ReloadHooks -> load({ client.listHooks() }) { entries ->
+                catalog.hooks = entries.flatMap { it.hooks }
+                catalog.hookWarnings = entries.flatMap { it.warnings }
+                catalog.hookErrors = entries.flatMap { it.errors }
+            }
             AppEvent.ReloadMcpServers -> load({ client.listMcpServers() }) { catalog.mcpServers = it }
             AppEvent.ReloadProjects -> load({ client.listProjects() }) { catalog.projects = it }
             AppEvent.ReloadMemories -> load({ client.readMemoryStatus() }) { catalog.memories = it }
@@ -346,6 +411,18 @@ class CodexApp(
 
             AppEvent.RefreshThreadList -> refreshThreads()
 
+            is AppEvent.ReloadAgentThreads -> request {
+                client.listThreads(
+                    com.cy.codexui.protocol.protocol.v2.ThreadListParams(
+                        ancestorThreadId = event.ancestorThreadId,
+                        sourceKinds = SUB_AGENT_SOURCE_KINDS,
+                        useStateDbOnly = true,
+                    ),
+                ).onSuccess { catalog.agentThreads = it.threads }
+            }
+
+            is AppEvent.StopThreadTurn -> request { client.interruptTurn(event.threadId) }
+
             is AppEvent.SetThreadListScope -> {
                 threads.includeArchived = event.includeArchived
                 refreshThreads()
@@ -353,11 +430,35 @@ class CodexApp(
 
             // ---- writes -------------------------------------------------------
             is AppEvent.InstallPlugin -> request {
-                client.installPlugin(event.name, event.marketplace).onSuccess { reloadPlugins() }
+                client.installPlugin(event.name, event.marketplace).onSuccess { response ->
+                    reloadPlugins()
+                    // The install is done; the connectors it needs may not be set up yet, and the
+                    // page walks through them.
+                    if (response.appsNeedingAuth.isNotEmpty()) {
+                        catalog.pluginInstallAuth = PluginInstallAuthFlow(
+                            pluginName = event.name,
+                            apps = response.appsNeedingAuth,
+                            authPolicy = response.authPolicy,
+                        )
+                    }
+                }
             }
 
             is AppEvent.UninstallPlugin -> request {
                 client.uninstallPlugin(event.pluginId).onSuccess { reloadPlugins() }
+            }
+
+            // Follows `background_requests.rs`'s `write_plugin_enabled`: the whole
+            // `plugins.<id>` object is upserted with one key so a concurrent edit to another
+            // plugin field is not clobbered the way a replace would.
+            is AppEvent.SetPluginEnabled -> request {
+                client.writeConfigValue(
+                    ConfigValueWriteParams(
+                        keyPath = "plugins.${event.pluginId}",
+                        value = buildJsonObject { put("enabled", JsonPrimitive(event.enabled)) },
+                        mergeStrategy = MergeStrategy.Upsert,
+                    ),
+                ).onSuccess { reloadPlugins() }
             }
 
             is AppEvent.AddMarketplace -> request {
@@ -644,8 +745,20 @@ class CodexApp(
                         classification = event.classification,
                         reason = event.reason,
                         threadId = event.threadId,
+                        includeLogs = event.includeLogs,
                     ),
-                )
+                ).onSuccess { response ->
+                    // The response is the report's handle (the TUI labels it "Sentry Feedback
+                    // ID"); dropping it left the user with no way to reference what they sent.
+                    val reference = response.threadId.ifBlank { response.promptHash.orEmpty() }
+                    if (reference.isNotBlank()) {
+                        scope.launch {
+                            snackbar.showSnackbar(
+                                context.getString(R.string.diagnostics_feedback_sent, reference),
+                            )
+                        }
+                    }
+                }
             }
 
             // ---- windows sandbox -------------------------------------------------
@@ -751,22 +864,48 @@ class CodexApp(
     private fun runSlashCommand(event: AppEvent.SubmitSlashCommand) {
         val argument = event.args.trim()
         val threadId = widget.state.threadId
-        when (event.command.removePrefix("/")) {
+        val spec = SlashCommands.find(event.command.removePrefix("/"))
+        if (spec != null && widget.state.running && !spec.availableDuringTask) {
+            reportUnavailableCommand(spec.name)
+            return
+        }
+        when (spec?.name ?: event.command.removePrefix("/")) {
             "new" -> onAppEvent(AppEvent.NewThread(widget.state.config.cwd))
+            // On a phone "clear the scrollback" and "start a new conversation" are the same act:
+            // there is no scrollback, and the transcript is the old thread.
+            "clear" -> onAppEvent(AppEvent.NewThread(widget.state.config.cwd))
             "resume" -> openSurface(Surface.Sessions)
             "fork" -> onAppEvent(AppEvent.ForkThread(threadId))
+            "rename" -> if (argument.isBlank()) {
+                scope.launch { snackbar.showSnackbar(context.getString(R.string.slash_rename_needs_name)) }
+            } else {
+                onAppEvent(AppEvent.RenameThread(threadId, argument))
+            }
             "archive" -> onAppEvent(AppEvent.ArchiveThread(threadId, archived = true))
+            "stop" -> onAppEvent(AppEvent.InterruptTurn)
             "compact" -> onAppEvent(AppEvent.CompactThread(threadId))
             "revert" -> onAppEvent(AppEvent.RevertThread(threadId, argument.ifEmpty { null }))
             "review" -> if (widget.state.open) openSurface(Surface.Review) else {
                 createThread(afterCreated = { openSurface(Surface.Review) })
             }
+            "worktree" -> openSurface(Surface.Worktrees)
             "mcp" -> openSurface(Surface.McpServers)
             "skills" -> openSurface(Surface.Skills)
             "plugins" -> openSurface(Surface.Plugins)
             "hooks" -> openSurface(Surface.Hooks)
             "apps" -> openSurface(Surface.Apps)
             "settings" -> openSurface(Surface.Settings)
+            // Theme and motion live in the settings page's first tab; the command is a shortcut to
+            // the same controls rather than a second picker.
+            "theme" -> openSurface(Surface.Settings)
+            // cwd is per thread in this client, so changing it means opening a thread in the chosen
+            // directory; the directory browser is the one place that choice can be made.
+            "cd" -> openSurface(Surface.WorkspacePicker)
+            "import" -> openSurface(Surface.ExternalAgentImport)
+            "feedback" -> openSurface(Surface.Diagnostics)
+            "voice" -> openSurface(Surface.Realtime)
+            "logout" -> onAppEvent(AppEvent.Logout)
+            "agents", "subagents" -> openSurface(Surface.Agents)
             "shell" -> if (argument.isNotBlank()) {
                 if (widget.state.open) onAppEvent(AppEvent.RunShellCommand(threadId, argument)) else {
                     createThread(afterCreated = {
@@ -775,7 +914,8 @@ class CodexApp(
                 }
             }
             "usage" -> openSurface(Surface.Account)
-            "status" -> openSurface(Surface.Diagnostics)
+            "status" -> openSurface(Surface.SessionStatus)
+            "copy" -> copyMenuOpen = true
             "model", "approvals", "permissions" -> openSurface(Surface.Settings)
             "memories" -> openSurface(Surface.Memories)
 
@@ -886,6 +1026,124 @@ class CodexApp(
                     )
                 },
             )
+        }
+    }
+
+    /**
+     * Turn one widget notice into a system notification, unless the app is in front.
+     *
+     * The TUI gates on `NotificationCondition::Unfocused` the same way: the alert exists for the
+     * case where the user cannot see the transcript. The widget emits a structured notice and this
+     * object supplies the wording, because only this object has a Context.
+     */
+    private fun postNotice(notice: AgentNotice) {
+        if ((context.applicationContext as? CodexApplication)?.inForeground == true) return
+        when (notice) {
+            is AgentNotice.TurnComplete -> postAgentNotification(
+                context,
+                AgentNotification.TurnComplete,
+                notice.preview ?: context.getString(R.string.notification_turn_complete),
+            )
+
+            is AgentNotice.Approval -> postAgentNotification(
+                context,
+                AgentNotification.ApprovalRequested,
+                approvalNoticeBody(context, notice),
+            )
+        }
+    }
+
+    /**
+     * Poll the rate-limit windows, faster as they fill.
+     *
+     * Mirrors `chatwidget/rate_limits.rs::rate_limit_refresh_interval`: ≥99% polls every 5 s, ≥90%
+     * every 15 s, ≥75% every 30 s, otherwise once a minute. The loop re-reads the interval after
+     * every result, so a window that empties slows back down by itself.
+     */
+    private suspend fun pollRateLimits() {
+        while (true) {
+            delay(rateLimitRefreshIntervalMs())
+            if (!startupReady || catalog.account.account == null) continue
+            client.readRateLimits().onSuccess { fresh ->
+                catalog.rateLimits = fresh
+                catalog.rateLimitsUpdatedAtMs = System.currentTimeMillis()
+                warnRateLimits()
+            }
+        }
+    }
+
+    private fun rateLimitRefreshIntervalMs(): Long {
+        val snapshot = catalog.rateLimits.rateLimits
+        val used = maxOf(
+            snapshot.primary?.usedPercent ?: 0L,
+            snapshot.secondary?.usedPercent ?: 0L,
+        )
+        return when {
+            used >= 99 -> 5_000L
+            used >= 90 -> 15_000L
+            used >= 75 -> 30_000L
+            else -> 60_000L
+        }
+    }
+
+    /**
+     * Offer the low-cost model once per process, after a turn has finished.
+     *
+     * Mirrors `maybe_show_pending_rate_limit_prompt`: only near the codex limit, only without
+     * workspace credits, only while the nudge is not hidden, and never when the low-cost model is
+     * already selected.
+     */
+    private fun maybeShowRateLimitNudge() {
+        if (rateLimitNudge != null || rateLimitNudgeShown) return
+        if (catalog.config.snapshot.hideRateLimitModelNudge == true) return
+        val snapshot = catalog.rateLimits.rateLimits
+        if (snapshot.credits?.hasCredits == true) return
+        val used = snapshot.primary?.usedPercent ?: snapshot.secondary?.usedPercent ?: 0L
+        if (used < RateLimitNudgeThresholdPercent) return
+        val preset = catalog.models.firstOrNull { it.model == RateLimitNudgeModel } ?: return
+        if (widget.state.config.model == RateLimitNudgeModel) return
+        rateLimitNudgeShown = true
+        rateLimitNudge = RateLimitNudge(preset.model, preset.displayName)
+    }
+
+    /** Take the prompt's offer. */
+    fun switchToRateLimitModel() {
+        val nudge = rateLimitNudge ?: return
+        rateLimitNudge = null
+        onAppEvent(AppEvent.SetModel(nudge.model))
+    }
+
+    /** Keep the current model for now; the prompt may return in a later launch. */
+    fun dismissRateLimitNudge() {
+        rateLimitNudge = null
+    }
+
+    /** Keep the current model and persist `notices.hide_rate_limit_model_nudge`. */
+    fun hideRateLimitNudgeForever() {
+        rateLimitNudge = null
+        onAppEvent(
+            AppEvent.WriteConfigValue("notices.hide_rate_limit_model_nudge", JsonPrimitive(true)),
+        )
+    }
+
+    /**
+     * Read the limits once after a usage-limit failure, holding input until the answer lands.
+     *
+     * The TUI's `hold_rate_limit_recovery` / `finish_rate_limit_recovery` pair; a read that fails
+     * still releases the held input, so a dead connection cannot trap a message forever.
+     */
+    private fun beginRateLimitRecovery() {
+        if (rateLimitRecoveryJob?.isActive == true) return
+        rateLimitRecoveryJob = scope.launch {
+            client.readRateLimits().onSuccess { fresh ->
+                catalog.rateLimits = fresh
+                catalog.rateLimitsUpdatedAtMs = System.currentTimeMillis()
+                warnRateLimits()
+            }
+            delay(RateLimitRecoveryDelayMs)
+            val held = recoverySubmission
+            recoverySubmission = null
+            if (held != null && widget.state.open) widget.action(AppEvent.SubmitUserMessage(held))
         }
     }
 
@@ -1001,30 +1259,73 @@ class CodexApp(
             when (event) {
                 is AppServerEvent.ThreadStartedEvent -> {
                     threads.threads = listOf(event.thread) + threads.threads.filterNot { it.id == event.threadId }
+                    if (catalog.agentThreads.any { it.id == event.threadId }) {
+                        catalog.agentThreads = catalog.agentThreads.map {
+                            if (it.id == event.threadId) event.thread else it
+                        }
+                    }
                 }
-                is AppServerEvent.ThreadNameUpdatedEvent -> threads.threads = threads.threads.map {
-                    if (it.id == event.threadId) it.copy(name = event.delta.name) else it
+                is AppServerEvent.ThreadNameUpdatedEvent -> {
+                    threads.threads = threads.threads.map {
+                        if (it.id == event.threadId) it.copy(name = event.delta.name) else it
+                    }
+                    catalog.agentThreads = catalog.agentThreads.map {
+                        if (it.id == event.threadId) it.copy(name = event.delta.name) else it
+                    }
                 }
-                is AppServerEvent.ThreadStatusChangedEvent -> threads.threads = threads.threads.map {
-                    if (it.id == event.threadId) it.copy(status = event.delta.status) else it
+                is AppServerEvent.ThreadStatusChangedEvent -> {
+                    threads.threads = threads.threads.map {
+                        if (it.id == event.threadId) it.copy(status = event.delta.status) else it
+                    }
+                    catalog.agentThreads = catalog.agentThreads.map {
+                        if (it.id == event.threadId) it.copy(status = event.delta.status) else it
+                    }
                 }
+
+                // Usage arrives for every thread, not just the open one; keeping it per thread is
+                // what fills the agents dashboard's usage column.
+                is AppServerEvent.ThreadTokenUsageEvent ->
+                    catalog.threadUsage = catalog.threadUsage + (event.threadId to event.delta.usage)
+
                 is AppServerEvent.ThreadArchived -> {
                     threads.markArchived(event.threadId, true)
+                    catalog.agentThreads = catalog.agentThreads.filterNot { it.id == event.threadId }
                     client.listThreads(com.cy.codexui.protocol.protocol.v2.ThreadListParams(archived = threads.includeArchived))
                         .onSuccess { threads.applyListing(it) }
                 }
                 is AppServerEvent.ThreadUnarchived -> {
                     threads.markArchived(event.threadId, false)
+                    catalog.agentThreads = catalog.agentThreads.filterNot { it.id == event.threadId }
                     client.listThreads(com.cy.codexui.protocol.protocol.v2.ThreadListParams(archived = threads.includeArchived))
                         .onSuccess { threads.applyListing(it) }
                 }
                 is AppServerEvent.ThreadDeleted -> {
+                    catalog.agentThreads = catalog.agentThreads.filterNot { it.id == event.threadId }
                     client.listThreads(com.cy.codexui.protocol.protocol.v2.ThreadListParams(archived = threads.includeArchived))
                         .onSuccess { threads.applyListing(it) }
                 }
+                is AppServerEvent.FuzzySearchUpdated -> {
+                    catalog.mentionFiles = event.delta.files
+                    catalog.mentionSearching = false
+                    refreshMentionSuggestions()
+                }
+                is AppServerEvent.FuzzySearchCompleted -> catalog.mentionSearching = false
+
+                // A finished turn is the moment the TUI checks its pending rate-limit prompt, and a
+                // failure that names a limit starts the hold-and-refresh recovery pair.
+                is AppServerEvent.TurnCompleted -> {
+                    if (event.status == TurnStatus.Failed &&
+                        event.error?.contains("limit", ignoreCase = true) == true
+                    ) {
+                        beginRateLimitRecovery()
+                    }
+                    maybeShowRateLimitNudge()
+                }
+
                 is AppServerEvent.AccountUpdated -> catalog.account = event.account
                 is AppServerEvent.RateLimitsUpdatedEvent -> {
                     catalog.rateLimits = catalog.rateLimits.copy(rateLimits = catalog.rateLimits.rateLimits.mergedWith(event.rateLimits))
+                    catalog.rateLimitsUpdatedAtMs = System.currentTimeMillis()
                     warnRateLimits()
                 }
                 is AppServerEvent.AccountLoginCompleted -> {
@@ -1137,6 +1438,96 @@ class CodexApp(
     }
 
     /**
+     * Drive the `@`-mention popup.
+     *
+     * [query] is the text after the trailing `@`, or `null` when the token is gone. The file half
+     * comes from a `fuzzyFileSearch` session rooted at the session's working directory — the server
+     * scores the matches, so no path list is walked here — while plugins and tasks are folded in
+     * locally, the way `mentions_v2/search_catalog.rs` merges the three sources. Results are
+     * debounced by the same 100 ms `task_mentions.rs` uses for its own search.
+     */
+    fun onMentionQueryChange(query: String?) {
+        mentionQuery = query
+        if (query == null) {
+            stopMentionSearch()
+            return
+        }
+        val roots = listOf(widget.state.config.cwd.ifBlank { defaultWorkspace })
+        if (mentionSessionId == null) {
+            val id = "mentions-${java.util.UUID.randomUUID()}"
+            mentionSessionId = id
+            mentionSessionStart = scope.launch { client.startFuzzySearchSession(id, roots) }
+        }
+        mentionUpdateJob?.cancel()
+        mentionUpdateJob = scope.launch {
+            // The start is a request of its own; an update that overtook it would name a session
+            // the server has not created yet.
+            mentionSessionStart?.join()
+            delay(MentionSearchDebounceMs)
+            val id = mentionSessionId ?: return@launch
+            catalog.mentionSearching = true
+            client.updateFuzzySearchSession(id, query)
+        }
+        refreshMentionSuggestions()
+    }
+
+    private fun stopMentionSearch() {
+        mentionUpdateJob?.cancel()
+        mentionUpdateJob = null
+        catalog.mentionSearching = false
+        catalog.mentionFiles = emptyList()
+        mentionSuggestions = emptyList()
+        val id = mentionSessionId ?: return
+        mentionSessionId = null
+        scope.launch { client.stopFuzzySearchSession(id) }
+    }
+
+    /** Rebuild the popup rows from the current query and catalogs. */
+    private fun refreshMentionSuggestions() {
+        val query = mentionQuery
+        if (query == null) {
+            mentionSuggestions = emptyList()
+            return
+        }
+        val plugins = catalog.plugins
+            .filter { it.installed && it.enabled }
+            .filter { mentionMatches(query, it.name, it.description) }
+            .take(MentionPluginLimit)
+            .map { plugin ->
+                MentionSuggestion(
+                    insert = plugin.name,
+                    label = plugin.name,
+                    detail = plugin.marketplace.ifBlank { null },
+                    kind = MentionKind.Plugin,
+                )
+            }
+        val currentThread = widget.state.threadId
+        val tasks = threads.threads
+            .filter { it.id != currentThread && !it.ephemeral }
+            .filter { mentionMatches(query, it.name.orEmpty(), it.preview, it.cwd) }
+            .take(MentionTaskLimit)
+            .map { thread ->
+                val title = thread.name?.takeIf { it.isNotBlank() }
+                    ?: thread.preview.lineSequence().firstOrNull().orEmpty()
+                MentionSuggestion(
+                    insert = title.take(MentionTitleLimit),
+                    label = title.take(MentionTitleLimit),
+                    detail = thread.cwd,
+                    kind = MentionKind.Task,
+                )
+            }
+        val files = catalog.mentionFiles.map { file ->
+            MentionSuggestion(
+                insert = file.path,
+                label = file.path,
+                detail = null,
+                kind = if (file.matchType == "directory") MentionKind.Directory else MentionKind.File,
+            )
+        }
+        mentionSuggestions = (plugins + tasks + files).take(MentionSuggestionLimit)
+    }
+
+    /**
      * Drop every pushed page and land back on the chat.
      *
      * The removals land in one snapshot, so the runtime sees a single multi-pop and animates the
@@ -1152,6 +1543,13 @@ class CodexApp(
     }
 
     private fun openThread(threadId: String, onFailure: () -> Unit) {
+        // Resume into an untrusted folder asks first. The thread list already carries the cwd, so
+        // the prompt happens before a read that a blocked folder would only fail later.
+        val knownCwd = (threads.threads + catalog.agentThreads).firstOrNull { it.id == threadId }?.cwd
+        if (!knownCwd.isNullOrBlank() && !isProjectTrusted(knownCwd)) {
+            trustRequest = TrustRequest(knownCwd) { openThread(threadId, onFailure) }
+            return
+        }
         widget.open(threadId) { result ->
             result.onSuccess { response ->
                 preferences.edit().putString(KeySelectedSession, threadId).apply()
@@ -1159,6 +1557,54 @@ class CodexApp(
             }.onFailure { onFailure() }
         }
         closeAllSurfaces()
+    }
+
+    /**
+     * Whether [path] sits in a trusted project.
+     *
+     * The trusted keys are the `[projects]` entries; a thread's cwd counts when it is one of them
+     * or below one — the same containment rule `resolve_root_git_project_for_trust` applies, minus
+     * the git-root lookup, which needs a shell this object does not have.
+     */
+    private fun isProjectTrusted(path: String): Boolean {
+        val normalized = path.replace('\\', '/').trimEnd('/')
+        return catalog.config.snapshot.trustedProjects.any { key ->
+            val base = key.replace('\\', '/').trimEnd('/')
+            base.isNotEmpty() && (normalized == base || normalized.startsWith("$base/"))
+        }
+    }
+
+    /** Record the folder the prompt is about as trusted, then resume what it interrupted. */
+    fun grantTrust() {
+        val request = trustRequest ?: return
+        trustRequest = null
+        // The key path is a quoted TOML key, so backslashes and quotes in the path are escaped the
+        // way `trusted_project_edit` escapes them.
+        val key = request.path.replace("\\", "\\\\").replace("\"", "\\\"")
+        scope.launch {
+            client.writeConfigBatch(
+                ConfigBatchWriteParams(
+                    edits = listOf(
+                        ConfigEdit(
+                            keyPath = "projects.\"$key\".trust_level",
+                            value = JsonPrimitive("trusted"),
+                            mergeStrategy = MergeStrategy.Replace,
+                        ),
+                    ),
+                    reloadUserConfig = true,
+                ),
+            ).onSuccess {
+                reloadConfig()
+                request.onTrust()
+            }.onFailure {
+                snackbar.showSnackbar(it.message ?: context.getString(R.string.shell_request_failed))
+            }
+        }
+    }
+
+    /** Decline the prompt; the interrupted action is abandoned, nothing is written. */
+    fun dismissTrust() {
+        trustRequest = null
     }
 
     fun importAttachment(uri: Uri) {
@@ -1192,10 +1638,15 @@ class CodexApp(
         afterCreated: (() -> Unit)? = null,
     ) {
         if (!startupReady || creatingThread) return
+        val targetCwd = cwd?.takeIf { it.isNotBlank() } ?: defaultWorkspace
+        if (!isProjectTrusted(targetCwd)) {
+            trustRequest = TrustRequest(targetCwd) { createThread(cwd, inputs, afterCreated) }
+            return
+        }
         creatingThread = true
         scope.launch {
             try {
-                client.startThread(com.cy.codexui.protocol.protocol.v2.ThreadStartParams(cwd = cwd?.takeIf { it.isNotBlank() } ?: defaultWorkspace))
+                client.startThread(com.cy.codexui.protocol.protocol.v2.ThreadStartParams(cwd = targetCwd))
                     .onSuccess { session ->
                         widget.bind(session)
                         preferences.edit().putString(KeySelectedSession, session.threadId).apply()
@@ -1236,6 +1687,10 @@ class CodexApp(
             widget.attach()
             scope.launch(start = CoroutineStart.UNDISPATCHED) { observeCatalogs() }
             scope.launch(start = CoroutineStart.UNDISPATCHED) {
+                widget.notices.collect { notice -> postNotice(notice) }
+            }
+            scope.launch { pollRateLimits() }
+            scope.launch(start = CoroutineStart.UNDISPATCHED) {
                 client.connection.collect { connection ->
                     when (connection) {
                         is ConnectionState.Failed -> {
@@ -1265,7 +1720,7 @@ class CodexApp(
                 com.cy.codexui.protocol.protocol.v2.ClientInfo(
                     name = "codex-android",
                     title = "Codex",
-                    version = "1.0",
+                    version = BuildConfig.VERSION_NAME,
                 ),
                 ).getOrThrow()
                 threads.applyListing(client.listThreads().getOrThrow())
@@ -1332,12 +1787,68 @@ class CodexApp(
          * drift apart: a name that is handled but missing from the catalog is unreachable, and a
          * name that is listed but handled nowhere is the same failure seen from the other side.
          */
-        val ComposerCommands: Set<String> = SlashCommands.All.map { it.name }.toSet()
+        val ComposerCommands: Set<String> = SlashCommands.Known
 
         /** Usage percentages that earn a warning, ascending; the TUI's ladder. */
         val UsageWarningThresholds = listOf(50L, 75L, 90L, 95L)
     }
 }
+
+/**
+ * The low-cost model the rate-limit prompt offers, matching `NUDGE_MODEL_SLUG` upstream.
+ *
+ * A model the catalog does not list produces no prompt rather than a row that cannot be selected.
+ */
+private const val RateLimitNudgeModel = "gpt-5.6-luna"
+
+/** Used share of the codex window at which the prompt may appear. */
+private const val RateLimitNudgeThresholdPercent = 90L
+
+/** How long held input waits after a usage-limit failure before it is submitted anyway. */
+private const val RateLimitRecoveryDelayMs = 2_000L
+
+/** Debounce for `fuzzyFileSearch/sessionUpdate`, matching `task_mentions.rs`'s delay. */
+private const val MentionSearchDebounceMs = 100L
+
+/** How many popup rows one query may produce, across every source. */
+private const val MentionSuggestionLimit = 32
+private const val MentionPluginLimit = 8
+private const val MentionTaskLimit = 8
+
+/** Task titles are capped the way `MAX_TASK_TITLE_CHARS` caps them upstream. */
+private const val MentionTitleLimit = 80
+
+/** The rate-limit prompt's two facts: the model to switch to and what to call it. */
+data class RateLimitNudge(val model: String, val displayName: String)
+
+/**
+ * A folder waiting for the user to trust it, plus the action the decision unblocks.
+ *
+ * A callback rather than an event: what was interrupted (starting or resuming a thread) is known
+ * only at the call site, and replaying it through `AppEvent` would mean modelling every action's
+ * arguments in the event just to hand them back.
+ */
+class TrustRequest(val path: String, val onTrust: () -> Unit)
+
+/** The wording one approval notification uses, mirroring `chatwidget/notifications.rs`. */
+private fun approvalNoticeBody(context: Context, notice: AgentNotice.Approval): String =
+    when (notice.kind) {
+        ApprovalNoticeKind.Command -> context.getString(
+            R.string.notification_approval_command,
+            notice.detail.orEmpty().take(80),
+        )
+
+        ApprovalNoticeKind.FileChange -> notice.detail?.let {
+            context.getString(R.string.notification_approval_file_change, it)
+        } ?: context.getString(R.string.notification_approval_file_change_many)
+
+        ApprovalNoticeKind.Elicitation -> context.getString(
+            R.string.notification_approval_elicitation,
+            notice.detail.orEmpty(),
+        )
+
+        ApprovalNoticeKind.Other -> context.getString(R.string.notification_approval_other)
+    }
 
 /**
  * Composition entry point: builds the app holder, keeps it alive across configuration changes and
@@ -1655,6 +2166,12 @@ fun CodexScreen(
                     }
                 }
 
+                entry<Surface.SessionStatus>(swipeDismiss = NavSwipeDirection.TopToBottom) {
+                    SheetPage(onDismiss = app::closeSurface) {
+                        SessionStatusScreen(app = app, onBack = app::closeSurface)
+                    }
+                }
+
                 entry<Surface.Diagnostics>(swipeDismiss = NavSwipeDirection.TopToBottom) {
                     LaunchedEffect(Unit) { app.onAppEvent(AppEvent.ReloadDiagnostics) }
                     SheetPage(onDismiss = app::closeSurface) {
@@ -1750,6 +2267,17 @@ fun CodexScreen(
                     }
                 }
 
+                entry<Surface.Worktrees>(swipeDismiss = NavSwipeDirection.TopToBottom) {
+                    SheetPage(onDismiss = app::closeSurface) {
+                        WorktreesScreen(
+                            client = app.client,
+                            cwd = app.widget.state.config.cwd.ifEmpty { app.defaultWorkspace },
+                            onOpen = { path -> app.onAppEvent(AppEvent.NewThread(path)) },
+                            onBack = app::closeSurface,
+                        )
+                    }
+                }
+
                 entry<Surface.Review>(swipeDismiss = NavSwipeDirection.TopToBottom) {
                     SheetPage(onDismiss = app::closeSurface) {
                         ReviewScreen(
@@ -1784,6 +2312,12 @@ fun CodexScreen(
                             onEvent = app::onAppEvent,
                             onBack = app::closeSurface,
                         )
+                    }
+                }
+
+                entry<Surface.Agents>(swipeDismiss = NavSwipeDirection.TopToBottom) {
+                    SheetPage(onDismiss = app::closeSurface) {
+                        AgentsScreen(app = app, onBack = app::closeSurface)
                     }
                 }
 

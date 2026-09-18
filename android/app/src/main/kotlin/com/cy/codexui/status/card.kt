@@ -163,6 +163,8 @@ fun StatusCard(
     onOpenAgentInfo: (String) -> Unit,
     modifier: Modifier = Modifier,
     panelElevation: Dp = UiConsts.PanelElevation,
+    /** Wall-clock time of the last rate-limit read; `null` when nothing was read yet. */
+    rateLimitsUpdatedAt: Long? = null,
 ) {
     val shape = remember { SquircleShape(UiConsts.PanelCorner) }
     ExpandBar(
@@ -184,6 +186,7 @@ fun StatusCard(
             items = items,
             models = models,
             rateLimits = rateLimits,
+            rateLimitsUpdatedAt = rateLimitsUpdatedAt,
             onModel = onModel,
             onEffort = onEffort,
             onPolicy = onPolicy,
@@ -250,6 +253,7 @@ private fun SectionsColumn(
     items: List<ThreadItem>,
     models: List<ModelPreset>,
     rateLimits: AccountRateLimits,
+    rateLimitsUpdatedAt: Long?,
     onModel: (String) -> Unit,
     onEffort: (ReasoningEffort) -> Unit,
     onPolicy: (AskForApproval) -> Unit,
@@ -293,10 +297,12 @@ private fun SectionsColumn(
         // Only when the account answered with something worth drawing: an empty limits card on a
         // platform without rate limits (Bedrock, API key) would read as "no limits left".
         if (rateLimits.rateLimits.primary != null || rateLimits.rateLimits.secondary != null ||
-            rateLimits.rateLimits.credits != null || (rateLimits.rateLimitResetCredits?.availableCount ?: 0) > 0
+            rateLimits.rateLimits.credits != null || (rateLimits.rateLimitResetCredits?.availableCount ?: 0) > 0 ||
+            rateLimits.rateLimits.spendControlReached == true || rateLimits.rateLimits.individualLimit != null
         ) {
             RateLimitsSection(
                 rateLimits = rateLimits,
+                updatedAt = rateLimitsUpdatedAt,
                 collapsed = state.isFolded(StatusSection.RateLimits),
                 onToggle = { state.toggleSection(StatusSection.RateLimits) },
             )
@@ -553,6 +559,7 @@ private fun UsageSection(
 @Composable
 private fun RateLimitsSection(
     rateLimits: AccountRateLimits,
+    updatedAt: Long?,
     collapsed: Boolean,
     onToggle: () -> Unit,
     barGap: Dp = 7.dp,
@@ -564,6 +571,10 @@ private fun RateLimitsSection(
         snapshot.primary?.let { it to stringResource(R.string.status_card_rate_primary) },
         snapshot.secondary?.let { it to stringResource(R.string.status_card_rate_secondary) },
     )
+    // A stale window is worse than no window: it is presented as current, so after ten minutes the
+    // footer says so instead of leaving the percentages looking freshly fetched.
+    val ageMs = updatedAt?.takeIf { it > 0L }?.let { System.currentTimeMillis() - it }
+    val stale = ageMs != null && ageMs > RateLimitStaleAfterMs
     SectionCard(
         title = stringResource(R.string.status_card_rate_title),
         icon = MiuixIcons.Timer,
@@ -625,6 +636,54 @@ private fun RateLimitsSection(
                 value = summary.availableCount.toString(),
             )
         }
+        snapshot.individualLimit?.let { limit ->
+            if (windows.isNotEmpty() || snapshot.credits != null) Spacer(Modifier.height(barGap))
+            ValueRow(
+                label = stringResource(R.string.status_card_spend_control),
+                value = stringResource(
+                    R.string.status_card_spend_control_value,
+                    limit.used,
+                    limit.limit,
+                    limit.remainingPercent,
+                ),
+                tint = if (snapshot.spendControlReached == true) colors.error else null,
+            )
+        }
+        if (snapshot.spendControlReached == true && snapshot.individualLimit == null) {
+            if (windows.isNotEmpty() || snapshot.credits != null) Spacer(Modifier.height(barGap))
+            ValueRow(
+                label = stringResource(R.string.status_card_spend_control),
+                value = stringResource(R.string.status_card_spend_control_reached),
+                tint = colors.error,
+            )
+        }
+        if (ageMs != null) {
+            if (windows.isNotEmpty() || snapshot.credits != null) Spacer(Modifier.height(barGap))
+            Text(
+                text = if (stale) {
+                    stringResource(R.string.status_card_rate_stale, formatAge(ageMs))
+                } else {
+                    stringResource(R.string.status_card_rate_updated, formatAge(ageMs))
+                },
+                fontSize = UiType.Footnote,
+                lineHeight = UiType.CardTitle,
+                color = if (stale) colors.error else colors.onSurfaceVariantSummary,
+            )
+        }
+    }
+}
+
+/** Rate limits older than this read as stale in the status card. */
+private const val RateLimitStaleAfterMs = 10 * 60 * 1000L
+
+/** Compact age for the rate-limit footer: seconds, minutes, hours or days. */
+private fun formatAge(ageMs: Long): String {
+    val seconds = (ageMs / 1000).coerceAtLeast(0)
+    return when {
+        seconds < 60 -> "${seconds}s"
+        seconds < 3600 -> "${seconds / 60}m"
+        seconds < 86_400 -> "${seconds / 3600}h"
+        else -> "${seconds / 86_400}d"
     }
 }
 
@@ -801,7 +860,7 @@ private fun ModelSection(
 
 /** The sandbox policy as one line: mode plus the two switches that change what it permits. */
 @Composable
-private fun accessSummary(session: ThreadSessionState): String {
+internal fun accessSummary(session: ThreadSessionState): String {
     val parts = buildList {
         add(session.sandboxPolicy.mode.label())
         if (session.sandboxPolicy.networkAccess) {
@@ -814,7 +873,7 @@ private fun accessSummary(session: ThreadSessionState): String {
 
 /** `Agents.md` as the file names that contributed instructions, or an explicit "none". */
 @Composable
-private fun agentsSummary(session: ThreadSessionState): String =
+internal fun agentsSummary(session: ThreadSessionState): String =
     session.instructionSourcePaths
         .map { it.substringAfterLast('/').ifEmpty { it } }
         .distinct()

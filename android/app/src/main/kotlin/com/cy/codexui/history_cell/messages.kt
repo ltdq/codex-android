@@ -20,6 +20,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -38,10 +39,13 @@ import com.cy.codexui.MarkdownText
 import com.cy.codexui.SquircleShape
 import com.cy.codexui.UiConsts
 import com.cy.codexui.UiType
+import com.cy.codexui.copyToClipboard
 import com.cy.codexui.pressableRow
 import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.extended.Copy
 import top.yukonga.miuix.kmp.icon.extended.Ok
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
@@ -121,17 +125,38 @@ fun AgentMessageCell(
     onAnswerQuestion: (String) -> Unit = {},
 ) {
     val colors = MiuixTheme.colorScheme
+    val context = LocalContext.current
     val questions = item.questions.orEmpty()
+    val copyLabel = stringResource(R.string.clipboard_copy_message)
 
     Column(modifier = modifier.fillMaxWidth()) {
-        Text(
-            text = label,
-            fontSize = labelFontSize,
-            lineHeight = labelLineHeight,
-            fontWeight = FontWeight.Medium,
-            color = colors.primary,
-            maxLines = 1,
-        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = label,
+                modifier = Modifier.weight(1f),
+                fontSize = labelFontSize,
+                lineHeight = labelLineHeight,
+                fontWeight = FontWeight.Medium,
+                color = colors.primary,
+                maxLines = 1,
+            )
+            // The rendered markdown is a lossy view of the source; `/copy` and this button both
+            // hand over `item.text` so pasting keeps the original markdown.
+            if (item.text.isNotBlank()) {
+                IconButton(
+                    onClick = { copyToClipboard(context, item.text, copyLabel) },
+                    minWidth = UiConsts.IconButtonSize,
+                    minHeight = UiConsts.IconButtonSize,
+                ) {
+                    Icon(
+                        imageVector = MiuixIcons.Copy,
+                        contentDescription = copyLabel,
+                        modifier = Modifier.size(UiConsts.IconInline),
+                        tint = colors.primary.copy(alpha = 0.7f),
+                    )
+                }
+            }
+        }
         Spacer(Modifier.height(labelSpacing))
         // While deltas are being buffered the parsed blocks are the body; once the item completes
         // the stream is dropped and the authoritative text renders instead.

@@ -71,6 +71,17 @@
     <string name="composer_interrupt_turn">中断本轮</string>
     <string name="composer_send">发送</string>
     <string name="composer_queued_count">已排队 %1$d 条</string>
+    <string name="composer_history_search_hint">反向搜索历史</string>
+    <string name="composer_history_search_keys">Ctrl+R 更早 · Ctrl+S 更新 · 回车接受 · Esc 取消</string>
+    <string name="composer_history_search_no_match">无匹配</string>
+    <string name="composer_history_search_empty">暂无历史记录</string>
+    <string name="composer_history_search_position">%1$d/%2$d</string>
+    <string name="composer_history_search_older">更早的匹配</string>
+    <string name="composer_history_search_newer">更新的匹配</string>
+    <string name="composer_history_search_accept">使用这条</string>
+    <string name="composer_history_search_cancel">取消搜索</string>
+    <string name="composer_external_editor_failed">没有可以编辑文本的应用</string>
+    <string name="composer_copy_last_empty">还没有可复制的回复</string>
 
     <!-- ApprovalNoticeBar.kt：跨会话审批、审查中与拒绝提示。 -->
     <string name="approval_notice_foreign">%1$s 有待审批</string>

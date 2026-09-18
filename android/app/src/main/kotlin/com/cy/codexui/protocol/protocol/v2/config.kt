@@ -232,6 +232,8 @@ data class ConfigSnapshot(
     val mcpServerNames: List<String> = emptyList(),
     /** `[projects]` keys — the trusted directories. */
     val trustedProjects: List<String> = emptyList(),
+    /** `oss_provider`: which local server an `oss` model provider talks to. */
+    val ossProvider: String? = null,
     /** `[features]` entries. */
     val features: Map<String, Boolean> = emptyMap(),
     val notifications: Boolean? = null,
@@ -240,6 +242,8 @@ data class ConfigSnapshot(
     val useMemories: Boolean? = null,
     /** `[memories] generate_memories`: consolidate threads into the store. */
     val generateMemories: Boolean? = null,
+    /** `[notices] hide_rate_limit_model_nudge`: the user asked never to see the switch prompt. */
+    val hideRateLimitModelNudge: Boolean? = null,
     /** `[experimental]` keys that are on. */
     val experimental: Map<String, Boolean> = emptyMap(),
 ) {
@@ -282,11 +286,13 @@ data class ConfigSnapshot(
                 tuiAlternateScreen = str("tui_alternate_screen"),
                 mcpServerNames = obj("mcp_servers")?.keys?.toList().orEmpty(),
                 trustedProjects = obj("projects")?.keys?.toList().orEmpty(),
+                ossProvider = str("oss_provider"),
                 features = flags("features"),
                 notifications = bool("notifications"),
                 historyPersistence = str("history"),
                 useMemories = obj("memories")?.bool("use_memories"),
                 generateMemories = obj("memories")?.bool("generate_memories"),
+                hideRateLimitModelNudge = obj("notices")?.bool("hide_rate_limit_model_nudge"),
                 experimental = flags("experimental"),
             )
         }

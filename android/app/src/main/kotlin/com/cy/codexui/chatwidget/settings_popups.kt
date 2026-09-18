@@ -1,5 +1,9 @@
 package com.cy.codexui.chatwidget
 
+import android.Manifest
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.StringRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -24,12 +28,17 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.cy.codexui.AgentNotification
+import com.cy.codexui.BuildConfig
+import com.cy.codexui.NotificationSettings
 import com.cy.codexui.R
+import com.cy.codexui.agentNotificationsAllowed
 import com.cy.codexui.protocol.protocol.v2.ApprovalsReviewer
 import com.cy.codexui.protocol.protocol.v2.AskForApproval
 import com.cy.codexui.protocol.protocol.v2.ModelPreset
@@ -45,8 +54,10 @@ import com.cy.codexui.label
 import com.cy.codexui.SurfaceHeader
 import com.cy.codexui.UiConsts
 import com.cy.codexui.status.formatTokens
+import com.cy.codexui.theme.Appearance
 import com.cy.codexui.UiType
 import com.cy.codexui.usageColor
+import top.yukonga.miuix.kmp.theme.ColorSchemeMode
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CardDefaults
@@ -77,6 +88,7 @@ import top.yukonga.miuix.kmp.preference.RadioButtonPreference
 import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import java.util.Locale
+import kotlinx.serialization.json.JsonPrimitive
 import kotlin.math.roundToInt
 
 /**
@@ -129,9 +141,12 @@ fun SettingsScreen(
             ) {
                 when (tab) {
                     SettingsTab.General -> {
+                        SettingsAppearanceSection()
+                        SettingsNotificationSection()
                         SettingsWorkspaceSection(config.cwd, config.workspaceRoots, onOpenWorkspacePicker)
                         SettingsConfigSourcesSection(catalog, configPath)
                         SettingsExperimentalSection(catalog, onEvent)
+                        SettingsAboutSection()
                     }
 
                     SettingsTab.Model -> SettingsModelSection(catalog, preset, config.model, config.reasoningEffort, onEvent)
@@ -354,8 +369,106 @@ private fun SettingsConfigSourcesSection(catalog: CatalogState, configPath: Stri
     }
 }
 
-/** 3. 实验特性: `experimentalFeature/list`, written back through `SetExperimentalFeature`. */
+/**
+ * 2. 外观: theme mode and motion, the two client-side choices the app-server has no opinion on.
+ *
+ * The TUI reads these from `[tui]` config and the terminal; on Android they are app preferences, so
+ * they are written straight into [Appearance] instead of through an [AppEvent].
+ */
 @Composable
+private fun SettingsAppearanceSection() {
+    val context = LocalContext.current
+    SettingsGroup(stringResource(R.string.settings_group_appearance)) {
+        ThemeOption.entries.forEachIndexed { index, option ->
+            if (index > 0) HorizontalDivider()
+            RadioButtonPreference(
+                title = stringResource(option.labelRes),
+                selected = Appearance.themeMode == option.mode,
+                onClick = { Appearance.setThemeMode(context, option.mode) },
+            )
+        }
+        HorizontalDivider()
+        SwitchPreference(
+            title = stringResource(R.string.settings_reduce_motion),
+            summary = stringResource(R.string.settings_reduce_motion_summary),
+            checked = Appearance.reduceMotion,
+            onCheckedChange = { Appearance.setReduceMotion(context, it) },
+        )
+    }
+}
+
+/**
+ * 2.5 通知: the Android counterpart of `tui.notifications`.
+ *
+ * The master switch gates the runtime permission: turning it on with no grant asks for one, and a
+ * denial leaves the switch off rather than pretending notifications will arrive. The per-type rows
+ * are the whitelist itself, keyed by the same wire names upstream stores in `tui.notifications`.
+ */
+@Composable
+private fun SettingsNotificationSection() {
+    val context = LocalContext.current
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        NotificationSettings.setEnabled(context, granted)
+    }
+    SettingsGroup(stringResource(R.string.settings_group_notifications)) {
+        SwitchPreference(
+            title = stringResource(R.string.settings_notifications),
+            summary = stringResource(R.string.settings_notifications_summary),
+            checked = NotificationSettings.enabled,
+            onCheckedChange = { enabled ->
+                when {
+                    !enabled -> NotificationSettings.setEnabled(context, false)
+                    agentNotificationsAllowed(context) -> NotificationSettings.setEnabled(context, true)
+                    Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU ->
+                        permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                    else -> NotificationSettings.setEnabled(context, true)
+                }
+            },
+        )
+        if (NotificationSettings.enabled && !agentNotificationsAllowed(context)) {
+            HorizontalDivider()
+            BasicComponent(
+                title = stringResource(R.string.settings_notifications_permission_denied),
+                enabled = false,
+            )
+        }
+        AgentNotification.entries.forEach { type ->
+            HorizontalDivider()
+            SwitchPreference(
+                title = stringResource(type.labelRes),
+                checked = type in NotificationSettings.types,
+                enabled = NotificationSettings.enabled,
+                onCheckedChange = { NotificationSettings.setType(context, type, it) },
+            )
+        }
+    }
+}
+
+/**
+ * 2.6 关于: the packaged app version.
+ *
+ * Read from [BuildConfig] rather than a hand-written string: the same value initializes the
+ * app-server client, so the version the user sees here is the version the server was told.
+ */
+@Composable
+private fun SettingsAboutSection() {
+    SettingsGroup(stringResource(R.string.settings_group_about)) {
+        BasicComponent(
+            title = stringResource(R.string.settings_app_version),
+            endActions = { MonoValue(BuildConfig.VERSION_NAME) },
+        )
+    }
+}
+
+private enum class ThemeOption(@StringRes val labelRes: Int, val mode: ColorSchemeMode) {
+    System(R.string.settings_theme_system, ColorSchemeMode.System),
+    Light(R.string.settings_theme_light, ColorSchemeMode.Light),
+    Dark(R.string.settings_theme_dark, ColorSchemeMode.Dark),
+}
+
+/** 3. 实验特性: `experimentalFeature/list`, written back through `SetExperimentalFeature`. */@Composable
 private fun SettingsExperimentalSection(catalog: CatalogState, onEvent: (AppEvent) -> Unit) {
     // The Android runtime fixes these features off, regardless of the persisted config.
     val features = catalog.experimentalFeatures.filterNot {
@@ -405,6 +518,34 @@ private fun SettingsModelSection(
                 selected = model.model == currentModel,
                 onClick = { onEvent(AppEvent.SetModel(model.model)) },
             )
+        }
+    }
+
+    // The local provider choice, shown only when the config says the provider is `oss` — the same
+    // place `oss_selection.rs` offers it, because the value means nothing for a hosted provider.
+    if (catalog.config.snapshot.modelProvider == "oss") {
+        val providers = listOf(
+            "lmstudio" to (
+                stringResource(R.string.settings_oss_lmstudio) to
+                    stringResource(R.string.settings_oss_lmstudio_summary)
+                ),
+            "ollama" to (
+                stringResource(R.string.settings_oss_ollama) to
+                    stringResource(R.string.settings_oss_ollama_summary)
+                ),
+        )
+        SettingsGroup(stringResource(R.string.settings_group_oss_provider)) {
+            providers.forEachIndexed { index, (id, labels) ->
+                if (index > 0) HorizontalDivider()
+                RadioButtonPreference(
+                    title = labels.first,
+                    summary = labels.second,
+                    selected = catalog.config.snapshot.ossProvider == id,
+                    onClick = {
+                        onEvent(AppEvent.WriteConfigValue("oss_provider", JsonPrimitive(id)))
+                    },
+                )
+            }
         }
     }
 

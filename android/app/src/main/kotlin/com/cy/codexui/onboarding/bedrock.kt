@@ -26,6 +26,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import com.cy.codexui.AppEvent
 import com.cy.codexui.CodexButton
@@ -44,6 +45,7 @@ import com.cy.codexui.protocol.AppServerClient
 import com.cy.codexui.protocol.protocol.v2.BedrockAwsProfile
 import com.cy.codexui.protocol.protocol.v2.BedrockEnvironmentCredential
 import com.cy.codexui.protocol.protocol.v2.BedrockSetupParams
+import com.cy.codexui.protocol.protocol.v2.LoginAccountParams
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
@@ -86,6 +88,9 @@ fun BedrockScreen(
     var awaitingRegion by remember { mutableStateOf<BedrockSetupParams?>(null) }
     var loading by remember { mutableStateOf(true) }
     var failure by remember { mutableStateOf<String?>(null) }
+    // Which manual credential form is open, if any. Mirrors the non-discovered options in
+    // `onboarding/bedrock.rs`: a typed profile name, typed access keys, or a Bedrock API key.
+    var manualForm by remember { mutableStateOf<ManualBedrockForm?>(null) }
     // Bumped by the header's refresh. The effect keys on it, so a refresh runs the same code path
     // as the first read instead of a second one that could drift away from it.
     var generation by remember { mutableStateOf(0) }
@@ -196,6 +201,35 @@ fun BedrockScreen(
                     }
                 }
             }
+            // The methods the server cannot discover. A typed profile goes through the same
+            // `account/bedrock/setup` as a discovered one; access keys and an API key are login
+            // methods of their own (`AmazonBedrockAccessKeys` / `AmazonBedrock`), because they
+            // establish the credential rather than pointing at one already on the host.
+            SectionCard(
+                title = stringResource(R.string.bedrock_manual_title),
+                icon = MiuixIcons.Settings,
+            ) {
+                CredentialRow(
+                    title = stringResource(R.string.bedrock_manual_profile),
+                    subtitle = stringResource(R.string.bedrock_manual_profile_detail),
+                    selected = false,
+                    onClick = { manualForm = ManualBedrockForm.Profile },
+                )
+                CodexDivider()
+                CredentialRow(
+                    title = stringResource(R.string.bedrock_manual_access_keys),
+                    subtitle = stringResource(R.string.bedrock_manual_access_keys_detail),
+                    selected = false,
+                    onClick = { manualForm = ManualBedrockForm.AccessKeys },
+                )
+                CodexDivider()
+                CredentialRow(
+                    title = stringResource(R.string.bedrock_manual_api_key),
+                    subtitle = stringResource(R.string.bedrock_manual_api_key_detail),
+                    selected = false,
+                    onClick = { manualForm = ManualBedrockForm.ApiKey },
+                )
+            }
             if (failure != null) {
                 SectionCard(
                     title = stringResource(R.string.bedrock_failed_title),
@@ -254,7 +288,117 @@ fun BedrockScreen(
             },
         )
     }
+
+    when (manualForm) {
+        ManualBedrockForm.Profile -> FormSheet(
+            title = stringResource(R.string.bedrock_profile_form_title),
+            subtitle = stringResource(R.string.bedrock_manual_profile_detail),
+            fields = listOf(
+                FormField(
+                    key = "profile",
+                    label = stringResource(R.string.bedrock_profile_form_name),
+                    placeholder = stringResource(R.string.bedrock_profile_form_name_placeholder),
+                ),
+                FormField(
+                    key = "region",
+                    label = stringResource(R.string.bedrock_region_form_label),
+                    placeholder = stringResource(R.string.bedrock_region_form_placeholder),
+                ),
+            ),
+            confirmLabel = stringResource(R.string.bedrock_region_form_confirm),
+            onDismiss = { manualForm = null },
+            onSubmit = { values ->
+                selected = BedrockSetupParams.Profile(
+                    profile = values["profile"].orEmpty().trim(),
+                    region = values["region"].orEmpty().trim(),
+                )
+                manualForm = null
+            },
+        )
+
+        ManualBedrockForm.AccessKeys -> FormSheet(
+            title = stringResource(R.string.bedrock_access_keys_form_title),
+            subtitle = stringResource(R.string.bedrock_manual_access_keys_detail),
+            fields = listOf(
+                FormField(
+                    key = "accessKeyId",
+                    label = stringResource(R.string.bedrock_access_key_id),
+                ),
+                FormField(
+                    key = "secretAccessKey",
+                    label = stringResource(R.string.bedrock_secret_access_key),
+                    masked = true,
+                    keyboardType = KeyboardType.Password,
+                ),
+                FormField(
+                    key = "sessionToken",
+                    label = stringResource(R.string.bedrock_session_token),
+                    required = false,
+                    masked = true,
+                    keyboardType = KeyboardType.Password,
+                    help = stringResource(R.string.bedrock_session_token_help),
+                ),
+                FormField(
+                    key = "region",
+                    label = stringResource(R.string.bedrock_region_form_label),
+                    placeholder = stringResource(R.string.bedrock_region_form_placeholder),
+                ),
+            ),
+            confirmLabel = stringResource(R.string.bedrock_region_form_confirm),
+            onDismiss = { manualForm = null },
+            onSubmit = { values ->
+                onEvent(
+                    AppEvent.Login(
+                        LoginAccountParams.AmazonBedrockAccessKeys(
+                            accessKeyId = values["accessKeyId"].orEmpty().trim(),
+                            secretAccessKey = values["secretAccessKey"].orEmpty().trim(),
+                            region = values["region"].orEmpty().trim(),
+                            sessionToken = values["sessionToken"].orEmpty().trim()
+                                .takeIf { it.isNotEmpty() },
+                        ),
+                    ),
+                )
+                manualForm = null
+            },
+        )
+
+        ManualBedrockForm.ApiKey -> FormSheet(
+            title = stringResource(R.string.bedrock_api_key_form_title),
+            subtitle = stringResource(R.string.bedrock_manual_api_key_detail),
+            fields = listOf(
+                FormField(
+                    key = "apiKey",
+                    label = stringResource(R.string.bedrock_api_key),
+                    masked = true,
+                    keyboardType = KeyboardType.Password,
+                ),
+                FormField(
+                    key = "region",
+                    label = stringResource(R.string.bedrock_region_form_label),
+                    placeholder = stringResource(R.string.bedrock_region_form_placeholder),
+                ),
+            ),
+            confirmLabel = stringResource(R.string.bedrock_region_form_confirm),
+            onDismiss = { manualForm = null },
+            onSubmit = { values ->
+                onEvent(
+                    AppEvent.Login(
+                        LoginAccountParams.AmazonBedrock(
+                            apiKey = values["apiKey"].orEmpty().trim(),
+                            region = values["region"].orEmpty().trim(),
+                        ),
+                    ),
+                )
+                manualForm = null
+            },
+        )
+
+        null -> Unit
+    }
 }
+
+/** The manual credential methods offered beside the discovered ones. */
+private enum class ManualBedrockForm { Profile, AccessKeys, ApiKey }
 
 /** The one-field form the region-less credentials use. */
 @Composable

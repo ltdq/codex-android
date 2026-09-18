@@ -76,6 +76,9 @@ sealed interface Surface : NavKey {
     /** `/review` — pick what to review, then start it. */
     data object Review : Surface
 
+    /** `/worktree` — git worktrees of the open thread's repository. */
+    data object Worktrees : Surface
+
     /**
      * `/diff` — the working tree, tracked and untracked.
      *
@@ -95,6 +98,9 @@ sealed interface Surface : NavKey {
     /** `server/diagnostics`, plus the feedback upload that goes with a bug report. */
     data object Diagnostics : Surface
 
+    /** `/status`: the open thread's own session state, not the server process. */
+    data object SessionStatus : Surface
+
     /** `bottom_pane/memories_settings_view.rs`: what the memory store holds and how to clear it. */
     data object Memories : Surface
 
@@ -112,6 +118,9 @@ sealed interface Surface : NavKey {
     data class McpToolbox(val server: String) : Surface
 
     // ---- agents -----------------------------------------------------------------
+    /** `/agents` and `/subagents`: the roster of agents spawned from the open thread. */
+    data object Agents : Surface
+
     /**
      * One subagent of the open thread.
      *

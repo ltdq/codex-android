@@ -119,6 +119,7 @@ internal object WireCodec {
             cwd = cwd, workspaceRoots = listOf(cwd), instructionSourcePaths = value.strings("instructionSources"),
             gitBranch = t.objectOrNull("gitInfo")?.text("branch"), rolloutPath = t.text("path"),
             parentThreadId = t.text("parentThreadId"), canAcceptDirectInput = t.bool("canAcceptDirectInput"),
+            itemsBackwardsCursor = value.text("itemsBackwardsCursor"),
         )
     }
 
@@ -148,7 +149,7 @@ internal object WireCodec {
             "mcpToolCall" -> McpToolCallItem(id, o.required("server"), o.required("tool"), McpToolCallStatus.entries.find { it.wire == status } ?: McpToolCallStatus.InProgress,
                 o["arguments"]?.let(Json::write) ?: "{}", o["result"]?.takeUnless { it == JsonNull }?.let(Json::write), o.objectOrNull("error")?.text("message"), o.long("durationMs"))
             "dynamicToolCall" -> DynamicToolCallItem(id, o.text("namespace"), o.required("tool"), o["arguments"]?.let(Json::write) ?: "{}",
-                DynamicToolCallStatus.entries.find { it.wire == status } ?: DynamicToolCallStatus.InProgress, o.array("contentItems").map { Json.write(it) }, o.bool("success"), o.long("durationMs"))
+                DynamicToolCallStatus.entries.find { it.wire == status } ?: DynamicToolCallStatus.InProgress, o.array("contentItems").mapNotNull(::dynamicToolContent), o.bool("success"), o.long("durationMs"))
             "collabAgentToolCall" -> CollabAgentToolCallItem(id, CollabAgentTool.entries.find { it.wire == o.text("tool") } ?: CollabAgentTool.SendInput,
                 CollabAgentToolCallStatus.entries.find { it.wire == status } ?: CollabAgentToolCallStatus.InProgress,
                 o.required("senderThreadId"), o.strings("receiverThreadIds"), o.text("prompt"), o.text("model"), o.text("reasoningEffort")?.let(ReasoningEffort::fromWire),
@@ -168,6 +169,22 @@ internal object WireCodec {
             "hookPrompt" -> HookPromptItem(id, o.array("fragments").map { it.objectValue().let { f -> HookPromptFragment(f.required("text"), f.text("hookName").orEmpty()) } })
             "functionCallOutput" -> FunctionCallOutputItem(id, o.required("name"), o.text("namespace"), o["output"]?.wireText().orEmpty())
             else -> FunctionCallOutputItem(id, type, output = Json.write(o))
+        }
+    }
+
+    /**
+     * One `DynamicToolCallOutputContentItem` block.
+     *
+     * Unknown or malformed blocks are dropped rather than rendered: unlike an MCP result there is no
+     * exact-JSON fallback upstream (`dynamic_tools.rs`), and a missing URL would be unusable.
+     */
+    fun dynamicToolContent(value: JsonElement): DynamicToolOutputContent? {
+        val block = value as? JsonObject ?: return null
+        return when (block.text("type")) {
+            "inputText" -> block.text("text")?.let(DynamicToolOutputContent::InputText)
+            "inputImage" -> block.text("imageUrl")?.let(DynamicToolOutputContent::InputImage)
+            "inputAudio" -> block.text("audioUrl")?.let(DynamicToolOutputContent::InputAudio)
+            else -> null
         }
     }
 
@@ -215,6 +232,33 @@ internal object WireCodec {
         limitId = o.text("limitId"), limitName = o.text("limitName"), planType = o.text("planType"),
         rateLimitReachedType = o.text("rateLimitReachedType"), spendControlReached = o.bool("spendControlReached"),
         normalModelSlug = o.text("normalModelSlug"),
+        individualLimit = o.objectOrNull("individualLimit")?.let(::spendControlLimit),
+    )
+
+    private fun spendControlLimit(o: JsonObject) = SpendControlLimitSnapshot(
+        limit = o.text("limit").orEmpty(),
+        remainingPercent = o.int("remainingPercent") ?: 0,
+        resetsAt = o.long("resetsAt") ?: 0L,
+        used = o.text("used").orEmpty(),
+    )
+
+    fun threadUsage(o: JsonObject) = ThreadUsage(
+        threadId = o.required("threadId"),
+        estimatedUsageCreditsMicros = o.long("estimatedUsageCreditsMicros") ?: 0L,
+        estimatedUsageUsdMicros = o.long("estimatedUsageUsdMicros"),
+        groups = o.array("groups").map { value -> value.objectValue().let { group ->
+            ThreadUsageGroup(
+                model = group.text("model"),
+                reasoningEffort = group.text("reasoningEffort"),
+                speed = group.text("speed"),
+                totalTokens = group.long("totalTokens"),
+                inputTokens = group.long("inputTokens"),
+                cachedInputTokens = group.long("cachedInputTokens"),
+                netNewInputTokens = group.long("netNewInputTokens"),
+                outputTokens = group.long("outputTokens"),
+                estimatedUsageCreditsMicros = group.long("estimatedUsageCreditsMicros") ?: 0L,
+            )
+        } },
     )
 
     fun accountRateLimits(o: JsonObject): AccountRateLimits = AccountRateLimits(

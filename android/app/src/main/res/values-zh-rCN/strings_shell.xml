@@ -71,6 +71,9 @@
     <string name="shortcuts_overlay_composer_submit">发送消息</string>
     <string name="shortcuts_overlay_composer_newline">插入换行</string>
     <string name="shortcuts_overlay_composer_help">输入框为空时显示本列表</string>
+    <string name="shortcuts_overlay_composer_history">反向搜索输入历史</string>
+    <string name="shortcuts_overlay_composer_copy">复制上一条回复</string>
+    <string name="shortcuts_overlay_composer_editor">用外部应用编辑草稿</string>
     <string name="shortcuts_overlay_popup_move">在建议之间上下移动</string>
     <string name="shortcuts_overlay_popup_accept">选用当前建议</string>
     <string name="shortcuts_overlay_popup_dismiss">关闭建议列表</string>

@@ -1,5 +1,6 @@
 package com.cy.codexui.chatwidget
 
+import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
@@ -46,6 +47,7 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.snapshots.Snapshot
@@ -55,8 +57,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
+import androidx.core.content.FileProvider
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -66,6 +70,7 @@ import androidx.compose.ui.unit.sp
 import com.cy.codexui.AppEvent
 import com.cy.codexui.CodexApp
 import com.cy.codexui.CodexButton
+import com.cy.codexui.ComposerHistory
 import com.cy.codexui.MarkdownStream
 import com.cy.codexui.Motion
 import com.cy.codexui.R
@@ -79,7 +84,9 @@ import com.cy.codexui.UiType
 import com.cy.codexui.app.AgentPickerSheet
 import com.cy.codexui.app.AgentRosterEntry
 import com.cy.codexui.app.AgentsOverview
-import com.cy.codexui.app.deriveAgentRoster
+import com.cy.codexui.app.rememberAgentRoster
+import com.cy.codexui.app.sessionStatusReport
+import com.cy.codexui.app.withThreadMetadata
 import com.cy.codexui.bottom_pane.ApprovalDialog
 import com.cy.codexui.bottom_pane.ApprovalNoticeBar
 import com.cy.codexui.bottom_pane.Composer
@@ -103,7 +110,10 @@ import com.cy.codexui.protocol.protocol.v2.CommandExecutionStatus
 import com.cy.codexui.protocol.protocol.v2.ThreadAttachment
 import com.cy.codexui.protocol.protocol.v2.UserInput
 import com.cy.codexui.CollapsibleSection
+import com.cy.codexui.copyToClipboard
 import com.cy.codexui.raisedSurface
+import java.io.File
+import kotlinx.coroutines.launch
 import com.cy.codexui.status.DiffCard
 import com.cy.codexui.status.StatusCard
 import com.cy.codexui.status.StatusCardButton
@@ -176,13 +186,6 @@ fun ChatScreen(
             app.importAttachment(uri)
         }
     }
-    var mentionPaths by remember(session.config.cwd) { mutableStateOf<List<String>>(emptyList()) }
-    LaunchedEffect(app.startupReady, session.config.cwd) {
-        if (app.startupReady) {
-            app.client.readDirectory(session.config.cwd.ifBlank { app.defaultWorkspace })
-                .onSuccess { entries -> mentionPaths = entries.map { it.path } }
-        }
-    }
     val colors = MiuixTheme.colorScheme
     var overviewOpen by remember { mutableStateOf(false) }
     // `show` stays true while the sheet animates out: it calls back when it has actually left, and
@@ -192,13 +195,11 @@ fun ChatScreen(
 
     val mainAgentLabel = stringResource(R.string.agent_roster_main_label)
     val subAgentNameFormat = stringResource(R.string.agent_roster_sub_agent_name)
-    // The roster is folded out of the whole transcript, so it is derived through [AgentRosterMemo]
-    // rather than read here: reading the items list in this scope would subscribe the entire screen
-    // to every streaming delta, and only the memo's folded value may invalidate this screen.
-    val rosterMemo = remember(session, session.threadId, mainAgentLabel, subAgentNameFormat) {
-        AgentRosterMemo(session, mainAgentLabel, subAgentNameFormat)
-    }
-    val roster = rosterMemo.roster
+    // The roster is folded out of the whole transcript, so it is derived through
+    // [rememberAgentRoster] rather than read here: reading the items list in this scope would
+    // subscribe the entire screen to every streaming delta, and only the memo's folded value may
+    // invalidate this screen.
+    val roster = rememberAgentRoster(session, mainAgentLabel, subAgentNameFormat)
     val approval = app.widget.currentApproval
     // Names the thread the way the sidebar and the resume picker do, for the cross-thread
     // approval notice; the state read happens where the notice renders.
@@ -407,6 +408,7 @@ fun ChatScreen(
                         maxHeight = statusCardMaxHeight,
                         models = app.catalog.models,
                         rateLimits = app.catalog.rateLimits,
+                        rateLimitsUpdatedAt = app.catalog.rateLimitsUpdatedAtMs.takeIf { it > 0L },
                         onModel = { app.onAppEvent(AppEvent.SetModel(it)) },
                         onEffort = { app.onAppEvent(AppEvent.SetReasoningEffort(it)) },
                         onPolicy = { app.onAppEvent(AppEvent.SetApprovalPolicy(it)) },
@@ -441,7 +443,6 @@ fun ChatScreen(
         ComposerDock(
             app = app,
             session = session,
-            mentionPaths = mentionPaths,
             threadNameOf = threadNameOf,
             promptBarStartInset = promptBarStartInset,
             backdrop = backdrop,
@@ -455,6 +456,7 @@ fun ChatScreen(
         // `AgentPickerSheet` is the roster as a filterable list; it has no trigger yet — the status
         // card's agent section opens the overview instead — so it is not mounted here.
         AgentsOverviewPane(
+            app = app,
             session = session,
             roster = roster,
             show = overviewOpen || overviewLeaving,
@@ -513,6 +515,28 @@ fun ChatScreen(
                 onSet = { app.onAppEvent(AppEvent.SetGoal(it)) },
                 onClear = { app.onAppEvent(AppEvent.ClearGoal) },
                 onDismiss = { app.goalMenuOpen = false },
+            )
+        }
+        if (app.copyMenuOpen) {
+            CopySheet(
+                response = session.items.lastOrNull { it is AgentMessageItem } as? AgentMessageItem,
+                status = sessionStatusReport(app),
+                onDismiss = { app.copyMenuOpen = false },
+            )
+        }
+        app.trustRequest?.let { request ->
+            TrustProjectSheet(
+                path = request.path,
+                onTrust = app::grantTrust,
+                onDismiss = app::dismissTrust,
+            )
+        }
+        app.rateLimitNudge?.let { nudge ->
+            RateLimitNudgeSheet(
+                nudge = nudge,
+                onSwitch = app::switchToRateLimitModel,
+                onKeep = app::dismissRateLimitNudge,
+                onNever = app::hideRateLimitNudgeForever,
             )
         }
     }
@@ -575,6 +599,9 @@ private fun TranscriptPane(
         onOpenAgent = { threadId -> app.openSurface(Surface.SubAgentThread(threadId)) },
         onOpenAgentInfo = { threadId -> app.openSurface(Surface.SubAgent(threadId)) },
         onAnswerQuestion = { text -> app.onAppEvent(AppEvent.AnswerAsyncQuestion(text)) },
+        canLoadEarlier = app.widget.canLoadEarlier,
+        loadingEarlier = app.widget.loadingEarlier,
+        onLoadEarlier = app.widget::loadEarlier,
         contentPadding = PaddingValues(
             start = UiConsts.TranscriptGutter,
             end = UiConsts.TranscriptGutter,
@@ -583,38 +610,6 @@ private fun TranscriptPane(
                 UiConsts.TranscriptBottomInset,
         ),
     )
-}
-
-/**
- * The agent roster folded out of the transcript, at most once per [SessionState.itemsRevision].
- *
- * The point of the dedicated type is what is *not* observed: the fold reads the revision and
- * nothing else, so an item write only schedules a recalculation, and the screen that read
- * [roster] is invalidated only when the folded value actually differs. During a turn the
- * transcript is written on every delta and the roster normally does not change at all, so none of
- * those writes recompose the caller.
- */
-private class AgentRosterMemo(
-    private val session: SessionState,
-    private val mainAgentLabel: String,
-    private val subAgentNameFormat: String,
-) {
-    private var revision = -1
-    private var cached: List<AgentRosterEntry> = emptyList()
-    private val state = derivedStateOf {
-        val current = session.itemsRevision
-        if (current != revision) {
-            revision = current
-            // The list itself is read without a read observer: the revision above is the memo's
-            // only dependency, and the fold runs once per revision rather than once per reader.
-            cached = Snapshot.withoutReadObservation {
-                deriveAgentRoster(session.items, session.threadId, mainAgentLabel, subAgentNameFormat)
-            }
-        }
-        cached
-    }
-
-    val roster: List<AgentRosterEntry> get() = state.value
 }
 
 /**
@@ -840,6 +835,9 @@ private fun Transcript(
     onOpenAgent: (String) -> Unit,
     onOpenAgentInfo: (String) -> Unit,
     onAnswerQuestion: (String) -> Unit,
+    canLoadEarlier: Boolean,
+    loadingEarlier: Boolean,
+    onLoadEarlier: () -> Unit,
     contentPadding: androidx.compose.foundation.layout.PaddingValues,
     itemGap: Dp = 18.dp,
     planGap: Dp = 10.dp,
@@ -867,6 +865,13 @@ private fun Transcript(
         contentPadding = contentPadding,
         verticalArrangement = Arrangement.spacedBy(itemGap),
     ) {
+        // The page pager sits above the first row, not in the top padding: it belongs to the
+        // transcript's scroll content, so a reader who tapped it stays put when the page lands.
+        if (canLoadEarlier || loadingEarlier) {
+            item(key = "load-earlier") {
+                LoadEarlierRow(loading = loadingEarlier, onLoad = onLoadEarlier)
+            }
+        }
         // The list is read here, not copied: the count and the keys re-read it when it changes,
         // and each row reads its own element inside its own scope, so a delta that replaces one
         // element does not rebuild the screen around the list.
@@ -905,6 +910,26 @@ private fun Transcript(
         if (loading) {
             item(key = "loading") { LoadingRow() }
         }
+    }
+}
+
+/**
+ * "Load earlier" as a row at the top of the transcript.
+ *
+ * Centered and compact: it is a pager for history the reader has scrolled away from, not a primary
+ * action, and a full-width button would read as one.
+ */
+@Composable
+private fun LoadEarlierRow(loading: Boolean, onLoad: () -> Unit) {
+    Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+        CodexButton(
+            text = stringResource(
+                if (loading) R.string.transcript_load_earlier_loading else R.string.transcript_load_earlier,
+            ),
+            onClick = onLoad,
+            enabled = !loading,
+            size = com.cy.codexui.CodexButtonSize.Compact,
+        )
     }
 }
 
@@ -1143,6 +1168,9 @@ internal fun StatusChip(
     }
 }
 
+/** Cache-relative name of the file `ACTION_EDIT` edits; matches `res/xml/file_paths.xml`. */
+private const val ComposerDraftFile = "drafts/composer.txt"
+
 /**
  * The queued-message tray and the composer.
  *
@@ -1154,7 +1182,6 @@ internal fun StatusChip(
 private fun ComposerDock(
     app: CodexApp,
     session: SessionState,
-    mentionPaths: List<String>,
     threadNameOf: (String) -> String,
     promptBarStartInset: Dp,
     backdrop: Backdrop,
@@ -1169,6 +1196,20 @@ private fun ComposerDock(
     // quote itself — and both outlive this composable's own state.
     val prompt = session.composerDraft
     val onPromptChange: (String) -> Unit = { app.onAppEvent(AppEvent.SetComposerDraft(it)) }
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    // The draft as it was when the editor launched, so an editor that saves nothing cannot wipe
+    // what was typed. The result code is deliberately ignored: several editors return CANCELED
+    // while still having written the file.
+    var editorOriginal by remember { mutableStateOf<String?>(null) }
+    val externalEditor = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) {
+        val original = editorOriginal
+        editorOriginal = null
+        val edited = runCatching { File(context.cacheDir, ComposerDraftFile).readText() }.getOrNull()
+        if (edited != null && edited != original) onPromptChange(edited)
+    }
 
     Column(
         modifier = modifier
@@ -1253,6 +1294,43 @@ private fun ComposerDock(
             },
             onInterrupt = { app.onAppEvent(AppEvent.InterruptTurn) },
             onAttach = onAttach,
+            history = ComposerHistory.entries,
+            onCopyLastResponse = {
+                val last = session.items.lastOrNull { it is AgentMessageItem } as? AgentMessageItem
+                if (last == null || last.text.isBlank()) {
+                    scope.launch {
+                        app.snackbar.showSnackbar(context.getString(R.string.composer_copy_last_empty))
+                    }
+                } else {
+                    copyToClipboard(context, last.text, context.getString(R.string.copy_sheet_whole_response))
+                }
+            },
+            onOpenExternalEditor = {
+                val file = File(context.cacheDir, ComposerDraftFile)
+                runCatching {
+                    file.parentFile?.mkdirs()
+                    file.writeText(prompt)
+                    val uri = FileProvider.getUriForFile(
+                        context,
+                        "${context.packageName}.fileprovider",
+                        file,
+                    )
+                    val intent = Intent(Intent.ACTION_EDIT)
+                        .setDataAndType(uri, "text/plain")
+                        .addFlags(
+                            Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                                Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
+                        )
+                    editorOriginal = prompt
+                    externalEditor.launch(intent)
+                }.onFailure {
+                    scope.launch {
+                        app.snackbar.showSnackbar(
+                            context.getString(R.string.composer_external_editor_failed),
+                        )
+                    }
+                }
+            },
             running = session.running,
             enabled = app.startupReady && !session.loading && !app.creatingThread &&
                 !session.config.blocksDirectInput,
@@ -1285,10 +1363,15 @@ private fun ComposerDock(
                     app.onAppEvent(AppEvent.SubmitSlashCommand(command.command, ""))
                 }
             },
-            mentionCandidates = mentionPaths,
-            // The composer already spliced the picked path into the draft; this hook exists for
+            mentionSuggestions = app.mentionSuggestions,
+            // The composer already spliced the picked text into the draft; this hook exists for
             // surfaces that want to react to the mention itself (nothing does yet).
             onMentionPicked = {},
+            onMentionQueryChange = app::onMentionQueryChange,
+            // Only enabled skills are offered: a disabled skill mentioned by name would resolve to
+            // nothing, and the popup is the one place that can say so before the turn is sent.
+            skillCandidates = app.catalog.skills.filter { it.enabled }.map { it.name },
+            onSkillPicked = {},
             backdrop = backdrop,
             modifier = Modifier
                 .fillMaxWidth()
@@ -1305,9 +1388,12 @@ private fun ComposerDock(
  *
  * The token total moves while a turn streams; the roster read is already the memoized fold, so
  * this indirection keeps the usage updates from invalidating the chat screen around the sheet.
+ * Per-thread usage and subagent liveness are folded in here for the same reason: the sheet is
+ * rebuilt from them, not the screen behind it.
  */
 @Composable
 private fun AgentsOverviewPane(
+    app: CodexApp,
     session: SessionState,
     roster: List<AgentRosterEntry>,
     show: Boolean,
@@ -1315,14 +1401,20 @@ private fun AgentsOverviewPane(
     onDismiss: () -> Unit,
     onDismissFinished: () -> Unit,
 ) {
+    val usage = app.catalog.threadUsage
+    val listedThreads = app.catalog.agentThreads + app.threads.threads
+    val entries = remember(roster, usage, listedThreads) {
+        val byId = listedThreads.associateBy { it.id }
+        roster.map { agent -> agent.withThreadMetadata(byId[agent.threadId], usage[agent.threadId]) }
+    }
     AgentsOverview(
         show = show,
-        roster = roster,
+        roster = entries,
         activeThreadId = session.threadId,
         onSelect = onSelect,
         onDismiss = onDismiss,
         onDismissFinished = onDismissFinished,
-        totalTokens = session.usage.total.totalTokens,
+        totalTokens = entries.sumOf { it.tokens.toLong() },
     )
 }
 

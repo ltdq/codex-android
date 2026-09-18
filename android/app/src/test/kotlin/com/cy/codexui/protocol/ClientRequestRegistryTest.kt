@@ -219,10 +219,12 @@ class ClientRequestRegistryTest {
      *    teardown. Neither is a `ClientRequest`.
      *  - Stream accessors. `events`, `requests` and `connection` are flows the transport pushes on,
      *    not calls the client makes.
-     *  - Two client-side projections. `updateThreadSettingsFull` is the typed overload of
-     *    `thread/settings/update`, and `readConfigLayers` reads the layer list out of a
-     *    `config/read` response that already carried it — the protocol has no `config/layers/read`.
-     */
+      *  - Two client-side projections. `updateThreadSettingsFull` is the typed overload of
+      *    `thread/settings/update`, and `readConfigLayers` reads the layer list out of a
+      *    `config/read` response that already carried it — the protocol has no `config/layers/read`.
+      *  - `readThreadUsage` is the thread-scoped overload of `account/usage/read`: the same request
+      *    with a `threadId`, answered with `threadUsage` instead of the daily buckets.
+      */
     private val nonRequestMembers = setOf(
         "respond",
         "close",
@@ -231,6 +233,7 @@ class ClientRequestRegistryTest {
         "getConnection",
         "updateThreadSettingsFull",
         "readConfigLayers",
+        "readThreadUsage",
     )
 
     /**

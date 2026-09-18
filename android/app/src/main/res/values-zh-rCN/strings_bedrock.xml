@@ -24,4 +24,21 @@
     <string name="bedrock_region_form_label">AWS 区域</string>
     <string name="bedrock_region_form_placeholder">us-east-1</string>
     <string name="bedrock_region_form_confirm">使用该区域</string>
+    <string name="bedrock_manual_title">手动配置</string>
+    <string name="bedrock_manual_profile">AWS 配置文件名称</string>
+    <string name="bedrock_manual_profile_detail">手动输入 AWS 配置文件里的 profile 名称</string>
+    <string name="bedrock_manual_access_keys">访问密钥</string>
+    <string name="bedrock_manual_access_keys_detail">用 Access Key ID 和 Secret Access Key 登录</string>
+    <string name="bedrock_manual_api_key">Bedrock API 密钥</string>
+    <string name="bedrock_manual_api_key_detail">用 Bedrock API 密钥登录，而不是 AWS 凭据</string>
+    <string name="bedrock_profile_form_title">AWS 配置文件</string>
+    <string name="bedrock_profile_form_name">Profile 名称</string>
+    <string name="bedrock_profile_form_name_placeholder">default</string>
+    <string name="bedrock_access_keys_form_title">访问密钥</string>
+    <string name="bedrock_access_key_id">Access Key ID</string>
+    <string name="bedrock_secret_access_key">Secret Access Key</string>
+    <string name="bedrock_session_token">Session Token</string>
+    <string name="bedrock_session_token_help">选填；只有 STS 签发的临时凭据才有。</string>
+    <string name="bedrock_api_key_form_title">Bedrock API 密钥</string>
+    <string name="bedrock_api_key">API 密钥</string>
 </resources>

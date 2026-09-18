@@ -21,6 +21,8 @@ import com.cy.codexui.protocol.protocol.v2.DiagnosticSeverity
 import com.cy.codexui.protocol.protocol.v2.FileUpdateChange
 import com.cy.codexui.protocol.protocol.v2.QueuedSubmission
 import com.cy.codexui.protocol.protocol.v2.ReviewTarget
+import com.cy.codexui.protocol.protocol.v2.SortDirection
+import com.cy.codexui.protocol.protocol.v2.ThreadItemsListParams
 import com.cy.codexui.protocol.protocol.v2.ThreadSettingsUpdateParams
 import com.cy.codexui.protocol.protocol.v2.ThreadReadResponse
 import com.cy.codexui.protocol.protocol.v2.ThreadStatus
@@ -31,10 +33,16 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
 
 /** The wire's "no tier preference" value (`SERVICE_TIER_DEFAULT_REQUEST_VALUE` upstream). */
 private const val ServiceTierDefault = "default"
+
+/** Items per "load earlier" page; the server clamps whatever the client asks for. */
+private const val EarlierPageSize = 50
 
 /**
  * The reducer that owns one open thread.
@@ -57,6 +65,16 @@ class ChatWidget(
      * a recomposition. That is exactly how an approval used to disappear into a blocked turn.
      */
     private val pendingApprovals = mutableStateListOf<ApprovalRequest>()
+
+    /**
+     * Notices the app turns into system notifications.
+     *
+     * The widget knows *when* something happened (a turn ended, an approval became blocking) but
+     * has no Context, so it emits a structured event and [CodexApp] formats and posts it. A small
+     * buffer with `tryEmit` on purpose: an alert is best-effort and must never suspend a reducer.
+     */
+    private val _notices = MutableSharedFlow<AgentNotice>(extraBufferCapacity = 32)
+    val notices: SharedFlow<AgentNotice> = _notices.asSharedFlow()
 
     /** Incremented on every reset so a stale collection job can recognise itself. */
     private var subscription: Job? = null
@@ -112,6 +130,48 @@ class ChatWidget(
     private val pendingMarkdown = linkedMapOf<String, PendingMarkdown>()
     private var markdownFlushJob: Job? = null
 
+    /**
+     * A bounded, per-thread queue of the notifications worth replaying on switch.
+     *
+     * Bounded twice over: per thread so one noisy agent cannot grow without limit, and by thread
+     * count so a session that spawns many agents keeps only the most recently active ones. The
+     * oldest thread is evicted first, and an evicted thread simply opens without replay — the same
+     * behaviour as before the buffer existed, never a wrong transcript.
+     */
+    private class ForeignEventBuffer(
+        private val perThreadCapacity: Int = 256,
+        private val maxThreads: Int = 8,
+    ) {
+        private val threads = LinkedHashMap<String, ArrayDeque<AppServerEvent>>()
+
+        fun record(threadId: String, event: AppServerEvent) {
+            if (!replayable(event)) return
+            // Re-insert so the eviction order is least-recently-active, not least-recently-created.
+            val queued = threads.remove(threadId) ?: ArrayDeque()
+            threads[threadId] = queued
+            queued.addLast(event)
+            while (queued.size > perThreadCapacity) queued.removeFirst()
+            while (threads.size > maxThreads) threads.remove(threads.keys.first())
+        }
+
+        fun drain(threadId: String): List<AppServerEvent> = threads.remove(threadId)?.toList().orEmpty()
+
+        private fun replayable(event: AppServerEvent): Boolean = when (event) {
+            // A completed item carries its full body, so replaying it cannot duplicate anything:
+            // upsert by id replaces the snapshot copy with the same immutable content.
+            is AppServerEvent.ItemCompleted,
+            is AppServerEvent.TurnStarted,
+            is AppServerEvent.TurnCompleted,
+            is AppServerEvent.ErrorEvent,
+            is AppServerEvent.WarningEvent,
+            is AppServerEvent.GuardianWarningEvent,
+            is AppServerEvent.ThreadClosed,
+            -> true
+
+            else -> false
+        }
+    }
+
     /** Turns that already produced their one safety-buffering notice, bounded like [finishedTurns]. */
     private val safetyBufferedTurns = LinkedHashSet<String>()
 
@@ -137,6 +197,18 @@ class ChatWidget(
      */
     private val otherApprovals = mutableStateListOf<ApprovalRequest>()
 
+    /**
+     * Replayable notifications from threads that are not on screen.
+     *
+     * The server keeps streaming while the user reads another thread, and only a snapshot is read
+     * on switch: transient diagnostics, turn boundaries and item completions that happened in
+     * between are not in it. This buffer holds that subset per thread and [open] drains it after
+     * the snapshot. Content deltas are deliberately not held — the snapshot already contains their
+     * result, so replaying them would append the same text twice. Upstream has the same split in
+     * `app/thread_event_buffer.rs` + `app/replay_filter.rs`, at the scale of a whole event store.
+     */
+    private val foreignEvents = ForeignEventBuffer()
+
     /** In-flight auto reviews, arrival order, for the aggregated review footer. */
     private val reviewsInFlight = mutableStateListOf<PendingReview>()
 
@@ -159,6 +231,23 @@ class ChatWidget(
      * time; this flag says whether the stream has since overtaken it. See [open].
      */
     private var streamOvertookLoad = false
+
+    /**
+     * Cursor into the turns older than what [open] loaded.
+     *
+     * `thread/resume` answers with an `itemsBackwardsCursor` when the server can page backwards;
+     * the transcript uses it to offer "load earlier" and replaces it with each page's own
+     * `nextCursor`. Null means either the server predates the field or the thread is fully loaded,
+     * and in both cases the button is absent rather than disabled.
+     */
+    var itemsBackwardsCursor by mutableStateOf<String?>(null)
+        private set
+
+    var loadingEarlier by mutableStateOf(false)
+        private set
+
+    /** Whether a "load earlier" affordance should be on screen right now. */
+    val canLoadEarlier: Boolean get() = itemsBackwardsCursor != null && !loadingEarlier
 
     /** How many requests are actually on screen, i.e. eligible for the "in queue" line. */
     val approvalQueueSize: Int get() = if (currentApproval == null) 0 else pendingApprovals.size
@@ -298,6 +387,8 @@ class ChatWidget(
         turnDiff.reset()
         patchChanges.clear()
         streamOvertookLoad = false
+        itemsBackwardsCursor = null
+        loadingEarlier = false
         loadJob = scope.launch {
             val resumed = client.resumeThread(threadId)
             if (version != loadVersion) return@launch
@@ -305,6 +396,10 @@ class ChatWidget(
                 val streamedStatus = state.status.takeIf { streamOvertookLoad && it != ThreadStatus.NotLoaded }
                 state.bindThread(threadId, session)
                 if (streamedStatus != null) state.applyStatus(streamedStatus)
+                // Read after `bindThread` so a stale resume from a cancelled load cannot plant a
+                // cursor for the thread that replaced it; the version check above already guards
+                // the common race, and this keeps the invariant local to the success branch.
+                if (version == loadVersion) itemsBackwardsCursor = session.itemsBackwardsCursor
             }
                 .onFailure { error ->
                     state.failLoad(error.message)
@@ -345,10 +440,57 @@ class ChatWidget(
             }
             onLoaded(history)
             if (version != loadVersion) return@launch
+            // Events that arrived while another thread was open are applied after the snapshot, so
+            // content comes from the server exactly once and only the snapshot-less facts — a turn
+            // that ended, a diagnostic, an item that completed — come from the buffer.
+            foreignEvents.drain(threadId).forEach { buffered ->
+                if (version != loadVersion) return@launch
+                apply(buffered)
+            }
             refreshQueue(threadId)
             client.getGoal(threadId).onSuccess {
                 if (version == loadVersion) state.applyGoal(it)
             }
+        }
+    }
+
+    /**
+     * Fetch one page of items older than the transcript's first row.
+     *
+     * `thread/items/list` pages backwards: the request's cursor names the oldest loaded item, the
+     * page comes back newest-first, and its `nextCursor` names the next-older page. The page is
+     * therefore reversed before it is prepended, and a failure leaves the cursor in place so the
+     * button retries rather than disappearing.
+     */
+    fun loadEarlier() {
+        val cursor = itemsBackwardsCursor ?: return
+        if (loadingEarlier) return
+        val threadId = state.threadId
+        if (threadId.isBlank()) return
+        loadingEarlier = true
+        scope.launch {
+            client.listThreadItems(
+                ThreadItemsListParams(
+                    threadId = threadId,
+                    cursor = cursor,
+                    limit = EarlierPageSize,
+                    sortDirection = SortDirection.Desc,
+                ),
+            ).onSuccess { page ->
+                if (state.threadId != threadId) return@onSuccess
+                state.prepend(page.items.asReversed())
+                itemsBackwardsCursor = page.nextCursor
+            }.onFailure { error ->
+                if (state.threadId != threadId) return@onFailure
+                state.addDiagnostic(
+                    SessionDiagnostic(
+                        severity = DiagnosticSeverity.Error,
+                        code = DiagnosticCode.ThreadLoadFailed,
+                        detail = error.message,
+                    ),
+                )
+            }
+            loadingEarlier = false
         }
     }
 
@@ -535,6 +677,8 @@ class ChatWidget(
             is AppEvent.ReloadRateLimits,
             is AppEvent.ReloadUsage,
             is AppEvent.ReloadConfig,
+            is AppEvent.ReloadAgentThreads,
+            is AppEvent.StopThreadTurn,
             is AppEvent.ReloadSkills,
             is AppEvent.ReloadPlugins,
             is AppEvent.ReloadPluginShares,
@@ -557,6 +701,7 @@ class ChatWidget(
             is AppEvent.SetThreadListScope,
             is AppEvent.InstallPlugin,
             is AppEvent.UninstallPlugin,
+            is AppEvent.SetPluginEnabled,
             is AppEvent.AddMarketplace,
             is AppEvent.RemoveMarketplace,
             is AppEvent.UpgradeMarketplace,
@@ -837,6 +982,16 @@ class ChatWidget(
             -> Unit
         }
 
+        // One alert per request, before the queue dedup below: a request for another thread still
+        // blocks that agent and is exactly what a backgrounded user should hear about.
+        _notices.tryEmit(
+            AgentNotice.Approval(
+                threadId = request.threadId,
+                kind = approvalNoticeKind(request),
+                detail = approvalNoticeDetail(request),
+            ),
+        )
+
         if (pendingApprovals.any { it.requestId == request.requestId }) return
         if (otherApprovals.any { it.requestId == request.requestId }) return
         // A request whose turn already finished is stale: the server resolved it while this client
@@ -866,7 +1021,11 @@ class ChatWidget(
     // ---------------------------------------------------------------------------------------
 
     private fun apply(event: AppServerEvent) {
-        if (event.threadId != null && event.threadId != state.threadId) return
+        val eventThread = event.threadId
+        if (eventThread != null && eventThread != state.threadId) {
+            foreignEvents.record(eventThread, event)
+            return
+        }
         eventRevision++
         streamOvertookLoad = true
         when (event) {
@@ -1207,6 +1366,19 @@ class ChatWidget(
     private fun onTurnCompleted(event: AppServerEvent.TurnCompleted) {
         flushMarkdown()
         state.applyStatus(ThreadStatus.Idle)
+        // The agent is now waiting for the user; announce that only when nothing else will start a
+        // turn on its own. The preview is the first line of the last answer, the same thing the
+        // TUI puts in its `AgentTurnComplete` payload.
+        _notices.tryEmit(
+            AgentNotice.TurnComplete(
+                threadId = event.threadId,
+                preview = (state.items.lastOrNull { it is AgentMessageItem } as? AgentMessageItem)
+                    ?.text
+                    ?.lineSequence()
+                    ?.firstOrNull { it.isNotBlank() }
+                    ?.take(200),
+            ),
+        )
         // An interrupted turn may never complete its last item; its buffered deltas are folded back
         // into the item before the stream flag is cleared.
         state.settleStreams()
@@ -1328,6 +1500,22 @@ class ChatWidget(
 
 private fun com.cy.codexui.protocol.protocol.v2.Thread.threadIdOr(fallback: String): String =
     id.ifEmpty { fallback }
+
+/** Which approval-notification wording a server request earns. */
+private fun approvalNoticeKind(request: ApprovalRequest): ApprovalNoticeKind = when (request) {
+    is ApprovalRequest.Exec -> ApprovalNoticeKind.Command
+    is ApprovalRequest.ApplyPatch -> ApprovalNoticeKind.FileChange
+    is ApprovalRequest.Elicitation -> ApprovalNoticeKind.Elicitation
+    else -> ApprovalNoticeKind.Other
+}
+
+/** The command, path or server the notification names, when the request carries one. */
+private fun approvalNoticeDetail(request: ApprovalRequest): String? = when (request) {
+    is ApprovalRequest.Exec -> request.params.command
+    is ApprovalRequest.ApplyPatch -> request.params.grantRoot
+    is ApprovalRequest.Elicitation -> request.params.serverName
+    else -> null
+}
 
 /**
  * One-line summary of the action an auto review is judging.

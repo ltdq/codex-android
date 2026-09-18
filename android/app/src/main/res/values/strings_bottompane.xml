@@ -71,6 +71,17 @@
     <string name="composer_interrupt_turn">Interrupt turn</string>
     <string name="composer_send">Send</string>
     <string name="composer_queued_count">%1$d queued messages</string>
+    <string name="composer_history_search_hint">Reverse search history</string>
+    <string name="composer_history_search_keys">Ctrl+R older · Ctrl+S newer · Enter accept · Esc cancel</string>
+    <string name="composer_history_search_no_match">no match</string>
+    <string name="composer_history_search_empty">no history yet</string>
+    <string name="composer_history_search_position">%1$d/%2$d</string>
+    <string name="composer_history_search_older">Older match</string>
+    <string name="composer_history_search_newer">Newer match</string>
+    <string name="composer_history_search_accept">Use this entry</string>
+    <string name="composer_history_search_cancel">Cancel search</string>
+    <string name="composer_external_editor_failed">No app can edit text</string>
+    <string name="composer_copy_last_empty">No response to copy yet</string>
 
     <!-- ApprovalNoticeBar.kt: cross-thread approvals, in-flight reviews and denials. -->
     <string name="approval_notice_foreign">Approval needed in %1$s</string>

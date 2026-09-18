@@ -39,6 +39,21 @@
     <string name="agents_overview_activity_interrupted">Interrupted</string>
     <string name="agents_overview_activity_completed">Completed</string>
 
+    <!-- AgentsPage.kt: `/agents` and `/subagents` as a full page with roster actions. -->
+    <string name="agents_screen_subtitle">%1$d agents · %2$s tokens total</string>
+    <string name="agents_screen_filter">Filter agents</string>
+    <string name="agents_screen_back">Back</string>
+    <string name="agents_action_stop">Stop</string>
+    <string name="agents_action_rename">Rename</string>
+    <string name="agents_action_archive">Archive</string>
+    <string name="agents_rename_title">Rename agent</string>
+    <string name="agents_rename_label">Name</string>
+    <string name="agents_rename_confirm">Rename</string>
+    <string name="agents_archive_title">Archive agent</string>
+    <string name="agents_archive_message">Archiving stops any running work and hides the thread from the session list. You can unarchive it later.</string>
+    <string name="agents_archive_confirm">Archive</string>
+    <string name="agents_cancel">Cancel</string>
+
     <!-- GoalSheet.kt: the goal sheet, its status pill and the shared pill button. -->
     <string name="goal_sheet_title">Goal</string>
     <string name="goal_sheet_subtitle_idle">Goal mode keeps working toward the objective</string>

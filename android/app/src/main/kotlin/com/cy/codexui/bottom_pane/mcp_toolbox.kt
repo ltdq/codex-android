@@ -41,6 +41,8 @@ import com.cy.codexui.UiConsts
 import com.cy.codexui.UiType
 import com.cy.codexui.ValueRow
 import com.cy.codexui.codeSurface
+import com.cy.codexui.history_cell.ToolResultBlocks
+import com.cy.codexui.history_cell.projectMcpResult
 import com.cy.codexui.protocol.AppServerClient
 import com.cy.codexui.protocol.AppServerEvent
 import com.cy.codexui.protocol.protocol.v2.McpResourceReadResponse
@@ -355,7 +357,12 @@ private fun ToolCard(
                 color = if (response.isError) colors.error else successColor(),
             )
             Spacer(Modifier.height(UiConsts.Space6))
-            MonospaceOutput(text = response.result.ifEmpty { emptyOutput })
+            val blocks = projectMcpResult(response.result)
+            if (blocks.isEmpty()) {
+                MonospaceOutput(text = response.result.ifEmpty { emptyOutput })
+            } else {
+                ToolResultBlocks(blocks)
+            }
         }
     }
 }

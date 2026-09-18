@@ -5,6 +5,7 @@ import com.cy.codexui.protocol.AppServerEvent
 import com.cy.codexui.protocol.ApprovalRequest
 import com.cy.codexui.protocol.ApprovalResponse
 import com.cy.codexui.protocol.ConnectionState
+import com.cy.codexui.protocol.ThreadItemsPage
 import com.cy.codexui.protocol.protocol.RequestId
 import com.cy.codexui.protocol.protocol.v2.ClientInfo
 import com.cy.codexui.protocol.protocol.v2.ItemTextDelta
@@ -16,6 +17,7 @@ import com.cy.codexui.protocol.protocol.v2.FileUpdateChange
 import com.cy.codexui.protocol.protocol.v2.GuardianApprovalReviewNotification
 import com.cy.codexui.protocol.protocol.v2.PatchApplyStatus
 import com.cy.codexui.protocol.protocol.v2.PatchChangeKind
+import com.cy.codexui.protocol.protocol.v2.ThreadItemsListParams
 import com.cy.codexui.protocol.protocol.v2.ThreadSessionState
 import com.cy.codexui.protocol.protocol.v2.ThreadStatus
 import com.cy.codexui.protocol.protocol.v2.Thread
@@ -23,6 +25,7 @@ import com.cy.codexui.protocol.protocol.v2.ThreadReadResponse
 import com.cy.codexui.protocol.protocol.v2.ThreadTokenUsage
 import com.cy.codexui.protocol.protocol.v2.TokenUsageBreakdown
 import com.cy.codexui.protocol.protocol.v2.TurnStatus
+import com.cy.codexui.protocol.protocol.v2.WarningNotification
 import com.cy.codexui.protocol.protocol.item.AgentMessageItem
 import com.cy.codexui.protocol.protocol.item.CommandExecutionItem
 import com.cy.codexui.protocol.protocol.item.FileChangeItem
@@ -238,6 +241,47 @@ class ChatWidgetTest {
     }
 
     @Test
+    fun `load earlier prepends the older page and follows its cursor`() = runTest {
+        val thread = testThread("paged")
+        val newest = CommandExecutionItem("newest", "second", "/workspace", aggregatedOutput = "2\n", exitCode = 0)
+        val older = CommandExecutionItem("older", "first", "/workspace", aggregatedOutput = "1\n", exitCode = 0)
+        val client = TestClient().apply {
+            resumeResult = Result.success(ThreadSessionState(threadId = thread.id, itemsBackwardsCursor = "cursor-1"))
+            historyResult = Result.success(ThreadReadResponse(thread, listOf(newest)))
+            // `thread/items/list` pages backwards, so its data arrives newest-first and the page
+            // overlaps the snapshot's newest item.
+            earlierResult = Result.success(ThreadItemsPage(listOf(newest, older), nextCursor = null))
+        }
+        val widget = ChatWidget(client, backgroundScope)
+        widget.open(thread.id)
+        runCurrent()
+        assertTrue(widget.canLoadEarlier)
+
+        widget.loadEarlier()
+        runCurrent()
+        assertEquals(listOf(older, newest), widget.state.items.toList())
+        assertFalse(widget.canLoadEarlier)
+    }
+
+    @Test
+    fun `failed earlier page keeps the cursor for a retry`() = runTest {
+        val thread = testThread("paged")
+        val client = TestClient().apply {
+            resumeResult = Result.success(ThreadSessionState(threadId = thread.id, itemsBackwardsCursor = "cursor-1"))
+            historyResult = Result.success(ThreadReadResponse(thread, emptyList()))
+            earlierResult = Result.failure(IllegalStateException("offline"))
+        }
+        val widget = ChatWidget(client, backgroundScope)
+        widget.open(thread.id)
+        runCurrent()
+
+        widget.loadEarlier()
+        runCurrent()
+        assertTrue(widget.canLoadEarlier)
+        assertFalse(widget.loadingEarlier)
+    }
+
+    @Test
     fun `failed history read can clear the stale session for startup fallback`() = runTest {
         val client = TestClient().apply {
             resumeResult = Result.success(ThreadSessionState(threadId = "deleted"))
@@ -270,6 +314,31 @@ class ChatWidgetTest {
         assertNull(state.streamingItemId)
         assertTrue(state.loading)
         assertEquals("second", state.threadId)
+    }
+
+    @Test
+    fun `events for a hidden thread are replayed when it opens`() = runTest {
+        val buffered = AgentMessageItem("buffered", "written while away")
+        val client = TestClient().apply {
+            resumeResult = Result.success(ThreadSessionState(threadId = "second"))
+            historyResult = Result.success(ThreadReadResponse(testThread("second"), emptyList()))
+        }
+        val widget = ChatWidget(client, backgroundScope)
+        widget.bind(ThreadSessionState(threadId = "first"))
+        widget.attach()
+        client.events.emit(AppServerEvent.ItemCompleted("second", "turn", buffered))
+        client.events.emit(AppServerEvent.WarningEvent("second", WarningNotification("second", "heads up")))
+        client.events.emit(AppServerEvent.AgentMessageDelta("second", ItemTextDelta("second", "turn", "buffered", "ignored")))
+        runCurrent()
+        // Nothing from the hidden thread leaks into the open transcript.
+        assertTrue(widget.state.items.isEmpty())
+        assertTrue(widget.state.diagnostics.isEmpty())
+
+        widget.open("second")
+        runCurrent()
+
+        assertEquals(listOf(buffered), widget.state.items.toList())
+        assertEquals("heads up", widget.state.diagnostics.single().message)
     }
 
     @Test
@@ -373,6 +442,8 @@ class ChatWidgetTest {
         override suspend fun startTurn(threadId: String, inputs: List<UserInput>) = turnResult
         override suspend fun resumeThread(threadId: String) = resumeResult
         override suspend fun readThread(params: com.cy.codexui.protocol.protocol.v2.ThreadReadParams) = historyResult
+        var earlierResult: Result<ThreadItemsPage> = Result.failure(IllegalStateException("unavailable"))
+        override suspend fun listThreadItems(params: ThreadItemsListParams) = earlierResult
         override suspend fun respond(requestId: RequestId, response: ApprovalResponse) {
             check(!rejectResponse) { "connection lost" }
         }

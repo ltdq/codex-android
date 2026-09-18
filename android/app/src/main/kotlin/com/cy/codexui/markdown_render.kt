@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -48,7 +49,11 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.extended.Copy
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /** Default paragraph metrics, shared so transcript cells measure the same. */
@@ -524,6 +529,7 @@ fun CodeBlock(
     CodeSurface(
         language = language,
         streaming = streaming,
+        copyText = trimmed.ifBlank { null },
         modifier = modifier,
         corner = corner,
         headerStartPadding = headerStartPadding,
@@ -557,6 +563,7 @@ private fun StreamingCodeBlock(block: MarkdownBlock.OpenCode, caret: Boolean) {
     CodeSurface(
         language = block.language,
         streaming = true,
+        copyText = (block.lines + block.partial).joinToString("\n").trimEnd('\n').ifBlank { null },
         modifier = Modifier,
         corner = UiConsts.CornerRow,
         headerStartPadding = 14.dp,
@@ -620,6 +627,7 @@ private fun StreamingCodeBlock(block: MarkdownBlock.OpenCode, caret: Boolean) {
 private fun CodeSurface(
     language: String?,
     streaming: Boolean,
+    copyText: String?,
     modifier: Modifier,
     corner: Dp,
     headerStartPadding: Dp,
@@ -632,6 +640,7 @@ private fun CodeSurface(
     content: @Composable () -> Unit,
 ) {
     val colors = MiuixTheme.colorScheme
+    val context = LocalContext.current
     val shape = remember(corner) { RoundedCornerShape(corner) }
     Column(
         modifier = modifier
@@ -639,7 +648,7 @@ private fun CodeSurface(
             .clip(shape)
             .background(codeSurface()),
     ) {
-        if (!language.isNullOrBlank() || streaming) {
+        if (!language.isNullOrBlank() || streaming || copyText != null) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -667,6 +676,23 @@ private fun CodeSurface(
                         lineHeight = labelLineHeight,
                         color = colors.primary,
                     )
+                }
+                // The copy target is the fence source, not the highlighted spans, so pasting it
+                // anywhere lands as plain code.
+                if (copyText != null) {
+                    val copyLabel = stringResource(R.string.clipboard_copy_code)
+                    IconButton(
+                        onClick = { copyToClipboard(context, copyText, copyLabel) },
+                        minWidth = UiConsts.IconButtonSize,
+                        minHeight = UiConsts.IconButtonSize,
+                    ) {
+                        Icon(
+                            imageVector = MiuixIcons.Copy,
+                            contentDescription = copyLabel,
+                            modifier = Modifier.size(UiConsts.IconInline),
+                            tint = colors.onSurfaceVariantSummary,
+                        )
+                    }
                 }
             }
         }

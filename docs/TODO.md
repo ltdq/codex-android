@@ -33,73 +33,25 @@
 
 ### 2.2 多 agent 与会话编排
 
-- [ ] `/subagents` 状态流缺失；总览仍只有 open，缺 stop/archive/rename；总览 usage 列对子
-      agent 仍为空（`AgentRosterEntry.tokens` 无来源；agent 上/下一个导航已在子 agent 页头落地）。
-- [ ] 事件缓冲与 replay、按线程路由缺失：非当前线程的事件仍被丢弃（`chatwidget.kt`），
-      `EventBuffer`/`replayFilter`/`threadRouting` 命中 0。
-- [ ] worktree 相关整块缺失（上游约 1142 行；`chatwidget/worktree_picker.kt` 现在是目录选择器，
-      与文件名不符）。
 - [ ] 侧会话（`/side`、`/btw`）、recap、transcript 导出、线程标题自动生成、启动提示、
-      `/cd` 与 cwd 语义、goal 的 edit/pause/resume 与 token 预算、dynamic tools 托管、
+      goal 的 edit/pause/resume 与 token 预算、dynamic tools 托管、
       branch/PR 元数据、analytics 仪表盘——均命中 0。
-- [ ] 服务端历史分页只进独立浏览页（`app/history_ui.kt:549` 是唯一调用点），
-      打开的 transcript 不加载更早的页；resume picker 只有一行 `thread.preview`
-      （`resume_picker.kt:153`）。
-- [ ] 服务端版本提示缺失：`Thread.cliVersion` 被解析但无任何 UI 读取（断线横幅与重连已实现）。
+- [ ] 服务端历史分页只在服务端返回 `itemsBackwardsCursor` 时可用（transcript 顶部
+      「加载更早的消息」）；resume picker 仍只有一行 `thread.preview`
+      （`resume_picker.kt:153`），`app/history_ui.kt` 的独立浏览页与 transcript 未合并。
 - [ ] turn 级活动指示器（计时器、折行的工具细节、hook 状态槽位）、turn 完成分隔行、
       标题生成中指示、`InProgress` item 收尾、misalignment 策略缺失。
 
-### 2.3 登录与 onboarding
-
-- [ ] OAuth 回调通道：manifest 无 `<data android:scheme>`、Activity 无 `onNewIntent`
-      （当前走设备码，影响有限）。
-- [ ] 目录信任提示缺失：`trustedProjects` 只解析（`protocol/protocol/v2/config.kt:211,256`），
-      无写入方、无提示 UI。
-- [ ] Bedrock 只有区域选择 + setup，缺 credential method / AWS profile / 掩码 key；
-      `AmazonBedrockAccessKeys` 建了模型从不发送。
-- [ ] OSS provider 选择缺失。
-- [ ] API key 存在 `auth.json`，未用 Keystore/EncryptedSharedPreferences（未深入验证）。
-
 ### 2.4 平台能力
 
-- [ ] 剪贴板：复制消息、复制代码块、状态卡复制、`/copy`（目前只有 links.kt 复制本地链接路径）。
-- [ ] 系统通知：`POST_NOTIFICATIONS` 未申请，无 channel（上游有按类型白名单）。
 - [ ] 图片通路：picker 是 `OpenDocument("*/*")` 且只插 `@path` 文本；composer 只构造
-      `UserInput.Text`（`rendering.kt:463`），`onMentionPicked = {}`，`text_elements` 恒为空；
+      `UserInput.Text`（`rendering.kt`），`onMentionPicked = {}`，`text_elements` 恒为空；
       缺 `LocalImage`、路径粘贴识别、`[Image #N]` 占位、32 MiB 上限。
-- [ ] 输入历史与反向搜索（硬件键盘层已在 `keymap/` 落地）：composer 没有草稿历史，
-      Ctrl+R/Ctrl+S 未绑定；Ctrl+O 复制、Ctrl+G 外部编辑器等待平台能力（见本条上文）。
-- [ ] 外部编辑器（`ACTION_EDIT`）、降低动效（`areAnimatorsEnabled`/`ANIMATOR_DURATION_SCALE`）、
-      主题界面（32 个内置主题 + `.tmTheme` 不可达）、版本/更新感知（`BuildConfig` 未引用）。
-- [ ] feedback 披露：不设 `includeLogs`、丢弃 `reportId`、分类是自由文本。
-
-### 2.5 命令与输入
-
-- [ ] 命令目录 24 条 vs 上游约 60 条：`/clear`、`/logout`、`/theme`、`/side`、`/cd` 等
-      无对应实现；上游别名表（`clean`/`cwd`/`pet`）在本客户端没有目标命令。
-- [ ] `@` 提及只是读一次 cwd 目录（`rendering.kt:166-171`），不是上游的
-      mentions_v2（Plugin/Skill/Task/File/Directory 候选 + 评分 + 搜索模式）；
-      `$` skill 弹窗、task mentions、connector mentions 缺失。
 
 ### 2.6 管理面
 
-- [ ] `hooks/list` 的 warnings/errors 被绑定丢弃（`json_rpc_app_server_client.kt` 只取
-      `hooks` 数组），页面上看不到解析失败与告警。
-- [ ] MCP 工具结果的 image/audio/resource 内容块投影缺失：客户端仍把整个结果折叠成
-      JSON 字符串（`McpToolCallItem.result` 同样）。
-- [ ] 插件目录：无按 marketplace 的 tab、无安装后鉴权流；`PluginEntry` 无 `enabled`。
-- [ ] app-link 的 install URL / 确认屏 / 连接器鉴权流缺失。
-- [ ] `/status` 打开的是 `server/diagnostics`，而会话状态读出缺失（service tier 选择已进
-      状态卡）。
-
-### 2.7 状态与用量
-
-- [ ] 状态卡缺按线程 credits/USD 与 spend-control；`RateLimitSnapshot.individualLimit`
-      未建模，费率窗口没有 stale 警告（无刷新时间戳）。
-- [ ] 费率恢复逻辑缺失：高用量换模型提示、恢复期暂挂与按用量加速轮询都未做；
-      已有 50/75/90/95 的警告 notice（`DiagnosticCode.RateLimitWarning/RateLimitReached`）。
-- [ ] credits nudge（`account/sendAddCreditsNudgeEmail`）仍无 UI 入口。
-- [ ] 客户端设置项只有 3 个 SharedPreferences 键，无动效/主题/通知设置。
+- [ ] app-link 的 install URL / 确认屏 / 连接器鉴权流缺失（上游从 MCP elicitation 的
+      `_codex_apps.connector_auth_failure` 元数据构造，本客户端尚未解析该元数据）。
 
 ## 3. Native / 宿主侧
 
@@ -173,8 +125,14 @@
 
 ## 附录 B：有意分歧（不是缺口）
 
-- collab / sub-agent 卡片进 transcript（上游走 `/subagents` + agent 导航）。
+- collab / sub-agent 卡片进 transcript（本客户端用独立 Agents 页 + 页头导航，不把卡片插进
+  transcript）。
 - dynamic / function-call 工具卡片（上游在 transcript 里忽略通用 `FunctionCallOutput`）。
 - 只读的细粒度审批开关、线程附件托盘、`project/*` 与 `threadSection/*` 界面：
   上游 TUI 无对应物（有的是协议定义）。
+- OAuth 浏览器登录的回调由 app-server 的 localhost 回调服务器完成（`login/src/server.rs`），
+  浏览器与内嵌服务同机，Android 端因此不注册自定义 scheme、不需要 `onNewIntent`。
+- 凭据不额外套 Keystore/EncryptedSharedPreferences：`auth.json` 由内嵌的 Rust 服务直接读写
+  （`login/src/auth/storage.rs`，unix 下 0600），加密文件它读不了；落盘位置在应用私有目录
+  `files/home/.codex/`，依赖 Android 沙箱而非密钥库。
 - 迁移后没有 mock 层：所有数据来自真实 app-server。

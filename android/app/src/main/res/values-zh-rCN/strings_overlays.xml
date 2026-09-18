@@ -37,6 +37,21 @@
     <string name="agents_overview_activity_interrupted">已中断</string>
     <string name="agents_overview_activity_completed">已完成</string>
 
+    <!-- AgentsPage.kt: /agents 与 /subagents 的完整页面及操作。 -->
+    <string name="agents_screen_subtitle">%1$d 个代理 · 共 %2$s tokens</string>
+    <string name="agents_screen_filter">过滤代理</string>
+    <string name="agents_screen_back">返回</string>
+    <string name="agents_action_stop">停止</string>
+    <string name="agents_action_rename">重命名</string>
+    <string name="agents_action_archive">归档</string>
+    <string name="agents_rename_title">重命名代理</string>
+    <string name="agents_rename_label">名称</string>
+    <string name="agents_rename_confirm">重命名</string>
+    <string name="agents_archive_title">归档代理</string>
+    <string name="agents_archive_message">归档会停止正在运行的工作，并从会话列表隐藏该线程；之后可以取消归档。</string>
+    <string name="agents_archive_confirm">归档</string>
+    <string name="agents_cancel">取消</string>
+
     <!-- GoalSheet.kt：目标面板、状态标签与共用胶囊按钮。 -->
     <string name="goal_sheet_title">目标</string>
     <string name="goal_sheet_subtitle_idle">Goal 模式会围绕目标持续推进</string>

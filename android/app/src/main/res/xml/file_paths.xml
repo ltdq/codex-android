@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Paths the external-editor handoff may expose: one cache folder, nothing else. -->
+<paths>
+    <cache-path name="drafts" path="drafts/" />
+</paths>

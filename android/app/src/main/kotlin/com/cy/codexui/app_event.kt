@@ -55,6 +55,17 @@ sealed interface AppEvent {
     data object RefreshThreadList : AppEvent
 
     /**
+     * Re-read the subagent threads spawned from [ancestorThreadId].
+     *
+     * The agents dashboard needs thread metadata (name, liveness, cli version) that the parent
+     * transcript does not carry; `thread/list` scoped by ancestor is the only call that has it.
+     */
+    data class ReloadAgentThreads(val ancestorThreadId: String) : AppEvent
+
+    /** Interrupt the active turn of [threadId], which may not be the open thread. */
+    data class StopThreadTurn(val threadId: String) : AppEvent
+
+    /**
      * Choose whether the thread list includes archived sessions.
      *
      * A scope, not a filter applied to a copy: `thread/list` takes it as a parameter, so an
@@ -199,6 +210,8 @@ sealed interface AppEvent {
     // ---- plugins, marketplaces and shares --------------------------------------
     data class InstallPlugin(val name: String, val marketplace: String? = null) : AppEvent
     data class UninstallPlugin(val pluginId: String) : AppEvent
+    /** `config/value/write` of `plugins.<id>.enabled`, as the TUI's Space toggle does. */
+    data class SetPluginEnabled(val pluginId: String, val enabled: Boolean) : AppEvent
     data class AddMarketplace(val source: String, val ref: String? = null) : AppEvent
     data class RemoveMarketplace(val name: String) : AppEvent
     data class UpgradeMarketplace(val name: String? = null) : AppEvent
@@ -322,6 +335,8 @@ sealed interface AppEvent {
         val classification: String,
         val reason: String? = null,
         val threadId: String? = null,
+        /** Only ever true from the form's explicit disclosure; the log can carry prompts. */
+        val includeLogs: Boolean = false,
     ) : AppEvent
 
     // ---- windows sandbox -------------------------------------------------------

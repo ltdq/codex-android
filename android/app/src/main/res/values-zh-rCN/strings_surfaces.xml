@@ -57,6 +57,7 @@
     <string name="hooks_screen_empty">还没有配置 Hook。</string>
     <string name="hooks_screen_note">Hook 由项目配置提供，改动会写回 config；当前客户端只读。</string>
     <string name="hooks_screen_back">返回</string>
+    <string name="hooks_screen_issues">问题</string>
 
     <!-- McpScreen -->
     <string name="mcp_screen_title">MCP 服务器</string>
@@ -72,7 +73,17 @@
     <string name="plugins_screen_title">插件</string>
     <string name="plugins_screen_subtitle">%1$d 个已安装 · %2$d 个可安装</string>
     <string name="plugins_screen_empty">还没有可用的插件。</string>
+    <string name="plugins_screen_all">全部插件</string>
     <string name="plugins_screen_installed">已安装</string>
+    <string name="plugins_auth_step">应用配置 %1$d/%2$d</string>
+    <string name="plugins_auth_body">请先在 ChatGPT 中安装所需应用：</string>
+    <string name="plugins_auth_open">在 ChatGPT 安装 %1$s</string>
+    <string name="plugins_auth_installed">我已安装</string>
+    <string name="plugins_auth_still_missing">%1$s 仍未安装到该账号。</string>
+    <string name="plugins_auth_skip">跳过剩余应用配置</string>
+    <string name="plugins_auth_done">应用配置完成</string>
+    <string name="plugins_auth_done_detail">该插件需要的连接器都已安装。</string>
+    <string name="plugins_auth_continue">继续</string>
     <string name="plugins_screen_marketplace">市场</string>
     <string name="plugins_screen_installed_empty">还没有安装任何插件。</string>
     <string name="plugins_screen_marketplace_empty">市场里暂时没有新的插件。</string>
@@ -98,10 +109,38 @@
     <string name="settings_screen_config_active">生效</string>
     <string name="settings_screen_config_disabled">已停用</string>
     <string name="settings_group_experimental">实验特性</string>
+    <string name="settings_group_appearance">外观</string>
+    <string name="settings_theme_system">跟随系统</string>
+    <string name="settings_theme_light">浅色</string>
+    <string name="settings_theme_dark">深色</string>
+    <string name="settings_reduce_motion">减弱动效</string>
+    <string name="settings_reduce_motion_summary">跳过过渡与回弹；系统动画设置仍然生效</string>
+    <string name="settings_group_about">关于</string>
+    <string name="settings_app_version">应用版本</string>
+    <string name="settings_group_notifications">通知</string>
+    <string name="settings_notifications">系统通知</string>
+    <string name="settings_notifications_summary">应用在后台时，回合结束或等待审批会在通知栏提醒</string>
+    <string name="settings_notifications_turn_complete">回合完成</string>
+    <string name="settings_notifications_approval">审批请求</string>
+    <string name="settings_notifications_permission_denied">未授予通知权限，系统不会显示通知</string>
+    <string name="notification_channel_name">Codex</string>
+    <string name="notification_channel_description">回合完成与审批请求</string>
+    <string name="notification_turn_complete">Codex 回合完成</string>
+    <string name="notification_approval_requested">Codex 请求审批</string>
+    <string name="notification_approval_command">请求审批：%1$s</string>
+    <string name="notification_approval_file_change">Codex 想要修改 %1$s</string>
+    <string name="notification_approval_file_change_many">Codex 想要修改文件</string>
+    <string name="notification_approval_elicitation">%1$s 请求审批</string>
+    <string name="notification_approval_other">请求审批</string>
     <string name="settings_screen_experimental_empty">暂无可用的实验功能。</string>
     <string name="settings_group_model">模型</string>
     <string name="settings_screen_models_empty">还没有可用模型，等待 model/list 返回。</string>
     <string name="settings_screen_model_default">默认</string>
+    <string name="settings_group_oss_provider">OSS 提供方</string>
+    <string name="settings_oss_lmstudio">LM Studio</string>
+    <string name="settings_oss_lmstudio_summary">本地 LM Studio 服务（默认端口 1234）</string>
+    <string name="settings_oss_ollama">Ollama</string>
+    <string name="settings_oss_ollama_summary">本地 Ollama 服务（默认端口 11434）</string>
     <string name="settings_group_effort">思考强度</string>
     <string name="settings_screen_effort_title">思考强度</string>
     <string name="settings_screen_effort_summary">模型在回答前可以花多少思考预算</string>
@@ -204,4 +243,45 @@
     <string name="git_diff_screen_not_repository">该目录不在 Git 仓库内。</string>
     <string name="git_diff_screen_failed">无法读取 Git 差异：%1$s</string>
     <string name="git_diff_screen_summary">%1$d 个文件 · +%2$d −%3$d</string>
+
+    <!-- SessionStatusScreen.kt: /status 页面。 -->
+    <string name="session_status_title">会话状态</string>
+    <string name="session_status_thread_id">线程</string>
+    <string name="session_status_status">状态</string>
+    <string name="session_status_created_by">创建版本</string>
+    <string name="session_status_version_mismatch">%1$s · 服务端 %2$s</string>
+    <string name="session_status_directory">目录</string>
+    <string name="session_status_branch">Git 分支</string>
+    <string name="session_status_workspace_roots">工作区根目录</string>
+    <string name="session_status_usage_title">Token 用量</string>
+    <string name="session_status_tokens_total">总计</string>
+    <string name="session_status_tokens_input">输入</string>
+    <string name="session_status_tokens_output">输出</string>
+    <string name="session_status_tokens_cached">缓存输入</string>
+    <string name="session_status_tokens_reasoning">思考输出</string>
+    <string name="session_status_context">上下文窗口</string>
+    <string name="account_plan_signed_out">未登录</string>
+    <string name="account_plan_api_key">API key</string>
+    <string name="account_plan_bedrock">Amazon Bedrock</string>
+    <string name="session_status_estimated_usage">预估用量</string>
+    <string name="session_status_spend_control">消费控制</string>
+    <string name="session_status_spend_control_value">%1$s / %2$s · 剩余 %3$d%%</string>
+    <string name="session_status_spend_control_reached">已达到消费控制上限</string>
+    <string name="session_status_account">账户</string>
+    <string name="session_status_plan">套餐</string>
+    <string name="session_status_back">返回</string>
+    <string name="session_status_load_failed">无法读取预估用量。</string>
+
+    <!-- WorktreesScreen.kt -->
+    <string name="worktrees_title">Worktree</string>
+    <string name="worktrees_loading">正在读取 worktree…</string>
+    <string name="worktrees_empty">该仓库没有其他 worktree。</string>
+    <string name="worktrees_error">无法执行 git worktree。</string>
+    <string name="worktrees_create_group">新建 worktree</string>
+    <string name="worktrees_branch_label">新分支名</string>
+    <string name="worktrees_create">创建</string>
+    <string name="worktrees_creating">创建中…</string>
+    <string name="worktrees_detached">游离 HEAD</string>
+    <string name="worktrees_bare">裸仓库</string>
+    <string name="worktrees_back">返回</string>
 </resources>

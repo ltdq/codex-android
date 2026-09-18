@@ -10,11 +10,14 @@ import androidx.activity.enableEdgeToEdge
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import com.cy.codexui.theme.Appearance
 import com.cy.codexui.theme.CodexTheme
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Before setContent: the first frame already needs the chosen theme, not the system's.
+        Appearance.load(this)
 
         enableEdgeToEdge(
             statusBarStyle = SystemBarStyle.auto(Color.TRANSPARENT, Color.TRANSPARENT),
@@ -42,6 +45,13 @@ class MainActivity : ComponentActivity() {
                 CodexRoot()
             }
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // The developer option behind "Remove animations" can change while the app is backgrounded,
+        // and the motion layer caches the decision.
+        Appearance.syncSystemAnimators()
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {

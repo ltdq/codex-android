@@ -29,10 +29,20 @@ internal object WireCatalogCodec {
 
     fun app(o: JsonObject) = AppInfo(o.required("id"), o.required("name"), o.text("description").orEmpty(), o.bool("isAccessible") == true)
 
+    /** `v2::AppSummary`, the connector shape `plugin/install` returns in `appsNeedingAuth`. */
+    fun appSummary(o: JsonObject) = AppSummary(
+        id = o.required("id"),
+        name = o.required("name"),
+        description = o.text("description"),
+        installUrl = o.text("installUrl"),
+        category = o.text("category"),
+    )
+
     fun plugin(o: JsonObject, marketplace: String) = PluginEntry(o.required("id"), o.required("name"),
         o.objectOrNull("interface")?.text("shortDescription") ?: o.objectOrNull("interface")?.text("description").orEmpty(),
         o.bool("installed") == true, o.text("localVersion") ?: o.text("version").orEmpty(), marketplace,
         remotePluginId = o.text("remotePluginId"),
+        enabled = o.bool("enabled") != false,
         shareContext = o.objectOrNull("shareContext")?.let { context ->
             PluginShareContext(
                 shareUrl = context.text("shareUrl"),

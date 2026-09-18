@@ -125,8 +125,8 @@ fun DiagnosticsScreen(
     if (reporting) {
         FeedbackFormSheet(
             onDismiss = { reporting = false },
-            onSubmit = { classification, reason ->
-                onEvent(AppEvent.UploadFeedback(classification, reason, null))
+            onSubmit = { classification, reason, includeLogs ->
+                onEvent(AppEvent.UploadFeedback(classification, reason, null, includeLogs))
                 reporting = false
             },
         )
@@ -382,21 +382,32 @@ private fun DiagnosticsFeedbackCard(onReport: () -> Unit) {
 }
 
 /**
- * The report form: a classification, an optional reason, and one send button.
+ * The report form: a fixed classification, an optional reason, and the log disclosure.
+ *
+ * Mirrors `bottom_pane/feedback_view.rs`: the categories are the server's own wire strings, not
+ * free text, and logs are attached only when the user explicitly says so — the rollout log carries
+ * prompts and tool output, which is exactly why the disclosure is a choice and not a default.
  *
  * `feedback/…` also takes a thread id and this page passes `null` for it: diagnostics is reachable
  * with no thread open, and a guessed id would attach the report to a conversation the user was not
  * looking at. A caller that knows which thread is at fault can send its own event.
  *
  * @param onDismiss closes the sheet without sending.
- * @param onSubmit reports the trimmed classification and the reason, or `null` when the reason was
- *   left blank so the wire carries "no reason" instead of an empty string.
+ * @param onSubmit reports the chosen category, the reason (`null` when left blank so the wire
+ *   carries "no reason" instead of an empty string), and the log disclosure.
  */
 @Composable
 private fun FeedbackFormSheet(
     onDismiss: () -> Unit,
-    onSubmit: (classification: String, reason: String?) -> Unit,
+    onSubmit: (classification: String, reason: String?, includeLogs: Boolean) -> Unit,
 ) {
+    val categories = listOf(
+        "bad_result" to stringResource(R.string.diagnostics_feedback_category_bad_result),
+        "good_result" to stringResource(R.string.diagnostics_feedback_category_good_result),
+        "bug" to stringResource(R.string.diagnostics_feedback_category_bug),
+        "safety_check" to stringResource(R.string.diagnostics_feedback_category_safety_check),
+        "other" to stringResource(R.string.diagnostics_feedback_category_other),
+    )
     FormSheet(
         title = stringResource(R.string.diagnostics_feedback_form_title),
         subtitle = stringResource(R.string.diagnostics_feedback_form_subtitle),
@@ -404,10 +415,8 @@ private fun FeedbackFormSheet(
             FormField(
                 key = "classification",
                 label = stringResource(R.string.diagnostics_feedback_classification),
-                placeholder = stringResource(
-                    R.string.diagnostics_feedback_classification_placeholder,
-                ),
-                required = true,
+                initial = "bug",
+                choices = categories,
                 help = stringResource(R.string.diagnostics_feedback_classification_help),
             ),
             FormField(
@@ -417,6 +426,16 @@ private fun FeedbackFormSheet(
                 required = false,
                 help = stringResource(R.string.diagnostics_feedback_reason_help),
             ),
+            FormField(
+                key = "includeLogs",
+                label = stringResource(R.string.diagnostics_feedback_include_logs),
+                initial = "false",
+                choices = listOf(
+                    "false" to stringResource(R.string.diagnostics_feedback_logs_no),
+                    "true" to stringResource(R.string.diagnostics_feedback_logs_yes),
+                ),
+                help = stringResource(R.string.diagnostics_feedback_include_logs_help),
+            ),
         ),
         confirmLabel = stringResource(R.string.diagnostics_feedback_send),
         onDismiss = onDismiss,
@@ -424,6 +443,7 @@ private fun FeedbackFormSheet(
             onSubmit(
                 values["classification"].orEmpty().trim(),
                 values["reason"].orEmpty().trim().takeIf { it.isNotEmpty() },
+                values["includeLogs"] == "true",
             )
         },
     )

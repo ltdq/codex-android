@@ -30,5 +30,15 @@
     <string name="diagnostics_feedback_reason">发生了什么</string>
     <string name="diagnostics_feedback_reason_placeholder">工具还在运行，这一轮就中断了</string>
     <string name="diagnostics_feedback_reason_help">选填，但这才是别人能据以处理的部分。</string>
+    <string name="diagnostics_feedback_category_bad_result">结果不好</string>
+    <string name="diagnostics_feedback_category_good_result">结果很好</string>
+    <string name="diagnostics_feedback_category_bug">Bug</string>
+    <string name="diagnostics_feedback_category_safety_check">安全检查</string>
+    <string name="diagnostics_feedback_category_other">其他</string>
+    <string name="diagnostics_feedback_include_logs">会话日志</string>
+    <string name="diagnostics_feedback_logs_no">不附加日志</string>
+    <string name="diagnostics_feedback_logs_yes">附加会话日志</string>
+    <string name="diagnostics_feedback_include_logs_help">日志可能包含你的提示词和 Agent 运行工具的输出。</string>
+    <string name="diagnostics_feedback_sent">反馈已提交 · %1$s</string>
     <string name="diagnostics_feedback_send">提交</string>
 </resources>

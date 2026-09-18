@@ -366,7 +366,7 @@ class JsonRpcAppServerClientTest {
     }
 
     @Test
-    fun `plugin installation reads the real installed state after acknowledgement`() = runTest {
+    fun `plugin installation parses the connector auth follow-up`() = runTest {
         val transport = HarnessTransport()
         val client = JsonRpcAppServerClient(transport, backgroundScope)
         client.initialize(ClientInfo("android", version = "1")).getOrThrow()
@@ -374,12 +374,31 @@ class JsonRpcAppServerClientTest {
         val request = transport.request()
         assertEquals("/marketplace.json", request.objectOrNull("params")!!.required("marketplacePath"))
         assertNull(request.objectOrNull("params")!!.text("remoteMarketplaceName"))
-        transport.response(request, obj("authPolicy" to "onInstall", "appsNeedingAuth" to emptyList<JsonElement>()))
-        val read = transport.request()
-        assertEquals("plugin/read", read.required("method"))
-        transport.response(read, obj("plugin" to obj("marketplaceName" to "local", "summary" to obj("id" to "formatter@local", "name" to "formatter", "installed" to true),
-            "skills" to emptyList<JsonElement>(), "apps" to emptyList<JsonElement>(), "mcpServers" to emptyList<JsonElement>())))
-        assertTrue(install.await().installed)
+        transport.response(
+            request,
+            obj(
+                "authPolicy" to "ON_INSTALL",
+                "appsNeedingAuth" to listOf(
+                    obj(
+                        "id" to "github",
+                        "name" to "GitHub",
+                        "description" to "Issues and pull requests",
+                        "installUrl" to "https://chatgpt.com/apps/github",
+                        "category" to "developer",
+                    ),
+                ),
+            ),
+        )
+        val response = install.await()
+        assertEquals(
+            com.cy.codexui.protocol.protocol.v2.PluginAuthPolicy.OnInstall,
+            response.authPolicy,
+        )
+        assertEquals(listOf("github"), response.appsNeedingAuth.map { it.id })
+        assertEquals(
+            "https://chatgpt.com/apps/github",
+            response.appsNeedingAuth.single().installUrl,
+        )
         client.close()
     }
 
@@ -503,8 +522,11 @@ class JsonRpcAppServerClientTest {
         val hooks = async { client.listHooks().getOrThrow() }
         transport.response(transport.request(), obj("data" to listOf(obj("cwd" to "/workspace", "hooks" to listOf(
             obj("key" to "k", "eventName" to "preToolUse", "handlerType" to "command", "command" to "echo hi", "enabled" to true, "trustStatus" to "trusted"),
-        )))))
-        assertEquals("echo hi", hooks.await().single().command)
+        ), "warnings" to listOf("hook file ignored"), "errors" to listOf(obj("path" to "/home/.codex/hooks.json", "message" to "invalid json"))))))
+        val hookEntry = hooks.await().single()
+        assertEquals("echo hi", hookEntry.hooks.single().command)
+        assertEquals(listOf("hook file ignored"), hookEntry.warnings)
+        assertEquals("invalid json", hookEntry.errors.single().message)
 
         val diagnostics = async { client.readServerDiagnostics().getOrThrow() }
         transport.response(transport.request(), obj("process" to obj("id" to 9, "residentMemoryBytes" to 1024),

@@ -2,12 +2,17 @@
 <resources>
     <!-- Slash-command popup descriptions for commands whose label alone is not enough. -->
     <string name="slash_desc_compact">Compact the conversation context</string>
+    <string name="slash_desc_clear">Start a new thread and clear the view</string>
+    <string name="slash_desc_stop">Interrupt the running turn</string>
+    <string name="slash_desc_import">Import configuration from another agent</string>
     <string name="slash_desc_revert">Revert the thread to an earlier item</string>
     <string name="slash_desc_plan">Plan before editing; run again to leave plan mode</string>
     <string name="slash_desc_status">Open the runtime diagnostics page</string>
     <string name="slash_desc_init">Create an AGENTS.md file for this workspace</string>
+    <string name="slash_desc_copy">Copy the last response, a code block, or the status</string>
 
     <!-- Rejections are shown as a snackbar and the draft is kept so it can be corrected. -->
     <string name="slash_unavailable_during_task">/%1$s is not available while the agent is working.</string>
+    <string name="slash_rename_needs_name">Usage: /rename &lt;name&gt;</string>
     <string name="slash_plan_unavailable">Plan mode is not available right now.</string>
 </resources>

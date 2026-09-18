@@ -105,10 +105,23 @@ data class DynamicToolCallItem(
     val tool: String,
     val arguments: String = "{}",
     val status: DynamicToolCallStatus = DynamicToolCallStatus.InProgress,
-    val contentItems: List<String> = emptyList(),
+    val contentItems: List<DynamicToolOutputContent> = emptyList(),
     val success: Boolean? = null,
     val durationMs: Long? = null,
 ) : ThreadItem
+
+/**
+ * One `DynamicToolCallOutputContentItem` block.
+ *
+ * Mirrors the tagged union in `codex-rs/app-server-protocol/src/protocol/v2/item.rs`: text is the
+ * only variant that carries displayable content, the media variants carry a URL the transcript
+ * cannot render, so it only records which kind arrived.
+ */
+sealed interface DynamicToolOutputContent {
+    data class InputText(val text: String) : DynamicToolOutputContent
+    data class InputImage(val imageUrl: String) : DynamicToolOutputContent
+    data class InputAudio(val audioUrl: String) : DynamicToolOutputContent
+}
 
 data class CollabAgentToolCallItem(
     override val id: String,

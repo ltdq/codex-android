@@ -130,6 +130,9 @@ fun ShortcutsOverlay(state: ShortcutsHelpState, modifier: Modifier = Modifier) {
                 ShortcutRow("Enter", stringResource(R.string.shortcuts_overlay_composer_submit))
                 ShortcutRow("Shift+Enter", stringResource(R.string.shortcuts_overlay_composer_newline))
                 ShortcutRow("Ctrl+J  Alt+Enter", stringResource(R.string.shortcuts_overlay_composer_newline))
+                ShortcutRow("Ctrl+R  Ctrl+S", stringResource(R.string.shortcuts_overlay_composer_history))
+                ShortcutRow("Ctrl+O", stringResource(R.string.shortcuts_overlay_composer_copy))
+                ShortcutRow("Ctrl+G", stringResource(R.string.shortcuts_overlay_composer_editor))
                 ShortcutRow("?", stringResource(R.string.shortcuts_overlay_composer_help))
             }
             ShortcutGroup(stringResource(R.string.shortcuts_overlay_group_suggestions)) {

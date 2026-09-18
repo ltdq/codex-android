@@ -1,6 +1,7 @@
 package com.cy.codexui.chatwidget
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,6 +18,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -25,6 +27,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -39,6 +42,7 @@ import com.cy.codexui.CodexDivider
 import com.cy.codexui.CodexSwitchRow
 import com.cy.codexui.CodexTextField
 import com.cy.codexui.ModalSheet
+import com.cy.codexui.PluginInstallAuthFlow
 import com.cy.codexui.R
 import com.cy.codexui.SectionCard
 import com.cy.codexui.SurfaceHeader
@@ -53,6 +57,7 @@ import com.cy.codexui.protocol.protocol.v2.PluginEntry
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
+import top.yukonga.miuix.kmp.basic.Switch
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.ChevronBackward
@@ -93,8 +98,18 @@ fun PluginsScreen(
     var detail by remember { mutableStateOf<PluginDetail?>(null) }
     var addingMarketplace by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
+    // `null` is the "All plugins" tab; a name selects one marketplace, the tab set upstream builds
+    // from `plugin/list`.
+    var selectedMarketplace by remember { mutableStateOf<String?>(null) }
 
-    val plugins = results ?: installedEntries ?: catalog.plugins
+    val tabPlugins = if (selectedMarketplace == null) {
+        catalog.plugins
+    } else {
+        catalog.marketplaces
+            .filter { it.name == selectedMarketplace }
+            .flatMap { it.plugins }
+    }
+    val plugins = results ?: installedEntries ?: tabPlugins
     val installed = plugins.filter { it.installed }
     val marketplace = plugins.filterNot { it.installed }
 
@@ -151,6 +166,26 @@ fun PluginsScreen(
                 checked = installedOnly,
                 onCheckedChange = ::setInstalledOnly,
             )
+            // One tab per marketplace, beside "All plugins": with several marketplaces a plugin's
+            // source is a filter, not a column in a list that already scrolls.
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+                    .padding(top = UiConsts.Space6),
+                horizontalArrangement = Arrangement.spacedBy(UiConsts.Space6),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                val tabs = listOf<String?>(null) + catalog.marketplaces.map { it.name }
+                tabs.forEach { tab ->
+                    CodexButton(
+                        text = tab ?: stringResource(R.string.plugins_screen_all),
+                        onClick = { selectedMarketplace = tab; results = null },
+                        role = if (selectedMarketplace == tab) ButtonRole.Primary else ButtonRole.Secondary,
+                        size = CodexButtonSize.Compact,
+                    )
+                }
+            }
         }
         Column(
             modifier = Modifier
@@ -214,6 +249,134 @@ fun PluginsScreen(
                 onEvent(AppEvent.AddMarketplace(source, ref))
                 addingMarketplace = false
             },
+        )
+    }
+    catalog.pluginInstallAuth?.let { flow ->
+        PluginInstallAuthSheet(
+            flow = flow,
+            client = client,
+            onRefresh = { onEvent(AppEvent.ReloadApps) },
+            onDismiss = { catalog.pluginInstallAuth = null },
+        )
+    }
+}
+
+/**
+ * The post-install connector setup.
+ *
+ * Mirrors the auth popup in `chatwidget/plugins.rs`: one connector per step, the browser opens its
+ * `installUrl`, and "I've installed it" re-reads `app/list` before advancing — a connector the
+ * account does not have yet cannot be skipped past silently. The remaining connectors can be
+ * skipped as a group, which abandons the flow rather than pretending the plugin is ready.
+ */
+@Composable
+private fun PluginInstallAuthSheet(
+    flow: PluginInstallAuthFlow,
+    client: AppServerClient,
+    onRefresh: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val colors = MiuixTheme.colorScheme
+    val scope = rememberCoroutineScope()
+    val uriHandler = LocalUriHandler.current
+    var index by remember(flow) { mutableIntStateOf(0) }
+    var checking by remember(flow) { mutableStateOf(false) }
+    var stillMissing by remember(flow) { mutableStateOf<String?>(null) }
+    val app = flow.apps.getOrNull(index)
+
+    ModalSheet(
+        show = true,
+        onDismiss = onDismiss,
+        onDismissFinished = onDismiss,
+        title = if (app != null) {
+            stringResource(R.string.plugins_auth_step, index + 1, flow.apps.size)
+        } else {
+            stringResource(R.string.plugins_auth_done)
+        },
+        subtitle = flow.pluginName,
+    ) {
+        if (app == null) {
+            Text(
+                text = stringResource(R.string.plugins_auth_done_detail),
+                modifier = Modifier.padding(horizontal = UiConsts.Space4),
+                fontSize = UiType.SheetBody,
+                lineHeight = UiType.SheetBodyLine,
+                color = colors.onSurface,
+            )
+            CodexButton(
+                text = stringResource(R.string.plugins_auth_continue),
+                onClick = onDismiss,
+                modifier = Modifier.fillMaxWidth().padding(top = UiConsts.Space12),
+            )
+            return@ModalSheet
+        }
+        Text(
+            text = stringResource(R.string.plugins_auth_body),
+            modifier = Modifier.padding(horizontal = UiConsts.Space4),
+            fontSize = UiType.Meta,
+            lineHeight = UiType.MetaLine,
+            color = colors.onSurfaceVariantSummary,
+        )
+        Text(
+            text = app.name,
+            modifier = Modifier.padding(horizontal = UiConsts.Space4, vertical = UiConsts.Space6),
+            fontSize = UiType.SheetTitle,
+            lineHeight = UiType.SheetTitleLine,
+            color = colors.onSurface,
+        )
+        app.description?.takeIf { it.isNotBlank() }?.let { description ->
+            Text(
+                text = description,
+                modifier = Modifier.padding(horizontal = UiConsts.Space4),
+                fontSize = UiType.Meta,
+                lineHeight = UiType.MetaLine,
+                color = colors.onSurfaceVariantSummary,
+            )
+        }
+        stillMissing?.let { name ->
+            Text(
+                text = stringResource(R.string.plugins_auth_still_missing, name),
+                modifier = Modifier.padding(horizontal = UiConsts.Space4, vertical = UiConsts.Space6),
+                fontSize = UiType.Meta,
+                lineHeight = UiType.MetaLine,
+                color = colors.error,
+            )
+        }
+        val url = app.installUrl
+        if (url != null) {
+            CodexButton(
+                text = stringResource(R.string.plugins_auth_open, app.name),
+                onClick = { runCatching { uriHandler.openUri(url) } },
+                modifier = Modifier.fillMaxWidth().padding(top = UiConsts.Space10),
+            )
+        }
+        CodexButton(
+            text = stringResource(R.string.plugins_auth_installed),
+            onClick = {
+                scope.launch {
+                    checking = true
+                    val installed = client.listApps().getOrNull().orEmpty()
+                        .filter { it.installed }
+                        .mapTo(mutableSetOf()) { it.id }
+                    checking = false
+                    onRefresh()
+                    if (app.id in installed || url == null) {
+                        stillMissing = null
+                        index++
+                    } else {
+                        stillMissing = app.name
+                    }
+                }
+            },
+            modifier = Modifier.fillMaxWidth(),
+            role = ButtonRole.Secondary,
+            enabled = !checking,
+        )
+        CodexButton(
+            text = stringResource(R.string.plugins_auth_skip),
+            onClick = onDismiss,
+            modifier = Modifier.fillMaxWidth(),
+            role = ButtonRole.Secondary,
         )
     }
 }
@@ -299,6 +462,16 @@ private fun PluginRow(
             }
         }
         Spacer(Modifier.width(UiConsts.Space10))
+        // An installed plugin gets the enable/disable switch the TUI binds to Space; a marketplace
+        // entry gets the install button. They are never both: an entry that is not installed has no
+        // enablement to toggle, and an installed one has nothing left to install.
+        if (plugin.installed) {
+            Switch(
+                checked = plugin.enabled,
+                onCheckedChange = { onEvent(AppEvent.SetPluginEnabled(plugin.id, it)) },
+            )
+            Spacer(Modifier.width(UiConsts.Space8))
+        }
         // Installing is the one thing this page can do for a plugin, so the marketplace chip is the
         // accent pill and "Installed" — a state, not an action — is the outlined one.
         CodexButton(

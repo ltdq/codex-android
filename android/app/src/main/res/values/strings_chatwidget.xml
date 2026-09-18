@@ -6,6 +6,8 @@
     <string name="chat_empty_slash_hint">Type / to see slash commands</string>
     <string name="chat_loading_history">Loading session history…</string>
     <string name="chat_transcript_assistant_label">Codex</string>
+    <string name="transcript_load_earlier">Load earlier messages</string>
+    <string name="transcript_load_earlier_loading">Loading earlier messages…</string>
     <string name="chat_composer_hint_open">Ask Codex to do anything</string>
     <string name="chat_composer_hint_empty">Select a session to start</string>
     <string name="chat_composer_hint_shell">Run a shell command in the session shell</string>
@@ -75,6 +77,15 @@
     <string name="status_card_credits_none">None</string>
     <string name="status_card_credits_remaining">%1$s remaining</string>
     <string name="status_card_reset_credits_label">Reset credits</string>
+    <string name="status_card_spend_control">Spend control</string>
+    <string name="status_card_add_credits">Email me about credits</string>
+    <string name="status_card_add_credits_sent">Request sent.</string>
+    <string name="status_card_add_credits_cooldown">A request was already sent recently.</string>
+    <string name="status_card_add_credits_failed">Could not send the request.</string>
+    <string name="status_card_spend_control_value">%1$s / %2$s · %3$d%% left</string>
+    <string name="status_card_spend_control_reached">Limit reached</string>
+    <string name="status_card_rate_updated">Updated %1$s ago</string>
+    <string name="status_card_rate_stale">Updated %1$s ago · may be stale</string>
     <string name="status_card_plan_title">Plan</string>
     <string name="status_card_agents_title">Agents</string>
     <string name="status_card_agents_count">%1$d</string>
@@ -120,4 +131,18 @@
     <string name="plugins_detail_apps">Apps</string>
     <string name="plugins_detail_skill_loading">Reading…</string>
     <string name="plugins_detail_skill_failed">The plugin did not return this skill.</string>
+
+    <!-- RateLimitNudgeSheet.kt -->
+    <string name="rate_limit_nudge_title">Approaching rate limits</string>
+    <string name="rate_limit_nudge_subtitle">Switch to %1$s for lower credit usage?</string>
+    <string name="rate_limit_nudge_body">The current model is close to the usage limit. The lower-cost model answers the same way for most turns.</string>
+    <string name="rate_limit_nudge_switch">Switch to %1$s</string>
+    <string name="rate_limit_nudge_keep">Keep current model</string>
+    <string name="rate_limit_nudge_never">Keep current model (never show again)</string>
+
+    <!-- TrustProjectSheet.kt -->
+    <string name="trust_project_title">Trust this folder?</string>
+    <string name="trust_project_body">Codex can read, edit, and run files here. Trust it only if this is your own workspace.</string>
+    <string name="trust_project_confirm">Trust and continue</string>
+    <string name="trust_project_cancel">Cancel</string>
 </resources>

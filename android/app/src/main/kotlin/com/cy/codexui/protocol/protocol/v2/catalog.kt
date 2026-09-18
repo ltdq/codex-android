@@ -76,7 +76,39 @@ data class PluginInstallParams(
     val installAttemptId: String? = null,
 )
 
-data class PluginInstallResponse(val plugin: PluginEntry? = null)
+/**
+ * `plugin/install` response.
+ *
+ * Mirrors `v2::PluginInstallResponse`: the install itself is done, and what comes back is the
+ * follow-up — the auth policy and the connectors this plugin needs the user to set up before it
+ * can run. The client reads the installed plugin back through `plugin/read`.
+ */
+data class PluginInstallResponse(
+    val authPolicy: PluginAuthPolicy = PluginAuthPolicy.OnUse,
+    val appsNeedingAuth: List<AppSummary> = emptyList(),
+)
+
+/** `v2::PluginAuthPolicy`: when the plugin's connectors are asked to authorize. */
+enum class PluginAuthPolicy(val wire: String) {
+    OnInstall("ON_INSTALL"),
+    OnUse("ON_USE"),
+    ;
+
+    companion object {
+        fun fromWire(value: String?): PluginAuthPolicy =
+            entries.firstOrNull { it.wire == value } ?: OnUse
+    }
+}
+
+/** `v2::AppSummary`: the connector facts the plugin-install flow shows. */
+data class AppSummary(
+    val id: String = "",
+    val name: String = "",
+    val description: String? = null,
+    /** Where the connector is installed; opened in a browser by the setup sheet. */
+    val installUrl: String? = null,
+    val category: String? = null,
+)
 
 /** `plugin/uninstall`. */
 data class PluginUninstallParams(val pluginId: String)

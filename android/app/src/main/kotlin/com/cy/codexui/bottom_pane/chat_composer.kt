@@ -25,6 +25,7 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -56,6 +57,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.cy.codexui.MentionSuggestion
 import com.cy.codexui.R
 import com.cy.codexui.chatwidget.SlashCommand
 import com.cy.codexui.Motion
@@ -186,10 +188,22 @@ fun Composer(
     queuedCount: Int = 0,
     slashSuggestions: List<SlashCommand> = emptyList(),
     onSuggestionPicked: (SlashCommand) -> Unit = {},
-    mentionCandidates: List<String> = emptyList(),
+    /** `@` rows: plugins, tasks and fuzzy-searched files, already filtered by the host. */
+    mentionSuggestions: List<MentionSuggestion> = emptyList(),
     onMentionPicked: (String) -> Unit = {},
+    /** Called with the trailing `@` token, or `null` when it is gone; drives the search session. */
+    onMentionQueryChange: (String?) -> Unit = {},
+    /** Enabled skill names, offered behind the `$` trigger the way the TUI's mentions popup does. */
+    skillCandidates: List<String> = emptyList(),
+    onSkillPicked: (String) -> Unit = {},
     /** Called on every text edit, so the host can defer an approval dialog while the user types. */
     onActivity: () -> Unit = {},
+    /** Submitted drafts, newest first; the reverse search behind Ctrl+R walks this list. */
+    history: List<String> = emptyList(),
+    /** Ctrl+O: the host copies the last agent message; null leaves the chord unbound. */
+    onCopyLastResponse: (() -> Unit)? = null,
+    /** Ctrl+G: the host launches `ACTION_EDIT` on a temp file; null leaves the chord unbound. */
+    onOpenExternalEditor: (() -> Unit)? = null,
     backdrop: Backdrop? = null,
     maxInputLines: Int = 6,
     /** Opens the system picker; the host registers the launcher, a composable cannot. */
@@ -224,6 +238,22 @@ fun Composer(
     // trigger alive (a longer `/query`) would reopen what the user just closed.
     var popupDismissed by remember { mutableStateOf(false) }
     var popupIndex by remember { mutableIntStateOf(0) }
+    // Reverse history search. [searchIndex] points into [history]; the matched entry is pushed into
+    // the field while search is active so the user sees exactly what Enter would use, and the
+    // original draft is restored on cancel.
+    var searchActive by remember { mutableStateOf(false) }
+    var searchQuery by remember { mutableStateOf("") }
+    var searchIndex by remember { mutableIntStateOf(-1) }
+    var searchOriginal by remember { mutableStateOf("") }
+    val searchFocusRequester = remember { FocusRequester() }
+    val searchMatches = remember(history, searchQuery, searchActive) {
+        if (searchActive) historySearchMatches(history, searchQuery) else emptyList()
+    }
+    LaunchedEffect(searchActive) {
+        // The bar owns typing while it is up; without focus a hardware keyboard would keep editing
+        // the matched entry.
+        if (searchActive) runCatching { searchFocusRequester.requestFocus() }
+    }
     val stacked = remember(value, inlineWidthPx, measurer) {
         if (value.isEmpty()) {
             false
@@ -241,7 +271,7 @@ fun Composer(
             measured.size.width > inlineWidthPx
         }
     }
-    val showSuggestions = !popupDismissed && slashSuggestions.isNotEmpty() && value.startsWith("/")
+    val showSuggestions = !searchActive && !popupDismissed && slashSuggestions.isNotEmpty() && value.startsWith("/")
     // A mention is the trailing `@token`: everything after the last `@` counts as the query, and a
     // whitespace ends it. Mirrors the trigger rule in `bottom_pane/mentions_v2/filter.rs`.
     val mentionQuery = remember(value) {
@@ -252,34 +282,51 @@ fun Composer(
             else -> value.substring(at + 1)
         }
     }
-    val mentionMatches = remember(mentionQuery, mentionCandidates) {
-        if (mentionQuery == null) {
-            emptyList()
-        } else {
-            mentionCandidates.filter { path ->
-                path.contains(mentionQuery, ignoreCase = true) ||
-                    isSubsequence(mentionQuery, path)
-            }.take(MaxPopupRows)
-        }
+    // The host already narrowed the list: files come scored from the search session, plugins and
+    // tasks from a local match. Re-filtering here would drop matches the server weighted highly.
+    val mentionRows = remember(mentionQuery, mentionSuggestions) {
+        if (mentionQuery == null) emptyList() else mentionSuggestions.take(MaxPopupRows)
     }
     val commandRows = remember(slashSuggestions) { slashSuggestions.take(MaxPopupRows) }
-    // Keep the popup's own narrowing, so the row the keyboard cursor points at is the row the tap
-    // targets would show.
-    val mentionRows = remember(mentionQuery, mentionMatches) {
-        filterPaths(mentionQuery.orEmpty(), mentionMatches).take(MaxPopupRows)
+    // A skill is the trailing `$token`, same trigger rule as `@`: `$` is not part of the query when
+    // a whitespace follows it, so an ordinary dollar amount never opens the popup.
+    val skillQuery = remember(value) {
+        val dollar = value.lastIndexOf('$')
+        when {
+            dollar < 0 -> null
+            value.substring(dollar + 1).any { it.isWhitespace() } -> null
+            else -> value.substring(dollar + 1)
+        }
     }
-    val showMentions = !popupDismissed && !showSuggestions && mentionRows.isNotEmpty()
+    val skillRows = remember(skillQuery, skillCandidates) {
+        if (skillQuery == null) {
+            emptyList()
+        } else {
+            filterPaths(skillQuery, skillCandidates).take(MaxPopupRows)
+        }
+    }
+    val showMentions = !searchActive && !popupDismissed && !showSuggestions && mentionRows.isNotEmpty()
+    val showSkills = !searchActive && !popupDismissed && !showSuggestions && !showMentions && skillRows.isNotEmpty()
     val popupCount = when {
         showSuggestions -> commandRows.size
         showMentions -> mentionRows.size
+        showSkills -> skillRows.size
         else -> 0
     }
     val popupSelection = if (popupCount == 0) 0 else popupIndex.coerceIn(0, popupCount - 1)
 
     // `command_popup.rs` re-selects the first match when the filtered list changes, so a keystroke
     // never leaves the cursor on a row that no longer exists.
-    LaunchedEffect(showSuggestions, commandRows, showMentions, mentionRows) {
+    LaunchedEffect(showSuggestions, commandRows, showMentions, mentionRows, showSkills, skillRows) {
         popupIndex = 0
+    }
+    // The host owns the search session: it is told which `@` token is live, and told `null` when
+    // the token or the whole composer goes away.
+    LaunchedEffect(mentionQuery, showSuggestions) {
+        onMentionQueryChange(if (showSuggestions) null else mentionQuery)
+    }
+    DisposableEffect(Unit) {
+        onDispose { onMentionQueryChange(null) }
     }
 
     fun leaveField() {
@@ -314,17 +361,63 @@ fun Composer(
         onMentionPicked(path)
     }
 
+    fun pickSkill(name: String) {
+        // Same splice as a mention: the `$token` being typed is replaced by the full `$name`.
+        val dollar = value.lastIndexOf('$')
+        if (dollar < 0) return
+        applyDraft(value.substring(0, dollar) + "$" + name + " ")
+        onSkillPicked(name)
+    }
+
     fun pickSuggestion(index: Int) {
         if (showSuggestions) {
             commandRows.getOrNull(index)?.let(onSuggestionPicked)
         } else if (showMentions) {
-            mentionRows.getOrNull(index)?.let(::pickMention)
+            mentionRows.getOrNull(index)?.let { pickMention(it.insert) }
+        } else if (showSkills) {
+            skillRows.getOrNull(index)?.let(::pickSkill)
         }
+    }
+
+    fun selectSearchMatch(index: Int) {
+        searchIndex = index
+        if (index in history.indices) applyDraft(history[index])
+    }
+
+    fun beginHistorySearch() {
+        if (!enabled) return
+        searchActive = true
+        searchOriginal = value
+        searchQuery = ""
+        selectSearchMatch(history.indices.firstOrNull() ?: -1)
+    }
+
+    fun updateSearchQuery(next: String) {
+        searchQuery = next
+        selectSearchMatch(historySearchMatches(history, next).firstOrNull() ?: -1)
+    }
+
+    fun moveHistorySearch(older: Boolean) {
+        selectSearchMatch(nextHistoryMatch(searchMatches, searchIndex, older))
+    }
+
+    fun acceptHistorySearch() {
+        if (searchIndex in history.indices) applyDraft(history[searchIndex])
+        searchActive = false
+        runCatching { focusRequester.requestFocus() }
+    }
+
+    fun cancelHistorySearch() {
+        applyDraft(searchOriginal)
+        searchActive = false
+        runCatching { focusRequester.requestFocus() }
     }
 
     fun handle(action: KeyAction): Boolean = when (action) {
         KeyAction.Submit -> {
-            if (enabled && value.isNotBlank()) {
+            if (searchActive) {
+                acceptHistorySearch()
+            } else if (enabled && value.isNotBlank()) {
                 onActivity()
                 onSubmit()
                 leaveField()
@@ -373,8 +466,48 @@ fun Composer(
         }
 
         KeyAction.ClearFocus -> {
-            leaveField()
+            if (searchActive) cancelHistorySearch() else leaveField()
             true
+        }
+
+        // `history_search_previous` / `history_search_next`: Ctrl+R begins the search on the newest
+        // entry, Ctrl+S only moves while a search is already up (it is not a "newest entry" key).
+        KeyAction.HistoryOlder -> {
+            if (!enabled) {
+                false
+            } else {
+                if (searchActive) moveHistorySearch(older = true) else beginHistorySearch()
+                true
+            }
+        }
+
+        KeyAction.HistoryNewer -> {
+            if (enabled && searchActive) {
+                moveHistorySearch(older = false)
+                true
+            } else {
+                false
+            }
+        }
+
+        KeyAction.CopyLastResponse -> {
+            val copy = onCopyLastResponse
+            if (enabled && copy != null) {
+                copy()
+                true
+            } else {
+                false
+            }
+        }
+
+        KeyAction.OpenExternalEditor -> {
+            val editor = onOpenExternalEditor
+            if (enabled && editor != null) {
+                editor()
+                true
+            } else {
+                false
+            }
         }
 
         else -> false
@@ -475,7 +608,10 @@ fun Composer(
         modifier = modifier
             // Preview, not bubble: while a suggestion list is open the same arrow keys move its
             // cursor, and otherwise the field below keeps them for caret movement.
-            .codexHardwareKeys(if (popupCount > 0) KeyContext.Popup else KeyContext.Composer, ::handle)
+            .codexHardwareKeys(
+                if (popupCount > 0 && !searchActive) KeyContext.Popup else KeyContext.Composer,
+                ::handle,
+            )
             .floatingSurface(
                 shape = shape,
                 tint = tint,
@@ -540,7 +676,20 @@ fun Composer(
                 MentionSuggestionList(
                     candidates = mentionRows,
                     selectedIndex = popupSelection,
-                    onPick = ::pickMention,
+                    onPick = { pickMention(it.insert) },
+                )
+            }
+        }
+        AnimatedVisibility(
+            visible = showSkills,
+            enter = fadeIn(tween(PopupFadeInMs)),
+            exit = fadeOut(tween(PopupFadeOutMs)),
+        ) {
+            Column(modifier = Modifier.padding(bottom = PopupBottomGap)) {
+                SkillSuggestionList(
+                    candidates = skillRows,
+                    selectedIndex = popupSelection,
+                    onPick = ::pickSkill,
                 )
             }
         }
@@ -563,7 +712,7 @@ fun Composer(
                     .padding(horizontal = FieldPaddingHorizontal),
                 contentAlignment = Alignment.CenterStart,
             ) {
-                if (value.isEmpty()) {
+                if (value.isEmpty() && !searchActive) {
                     Text(
                         text = hint,
                         fontSize = PromptFontSize,
@@ -574,6 +723,9 @@ fun Composer(
                 }
                 BasicTextField(
                     enabled = enabled,
+                    // While searching the field is a preview of the match: typing belongs to the
+                    // search bar, not to this text.
+                    readOnly = searchActive,
                     value = field,
                     onValueChange = { next ->
                         // Typing is what un-dismisses a popup: Esc closed it, the next character
@@ -624,6 +776,28 @@ fun Composer(
                 Spacer(Modifier.weight(1f))
                 trailing()
             }
+        }
+        if (searchActive) {
+            val searchStatus = when {
+                history.isEmpty() -> stringResource(R.string.composer_history_search_empty)
+                searchMatches.isEmpty() -> stringResource(R.string.composer_history_search_no_match)
+                else -> stringResource(
+                    R.string.composer_history_search_position,
+                    searchMatches.indexOf(searchIndex) + 1,
+                    searchMatches.size,
+                )
+            }
+            HistorySearchBar(
+                query = searchQuery,
+                status = searchStatus,
+                onQueryChange = ::updateSearchQuery,
+                onOlder = { moveHistorySearch(older = true) },
+                onNewer = { moveHistorySearch(older = false) },
+                onAccept = ::acceptHistorySearch,
+                onCancel = ::cancelHistorySearch,
+                focusRequester = searchFocusRequester,
+                enabled = enabled,
+            )
         }
     }
 }
@@ -727,12 +901,12 @@ private fun CommandSuggestionList(
 /** The `@`-mention popup, with the same keyboard cursor as [CommandSuggestionList]. */
 @Composable
 private fun MentionSuggestionList(
-    candidates: List<String>,
+    candidates: List<MentionSuggestion>,
     selectedIndex: Int,
-    onPick: (String) -> Unit,
+    onPick: (MentionSuggestion) -> Unit,
 ) {
     PopupShell {
-        candidates.forEachIndexed { index, path ->
+        candidates.forEachIndexed { index, candidate ->
             val rowShape = RoundedCornerShape(PopupRowCorner)
             Row(
                 modifier = Modifier
@@ -744,7 +918,7 @@ private fun MentionSuggestionList(
                         } else {
                             raisedSurface()
                         },
-                        onClick = { onPick(path) },
+                        onClick = { onPick(candidate) },
                     )
                     .padding(
                         horizontal = SuggestionRowPaddingHorizontal,
@@ -753,7 +927,7 @@ private fun MentionSuggestionList(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(
-                    text = fileName(path),
+                    text = candidate.label,
                     modifier = Modifier.weight(1f),
                     fontSize = UiType.Subtitle,
                     lineHeight = UiType.RowTitleLine,
@@ -762,11 +936,12 @@ private fun MentionSuggestionList(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                val parent = parentPath(path)
-                if (parent.isNotEmpty()) {
+                // A file shows the directory it lives in; a plugin or task brings its own detail.
+                val detail = candidate.detail ?: parentPath(candidate.insert).takeIf { it.isNotEmpty() }
+                if (detail != null) {
                     Spacer(Modifier.width(SuggestionCommandGap))
                     Text(
-                        text = parent,
+                        text = detail,
                         modifier = Modifier.weight(1f),
                         fontSize = UiType.Meta,
                         lineHeight = UiType.MetaLine,
@@ -783,11 +958,58 @@ private fun MentionSuggestionList(
 }
 
 /**
+ * The `$`-skill popup. Rows are the bare skill names; the `$` is the trigger the user is typing and
+ * is not repeated in the list, so two names that differ only by scope stay tellable apart.
+ */
+@Composable
+private fun SkillSuggestionList(
+    candidates: List<String>,
+    selectedIndex: Int,
+    onPick: (String) -> Unit,
+) {
+    PopupShell {
+        candidates.forEachIndexed { index, name ->
+            val rowShape = RoundedCornerShape(PopupRowCorner)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .pressableRow(
+                        shape = rowShape,
+                        container = if (index == selectedIndex) {
+                            MiuixTheme.colorScheme.primary.copy(alpha = 0.08f)
+                        } else {
+                            raisedSurface()
+                        },
+                        onClick = { onPick(name) },
+                    )
+                    .padding(
+                        horizontal = SuggestionRowPaddingHorizontal,
+                        vertical = SuggestionRowPaddingVertical,
+                    ),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = "$" + name,
+                    modifier = Modifier.weight(1f),
+                    fontSize = UiType.Subtitle,
+                    lineHeight = UiType.RowTitleLine,
+                    fontWeight = FontWeight.SemiBold,
+                    fontFamily = FontFamily.Monospace,
+                    color = MiuixTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            if (index != candidates.lastIndex) Spacer(Modifier.height(SuggestionRowGap))
+        }
+    }
+}
+
+/**
  * Case-insensitive subsequence match, the same shape of filter the TUI's file search uses: `cpu`
  * matches `com/cy/codexui/ui/...`. Falls back to a plain `contains` in the caller, so a short query
  * still finds exact substrings.
- */
-private fun isSubsequence(query: String, candidate: String): Boolean {
+ */private fun isSubsequence(query: String, candidate: String): Boolean {
     if (query.isEmpty()) return true
     var index = 0
     for (char in candidate) {

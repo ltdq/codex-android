@@ -76,6 +76,9 @@
     <string name="shortcuts_overlay_composer_submit">Send the message</string>
     <string name="shortcuts_overlay_composer_newline">Insert a line break</string>
     <string name="shortcuts_overlay_composer_help">Show this list while the composer is empty</string>
+    <string name="shortcuts_overlay_composer_history">Reverse search the input history</string>
+    <string name="shortcuts_overlay_composer_copy">Copy the last response</string>
+    <string name="shortcuts_overlay_composer_editor">Edit the draft in an external app</string>
     <string name="shortcuts_overlay_popup_move">Move through the suggestions</string>
     <string name="shortcuts_overlay_popup_accept">Insert the highlighted suggestion</string>
     <string name="shortcuts_overlay_popup_dismiss">Dismiss the suggestions</string>

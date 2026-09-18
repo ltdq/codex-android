@@ -24,4 +24,21 @@
     <string name="bedrock_region_form_label">AWS region</string>
     <string name="bedrock_region_form_placeholder">us-east-1</string>
     <string name="bedrock_region_form_confirm">Use this region</string>
+    <string name="bedrock_manual_title">Manual setup</string>
+    <string name="bedrock_manual_profile">AWS profile name</string>
+    <string name="bedrock_manual_profile_detail">Type the name of a profile from the AWS config files</string>
+    <string name="bedrock_manual_access_keys">Access keys</string>
+    <string name="bedrock_manual_access_keys_detail">Sign in with an access key id and secret access key</string>
+    <string name="bedrock_manual_api_key">Bedrock API key</string>
+    <string name="bedrock_manual_api_key_detail">Sign in with a Bedrock API key instead of AWS credentials</string>
+    <string name="bedrock_profile_form_title">AWS profile</string>
+    <string name="bedrock_profile_form_name">Profile name</string>
+    <string name="bedrock_profile_form_name_placeholder">default</string>
+    <string name="bedrock_access_keys_form_title">Access keys</string>
+    <string name="bedrock_access_key_id">Access key id</string>
+    <string name="bedrock_secret_access_key">Secret access key</string>
+    <string name="bedrock_session_token">Session token</string>
+    <string name="bedrock_session_token_help">Optional; only temporary credentials issued by STS have one.</string>
+    <string name="bedrock_api_key_form_title">Bedrock API key</string>
+    <string name="bedrock_api_key">API key</string>
 </resources>

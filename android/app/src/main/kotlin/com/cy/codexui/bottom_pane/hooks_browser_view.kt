@@ -112,6 +112,27 @@ fun HooksScreen(
                     }
                 }
             }
+            // `hooks/list` reports malformed files and non-fatal problems next to the hooks, not as
+            // a failed call; without this card a broken hook file silently disappears.
+            if (catalog.hookWarnings.isNotEmpty() || catalog.hookErrors.isNotEmpty()) {
+                SectionCard(
+                    title = stringResource(R.string.hooks_screen_issues),
+                    icon = MiuixIcons.ConvertFile,
+                ) {
+                    catalog.hookErrors.forEachIndexed { index, error ->
+                        if (index > 0) HooksDivider()
+                        HooksIssueRow(
+                            text = error.message.ifBlank { error.path },
+                            path = error.path.takeIf { it.isNotBlank() && it != error.message },
+                            tint = colors.error,
+                        )
+                    }
+                    catalog.hookWarnings.forEachIndexed { index, warning ->
+                        if (index > 0 || catalog.hookErrors.isNotEmpty()) HooksDivider()
+                        HooksIssueRow(text = warning, path = null, tint = colors.onSurfaceVariantSummary)
+                    }
+                }
+            }
             SectionCard(
                 title = stringResource(R.string.hooks_screen_section),
                 icon = MiuixIcons.ConvertFile,
@@ -246,6 +267,34 @@ private fun HookMetadata.detailSummary(): String = buildList {
     sourcePath.takeIf { it.isNotBlank() }?.let { add(it) }
     pluginId?.takeIf { it.isNotBlank() }?.let { add(it) }
 }.joinToString(" · ")
+
+@Composable
+private fun HooksIssueRow(text: String, path: String?, tint: Color) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = UiConsts.Space4, vertical = UiConsts.Space7),
+    ) {
+        Text(
+            text = text,
+            fontSize = UiType.Meta,
+            lineHeight = UiType.MetaLine,
+            color = tint,
+        )
+        if (path != null) {
+            Spacer(Modifier.height(UiConsts.Space3))
+            Text(
+                text = path,
+                fontSize = UiType.Footnote,
+                lineHeight = UiType.FootnoteLine,
+                fontFamily = FontFamily.Monospace,
+                color = MiuixTheme.colorScheme.disabledOnSurface,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
 
 @Composable
 private fun HooksBackButton(onBack: () -> Unit) {

@@ -22,6 +22,7 @@ import com.cy.codexui.ModalSheet
 import com.cy.codexui.R
 import com.cy.codexui.UiConsts
 import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.preference.RadioButtonPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
@@ -42,6 +43,13 @@ data class FormField(
     val keyboardType: KeyboardType = KeyboardType.Text,
     /** Shown under the field; use it to say what the value is for. */
     val help: String? = null,
+    /**
+     * Fixed choices as wire value to label. When present the field renders as a radio group and the
+     * reported value is the chosen wire value, so a form that must send an enum cannot send prose.
+     */
+    val choices: List<Pair<String, String>>? = null,
+    /** Render the input as bullets; for secrets that are about to be sent to the server. */
+    val masked: Boolean = false,
 )
 
 /**
@@ -85,13 +93,34 @@ fun FormSheet(
         ) {
             fields.forEach { field ->
                 Column(modifier = Modifier.fillMaxWidth()) {
-                    CodexTextField(
-                        value = values[field.key].orEmpty(),
-                        onValueChange = { values[field.key] = it },
-                        label = field.label,
-                        placeholder = field.placeholder,
-                        keyboardOptions = KeyboardOptions(keyboardType = field.keyboardType),
-                    )
+                    if (field.choices != null) {
+                        Text(
+                            text = field.label,
+                            fontSize = com.cy.codexui.UiType.Meta,
+                            lineHeight = com.cy.codexui.UiType.MetaLine,
+                            color = colors.onSurfaceVariantSummary,
+                        )
+                        field.choices.forEach { (value, label) ->
+                            RadioButtonPreference(
+                                title = label,
+                                selected = values[field.key] == value,
+                                onClick = { values[field.key] = value },
+                            )
+                        }
+                    } else {
+                        CodexTextField(
+                            value = values[field.key].orEmpty(),
+                            onValueChange = { values[field.key] = it },
+                            label = field.label,
+                            placeholder = field.placeholder,
+                            keyboardOptions = KeyboardOptions(keyboardType = field.keyboardType),
+                            visualTransformation = if (field.masked) {
+                                androidx.compose.ui.text.input.PasswordVisualTransformation()
+                            } else {
+                                androidx.compose.ui.text.input.VisualTransformation.None
+                            },
+                        )
+                    }
                     val note = field.help ?: if (touched && field.required && values[field.key].isNullOrBlank()) {
                         stringResource(R.string.form_field_required)
                     } else {

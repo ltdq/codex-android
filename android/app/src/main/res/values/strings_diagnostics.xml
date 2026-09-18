@@ -31,5 +31,15 @@
     <string name="diagnostics_feedback_reason">What happened</string>
     <string name="diagnostics_feedback_reason_placeholder">The turn stopped while the tool was still running</string>
     <string name="diagnostics_feedback_reason_help">Optional, but it is the part someone can act on.</string>
+    <string name="diagnostics_feedback_category_bad_result">Bad result</string>
+    <string name="diagnostics_feedback_category_good_result">Good result</string>
+    <string name="diagnostics_feedback_category_bug">Bug</string>
+    <string name="diagnostics_feedback_category_safety_check">Safety check</string>
+    <string name="diagnostics_feedback_category_other">Other</string>
+    <string name="diagnostics_feedback_include_logs">Session logs</string>
+    <string name="diagnostics_feedback_logs_no">Do not attach logs</string>
+    <string name="diagnostics_feedback_logs_yes">Attach session logs</string>
+    <string name="diagnostics_feedback_include_logs_help">The log can contain your prompts and the output of tools the agent ran.</string>
+    <string name="diagnostics_feedback_sent">Feedback sent · %1$s</string>
     <string name="diagnostics_feedback_send">Send</string>
 </resources>
