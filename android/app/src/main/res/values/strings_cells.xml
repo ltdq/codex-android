@@ -115,6 +115,15 @@
     <string name="messages_cell_assistant_name">Codex</string>
     <string name="messages_cell_attachment_image">Image</string>
     <string name="messages_cell_attachment_local_image">Local image</string>
+    <string name="messages_cell_attachment_audio">Audio</string>
+    <string name="messages_cell_attachment_local_audio">Local audio</string>
+
+    <!-- RecapCell.kt -->
+    <string name="recap_cell_title">Conversation recap</string>
+    <string name="tooltip_cell_label">Tip</string>
+    <string name="recap_cell_loading">Generating conversation recap…</string>
+    <string name="recap_cell_failed">Could not generate a recap. Please try again.</string>
+    <string name="recap_cell_next_action">↳ Recap: %1$s</string>
     <string name="messages_cell_attachment_skill">Skill: %1$s</string>
     <string name="messages_cell_attachment_mention">@%1$s</string>
     <string name="messages_cell_option_bullet">·</string>

@@ -394,6 +394,13 @@ private fun SettingsAppearanceSection() {
             checked = Appearance.reduceMotion,
             onCheckedChange = { Appearance.setReduceMotion(context, it) },
         )
+        HorizontalDivider()
+        SwitchPreference(
+            title = stringResource(R.string.settings_show_tooltips),
+            summary = stringResource(R.string.settings_show_tooltips_summary),
+            checked = Appearance.showTooltips,
+            onCheckedChange = { Appearance.setShowTooltips(context, it) },
+        )
     }
 }
 

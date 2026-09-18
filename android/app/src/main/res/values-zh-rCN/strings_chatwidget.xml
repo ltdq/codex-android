@@ -11,6 +11,24 @@
     <string name="chat_composer_hint_open">向 Codex 发送消息…</string>
     <string name="chat_composer_hint_empty">选择一个会话开始</string>
 
+    <!-- TurnActivityBar.kt -->
+    <string name="status_indicator_working">正在处理</string>
+
+    <!-- Misalignment -->
+    <string name="misalignment_title">对话已谨慎停止</string>
+    <string name="misalignment_description">我们无法确认代理是否在安全地按你的指示行事。要继续工作，请新建或恢复另一个对话。</string>
+    <string name="misalignment_review">查看检测结果</string>
+    <string name="misalignment_continue">继续</string>
+    <string name="misalignment_review_title">检测结果</string>
+    <string name="misalignment_continuation_label">继续请求（原文）</string>
+
+    <!-- Side conversations -->
+    <string name="side_conversation_title">开始侧会话</string>
+    <string name="side_conversation_unavailable">请先开始一个会话，再打开侧会话</string>
+    <string name="side_conversation_start_failed">侧会话启动失败</string>
+    <string name="side_conversation_banner">侧会话 · 来自 %1$s</string>
+    <string name="side_conversation_back">返回主会话</string>
+
     <!-- SidebarPanel.kt -->
     <string name="sidebar_title">Codex</string>
     <string name="sidebar_collapse">收起侧栏</string>
@@ -40,6 +58,7 @@
 
     <!-- StatusCard.kt -->
     <string name="status_card_agents_files_summary">%1$d 个代理 · %2$d 个文件改动</string>
+    <string name="status_card_generating_title">正在生成标题…</string>
     <string name="status_card_agents_overview">代理总览</string>
     <string name="status_card_context_title">上下文用量</string>
     <string name="status_card_usage_percent">%1$d%%</string>

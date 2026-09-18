@@ -89,6 +89,7 @@ class GitDiffTest {
             cwd: String?,
             timeoutMs: Long?,
             tty: Boolean,
+            env: Map<String, String>?,
         ): Result<CommandExecResponse> = Result.success(onExec(command))
 
         override suspend fun close() = Unit

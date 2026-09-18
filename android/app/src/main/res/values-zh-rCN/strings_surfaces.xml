@@ -115,6 +115,8 @@
     <string name="settings_theme_dark">深色</string>
     <string name="settings_reduce_motion">减弱动效</string>
     <string name="settings_reduce_motion_summary">跳过过渡与回弹；系统动画设置仍然生效</string>
+    <string name="settings_show_tooltips">显示启动提示</string>
+    <string name="settings_show_tooltips_summary">打开新会话时显示一条使用提示</string>
     <string name="settings_group_about">关于</string>
     <string name="settings_app_version">应用版本</string>
     <string name="settings_group_notifications">通知</string>

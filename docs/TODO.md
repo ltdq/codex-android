@@ -33,25 +33,17 @@
 
 ### 2.2 多 agent 与会话编排
 
-- [ ] 侧会话（`/side`、`/btw`）、recap、transcript 导出、线程标题自动生成、启动提示、
-      goal 的 edit/pause/resume 与 token 预算、dynamic tools 托管、
-      branch/PR 元数据、analytics 仪表盘——均命中 0。
-- [ ] 服务端历史分页只在服务端返回 `itemsBackwardsCursor` 时可用（transcript 顶部
-      「加载更早的消息」）；resume picker 仍只有一行 `thread.preview`
-      （`resume_picker.kt:153`），`app/history_ui.kt` 的独立浏览页与 transcript 未合并。
-- [ ] turn 级活动指示器（计时器、折行的工具细节、hook 状态槽位）、turn 完成分隔行、
-      标题生成中指示、`InProgress` item 收尾、misalignment 策略缺失。
-
-### 2.4 平台能力
-
-- [ ] 图片通路：picker 是 `OpenDocument("*/*")` 且只插 `@path` 文本；composer 只构造
-      `UserInput.Text`（`rendering.kt`），`onMentionPicked = {}`，`text_elements` 恒为空；
-      缺 `LocalImage`、路径粘贴识别、`[Image #N]` 占位、32 MiB 上限。
-
-### 2.6 管理面
-
-- [ ] app-link 的 install URL / 确认屏 / 连接器鉴权流缺失（上游从 MCP elicitation 的
-      `_codex_apps.connector_auth_failure` 元数据构造，本客户端尚未解析该元数据）。
+- [ ] analytics 仪表盘：上游 `tui/src/analytics/` 走 `codex_backend_client::AnalyticsSession`
+      的 HTTP 报表（按模型/功能/任务/插件/技能、日期范围），本客户端没有后端 HTTP 通道，
+      账户页只有 `account/usage/read` 的每日用量。
+- [ ] 自动 recap：`/recap` 手动可用；上游空闲 30 分钟、至少 3 个已完成 turn、距上次 recap
+      至少 2 个 turn 的自动调度（`local_settings.tui.auto_recap`）未做。
+- [ ] `app/history_ui.kt` 的独立浏览页仍未与 transcript 合并：Ctrl+T 打开的是它，上游没有
+      独立历史页（`thread/searchOccurrences`、`thread/timeline/list` 上游也只定义未消费）。
+- [ ] dynamic tools 只托管 `codex_tui` 子集：`wait_threads` 明确失败；side 线程未像上游
+      `non_delegation_tool_specs` 那样禁用 delegation 三件套。
+- [ ] 首屏历史仍是一次 `thread/read(includeTurns=true)` 全量加载；没有
+      `initialTurnsPage` / `turnsBackwardsCursor` 的有界首屏（顶部「加载更早」分页已可用）。
 
 ## 3. Native / 宿主侧
 

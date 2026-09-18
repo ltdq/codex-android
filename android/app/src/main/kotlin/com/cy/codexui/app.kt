@@ -26,6 +26,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -214,6 +215,21 @@ class CodexApp(
     private var rateLimitRecoveryJob: Job? = null
 
     var goalMenuOpen by mutableStateOf(false)
+
+    /** Set by `/export` without a path; the chat screen launches the system save dialog. */
+    var exportTranscriptRequest by mutableStateOf(false)
+        private set
+
+    /**
+     * Parent of every open side conversation, keyed by the side thread id.
+     *
+     * The server marks the fork ephemeral but has no notion of "side conversation"; the parent
+     * link exists so the client can return the user and discard the fork.
+     */
+    private val sideThreadParents = mutableStateMapOf<String, String>()
+
+    /** The parent thread [threadId] was opened as a side conversation from, or null. */
+    fun sideParentOf(threadId: String): String? = sideThreadParents[threadId]
 
     /** Whether the `/copy` picker is on screen; it reads the last response and the status. */
     var copyMenuOpen by mutableStateOf(false)
@@ -846,6 +862,7 @@ class CodexApp(
             is AppEvent.SubmitSlashCommand -> runSlashCommand(event)
 
             // ---- everything the open thread owns --------------------------------
+            is AppEvent.ToggleSideConversation -> toggleSideConversation(event.message)
             else -> widget.action(event)
         }
     }
@@ -937,6 +954,23 @@ class CodexApp(
                 }
             }
 
+            // `/export` with no argument asks the system for a destination; with one it writes to
+            // that path (resolved against the session cwd) the way the TUI does.
+            "export" -> requestTranscriptExport(argument.trim().takeIf { it.isNotBlank() })
+
+            // `/side` and its hidden alias `/btw` fork an ephemeral conversation; the optional
+            // argument becomes its first turn. Upstream dispatch accepts both bare and messaged
+            // forms (`slash_dispatch.rs`).
+            "side" -> onAppEvent(
+                AppEvent.ToggleSideConversation(argument.trim().takeIf { it.isNotBlank() }),
+            )
+
+            // A recap is a hidden structured turn over the recent exchange; it shows as a
+            // transcript cell this client owns, never as a server item.
+            "recap" -> if (widget.state.open) {
+                onAppEvent(AppEvent.GenerateRecap)
+            } else createThread(afterCreated = { onAppEvent(AppEvent.GenerateRecap) })
+
             // `/init` is a *turn*: the TUI submits a fixed instruction and lets the agent write the
             // file, because only the agent knows what the project's conventions are.
             "init" -> onAppEvent(
@@ -949,15 +983,37 @@ class CodexApp(
             // includes changes no turn made and files git has never seen.
             "diff" -> openSurface(Surface.Diff)
 
-            // `/goal` never reaches here — it takes an argument, so the picker leaves it in the
-            // draft — but listing it keeps this dispatch total.
-            "goal" -> if (argument.isBlank()) {
-                if (widget.state.open) {
-                    onAppEvent(AppEvent.ReloadGoal)
-                    goalMenuOpen = true
-                } else createThread(afterCreated = { goalMenuOpen = true })
-            } else if (widget.state.open) onAppEvent(AppEvent.SetGoal(argument)) else {
-                createThread(afterCreated = { onAppEvent(AppEvent.SetGoal(argument)) })
+            // `/goal` takes an argument, so the picker leaves it in the draft; the subcommands are
+            // the same ones `slash_dispatch.rs` recognizes (`clear` / `edit` / `pause` / `resume`),
+            // and anything else is an objective.
+            "goal" -> {
+                val arg = argument.trim()
+                val openGoal = { onAppEvent(AppEvent.ReloadGoal); goalMenuOpen = true }
+                when (arg.lowercase()) {
+                    "" -> if (widget.state.open) openGoal() else createThread(afterCreated = openGoal)
+
+                    "edit" -> if (widget.state.open) openGoal() else createThread(afterCreated = openGoal)
+
+                    "clear" -> if (widget.state.open) {
+                        onAppEvent(AppEvent.ClearGoal)
+                    } else createThread(afterCreated = { onAppEvent(AppEvent.ClearGoal) })
+
+                    "pause" -> if (widget.state.open) {
+                        onAppEvent(AppEvent.SetGoal(status = com.cy.codexui.protocol.protocol.v2.GoalStatus.Paused))
+                    } else createThread(afterCreated = {
+                        onAppEvent(AppEvent.SetGoal(status = com.cy.codexui.protocol.protocol.v2.GoalStatus.Paused))
+                    })
+
+                    "resume" -> if (widget.state.open) {
+                        onAppEvent(AppEvent.SetGoal(status = com.cy.codexui.protocol.protocol.v2.GoalStatus.Active))
+                    } else createThread(afterCreated = {
+                        onAppEvent(AppEvent.SetGoal(status = com.cy.codexui.protocol.protocol.v2.GoalStatus.Active))
+                    })
+
+                    else -> if (widget.state.open) {
+                        onAppEvent(AppEvent.SetGoal(objective = arg))
+                    } else createThread(afterCreated = { onAppEvent(AppEvent.SetGoal(objective = arg)) })
+                }
             }
 
             // Unreachable while [ComposerCommands] is exactly this dispatch's command list, but a
@@ -1543,6 +1599,12 @@ class CodexApp(
     }
 
     private fun openThread(threadId: String, onFailure: () -> Unit) {
+        // Switching away from a side conversation discards it, the way `app/side.rs` does when the
+        // active thread changes; the fork is ephemeral, so nothing is lost by unsubscribing.
+        val currentThread = widget.state.threadId
+        if (currentThread != threadId && sideThreadParents.containsKey(currentThread)) {
+            closeSideConversation(currentThread)
+        }
         // Resume into an untrusted folder asks first. The thread list already carries the cwd, so
         // the prompt happens before a read that a blocked folder would only fail later.
         val knownCwd = (threads.threads + catalog.agentThreads).firstOrNull { it.id == threadId }?.cwd
@@ -1557,6 +1619,131 @@ class CodexApp(
             }.onFailure { onFailure() }
         }
         closeAllSurfaces()
+    }
+
+    /**
+     * Start a side conversation, or return to the parent when one is open.
+     *
+     * Mirrors `app/side.rs`: the fork is ephemeral and carries the side developer instructions, the
+     * boundary prompt is injected as raw history, and the child opens with an empty transcript so
+     * the visible conversation starts at the boundary.
+     */
+    private fun toggleSideConversation(message: String?) {
+        val current = widget.state.threadId
+        val parent = sideThreadParents[current]
+        if (parent != null) {
+            closeSideConversation(current)
+            openThread(parent)
+            return
+        }
+        if (!widget.state.open || current.isBlank()) {
+            scope.launch { snackbar.showSnackbar(context.getString(R.string.side_conversation_unavailable)) }
+            return
+        }
+        scope.launch {
+            val config = widget.state.config
+            val user = if (message.isNullOrBlank()) emptyList() else {
+                listOf(com.cy.codexui.protocol.protocol.v2.UserInput.Text(message))
+            }
+            client.forkThread(
+                com.cy.codexui.protocol.protocol.v2.ThreadForkParams(
+                    threadId = current,
+                    model = config.model.takeIf { it.isNotBlank() },
+                    modelProvider = config.modelProviderId,
+                    cwd = config.cwd,
+                    approvalPolicy = config.approvalPolicy,
+                    approvalsReviewer = config.approvalsReviewer,
+                    sandbox = config.sandboxPolicy,
+                    serviceTier = config.serviceTier,
+                    developerInstructions = com.cy.codexui.chatwidget.SideDeveloperInstructions,
+                    ephemeral = true,
+                ),
+            ).onSuccess { child ->
+                sideThreadParents[child.threadId] = current
+                widget.bind(child)
+                preferences.edit().putString(KeySelectedSession, child.threadId).apply()
+                client.injectThreadItems(
+                    child.threadId,
+                    listOf(com.cy.codexui.chatwidget.sideBoundaryPromptItem()),
+                )
+                if (user.isNotEmpty()) widget.action(AppEvent.SubmitUserMessage(user))
+            }.onFailure {
+                snackbar.showSnackbar(it.message ?: context.getString(R.string.side_conversation_start_failed))
+            }
+        }
+    }
+
+    /** `/export` without a path: raise the flag the chat screen turns into a save dialog. */
+    fun requestTranscriptExport(path: String?) {
+        if (path.isNullOrBlank()) {
+            exportTranscriptRequest = true
+        } else {
+            exportTranscriptToFile(path)
+        }
+    }
+
+    fun consumeTranscriptExportRequest() {
+        exportTranscriptRequest = false
+    }
+
+    /** The default file name offered to the system save dialog, `codex-session-<id>.md`. */
+    fun transcriptExportFileName(): String = "codex-session-${widget.state.threadId}.md"
+
+    /** `/export <path>`: write beside the session cwd (or to the given absolute path). */
+    private fun exportTranscriptToFile(requested: String) {
+        scope.launch {
+            val result = runCatching {
+                withContext(Dispatchers.IO) {
+                    val markdown = com.cy.codexui.app.transcriptMarkdown(widget.state.items)
+                        ?: error(context.getString(R.string.transcript_export_empty))
+                    val cwd = widget.state.config.cwd.ifBlank { defaultWorkspace }
+                    val raw = java.io.File(requested)
+                    val target = if (raw.isAbsolute) raw else java.io.File(cwd, requested)
+                    target.parentFile?.mkdirs()
+                    // `persist_noclobber` upstream: an existing file is never overwritten.
+                    if (!target.createNewFile()) {
+                        error(context.getString(R.string.transcript_export_exists, target.path))
+                    }
+                    target.writeText(markdown)
+                    target.absolutePath
+                }
+            }
+            result.onSuccess { path ->
+                snackbar.showSnackbar(context.getString(R.string.transcript_export_saved, path))
+            }.onFailure {
+                snackbar.showSnackbar(it.message ?: context.getString(R.string.transcript_export_failed))
+            }
+        }
+    }
+
+    /** `/export` through the system save dialog: the picked document receives the markdown. */
+    fun exportTranscriptTo(uri: Uri) {
+        scope.launch {
+            val result = runCatching {
+                withContext(Dispatchers.IO) {
+                    val markdown = com.cy.codexui.app.transcriptMarkdown(widget.state.items)
+                        ?: error(context.getString(R.string.transcript_export_empty))
+                    val stream = context.contentResolver.openOutputStream(uri)
+                        ?: error(context.getString(R.string.transcript_export_failed))
+                    stream.use { it.write(markdown.toByteArray(Charsets.UTF_8)) }
+                    uri.toString()
+                }
+            }
+            result.onSuccess {
+                snackbar.showSnackbar(context.getString(R.string.transcript_export_saved, it))
+            }.onFailure {
+                snackbar.showSnackbar(it.message ?: context.getString(R.string.transcript_export_failed))
+            }
+        }
+    }
+
+    /** Interrupt and unsubscribe a side thread; the fork is gone once it is unsubscribed. */
+    private fun closeSideConversation(sideThreadId: String) {
+        sideThreadParents.remove(sideThreadId)
+        scope.launch {
+            client.interruptTurn(sideThreadId)
+            client.unsubscribeThread(sideThreadId)
+        }
     }
 
     /**
@@ -1621,11 +1808,28 @@ class CodexApp(
                     val input = context.contentResolver.openInputStream(uri)
                         ?: error(context.getString(R.string.runtime_attachment_failed))
                     input.use { source -> target.outputStream().use { source.copyTo(it) } }
-                    target.absolutePath
+                    Triple(target.absolutePath, displayName, isImageAttachment(context.contentResolver.getType(uri), target.name))
                 }
-            }.onSuccess { path ->
-                val draft = widget.state.composerDraft
-                widget.state.applyDraft(draft + (if (draft.isBlank()) "" else "\n") + "@$path ")
+            }.onSuccess { (path, displayName, isImage) ->
+                if (isImage) {
+                    val file = java.io.File(path)
+                    // The protocol reads the file at submission time; a file over the transport
+                    // ceiling can never be sent, so it is rejected at import instead.
+                    if (file.length() > MaxComposerImageBytes) {
+                        file.delete()
+                        snackbar.showSnackbar(
+                            context.getString(R.string.chatwidget_diagnostic_image_too_large, displayName),
+                        )
+                        return@onSuccess
+                    }
+                    val placeholder = widget.state.addComposerImage(path)
+                    val draft = widget.state.composerDraft
+                    val gap = if (draft.isBlank() || draft.last().isWhitespace()) "" else " "
+                    widget.state.applyDraft(draft + gap + "$placeholder ")
+                } else {
+                    val draft = widget.state.composerDraft
+                    widget.state.applyDraft(draft + (if (draft.isBlank()) "" else "\n") + "@$path ")
+                }
             }.onFailure {
                 snackbar.showSnackbar(it.message ?: context.getString(R.string.runtime_attachment_failed))
             }
@@ -1646,7 +1850,12 @@ class CodexApp(
         creatingThread = true
         scope.launch {
             try {
-                client.startThread(com.cy.codexui.protocol.protocol.v2.ThreadStartParams(cwd = targetCwd))
+                client.startThread(
+                    com.cy.codexui.protocol.protocol.v2.ThreadStartParams(
+                        cwd = targetCwd,
+                        dynamicTools = com.cy.codexui.chatwidget.DynamicTools.specs(),
+                    ),
+                )
                     .onSuccess { session ->
                         widget.bind(session)
                         preferences.edit().putString(KeySelectedSession, session.threadId).apply()

@@ -13,6 +13,24 @@
     <string name="chat_composer_hint_shell">Run a shell command in the session shell</string>
     <string name="chat_composer_hint_parent_owned">Viewing sub-agent — direct input is disabled</string>
 
+    <!-- TurnActivityBar.kt -->
+    <string name="status_indicator_working">Working</string>
+
+    <!-- Misalignment -->
+    <string name="misalignment_title">Chat stopped as a precaution</string>
+    <string name="misalignment_description">We couldn’t confirm the agent was acting safely and following your instructions. To continue working, start or resume another chat.</string>
+    <string name="misalignment_review">What we detected</string>
+    <string name="misalignment_continue">Continue</string>
+    <string name="misalignment_review_title">What we detected</string>
+    <string name="misalignment_continuation_label">Continuation request (quoted)</string>
+
+    <!-- Side conversations -->
+    <string name="side_conversation_title">Start a side conversation</string>
+    <string name="side_conversation_unavailable">Start a conversation before opening a side chat</string>
+    <string name="side_conversation_start_failed">Failed to start the side conversation</string>
+    <string name="side_conversation_banner">Side conversation · from %1$s</string>
+    <string name="side_conversation_back">Back to main</string>
+
     <!-- SidebarPanel.kt -->
     <string name="sidebar_title">Codex</string>
     <string name="sidebar_collapse">Collapse sidebar</string>
@@ -42,6 +60,7 @@
 
     <!-- StatusCard.kt -->
     <string name="status_card_agents_files_summary">%1$d agents · %2$d files changed</string>
+    <string name="status_card_generating_title">Generating title…</string>
     <string name="status_card_agents_overview">Agents overview</string>
     <string name="status_card_context_title">Context</string>
     <string name="status_card_usage_percent">%1$d%%</string>

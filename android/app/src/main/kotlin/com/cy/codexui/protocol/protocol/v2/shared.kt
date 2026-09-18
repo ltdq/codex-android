@@ -151,12 +151,34 @@ enum class ReasoningEffort(val wire: String) {
     }
 }
 
-/** Input the user contributed to a turn; text is the only variant the phone composes today. */
+/** A byte range inside a `UserInput.Text` buffer; indexes are UTF-8 bytes, not chars. */
+data class ByteRange(val start: Int, val end: Int)
+
+/**
+ * A UI-defined span within a text input, such as an `[Image #N]` placeholder.
+ *
+ * `placeholder` is nullable on the wire even though the client always sends one: the server
+ * tolerates elements that only mark a range.
+ */
+data class TextElement(val byteRange: ByteRange, val placeholder: String? = null)
+
+/** Input the user contributed to a turn. */
 sealed interface UserInput {
-    data class Text(val text: String) : UserInput
-    data class Image(val url: String) : UserInput
-    data class LocalImage(val path: String) : UserInput
+    data class Text(
+        val text: String,
+        val textElements: List<TextElement> = emptyList(),
+    ) : UserInput
+
+    data class Image(val url: String, val detail: String? = null) : UserInput
+
+    data class LocalImage(val path: String, val detail: String? = null) : UserInput
+
+    data class Audio(val url: String) : UserInput
+
+    data class LocalAudio(val path: String) : UserInput
+
     data class Skill(val name: String, val path: String) : UserInput
+
     data class Mention(val name: String, val path: String) : UserInput
 }
 

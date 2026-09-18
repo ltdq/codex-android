@@ -170,10 +170,11 @@ private fun McpElicitationFields(
 }
 
 /**
- * URL-mode elicitation: the server wants the user to visit a page, not to fill a schema.
+ * URL-mode elicitation: the connector sign-in or browser-action flow, in two screens.
  *
- * Accepting opens the page in the browser and answers `accept`; there is nothing to submit, so the
- * action and the navigation are the same button press.
+ * Mirrors `bottom_pane/app_link_view.rs`: the first screen explains what is about to happen and
+ * opens the URL; the second asks the user to come back and confirm. Both the accept and the URL
+ * validation happen here, and an unrecognized or unsafe URL shows no open button at all.
  */
 @Composable
 private fun McpElicitationUrl(
@@ -184,40 +185,128 @@ private fun McpElicitationUrl(
 ) {
     val colors = MiuixTheme.colorScheme
     val uriHandler = LocalUriHandler.current
+    val prompt = remember(payload) { appLinkPrompt(payload) }
+    var screen by remember(payload) { mutableStateOf(AppLinkScreen.Link) }
+    val auth = prompt?.kind == AppLinkKind.Auth
+    val link = prompt?.url ?: payload.url
+
     Column(modifier = Modifier.fillMaxWidth()) {
         ApprovalScrollBody {
-            Text(
-                text = payload.message.ifBlank { stringResource(R.string.mcp_server_elicitation_url_message) },
-                modifier = Modifier.fillMaxWidth(),
-                fontSize = UiType.Body,
-                lineHeight = UiType.BodyLine,
-                color = colors.onSurfaceSecondary,
-            )
-            Spacer(Modifier.height(UiConsts.DialogFieldGap))
-            Text(
-                text = payload.url,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(codeSurface(), UrlShape)
-                    .padding(horizontal = UiConsts.Space12, vertical = UiConsts.Space10),
-                fontSize = UiType.Code,
-                lineHeight = UiType.CodeLine,
-                fontFamily = FontFamily.Monospace,
-                color = colors.primary,
-            )
+            if (screen == AppLinkScreen.Confirmation && prompt != null) {
+                Text(
+                    text = stringResource(
+                        if (auth) R.string.app_link_finish_auth_title else R.string.app_link_finish_browser_title,
+                    ),
+                    modifier = Modifier.fillMaxWidth(),
+                    fontSize = UiType.DialogTitle,
+                    lineHeight = UiType.DialogTitleLine,
+                    fontWeight = FontWeight.SemiBold,
+                    color = colors.onSurface,
+                )
+                Spacer(Modifier.height(UiConsts.DialogFieldGap))
+                Text(
+                    text = stringResource(
+                        if (auth) R.string.app_link_finish_auth_body else R.string.app_link_finish_browser_body,
+                    ),
+                    modifier = Modifier.fillMaxWidth(),
+                    fontSize = UiType.Body,
+                    lineHeight = UiType.BodyLine,
+                    color = colors.onSurfaceSecondary,
+                )
+                Spacer(Modifier.height(UiConsts.DialogFieldGap))
+                UrlSurface(link)
+            } else {
+                Text(
+                    text = when {
+                        prompt == null -> stringResource(R.string.mcp_server_elicitation_url_message)
+                        auth -> prompt.connectorName ?: prompt.connectorId.orEmpty()
+                        else -> stringResource(R.string.app_link_external_title)
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    fontSize = UiType.DialogTitle,
+                    lineHeight = UiType.DialogTitleLine,
+                    fontWeight = FontWeight.SemiBold,
+                    color = colors.onSurface,
+                )
+                if (prompt != null && !auth) {
+                    Spacer(Modifier.height(UiConsts.Space4))
+                    Text(
+                        text = stringResource(R.string.app_link_external_description, prompt.serverName),
+                        modifier = Modifier.fillMaxWidth(),
+                        fontSize = UiType.Meta,
+                        lineHeight = UiType.MetaLine,
+                        color = colors.onSurfaceVariantSummary,
+                    )
+                }
+                if (prompt?.message?.isNotBlank() == true) {
+                    Spacer(Modifier.height(UiConsts.DialogFieldGap))
+                    Text(
+                        text = prompt.message,
+                        modifier = Modifier.fillMaxWidth(),
+                        fontSize = UiType.Body,
+                        lineHeight = UiType.BodyLine,
+                        color = colors.onSurfaceSecondary,
+                    )
+                }
+                Spacer(Modifier.height(UiConsts.DialogFieldGap))
+                Text(
+                    text = stringResource(
+                        if (auth) R.string.app_link_auth_instructions else R.string.app_link_external_instructions,
+                    ),
+                    modifier = Modifier.fillMaxWidth(),
+                    fontSize = UiType.Body,
+                    lineHeight = UiType.BodyLine,
+                    color = colors.onSurfaceSecondary,
+                )
+                Spacer(Modifier.height(UiConsts.DialogFieldGap))
+                UrlSurface(link)
+            }
         }
         Spacer(Modifier.height(UiConsts.DialogFooterGap))
         FormButtons(
-            confirmLabel = stringResource(R.string.mcp_server_elicitation_url_open),
-            enabled = payload.url.isNotBlank(),
+            confirmLabel = when {
+                prompt == null -> stringResource(R.string.mcp_server_elicitation_url_open)
+                screen == AppLinkScreen.Link && auth -> stringResource(R.string.app_link_open_sign_in)
+                screen == AppLinkScreen.Link -> stringResource(R.string.app_link_open_link)
+                auth -> stringResource(R.string.app_link_signed_in)
+                else -> stringResource(R.string.app_link_finished)
+            },
+            // A URL that failed validation has no open button: declining is the only way out, the
+            // same outcome the TUI reaches by rejecting the conversion.
+            enabled = prompt != null,
             busy = busy,
             onConfirm = {
-                runCatching { uriHandler.openUri(payload.url) }
-                onAccept()
+                val target = prompt
+                if (target != null) {
+                    when (screen) {
+                        AppLinkScreen.Link -> {
+                            runCatching { uriHandler.openUri(target.url) }
+                            screen = AppLinkScreen.Confirmation
+                        }
+
+                        AppLinkScreen.Confirmation -> onAccept()
+                    }
+                }
             },
             onCancel = onDecline,
         )
     }
+}
+
+/** The redirect target as a code surface, the way every other payload is shown. */
+@Composable
+private fun UrlSurface(url: String) {
+    Text(
+        text = url,
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(codeSurface(), UrlShape)
+            .padding(horizontal = UiConsts.Space12, vertical = UiConsts.Space10),
+        fontSize = UiType.Code,
+        lineHeight = UiType.CodeLine,
+        fontFamily = FontFamily.Monospace,
+        color = MiuixTheme.colorScheme.primary,
+    )
 }
 
 @Composable

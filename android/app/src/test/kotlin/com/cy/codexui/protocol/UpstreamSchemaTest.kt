@@ -4,6 +4,7 @@ import com.cy.codexui.protocol.protocol.Json
 import com.cy.codexui.protocol.protocol.v2.Account
 import com.cy.codexui.protocol.protocol.v2.AccountRateLimits
 import com.cy.codexui.protocol.protocol.v2.AccountReadResponse
+import com.cy.codexui.protocol.protocol.v2.ByteRange
 import com.cy.codexui.protocol.protocol.v2.ClientInfo
 import com.cy.codexui.protocol.protocol.v2.ClientRequestMethod
 import com.cy.codexui.protocol.protocol.v2.CommandExecutionApprovalParams
@@ -12,6 +13,7 @@ import com.cy.codexui.protocol.protocol.v2.CreditsSnapshot
 import com.cy.codexui.protocol.protocol.v2.DynamicToolCallParams
 import com.cy.codexui.protocol.protocol.v2.FileChangeApprovalParams
 import com.cy.codexui.protocol.protocol.v2.GitInfo
+import com.cy.codexui.protocol.protocol.v2.GoalStatus
 import com.cy.codexui.protocol.protocol.v2.InitializeCapabilities
 import com.cy.codexui.protocol.protocol.v2.InitializeParams
 import com.cy.codexui.protocol.protocol.v2.InitializeResponse
@@ -22,6 +24,8 @@ import com.cy.codexui.protocol.protocol.v2.McpServerEventNotification
 import com.cy.codexui.protocol.protocol.v2.McpServerEventStreamNotification
 import com.cy.codexui.protocol.protocol.v2.McpToolCallStatus
 import com.cy.codexui.protocol.protocol.v2.ModelPreset
+import com.cy.codexui.protocol.protocol.v2.MisalignmentErrorDetails
+import com.cy.codexui.protocol.protocol.v2.MisalignmentSteer
 import com.cy.codexui.protocol.protocol.v2.ModelSafetyBufferingUpdatedNotification
 import com.cy.codexui.protocol.protocol.v2.ModelServiceTier
 import com.cy.codexui.protocol.protocol.v2.NetworkPolicyRuleAction
@@ -37,6 +41,8 @@ import com.cy.codexui.protocol.protocol.v2.SkillScope
 import com.cy.codexui.protocol.protocol.v2.SortDirection
 import com.cy.codexui.protocol.protocol.v2.Thread
 import com.cy.codexui.protocol.protocol.v2.ThreadActiveFlag
+import com.cy.codexui.protocol.protocol.v2.ThreadForkParams
+import com.cy.codexui.protocol.protocol.v2.ThreadGoalUpdated
 import com.cy.codexui.protocol.protocol.v2.ThreadItemsListParams
 import com.cy.codexui.protocol.protocol.v2.ThreadListParams
 import com.cy.codexui.protocol.protocol.v2.ThreadMemoryMode
@@ -46,6 +52,7 @@ import com.cy.codexui.protocol.protocol.v2.ThreadSortKey
 import com.cy.codexui.protocol.protocol.v2.ThreadStartParams
 import com.cy.codexui.protocol.protocol.v2.ThreadTokenUsage
 import com.cy.codexui.protocol.protocol.v2.ThreadTurnsListParams
+import com.cy.codexui.protocol.protocol.v2.TextElement
 import com.cy.codexui.protocol.protocol.v2.TokenUsageBreakdown
 import com.cy.codexui.protocol.protocol.v2.ToolRequestUserInputParams
 import com.cy.codexui.protocol.protocol.v2.TurnItemsView
@@ -154,6 +161,11 @@ class UpstreamSchemaTest {
     private val fieldMappings: List<Pair<KClass<*>, String>> = listOf(
         Thread::class to "Thread",
         GitInfo::class to "GitInfo",
+        ThreadGoalUpdated::class to "ThreadGoal",
+        MisalignmentErrorDetails::class to "MisalignmentErrorDetails",
+        MisalignmentSteer::class to "MisalignmentSteer",
+        ByteRange::class to "ByteRange",
+        TextElement::class to "TextElement",
         ThreadTokenUsage::class to "ThreadTokenUsage",
         TokenUsageBreakdown::class to "TokenUsageBreakdown",
         ModelPreset::class to "Model",
@@ -177,6 +189,7 @@ class UpstreamSchemaTest {
         ThreadTurnsListParams::class to "ThreadTurnsListParams",
         ThreadReadParams::class to "ThreadReadParams",
         ThreadStartParams::class to "ThreadStartParams",
+        ThreadForkParams::class to "ThreadForkParams",
         ThreadSection::class to "ThreadSection",
         CommandExecutionApprovalParams::class to "CommandExecutionRequestApprovalParams",
         FileChangeApprovalParams::class to "FileChangeRequestApprovalParams",
@@ -237,6 +250,7 @@ class UpstreamSchemaTest {
     private val enumMappings: List<Pair<Class<out Enum<*>>, String>> = listOf(
         ThreadMemoryMode::class.java to "ThreadMemoryMode",
         ThreadActiveFlag::class.java to "ThreadActiveFlag",
+        GoalStatus::class.java to "ThreadGoalStatus",
         TurnStatus::class.java to "TurnStatus",
         CommandExecutionStatus::class.java to "CommandExecutionStatus",
         PatchApplyStatus::class.java to "PatchApplyStatus",

@@ -61,6 +61,10 @@
     <string name="goal_sheet_usage">已用 %1$s tokens · %2$s</string>
     <string name="goal_sheet_progress_hint">代理会在每一轮结束时汇报进展，完成后状态变为“已完成”。</string>
     <string name="goal_sheet_clear">清除目标</string>
+    <string name="goal_sheet_save">保存目标描述</string>
+    <string name="goal_sheet_pause">暂停目标</string>
+    <string name="goal_sheet_resume">继续目标</string>
+    <string name="goal_sheet_budget">Token 预算：%1$s</string>
     <string name="goal_sheet_duration_hours_minutes">%1$d 小时 %2$d 分</string>
     <string name="goal_sheet_duration_hours">%1$d 小时</string>
     <string name="goal_sheet_duration_minutes_seconds">%1$d 分 %2$d 秒</string>

@@ -105,6 +105,18 @@
     <string name="mcp_server_elicitation_empty_form">这个表单没有需要填写的字段。</string>
     <string name="mcp_server_elicitation_url_message">这个 MCP 服务需要在浏览器中完成确认。</string>
     <string name="mcp_server_elicitation_url_open">打开链接并同意</string>
+    <string name="app_link_external_title">需要操作</string>
+    <string name="app_link_external_description">服务：%1$s</string>
+    <string name="app_link_auth_instructions">请在浏览器中登录这个应用，然后回到这里。</string>
+    <string name="app_link_external_instructions">请在浏览器中完成要求的操作，然后回到这里。</string>
+    <string name="app_link_open_sign_in">打开登录链接</string>
+    <string name="app_link_open_link">打开链接</string>
+    <string name="app_link_signed_in">我已登录</string>
+    <string name="app_link_finished">我已完成</string>
+    <string name="app_link_finish_auth_title">完成应用登录</string>
+    <string name="app_link_finish_browser_title">在浏览器中完成</string>
+    <string name="app_link_finish_auth_body">然后回到这里并选择“我已登录”。</string>
+    <string name="app_link_finish_browser_body">然后回到这里并选择“我已完成”。</string>
 
     <!-- RequestUserInputView.kt -->
     <string name="request_user_input_view_other">其他（自行填写）</string>

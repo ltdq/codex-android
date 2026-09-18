@@ -17,6 +17,7 @@ import androidx.compose.animation.scaleOut
 import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.horizontalScroll
@@ -90,6 +91,9 @@ import com.cy.codexui.app.withThreadMetadata
 import com.cy.codexui.bottom_pane.ApprovalDialog
 import com.cy.codexui.bottom_pane.ApprovalNoticeBar
 import com.cy.codexui.bottom_pane.Composer
+import com.cy.codexui.bottom_pane.TurnActivityBar
+import com.cy.codexui.bottom_pane.activeToolDetail
+import com.cy.codexui.bottom_pane.isConnectorAuth
 import com.cy.codexui.chatwidget.QueuedMessages
 import com.cy.codexui.floatingSurface
 import com.cy.codexui.glassTint
@@ -184,6 +188,21 @@ fun ChatScreen(
     ) { uri ->
         if (uri != null) {
             app.importAttachment(uri)
+        }
+    }
+    // `/export` with no path asks the system save dialog for a destination; the request flag is
+    // consumed before launching so a recomposition cannot open it twice.
+    val exportPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("text/markdown"),
+    ) { uri ->
+        if (uri != null) {
+            app.exportTranscriptTo(uri)
+        }
+    }
+    LaunchedEffect(app.exportTranscriptRequest) {
+        if (app.exportTranscriptRequest) {
+            app.consumeTranscriptExportRequest()
+            exportPicker.launch(app.transcriptExportFileName())
         }
     }
     val colors = MiuixTheme.colorScheme
@@ -398,6 +417,8 @@ fun ChatScreen(
                     StatusCard(
                         state = panelState,
                         session = session.config,
+                        titlePending = session.titleGenerationPending,
+                        gitSummary = session.gitSummary,
                         status = session.status,
                         usage = session.usage,
                         turnDiff = session.turnDiff,
@@ -510,9 +531,20 @@ fun ChatScreen(
             patchChanges = { request -> app.widget.fileChangeChanges(request.itemId) },
         )
         if (app.goalMenuOpen) {
+            val goal = session.goal
             GoalSheet(
-                goal = session.goal,
-                onSet = { app.onAppEvent(AppEvent.SetGoal(it)) },
+                goal = goal,
+                onSet = { objective ->
+                    // Creating a goal leaves the status to the server; editing one keeps the
+                    // state the goal already had (`edited_goal_status` upstream).
+                    app.onAppEvent(
+                        AppEvent.SetGoal(
+                            objective = objective,
+                            status = goal?.let { editedGoalStatus(it.status) },
+                        ),
+                    )
+                },
+                onSetStatus = { status -> app.onAppEvent(AppEvent.SetGoal(status = status)) },
                 onClear = { app.onAppEvent(AppEvent.ClearGoal) },
                 onDismiss = { app.goalMenuOpen = false },
             )
@@ -694,6 +726,15 @@ private fun RuntimeTranscript(app: CodexApp, modifier: Modifier) {
 
 private fun onApprovalDecision(app: CodexApp, request: ApprovalRequest, response: ApprovalResponse) {
     app.onAppEvent(AppEvent.ResolveApproval(request.requestId, response))
+    // A completed connector sign-in invalidates the app catalog: upstream asks for a forced
+    // connector refresh on the same accept (`app_link_view.rs:complete_external_flow_and_close`).
+    if (request is ApprovalRequest.Elicitation &&
+        request.params.isConnectorAuth() &&
+        response is ApprovalResponse.Elicitation &&
+        response.action == com.cy.codexui.protocol.ElicitationAction.Accept
+    ) {
+        app.onAppEvent(AppEvent.ReloadApps)
+    }
 }
 
 /**
@@ -1198,6 +1239,8 @@ private fun ComposerDock(
     val onPromptChange: (String) -> Unit = { app.onAppEvent(AppEvent.SetComposerDraft(it)) }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    // The safety-stop findings currently open in their sheet, if any.
+    var misalignmentReview by remember { mutableStateOf<com.cy.codexui.protocol.protocol.v2.MisalignmentErrorDetails?>(null) }
     // The draft as it was when the editor launched, so an editor that saves nothing cannot wipe
     // what was typed. The result code is deliberately ignored: several editors return CANCELED
     // while still having written the file.
@@ -1277,6 +1320,48 @@ private fun ComposerDock(
             )
         }
 
+        // A safety stop blocks the composer until the user reviews it or confirms continuing.
+        session.misalignment?.let { details ->
+            MisalignmentBar(
+                details = details,
+                onReview = { misalignmentReview = details },
+                onContinue = { app.onAppEvent(AppEvent.ContinueMisalignment) },
+                modifier = Modifier.padding(horizontal = UiConsts.ScreenMargin),
+            )
+        }
+        misalignmentReview?.let { details ->
+            MisalignmentReviewSheet(
+                details = details,
+                onDismiss = { misalignmentReview = null },
+            )
+        }
+
+        // A side conversation has no sidebar row of its own, so the one piece of context the user
+        // needs — where it came from, and how to leave — lives on a strip above the composer.
+        app.sideParentOf(session.threadId)?.let { parent ->
+            SideConversationBanner(
+                parentLabel = threadNameOf(parent),
+                onBack = { app.onAppEvent(AppEvent.ToggleSideConversation()) },
+                modifier = Modifier.padding(horizontal = UiConsts.ScreenMargin),
+            )
+        }
+
+        // The live turn status sits directly above the composer, like the TUI's status indicator:
+        // the duration, the tool that is running, and the hook on display right now.
+        TurnActivityBar(
+            running = session.running,
+            startedAtMs = session.turnStartedAtMs,
+            detail = remember(session.itemsRevision) { activeToolDetail(session.items) },
+            hookStatus = session.hookStatus,
+            modifier = Modifier.padding(horizontal = UiConsts.ScreenMargin),
+        )
+
+        ComposerImageTray(
+            images = session.composerImages,
+            onRemove = { image -> app.onAppEvent(AppEvent.RemoveComposerImage(image.path)) },
+            modifier = Modifier.padding(horizontal = UiConsts.ScreenMargin),
+        )
+
         Composer(
             value = prompt,
             onValueChange = onPromptChange,
@@ -1284,12 +1369,11 @@ private fun ComposerDock(
             // signal to hold the dialog for a second after the last edit.
             onActivity = app.widget::noteComposerActivity,
             onSubmit = {
-                if (prompt.isNotBlank()) {
-                    app.onAppEvent(
-                        AppEvent.SubmitUserMessage(
-                            listOf(com.cy.codexui.protocol.protocol.v2.UserInput.Text(prompt)),
-                        ),
-                    )
+                // The staged images are part of the submission: the widget assembles them from the
+                // draft so a placeholder the user deleted cannot resurrect its file.
+                val inputs = session.pendingTurnInputs()
+                if (inputs.isNotEmpty()) {
+                    app.onAppEvent(AppEvent.SubmitUserMessage(inputs))
                 }
             },
             onInterrupt = { app.onAppEvent(AppEvent.InterruptTurn) },
@@ -1333,7 +1417,7 @@ private fun ComposerDock(
             },
             running = session.running,
             enabled = app.startupReady && !session.loading && !app.creatingThread &&
-                !session.config.blocksDirectInput,
+                !session.config.blocksDirectInput && session.misalignment == null,
             hint = when {
                 session.config.blocksDirectInput ->
                     stringResource(R.string.chat_composer_hint_parent_owned)
@@ -1416,6 +1500,98 @@ private fun AgentsOverviewPane(
         onDismissFinished = onDismissFinished,
         totalTokens = entries.sumOf { it.tokens.toLong() },
     )
+}
+
+/** "Side conversation · from <parent>" with the way back to the parent thread. */
+@Composable
+private fun SideConversationBanner(
+    parentLabel: String,
+    onBack: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val colors = MiuixTheme.colorScheme
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(UiConsts.CornerChip))
+            .background(colors.primary.copy(alpha = 0.10f))
+            .padding(horizontal = UiConsts.Space12, vertical = UiConsts.Space6),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = stringResource(R.string.side_conversation_banner, parentLabel),
+            modifier = Modifier.weight(1f),
+            fontSize = UiType.Footnote,
+            lineHeight = UiType.FootnoteLine,
+            color = colors.onSurfaceSecondary,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Text(
+            text = stringResource(R.string.side_conversation_back),
+            modifier = Modifier
+                .clip(RoundedCornerShape(UiConsts.CornerChip))
+                .clickable(onClick = onBack)
+                .padding(horizontal = UiConsts.Space8, vertical = UiConsts.Space4),
+            fontSize = UiType.Footnote,
+            lineHeight = UiType.FootnoteLine,
+            color = colors.primary,
+            maxLines = 1,
+        )
+    }
+}
+
+/**
+ * The local images the draft is holding, as removable `[Image #N]` chips.
+ *
+ * The placeholder also sits in the draft text, so this row is a second, visible handle on the
+ * same attachment: tapping the close icon deletes both.
+ */
+@Composable
+private fun ComposerImageTray(
+    images: List<com.cy.codexui.ComposerImageAttachment>,
+    onRemove: (com.cy.codexui.ComposerImageAttachment) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    if (images.isEmpty()) return
+    val colors = MiuixTheme.colorScheme
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(UiConsts.Space6),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        images.forEach { image ->
+            Row(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(UiConsts.CornerChip))
+                    .background(colors.primary.copy(alpha = 0.12f))
+                    .padding(start = UiConsts.Space10, end = UiConsts.Space4, top = UiConsts.Space3, bottom = UiConsts.Space3),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = image.placeholder,
+                    fontSize = UiType.Chip,
+                    lineHeight = UiType.ChipLine,
+                    color = colors.onSurface,
+                    maxLines = 1,
+                )
+                IconButton(
+                    onClick = { onRemove(image) },
+                    minWidth = UiConsts.IconButtonCompact,
+                    minHeight = UiConsts.IconButtonCompact,
+                ) {
+                    Icon(
+                        imageVector = MiuixIcons.Basic.Close,
+                        contentDescription = stringResource(R.string.composer_remove_attachment),
+                        modifier = Modifier.size(UiConsts.IconInline),
+                        tint = colors.onSurfaceVariantSummary,
+                    )
+                }
+            }
+        }
+    }
 }
 
 /**

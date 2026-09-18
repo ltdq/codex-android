@@ -2,6 +2,8 @@
 <resources>
     <!-- Slash-command popup descriptions for commands whose label alone is not enough. -->
     <string name="slash_desc_compact">Compact the conversation context</string>
+    <string name="slash_desc_recap">Summarize the current conversation now</string>
+    <string name="slash_desc_export">Export the conversation as markdown</string>
     <string name="slash_desc_clear">Start a new thread and clear the view</string>
     <string name="slash_desc_stop">Interrupt the running turn</string>
     <string name="slash_desc_import">Import configuration from another agent</string>

@@ -105,6 +105,18 @@
     <string name="mcp_server_elicitation_empty_form">This form has no fields to fill in.</string>
     <string name="mcp_server_elicitation_url_message">This MCP server needs confirmation in a browser.</string>
     <string name="mcp_server_elicitation_url_open">Open link and accept</string>
+    <string name="app_link_external_title">Action required</string>
+    <string name="app_link_external_description">Server: %1$s</string>
+    <string name="app_link_auth_instructions">Sign in to this app in your browser, then return here.</string>
+    <string name="app_link_external_instructions">Complete the requested action in your browser, then return here.</string>
+    <string name="app_link_open_sign_in">Open sign-in URL</string>
+    <string name="app_link_open_link">Open link</string>
+    <string name="app_link_signed_in">I already signed in</string>
+    <string name="app_link_finished">I finished</string>
+    <string name="app_link_finish_auth_title">Finish App Sign In</string>
+    <string name="app_link_finish_browser_title">Finish in Browser</string>
+    <string name="app_link_finish_auth_body">Then return here and select “I already signed in”.</string>
+    <string name="app_link_finish_browser_body">Then return here and select “I finished”.</string>
 
     <!-- RequestUserInputView.kt -->
     <string name="request_user_input_view_other">None of the above</string>

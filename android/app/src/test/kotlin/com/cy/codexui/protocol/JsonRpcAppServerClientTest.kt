@@ -208,6 +208,43 @@ class JsonRpcAppServerClientTest {
     }
 
     @Test
+    fun `text elements and local images keep their upstream wire shape`() = runTest {
+        val transport = HarnessTransport()
+        val client = JsonRpcAppServerClient(transport, backgroundScope)
+        client.initialize(ClientInfo("android", version = "1")).getOrThrow()
+        val elements = listOf(
+            com.cy.codexui.protocol.protocol.v2.TextElement(
+                com.cy.codexui.protocol.protocol.v2.ByteRange(4, 13),
+                "[Image #1]",
+            ),
+        )
+        val start = async {
+            client.startTurn(
+                "t",
+                listOf(
+                    UserInput.LocalImage("/data/user/0/app/files/photo.png"),
+                    UserInput.Text("see [Image #1] now", elements),
+                ),
+            ).getOrThrow()
+        }
+        val request = transport.request()
+        val inputs = request.objectOrNull("params")!!.array("input")
+        val image = inputs[0].objectValue()
+        assertEquals("localImage", image.required("type"))
+        assertEquals("/data/user/0/app/files/photo.png", image.required("path"))
+        val text = inputs[1].objectValue()
+        assertEquals("text", text.required("type"))
+        val element = text.array("text_elements").single().objectValue()
+        assertEquals("[Image #1]", element.required("placeholder"))
+        val range = element["byteRange"]!!.objectValue()
+        assertEquals(4, range.int("start"))
+        assertEquals(13, range.int("end"))
+        transport.response(request, obj("turn" to obj("id" to "turn", "status" to "inProgress")))
+        assertEquals("turn", start.await())
+        client.close()
+    }
+
+    @Test
     fun `server errors and request timeout are failures while cancellation propagates`() = runTest {
         val transport = HarnessTransport()
         val client = JsonRpcAppServerClient(transport, backgroundScope)
@@ -336,8 +373,44 @@ class JsonRpcAppServerClientTest {
         transport.response(request, obj("project" to obj("id" to "p", "name" to "Work", "roots" to listOf(obj("path" to "/workspace")))))
         assertEquals("/workspace", created.await().path)
         val goal = async { client.getGoal("t").getOrThrow() }
-        transport.response(transport.request(), obj("goal" to obj("threadId" to "t", "objective" to "Implement", "status" to "active", "tokensUsed" to 123)))
+        transport.response(transport.request(), obj("goal" to obj("threadId" to "t", "objective" to "Implement", "status" to "active", "tokenBudget" to 50_000, "tokensUsed" to 123)))
         assertEquals(123, goal.await()!!.tokensUsed)
+        assertEquals(50_000L, goal.await()!!.tokenBudget)
+
+        // An explicit JSON null clears the budget; an absent key leaves it alone, and so does an
+        // absent objective/status.
+        val cleared = async {
+            client.setGoal(
+                com.cy.codexui.protocol.protocol.v2.ThreadGoalSetParams(
+                    threadId = "t",
+                    objective = "Ship it",
+                    status = com.cy.codexui.protocol.protocol.v2.GoalStatus.Paused,
+                    clearTokenBudget = true,
+                ),
+            ).getOrThrow()
+        }
+        val clearedRequest = transport.request()
+        val clearedParams = clearedRequest.objectOrNull("params")!!
+        assertEquals("Ship it", clearedParams.required("objective"))
+        assertEquals("paused", clearedParams.text("status"))
+        assertEquals(JsonNull, clearedParams["tokenBudget"])
+        transport.response(clearedRequest, obj("goal" to obj("threadId" to "t", "objective" to "Ship it", "status" to "paused", "tokensUsed" to 0, "timeUsedSeconds" to 1)))
+        cleared.await()
+
+        val resumed = async {
+            client.setGoal(
+                com.cy.codexui.protocol.protocol.v2.ThreadGoalSetParams(
+                    threadId = "t",
+                    status = com.cy.codexui.protocol.protocol.v2.GoalStatus.Active,
+                ),
+            ).getOrThrow()
+        }
+        val resumedRequest = transport.request()
+        val resumedParams = resumedRequest.objectOrNull("params")!!
+        assertNull(resumedParams["tokenBudget"])
+        assertNull(resumedParams["objective"])
+        transport.response(resumedRequest, obj("goal" to obj("threadId" to "t", "objective" to "Ship it", "status" to "active", "tokensUsed" to 0, "timeUsedSeconds" to 2)))
+        assertEquals(com.cy.codexui.protocol.protocol.v2.GoalStatus.Active, resumed.await().status)
         client.close()
     }
 
@@ -820,16 +893,28 @@ class JsonRpcAppServerClientTest {
         val client = JsonRpcAppServerClient(transport, backgroundScope)
         client.initialize(ClientInfo("android", version = "1")).getOrThrow()
         val approval = async { client.requests.first() }
-        transport.push("""{"id":"url","method":"mcpServer/elicitation/request","params":{"threadId":"t","serverName":"docs","mode":"url","message":"Authorize","url":"https://example.test/auth","elicitationId":"e-1"}}""")
+        transport.push("""{"id":"url","method":"mcpServer/elicitation/request","params":{"threadId":"t","serverName":"codex_apps","mode":"url","message":"Authorize","url":"https://chatgpt.com/apps/calendar/abc","elicitationId":"e-1","_meta":{"_codex_apps":{"connector_auth_failure":{"is_auth_failure":true,"connector_id":"abc","connector_name":"Calendar"}}}}}""")
         val received = assertIs<ApprovalRequest.Elicitation>(approval.await())
         val payload = assertIs<com.cy.codexui.protocol.protocol.v2.McpElicitationRequest.Url>(received.params)
-        assertEquals("https://example.test/auth", payload.url)
+        assertEquals("https://chatgpt.com/apps/calendar/abc", payload.url)
         assertEquals("e-1", payload.elicitationId)
+        val failure = com.cy.codexui.bottom_pane.connectorAuthFailure(payload.meta)
+        assertEquals("abc", failure?.connectorId)
+        assertEquals("Calendar", failure?.connectorName)
 
-        client.respond(received.requestId, ApprovalResponse.Elicitation(ElicitationAction.Accept))
+        // An accepted connector sign-in echoes the metadata back, the way the TUI resolves with
+        // `meta: None` and the server keeps its own copy; here the client carries it explicitly.
+        client.respond(
+            received.requestId,
+            ApprovalResponse.Elicitation(ElicitationAction.Accept, meta = payload.meta),
+        )
         val result = transport.sentResponse().objectOrNull("result")!!
         assertEquals("accept", result.text("action"))
         assertEquals(JsonNull, result["content"])
+        assertEquals(
+            "Calendar",
+            com.cy.codexui.bottom_pane.connectorAuthFailure(result["_meta"])?.connectorName,
+        )
         client.close()
     }
 

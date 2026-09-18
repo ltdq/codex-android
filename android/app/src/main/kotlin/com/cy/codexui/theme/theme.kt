@@ -25,10 +25,15 @@ object Appearance {
     private const val FileName = "codex_ui"
     private const val KeyThemeMode = "theme_mode"
     private const val KeyReduceMotion = "reduce_motion"
+    private const val KeyShowTooltips = "show_tooltips"
 
     var themeMode by mutableStateOf(ColorSchemeMode.System)
         private set
     var reduceMotion by mutableStateOf(false)
+        private set
+
+    /** `tui.show_tooltips` upstream: whether a startup tip is shown on a fresh conversation. */
+    var showTooltips by mutableStateOf(true)
         private set
 
     /** Read once, before the first composition; a missing key keeps the system default. */
@@ -40,6 +45,7 @@ object Appearance {
             else -> ColorSchemeMode.System
         }
         reduceMotion = prefs.getBoolean(KeyReduceMotion, false)
+        showTooltips = prefs.getBoolean(KeyShowTooltips, true)
         syncSystemAnimators()
     }
 
@@ -64,6 +70,11 @@ object Appearance {
         reduceMotion = enabled
         syncSystemAnimators()
         preferences(context).edit().putBoolean(KeyReduceMotion, enabled).apply()
+    }
+
+    fun setShowTooltips(context: Context, enabled: Boolean) {
+        showTooltips = enabled
+        preferences(context).edit().putBoolean(KeyShowTooltips, enabled).apply()
     }
 
     private fun preferences(context: Context) =

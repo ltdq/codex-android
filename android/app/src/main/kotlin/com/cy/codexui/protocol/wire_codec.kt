@@ -44,19 +44,42 @@ internal fun json(value: Any?): JsonElement = when (value) {
 
 internal object WireCodec {
     fun input(value: UserInput): JsonElement = when (value) {
-        is UserInput.Text -> obj("type" to "text", "text" to value.text, "text_elements" to emptyList<JsonElement>())
-        is UserInput.Image -> obj("type" to "image", "url" to value.url)
-        is UserInput.LocalImage -> obj("type" to "localImage", "path" to value.path)
+        is UserInput.Text -> obj(
+            "type" to "text",
+            "text" to value.text,
+            // The wire field stays snake_case: the v2 enum's variant fields were not renamed.
+            "text_elements" to value.textElements.map(::textElement),
+        )
+        is UserInput.Image -> obj("type" to "image", "url" to value.url, "detail" to value.detail)
+        is UserInput.LocalImage -> obj("type" to "localImage", "path" to value.path, "detail" to value.detail)
+        is UserInput.Audio -> obj("type" to "audio", "url" to value.url)
+        is UserInput.LocalAudio -> obj("type" to "localAudio", "path" to value.path)
         is UserInput.Skill -> obj("type" to "skill", "name" to value.name, "path" to value.path)
         is UserInput.Mention -> obj("type" to "mention", "name" to value.name, "path" to value.path)
+    }
+
+    fun textElement(value: TextElement): JsonElement = obj(
+        "byteRange" to obj("start" to value.byteRange.start, "end" to value.byteRange.end),
+        "placeholder" to value.placeholder,
+    )
+
+    fun textElement(value: JsonElement): TextElement {
+        val o = value.objectValue()
+        val range = o.objectOrNull("byteRange")
+        return TextElement(
+            ByteRange(range?.int("start") ?: 0, range?.int("end") ?: 0),
+            o.text("placeholder"),
+        )
     }
 
     fun input(value: JsonElement): UserInput {
         val o = value.objectValue()
         return when (o.required("type")) {
-            "text" -> UserInput.Text(o.required("text"))
-            "image" -> UserInput.Image(o.required("url"))
-            "localImage" -> UserInput.LocalImage(o.required("path"))
+            "text" -> UserInput.Text(o.required("text"), o.array("text_elements").map(::textElement))
+            "image" -> UserInput.Image(o.required("url"), o.text("detail"))
+            "localImage" -> UserInput.LocalImage(o.required("path"), o.text("detail"))
+            "audio" -> UserInput.Audio(o.required("url"))
+            "localAudio" -> UserInput.LocalAudio(o.required("path"))
             "skill" -> UserInput.Skill(o.required("name"), o.required("path"))
             "mention" -> UserInput.Mention(o.required("name"), o.required("path"))
             else -> error("Unsupported user input type: ${o.text("type")}")
@@ -93,7 +116,8 @@ internal object WireCodec {
     fun turn(value: JsonElement): Turn {
         val o = value.objectValue()
         return Turn(o.required("id"), o.array("items").map { item(it) }, TurnStatus.fromWire(o.required("status")),
-            (o.long("startedAt") ?: 0) * 1000, o.long("completedAt")?.times(1000))
+            (o.long("startedAt") ?: 0) * 1000, o.long("completedAt")?.times(1000),
+            durationMs = o.long("durationMs"))
     }
 
     fun session(value: JsonObject): ThreadSessionState {

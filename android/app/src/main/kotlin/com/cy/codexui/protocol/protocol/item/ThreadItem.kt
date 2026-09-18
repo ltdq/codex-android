@@ -194,3 +194,34 @@ data class ExitedReviewModeItem(
 data class ContextCompactionItem(
     override val id: String,
 ) : ThreadItem
+
+/**
+ * A client-local divider the transcript shows once a turn finishes.
+ *
+ * Not a wire item: upstream draws this from the completed `Turn` (`history_cell/separators.rs`),
+ * and this transcript is item-based, so [label] is formatted when the separator is inserted and
+ * the item is rebuilt from `thread/read` turns on every history refresh.
+ */
+data class TurnSeparatorItem(
+    override val id: String,
+    val label: String,
+) : ThreadItem
+
+/**
+ * A client-local conversation recap cell (`/recap`).
+ *
+ * `text == null` is the in-flight state ("Generating conversation recap…"); [failed] marks a
+ * request that finished without a usable answer. Both exist only on this device.
+ */
+data class RecapItem(
+    override val id: String,
+    val text: String?,
+    val nextAction: String? = null,
+    val failed: Boolean = false,
+) : ThreadItem
+
+/** A client-local startup tip, shown once on a fresh conversation (`tui/src/tooltips.rs`). */
+data class TipItem(
+    override val id: String,
+    val text: String,
+) : ThreadItem

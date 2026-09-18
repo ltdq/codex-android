@@ -15,7 +15,8 @@ import kotlinx.serialization.json.JsonObject
 
 internal object WireCatalogCodec {
     fun goal(o: JsonObject) = ThreadGoalUpdated(o.required("threadId"), o.required("objective"),
-        GoalStatus.entries.find { it.wire == o.text("status") } ?: error("Unknown goal status: ${o.text("status")}"), o.int("tokensUsed") ?: 0, o.long("timeUsedSeconds") ?: 0)
+        GoalStatus.entries.find { it.wire == o.text("status") } ?: error("Unknown goal status: ${o.text("status")}"),
+        o.long("tokenBudget"), o.int("tokensUsed") ?: 0, o.long("timeUsedSeconds") ?: 0)
 
     fun queued(o: JsonObject) = QueuedSubmission(o.required("id"), o.required("clientUserMessageId"), o.array("input").map { WireCodec.input(it) })
 

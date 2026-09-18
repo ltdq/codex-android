@@ -116,8 +116,25 @@ data class ThreadGoalUpdated(
     val threadId: String,
     val objective: String,
     val status: GoalStatus = GoalStatus.Active,
+    /** Token ceiling for the goal, or null when the goal is unbounded. */
+    val tokenBudget: Long? = null,
     val tokensUsed: Int = 0,
     val timeUsedSeconds: Long = 0L,
+)
+
+/**
+ * `thread/goal/set`: a patch rather than a replacement.
+ *
+ * Every field the caller omits is left alone, which is what `thread/goal/set` does upstream
+ * (`ThreadGoalSetParams`). [clearTokenBudget] sends the explicit JSON null that removes an existing
+ * ceiling, because omitting the field means "keep it".
+ */
+data class ThreadGoalSetParams(
+    val threadId: String,
+    val objective: String? = null,
+    val status: GoalStatus? = null,
+    val tokenBudget: Long? = null,
+    val clearTokenBudget: Boolean = false,
 )
 
 enum class GoalStatus(val wire: String) {

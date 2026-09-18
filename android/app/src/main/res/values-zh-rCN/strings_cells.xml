@@ -113,6 +113,15 @@
     <string name="messages_cell_assistant_name">Codex</string>
     <string name="messages_cell_attachment_image">图片</string>
     <string name="messages_cell_attachment_local_image">本地图片</string>
+    <string name="messages_cell_attachment_audio">音频</string>
+    <string name="messages_cell_attachment_local_audio">本地音频</string>
+
+    <!-- RecapCell.kt -->
+    <string name="recap_cell_title">会话回顾</string>
+    <string name="tooltip_cell_label">提示</string>
+    <string name="recap_cell_loading">正在生成会话回顾…</string>
+    <string name="recap_cell_failed">无法生成回顾，请重试。</string>
+    <string name="recap_cell_next_action">↳ 回顾：%1$s</string>
     <string name="messages_cell_attachment_skill">Skill: %1$s</string>
     <string name="messages_cell_attachment_mention">@%1$s</string>
     <string name="messages_cell_option_bullet">·</string>

@@ -595,6 +595,11 @@ private fun itemSummary(item: ThreadItem): String = when (item) {
     is EnteredReviewModeItem -> firstLine(item.review) ?: item.id
     is ExitedReviewModeItem -> firstLine(item.review) ?: item.id
     is ContextCompactionItem -> stringResource(R.string.history_ui_item_compaction)
+    is com.cy.codexui.protocol.protocol.item.TurnSeparatorItem -> item.label
+    is com.cy.codexui.protocol.protocol.item.RecapItem ->
+        item.text ?: stringResource(R.string.recap_cell_title)
+
+    is com.cy.codexui.protocol.protocol.item.TipItem -> firstLine(item.text) ?: item.id
 }
 
 /**
@@ -658,6 +663,8 @@ private fun UserInput.summaryLine(): String? = when (this) {
     is UserInput.Text -> text
     is UserInput.Image -> url
     is UserInput.LocalImage -> path
+    is UserInput.Audio -> url
+    is UserInput.LocalAudio -> path
     is UserInput.Skill -> name
     is UserInput.Mention -> path
 }

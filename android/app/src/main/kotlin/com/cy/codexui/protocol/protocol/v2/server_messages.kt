@@ -1,5 +1,7 @@
 package com.cy.codexui.protocol.protocol.v2
 
+import kotlinx.serialization.json.JsonElement
+
 /**
  * `ServerNotification` — the 82 methods the server pushes at the client.
  *
@@ -217,10 +219,19 @@ sealed interface McpElicitationRequest {
     val serverName: String
     val message: String
 
+    /**
+     * The wire `_meta` object, or null when the server sent none.
+     *
+     * Opaque to the client except for the `_codex_apps.connector_auth_failure` keys the app-link
+     * flow reads; keeping it around also lets an accept echo it back.
+     */
+    val meta: JsonElement?
+
     data class Form(
         override val serverName: String,
         override val message: String,
         val requestedSchema: McpElicitationSchema = McpElicitationSchema(),
+        override val meta: JsonElement? = null,
     ) : McpElicitationRequest {
         val fields: List<McpElicitationField> get() = requestedSchema.fields
     }
@@ -230,6 +241,7 @@ sealed interface McpElicitationRequest {
         override val message: String,
         val url: String,
         val elicitationId: String,
+        override val meta: JsonElement? = null,
     ) : McpElicitationRequest
 }
 

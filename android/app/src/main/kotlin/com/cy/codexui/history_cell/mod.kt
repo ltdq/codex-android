@@ -74,6 +74,9 @@ fun ThreadItemCell(
         is EnteredReviewModeItem -> ReviewModeCell(item, modifier)
         is ExitedReviewModeItem -> ExitedReviewModeCell(item, modifier)
         is ContextCompactionItem -> ContextCompactionCell(item, modifier)
+        is com.cy.codexui.protocol.protocol.item.TurnSeparatorItem -> TurnSeparatorCell(item, modifier)
+        is com.cy.codexui.protocol.protocol.item.RecapItem -> RecapCell(item, modifier)
+        is com.cy.codexui.protocol.protocol.item.TipItem -> TooltipCell(item, modifier)
     }
 }
 
@@ -154,4 +157,11 @@ private fun diagnosticText(code: DiagnosticCode, args: List<String>): String = w
         R.string.chatwidget_diagnostic_rate_limit_reached,
         args.firstOrNull().orEmpty(),
     )
+
+    DiagnosticCode.ImageTooLarge -> stringResource(
+        R.string.chatwidget_diagnostic_image_too_large,
+        args.firstOrNull().orEmpty(),
+    )
+
+    DiagnosticCode.RecapNoHistory -> stringResource(R.string.chatwidget_diagnostic_recap_no_history)
 }

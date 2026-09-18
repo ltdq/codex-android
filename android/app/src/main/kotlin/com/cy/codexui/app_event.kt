@@ -97,8 +97,36 @@ sealed interface AppEvent {
      * and submitting it must not clear a draft the user is still writing.
      */
     data class AnswerAsyncQuestion(val text: String) : AppEvent
-    data class SetGoal(val objective: String) : AppEvent
+    /**
+     * Create or patch the thread goal; every null field is left as it is.
+     *
+     * `/goal <text>` sends only an objective, `/goal pause|resume` only a status, and saving an
+     * edit sends both, which is why this is one event rather than one per control.
+     */
+    data class SetGoal(
+        val objective: String? = null,
+        val status: com.cy.codexui.protocol.protocol.v2.GoalStatus? = null,
+    ) : AppEvent
+
     data object ClearGoal : AppEvent
+
+    /** `/recap`: summarize the recent exchange through a hidden structured turn. */
+    data object GenerateRecap : AppEvent
+
+    /**
+     * Resume the stopped turn with the misalignment override.
+     *
+     * The steer message comes from the error details, so this carries no payload: answering the
+     * wrong turn's steer is not expressible.
+     */
+    data object ContinueMisalignment : AppEvent
+
+    /**
+     * `/side` and `/btw`: fork an ephemeral conversation, or return to the parent when one is open.
+     *
+     * [message] is submitted as the first side turn when the command carried one.
+     */
+    data class ToggleSideConversation(val message: String? = null) : AppEvent
 
     // ---- server-side queue -----------------------------------------------------
     //
@@ -367,6 +395,10 @@ sealed interface AppEvent {
 
     // ---- composer drafts -------------------------------------------------------
     data class SetComposerDraft(val text: String) : AppEvent
+
+    /** Drop a staged local image (and its `[Image #N]` placeholder) from the draft. */
+    data class RemoveComposerImage(val path: String) : AppEvent
+
     data class SubmitSlashCommand(val command: String, val args: String) : AppEvent
 
 }

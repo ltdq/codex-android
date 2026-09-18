@@ -36,11 +36,13 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import org.junit.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -430,6 +432,39 @@ class ChatWidgetTest {
         assertNull(widget.state.stream(id))
     }
 
+    @Test
+    fun `dynamic tool calls are executed without a dialog`() = runTest {
+        val client = TestClient().apply {
+            listThreadsResult = Result.success(
+                com.cy.codexui.protocol.protocol.v2.ThreadListing(
+                    threads = listOf(testThread("t1", preview = "Ship the parser")),
+                ),
+            )
+        }
+        val widget = ChatWidget(client, backgroundScope)
+        widget.bind(ThreadSessionState(threadId = "thread"))
+        widget.attach()
+        client.requests.emit(
+            ApprovalRequest.DynamicTool(
+                RequestId("call"), "thread", "turn", "item", 0,
+                com.cy.codexui.protocol.protocol.v2.DynamicToolCallParams(
+                    threadId = "thread",
+                    turnId = "turn",
+                    callId = "call",
+                    namespace = "codex_tui",
+                    tool = "list_threads",
+                    arguments = """{"limit":5}""",
+                ),
+            ),
+        )
+        runCurrent()
+
+        assertNull(widget.currentApproval)
+        val response = assertIs<ApprovalResponse.DynamicTool>(client.responses.single())
+        assertTrue(response.result.success)
+        assertTrue(response.result.contentItems.single().contains("t1"))
+    }
+
     private class TestClient : AppServerClient {
         override val events = MutableSharedFlow<AppServerEvent>()
         override val requests = MutableSharedFlow<ApprovalRequest>()
@@ -438,14 +473,26 @@ class ChatWidgetTest {
         var resumeResult: Result<ThreadSessionState> = Result.failure(IllegalStateException("unavailable"))
         var historyResult: Result<ThreadReadResponse> = Result.failure(IllegalStateException("unavailable"))
         var rejectResponse = false
+        val responses = mutableListOf<ApprovalResponse>()
+        var listThreadsResult: Result<com.cy.codexui.protocol.protocol.v2.ThreadListing> =
+            Result.failure(IllegalStateException("unavailable"))
+        override suspend fun listThreads(params: com.cy.codexui.protocol.protocol.v2.ThreadListParams) =
+            listThreadsResult
         override suspend fun initialize(clientInfo: ClientInfo) = Result.success(Unit)
-        override suspend fun startTurn(threadId: String, inputs: List<UserInput>) = turnResult
+        override suspend fun startTurn(
+            threadId: String,
+            inputs: List<UserInput>,
+            outputSchema: JsonElement?,
+            effort: com.cy.codexui.protocol.protocol.v2.ReasoningEffort?,
+            clientMetadata: Map<String, String>?,
+        ) = turnResult
         override suspend fun resumeThread(threadId: String) = resumeResult
         override suspend fun readThread(params: com.cy.codexui.protocol.protocol.v2.ThreadReadParams) = historyResult
         var earlierResult: Result<ThreadItemsPage> = Result.failure(IllegalStateException("unavailable"))
         override suspend fun listThreadItems(params: ThreadItemsListParams) = earlierResult
         override suspend fun respond(requestId: RequestId, response: ApprovalResponse) {
             check(!rejectResponse) { "connection lost" }
+            responses += response
         }
         override suspend fun close() = Unit
     }

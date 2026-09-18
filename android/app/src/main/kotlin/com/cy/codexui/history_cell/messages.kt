@@ -186,6 +186,8 @@ private fun AttachmentChip(
     val label = when (input) {
         is UserInput.Image -> stringResource(R.string.messages_cell_attachment_image)
         is UserInput.LocalImage -> stringResource(R.string.messages_cell_attachment_local_image)
+        is UserInput.Audio -> stringResource(R.string.messages_cell_attachment_audio)
+        is UserInput.LocalAudio -> stringResource(R.string.messages_cell_attachment_local_audio)
         is UserInput.Skill ->
             stringResource(R.string.messages_cell_attachment_skill, input.name)
         is UserInput.Mention -> stringResource(

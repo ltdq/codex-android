@@ -208,6 +208,12 @@ sealed interface AppServerEvent {
         val turnId: String,
         val status: TurnStatus,
         val error: String? = null,
+        /** Server-measured duration, when the notification carried one. */
+        val durationMs: Long? = null,
+        /** Completion time in epoch millis, when the notification carried one. */
+        val completedAt: Long? = null,
+        /** Detail of a safety stop; see `MisalignmentErrorDetails`. */
+        val misalignment: com.cy.codexui.protocol.protocol.v2.MisalignmentErrorDetails? = null,
     ) : AppServerEvent
 
     data class TurnDiffUpdatedEvent(override val threadId: String, val delta: TurnDiffUpdated) : AppServerEvent
@@ -543,6 +549,8 @@ sealed interface ApprovalResponse {
     data class Elicitation(
         val action: ElicitationAction,
         val content: Map<String, String> = emptyMap(),
+        /** The `_meta` object to echo back, for servers that asked for one. */
+        val meta: JsonElement? = null,
     ) : ApprovalResponse
 
     data class DynamicTool(
@@ -615,7 +623,7 @@ interface AppServerClient {
     suspend fun readThread(params: ThreadReadParams): Result<ThreadReadResponse> = unsupported("readThread")
     suspend fun startThread(params: ThreadStartParams): Result<ThreadSessionState> = unsupported("startThread")
     suspend fun resumeThread(threadId: String): Result<ThreadSessionState> = unsupported("resumeThread")
-    suspend fun forkThread(threadId: String): Result<ThreadSessionState> = unsupported("forkThread")
+    suspend fun forkThread(params: com.cy.codexui.protocol.protocol.v2.ThreadForkParams): Result<ThreadSessionState> = unsupported("forkThread")
     suspend fun archiveThread(threadId: String): Result<Unit> = unsupported("archiveThread")
     suspend fun unarchiveThread(threadId: String): Result<Unit> = unsupported("unarchiveThread")
     suspend fun deleteThread(threadId: String): Result<Unit> = unsupported("deleteThread")
@@ -683,7 +691,7 @@ interface AppServerClient {
     suspend fun decrementElicitation(threadId: String): Result<ElicitationCountResponse> = unsupported("decrementElicitation")
 
     // ---- thread/… goals -------------------------------------------------------
-    suspend fun setGoal(threadId: String, objective: String): Result<ThreadGoalUpdated> = unsupported("setGoal")
+    suspend fun setGoal(params: com.cy.codexui.protocol.protocol.v2.ThreadGoalSetParams): Result<ThreadGoalUpdated> = unsupported("setGoal")
     suspend fun getGoal(threadId: String): Result<ThreadGoalUpdated?> = unsupported("getGoal")
     suspend fun clearGoal(threadId: String): Result<Unit> = unsupported("clearGoal")
 
@@ -735,7 +743,18 @@ interface AppServerClient {
     suspend fun appendRealtimeAudio(threadId: String, audio: ThreadRealtimeAudioChunk): Result<Unit> = unsupported("appendRealtimeAudio")
 
     // ---- turn/… ---------------------------------------------------------------
-    suspend fun startTurn(threadId: String, inputs: List<UserInput>): Result<String> = unsupported("startTurn")
+    /**
+     * Start a turn; [outputSchema] asks the server to constrain the final answer to a JSON schema,
+     * which is how hidden structured requests (recap, thread titles) read their result.
+     */
+    suspend fun startTurn(
+        threadId: String,
+        inputs: List<UserInput>,
+        outputSchema: JsonElement? = null,
+        effort: com.cy.codexui.protocol.protocol.v2.ReasoningEffort? = null,
+        /** Experimental `responsesapiClientMetadata`; the misalignment override rides here. */
+        clientMetadata: Map<String, String>? = null,
+    ): Result<String> = unsupported("startTurn")
     suspend fun steerTurn(threadId: String, inputs: List<UserInput>): Result<String> = unsupported("steerTurn")
     suspend fun interruptTurn(threadId: String): Result<Unit> = unsupported("interruptTurn")
     suspend fun updateTurnSettings(params: TurnSettingsUpdateParams): Result<Unit> = unsupported("updateTurnSettings")
@@ -782,6 +801,7 @@ interface AppServerClient {
         cwd: String? = null,
         timeoutMs: Long? = null,
         tty: Boolean = false,
+        env: Map<String, String>? = null,
     ): Result<CommandExecResponse> = unsupported("execCommand")
 
     suspend fun execWrite(processId: String, data: ByteArray? = null, closeStdin: Boolean = false): Result<Unit> = unsupported("execWrite")

@@ -252,9 +252,26 @@ class JsonRpcAppServerClient(
         "personality" to params.personality?.wire, "serviceTier" to params.serviceTier, "ephemeral" to params.ephemeral,
         "developerInstructions" to params.developerInstructions, "baseInstructions" to params.baseInstructions,
         "sessionStartSource" to params.sessionStartSource, "config" to params.config,
+        "dynamicTools" to params.dynamicTools,
     ))
     override suspend fun resumeThread(threadId: String) = session("thread/resume", obj("threadId" to threadId))
-    override suspend fun forkThread(threadId: String) = session("thread/fork", obj("threadId" to threadId))
+    override suspend fun forkThread(params: com.cy.codexui.protocol.protocol.v2.ThreadForkParams) =
+        session("thread/fork", obj(
+            "threadId" to params.threadId,
+            "lastTurnId" to params.lastTurnId,
+            "model" to params.model,
+            "modelProvider" to params.modelProvider,
+            "cwd" to params.cwd,
+            "approvalPolicy" to params.approvalPolicy?.wire,
+            "approvalsReviewer" to params.approvalsReviewer?.wire,
+            "sandbox" to params.sandbox?.let(::sandboxPolicyJson),
+            "serviceTier" to params.serviceTier,
+            "config" to params.config,
+            "baseInstructions" to params.baseInstructions,
+            "developerInstructions" to params.developerInstructions,
+            "ephemeral" to params.ephemeral,
+            "excludeTurns" to params.excludeTurns,
+        ))
     override suspend fun archiveThread(threadId: String) = call("thread/archive", obj("threadId" to threadId))
     override suspend fun unarchiveThread(threadId: String) = call("thread/unarchive", obj("threadId" to threadId))
     override suspend fun deleteThread(threadId: String) = call("thread/delete", obj("threadId" to threadId))
@@ -353,7 +370,18 @@ class JsonRpcAppServerClient(
     override suspend fun updateSection(sectionId: String, name: String) = result { WireCatalogCodec.section(rpc("threadSection/update", obj("sectionId" to sectionId, "name" to name)).objectOrNull("section")!!) }
     override suspend fun deleteSection(sectionId: String) = call("threadSection/delete", obj("sectionId" to sectionId))
 
-    override suspend fun setGoal(threadId: String, objective: String) = result { WireCatalogCodec.goal(rpc("thread/goal/set", obj("threadId" to threadId, "objective" to objective)).objectOrNull("goal")!!) }
+    override suspend fun setGoal(params: com.cy.codexui.protocol.protocol.v2.ThreadGoalSetParams) = result {
+        val body = obj(
+            "threadId" to params.threadId,
+            "objective" to params.objective,
+            "status" to params.status?.wire,
+            // `null` here is the double option: an explicit JSON null clears the ceiling, while an
+            // absent key leaves it untouched. `obj` filters Kotlin nulls, so the clear has to be
+            // the JsonNull value, not a null reference.
+            "tokenBudget" to if (params.clearTokenBudget) JsonNull else params.tokenBudget,
+        )
+        WireCatalogCodec.goal(rpc("thread/goal/set", body).objectOrNull("goal")!!)
+    }
     override suspend fun getGoal(threadId: String) = result { rpc("thread/goal/get", obj("threadId" to threadId)).objectOrNull("goal")?.let(WireCatalogCodec::goal) }
     override suspend fun clearGoal(threadId: String) = call("thread/goal/clear", obj("threadId" to threadId))
     override suspend fun incrementElicitation(threadId: String) = result { rpc("thread/increment_elicitation", obj("threadId" to threadId)).let {
@@ -423,8 +451,21 @@ class JsonRpcAppServerClient(
         rpc("thread/memoryMode/set", obj("threadId" to threadId, "mode" to mode.wire))
         Unit
     }
-    override suspend fun startTurn(threadId: String, inputs: List<UserInput>) = result {
-        val turn = rpc("turn/start", obj("threadId" to threadId, "input" to inputs.map(WireCodec::input))).objectOrNull("turn") ?: error("Missing turn")
+    override suspend fun startTurn(
+        threadId: String,
+        inputs: List<UserInput>,
+        outputSchema: JsonElement?,
+        effort: com.cy.codexui.protocol.protocol.v2.ReasoningEffort?,
+        clientMetadata: Map<String, String>?,
+    ) = result {
+        val turn = rpc("turn/start", obj(
+            "threadId" to threadId,
+            "input" to inputs.map(WireCodec::input),
+            "outputSchema" to outputSchema,
+            "effort" to effort?.wire,
+            // The experimental export spells this camelCase even though the Rust field is snake.
+            "responsesapiClientMetadata" to clientMetadata,
+        )).objectOrNull("turn") ?: error("Missing turn")
         turn.required("id").also { activeTurns[threadId] = it }
     }
     override suspend fun steerTurn(threadId: String, inputs: List<UserInput>) = result {
@@ -851,9 +892,15 @@ class JsonRpcAppServerClient(
     override suspend fun copyPath(source: String, destination: String, recursive: Boolean) = call("fs/copy", obj("sourcePath" to source, "destinationPath" to destination, "recursive" to recursive))
     override suspend fun watchPath(path: String, watchId: String) = call("fs/watch", obj("path" to path, "watchId" to watchId))
     override suspend fun unwatchPath(watchId: String) = call("fs/unwatch", obj("watchId" to watchId))
-    override suspend fun execCommand(command: List<String>, cwd: String?, timeoutMs: Long?, tty: Boolean) = result {
+    override suspend fun execCommand(
+        command: List<String>,
+        cwd: String?,
+        timeoutMs: Long?,
+        tty: Boolean,
+        env: Map<String, String>?,
+    ) = result {
         require(!tty) { "Interactive command sessions are not yet supported" }
-        val o = rpc("command/exec", obj("command" to command, "cwd" to (cwd ?: defaultWorkspace), "timeoutMs" to timeoutMs))
+        val o = rpc("command/exec", obj("command" to command, "cwd" to (cwd ?: defaultWorkspace), "timeoutMs" to timeoutMs, "env" to env))
         CommandExecResponse(exitCode = o.int("exitCode") ?: error("Missing command exit code"), stdout = o.text("stdout").orEmpty(), stderr = o.text("stderr").orEmpty())
     }
     override suspend fun execWrite(processId: String, data: ByteArray?, closeStdin: Boolean) = call("command/exec/write", obj("processId" to processId, "deltaBase64" to data?.let { Base64.getEncoder().encodeToString(it) }, "closeStdin" to closeStdin))
@@ -907,8 +954,24 @@ class JsonRpcAppServerClient(
             }
             "turn/completed" -> {
                 val t = p.objectOrNull("turn")!!
+                val error = t.objectOrNull("error")
                 activeTurns.remove(threadId, t.required("id"))
-                AppServerEvent.TurnCompleted(threadId, t.required("id"), TurnStatus.fromWire(t.required("status")), t.objectOrNull("error")?.text("message"))
+                AppServerEvent.TurnCompleted(
+                    threadId,
+                    t.required("id"),
+                    TurnStatus.fromWire(t.required("status")),
+                    error?.text("message"),
+                    durationMs = t.long("durationMs"),
+                    completedAt = t.long("completedAt")?.times(1000),
+                    misalignment = error?.objectOrNull("misalignment")?.let { details ->
+                        com.cy.codexui.protocol.protocol.v2.MisalignmentErrorDetails(
+                            errorType = details.text("errorType"),
+                            detailedExplanation = details.text("detailedExplanation"),
+                            steer = details.objectOrNull("steer")?.text("message")
+                                ?.let { MisalignmentSteer(it) },
+                        )
+                    },
+                )
             }
             "turn/diff/updated" -> AppServerEvent.TurnDiffUpdatedEvent(threadId, TurnDiffUpdated(threadId, turnId, p.required("diff")))
             "turn/plan/updated" -> AppServerEvent.TurnPlanUpdatedEvent(threadId, TurnPlanUpdated(threadId, turnId, p.array("plan").map { it.objectValue().let { step -> PlanStep(step.required("step"), PlanStepStatus.fromWire(step.required("status"))) } }))
@@ -1128,6 +1191,18 @@ class JsonRpcAppServerClient(
                     RequestPermissionProfile(permissions.objectOrNull("network")?.bool("enabled") == true,
                         (fs?.strings("read").orEmpty() + paths("read")).distinct(), (fs?.strings("write").orEmpty() + paths("write")).distinct())))
             }
+            // `item/tool/call`: a tool this client declared at `thread/start` is being invoked.
+            "item/tool/call" -> ApprovalRequest.DynamicTool(
+                requestId, thread, turn, item, time,
+                DynamicToolCallParams(
+                    threadId = thread,
+                    turnId = turn,
+                    callId = p.text("callId").orEmpty(),
+                    namespace = p.text("namespace"),
+                    tool = p.required("tool"),
+                    arguments = p["arguments"]?.let(Json::write) ?: "{}",
+                ),
+            )
             "item/tool/requestUserInput" -> {
                 val questions = p.array("questions").map { value ->
                     val q = value.objectValue()
@@ -1155,10 +1230,13 @@ class JsonRpcAppServerClient(
                 }
                 val serverName = p.required("serverName")
                 val message = p.text("message").orEmpty()
+                // The union flattens `_meta` next to `mode`/`message`; it carries the
+                // `_codex_apps.connector_auth_failure` payload the app-link flow reads.
+                val meta = p["_meta"]
                 val payload = if (p.text("mode") == "url") {
-                    McpElicitationRequest.Url(serverName, message, p.required("url"), p.required("elicitationId"))
+                    McpElicitationRequest.Url(serverName, message, p.required("url"), p.required("elicitationId"), meta)
                 } else {
-                    McpElicitationRequest.Form(serverName, message, McpElicitationSchema(schema.text("title").orEmpty(), fields))
+                    McpElicitationRequest.Form(serverName, message, McpElicitationSchema(schema.text("title").orEmpty(), fields), meta)
                 }
                 ApprovalRequest.Elicitation(requestId, thread, p.text("turnId"), item, time, payload)
             }
@@ -1193,7 +1271,8 @@ class JsonRpcAppServerClient(
                 // A URL-mode accept carries no content: the accept *is* the answer. A form accept
                 // with no fields is the same shape, so an empty map is sent as null, not `{}`.
                 obj("action" to response.action.wire,
-                    "content" to if (response.action == ElicitationAction.Accept && content.isNotEmpty()) JsonObject(content) else JsonNull)
+                    "content" to if (response.action == ElicitationAction.Accept && content.isNotEmpty()) JsonObject(content) else JsonNull,
+                    "_meta" to response.meta)
             }
             is ApprovalResponse.DynamicTool -> obj("success" to response.result.success, "contentItems" to response.result.contentItems.map { obj("type" to "inputText", "text" to it) })
             is ApprovalResponse.Tokens -> obj("accessToken" to response.accessToken, "chatgptAccountId" to response.chatgptAccountId, "chatgptPlanType" to response.chatgptPlanType)

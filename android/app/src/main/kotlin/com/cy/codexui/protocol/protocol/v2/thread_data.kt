@@ -91,12 +91,27 @@ data class ThreadReadResponse(
 )
 
 /** One agent turn: a user message plus everything the agent did in response. */
+/**
+ * `TurnError.misalignment`: the safety system stopped the turn because it could not confirm the
+ * agent was following the user's intent. Mirrors `v2/thread_data.rs`.
+ */
+data class MisalignmentErrorDetails(
+    val errorType: String? = null,
+    val detailedExplanation: String? = null,
+    val steer: MisalignmentSteer? = null,
+)
+
+/** The instruction submitted again when the user confirms continuing after a misalignment stop. */
+data class MisalignmentSteer(val message: String)
+
 data class Turn(
     val id: String,
     val items: List<ThreadItem> = emptyList(),
     val status: TurnStatus = TurnStatus.Completed,
     val startedAt: Long = 0L,
     val completedAt: Long? = null,
+    /** Wall-clock duration the server measured, when it reports one. */
+    val durationMs: Long? = null,
     val usage: ThreadTokenUsage? = null,
 )
 
@@ -241,6 +256,31 @@ data class ThreadStartParams(
     val sessionStartSource: String? = null,
     /** Per-thread config overrides, as raw JSON: the server owns the key space. */
     val config: JsonElement? = null,
+    /** Experimental `thread/start.dynamicTools`: client-hosted tool specs the model may call. */
+    val dynamicTools: JsonElement? = null,
+)
+
+/**
+ * `thread/fork`: copy a thread, optionally as an ephemeral side conversation.
+ *
+ * Every field but [threadId] overrides the parent's setting for the child only, which is what the
+ * side-conversation flow uses to pin `ephemeral` and append developer instructions.
+ */
+data class ThreadForkParams(
+    val threadId: String,
+    val lastTurnId: String? = null,
+    val model: String? = null,
+    val modelProvider: String? = null,
+    val cwd: String? = null,
+    val approvalPolicy: AskForApproval? = null,
+    val approvalsReviewer: ApprovalsReviewer? = null,
+    val sandbox: SandboxPolicy? = null,
+    val serviceTier: String? = null,
+    val config: JsonElement? = null,
+    val baseInstructions: String? = null,
+    val developerInstructions: String? = null,
+    val ephemeral: Boolean? = null,
+    val excludeTurns: Boolean? = null,
 )
 
 /** `threadSection/…`: a user-defined group of threads in the sidebar. */

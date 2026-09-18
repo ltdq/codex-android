@@ -136,6 +136,10 @@ import kotlin.math.roundToInt
 fun StatusCard(
     state: StatusPanelState,
     session: ThreadSessionState,
+    /** True while a hidden turn is generating this thread's automatic title. */
+    titlePending: Boolean,
+    /** Branch / PR / diff totals, or null while the probe has nothing to show. */
+    gitSummary: com.cy.codexui.app.GitSummary?,
     status: ThreadStatus,
     usage: ThreadTokenUsage,
     turnDiff: List<FileDiff>,
@@ -178,6 +182,8 @@ fun StatusCard(
         SectionsColumn(
             state = state,
             session = session,
+            titlePending = titlePending,
+            gitSummary = gitSummary,
             status = status,
             usage = usage,
             turnDiff = turnDiff,
@@ -245,6 +251,8 @@ fun DiffCard(
 private fun SectionsColumn(
     state: StatusPanelState,
     session: ThreadSessionState,
+    titlePending: Boolean,
+    gitSummary: com.cy.codexui.app.GitSummary?,
     status: ThreadStatus,
     usage: ThreadTokenUsage,
     turnDiff: List<FileDiff>,
@@ -283,6 +291,8 @@ private fun SectionsColumn(
             status = status,
             fileCount = turnDiff.size,
             agentCount = roster.size,
+            titlePending = titlePending,
+            gitSummary = gitSummary,
             onOpenAgents = onOpenAgents,
         )
 
@@ -375,6 +385,8 @@ private fun CardHeader(
     status: ThreadStatus,
     fileCount: Int,
     agentCount: Int,
+    titlePending: Boolean,
+    gitSummary: com.cy.codexui.app.GitSummary?,
     onOpenAgents: () -> Unit,
     headerPadding: PaddingValues = PaddingValues(horizontal = 2.dp),
     iconBoxSize: Dp = UiConsts.IconHeaderSmall,
@@ -427,13 +439,32 @@ private fun CardHeader(
                 )
             }
             Text(
-                text = stringResource(R.string.status_card_agents_files_summary, agentCount, fileCount),
+                text = if (titlePending) {
+                    stringResource(R.string.status_card_generating_title)
+                } else {
+                    stringResource(R.string.status_card_agents_files_summary, agentCount, fileCount)
+                },
                 fontSize = summarySize,
                 lineHeight = summaryLineHeight,
                 color = colors.onSurfaceVariantSummary,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
+            gitSummary?.let { summary ->
+                // `PR #123 · main +3 -1`, the same parts the TUI's status line composes.
+                Text(
+                    text = listOfNotNull(
+                        summary.pullRequest?.let { "PR #${it.number}" },
+                        summary.branch ?: session.gitBranch,
+                        summary.diffLabel,
+                    ).joinToString(" · "),
+                    fontSize = summarySize,
+                    lineHeight = summaryLineHeight,
+                    color = colors.onSurfaceVariantSummary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
         Spacer(Modifier.width(dotGap))
         // Not settings: the status card reads one session, and a way into the app's configuration

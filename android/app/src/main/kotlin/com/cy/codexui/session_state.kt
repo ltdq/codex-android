@@ -8,8 +8,20 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.referentialEqualityPolicy
 import androidx.compose.runtime.setValue
 import com.cy.codexui.protocol.protocol.item.AgentMessageItem
+import com.cy.codexui.protocol.protocol.item.CollabAgentToolCallItem
+import com.cy.codexui.protocol.protocol.item.CommandExecutionItem
+import com.cy.codexui.protocol.protocol.item.DynamicToolCallItem
+import com.cy.codexui.protocol.protocol.item.FileChangeItem
+import com.cy.codexui.protocol.protocol.item.ImageGenerationItem
+import com.cy.codexui.protocol.protocol.item.McpToolCallItem
 import com.cy.codexui.protocol.protocol.item.PlanItem
 import com.cy.codexui.protocol.protocol.item.ThreadItem
+import com.cy.codexui.protocol.protocol.item.TurnSeparatorItem
+import com.cy.codexui.protocol.protocol.v2.CollabAgentToolCallStatus
+import com.cy.codexui.protocol.protocol.v2.CommandExecutionStatus
+import com.cy.codexui.protocol.protocol.v2.DynamicToolCallStatus
+import com.cy.codexui.protocol.protocol.v2.McpToolCallStatus
+import com.cy.codexui.protocol.protocol.v2.PatchApplyStatus
 import com.cy.codexui.protocol.protocol.v2.AccountReadResponse
 import com.cy.codexui.protocol.protocol.v2.AccountUsage
 import com.cy.codexui.protocol.protocol.v2.AppInfo
@@ -51,6 +63,7 @@ import com.cy.codexui.protocol.protocol.v2.ThreadSessionState
 import com.cy.codexui.protocol.protocol.v2.ThreadStatus
 import com.cy.codexui.protocol.protocol.v2.ThreadTokenUsage
 import com.cy.codexui.protocol.protocol.v2.TurnStatus
+import com.cy.codexui.protocol.protocol.v2.UserInput
 import com.cy.codexui.protocol.protocol.v2.UserVerificationEnrollResponse
 import com.cy.codexui.protocol.protocol.v2.UserVerificationStatusResponse
 import com.cy.codexui.protocol.protocol.v2.WindowsSandboxReadiness
@@ -81,6 +94,48 @@ class SessionState {
         private set
 
     var running by mutableStateOf(false)
+        private set
+
+    /** When the running turn started, for the activity indicator's timer. */
+    var turnStartedAtMs by mutableStateOf<Long?>(null)
+        private set
+
+    /** True while a hidden turn is generating this thread's automatic title. */
+    var titleGenerationPending by mutableStateOf(false)
+        private set
+
+    /** Git branch / PR / diff totals of the session workspace, refreshed per turn. */
+    var gitSummary by mutableStateOf<com.cy.codexui.app.GitSummary?>(null)
+        private set
+
+    fun applyGitSummary(value: com.cy.codexui.app.GitSummary?) {
+        gitSummary = value
+    }
+
+    /**
+     * A safety stop waiting on the user, or null.
+     *
+     * While it is set the composer is blocked and a new turn only starts through the explicit
+     * continue action, the way `chatwidget/misalignment_policy.rs` gates input.
+     */
+    var misalignment by mutableStateOf<com.cy.codexui.protocol.protocol.v2.MisalignmentErrorDetails?>(null)
+        private set
+
+    fun applyMisalignment(value: com.cy.codexui.protocol.protocol.v2.MisalignmentErrorDetails?) {
+        misalignment = value
+    }
+
+    fun markTitleGenerationPending(value: Boolean) {
+        titleGenerationPending = value
+    }
+
+    /**
+     * The hook currently executing, named the way the indicator shows it.
+     *
+     * `hook/started` and `hook/completed` carry a whole run summary; the detail line only needs a
+     * name, and the last started hook wins while several run in parallel.
+     */
+    var hookStatus by mutableStateOf<String?>(null)
         private set
 
     /** Items in arrival order; deltas mutate the item they name in place. */
@@ -164,8 +219,71 @@ class SessionState {
     var composerDraft by mutableStateOf("")
         private set
 
+    /**
+     * Local images the draft is holding, in placeholder order.
+     *
+     * The `[Image #N]` placeholder lives in [composerDraft]; this list is what turns it into a
+     * `UserInput.LocalImage` on submission. Draft-level, unlike [attachments], which the server
+     * owns for the thread.
+     */
+    val composerImages = mutableStateListOf<ComposerImageAttachment>()
+
     fun applyDraft(text: String) {
         composerDraft = text
+        // A placeholder that was edited away drops its attachment, the way deleting the atomic
+        // element in the TUI's textarea does. Backspace over `[Image #1]` therefore detaches it
+        // without a separate gesture.
+        if (composerImages.any { it.placeholder !in text }) {
+            composerImages.removeAll { it.placeholder !in text }
+        }
+    }
+
+    /** Stage [path] and return the placeholder the caller inserts into the draft. */
+    fun addComposerImage(path: String): String {
+        val placeholder = imagePlaceholder(composerImages.size + 1)
+        composerImages.add(ComposerImageAttachment(path, placeholder))
+        return placeholder
+    }
+
+    /**
+     * Drop the image at [path] (if any) and renumber the rest.
+     *
+     * Renumbering rewrites every remaining placeholder in the draft, the way the TUI's
+     * `relabel_local_images` keeps the labels contiguous after a removal.
+     */
+    fun removeComposerImage(path: String) {
+        val index = composerImages.indexOfFirst { it.path == path }
+        if (index < 0) return
+        val removed = composerImages.removeAt(index)
+        var text = composerDraft.replace(removed.placeholder, "")
+        for (i in composerImages.indices) {
+            val image = composerImages[i]
+            val next = imagePlaceholder(i + 1)
+            if (next != image.placeholder) {
+                text = text.replace(image.placeholder, next)
+                composerImages[i] = image.copy(placeholder = next)
+            }
+        }
+        applyDraft(text)
+    }
+
+    fun clearComposerImages() {
+        composerImages.clear()
+    }
+
+    /**
+     * Build the inputs the current draft would submit.
+     *
+     * One `LocalImage` per placeholder still present in the text, then the text itself carrying the
+     * placeholder byte ranges. Empty text with no images yields an empty list, which is the
+     * "nothing to send" the submit path refuses.
+     */
+    fun pendingTurnInputs(): List<UserInput> {
+        val text = composerDraft
+        val elements = placeholderTextElements(text, composerImages.map { it.placeholder })
+        val kept = composerImages.filter { image -> elements.any { it.placeholder == image.placeholder } }
+        val textInput = if (text.isEmpty()) emptyList() else listOf(UserInput.Text(text, elements))
+        return kept.map { UserInput.LocalImage(it.path) } + textInput
     }
 
     /** Transcript text currently streaming into the last agent message, if any. */
@@ -273,6 +391,8 @@ class SessionState {
         queued.clear()
         diagnostics.clear()
         fallbackModelMetadataSlugs.clear()
+        misalignment = null
+        gitSummary = null
         status = ThreadStatus.NotLoaded
     }
 
@@ -289,8 +409,21 @@ class SessionState {
     }
 
     fun applyStatus(value: ThreadStatus) {
+        val wasRunning = running
         status = value
         running = value is ThreadStatus.Active
+        if (running && !wasRunning) turnStartedAtMs = System.currentTimeMillis()
+        if (!running) turnStartedAtMs = null
+    }
+
+    /** Remember a running hook for the activity indicator. */
+    fun applyHookStarted(name: String?) {
+        hookStatus = name?.takeIf { it.isNotBlank() }
+    }
+
+    /** The named hook finished; clear it only when it is still the one on display. */
+    fun applyHookCompleted() {
+        hookStatus = null
     }
 
     fun applyConfig(value: ThreadSessionState) {
@@ -354,6 +487,53 @@ class SessionState {
     }
 
     fun item(id: String): ThreadItem? = items.firstOrNull { it.id == id }
+
+    /** Append the divider that closes a turn; a second one for the same turn is dropped. */
+    fun appendTurnSeparator(item: TurnSeparatorItem) {
+        if (items.any { it.id == item.id }) return
+        items.add(item)
+        itemsRevision++
+    }
+
+    /**
+     * Mark every still-running tool item failed.
+     *
+     * An interrupted or failed turn can end without `item/completed` for the tools it had open,
+     * and without this the cards stay "Running" forever. Upstream does the same to its active cell
+     * in `finalize_active_cell_as_failed` when `finalize_turn` runs on an error path.
+     */
+    fun failInProgressItems() {
+        var changed = false
+        for (index in items.indices) {
+            val item = items[index]
+            val failed = when (item) {
+                is CommandExecutionItem ->
+                    if (item.status == CommandExecutionStatus.InProgress) item.copy(status = CommandExecutionStatus.Failed) else null
+
+                is FileChangeItem ->
+                    if (item.status == PatchApplyStatus.InProgress) item.copy(status = PatchApplyStatus.Failed) else null
+
+                is McpToolCallItem ->
+                    if (item.status == McpToolCallStatus.InProgress) item.copy(status = McpToolCallStatus.Failed) else null
+
+                is DynamicToolCallItem ->
+                    if (item.status == DynamicToolCallStatus.InProgress) item.copy(status = DynamicToolCallStatus.Failed) else null
+
+                is CollabAgentToolCallItem ->
+                    if (item.status == CollabAgentToolCallStatus.InProgress) item.copy(status = CollabAgentToolCallStatus.Failed) else null
+
+                is ImageGenerationItem ->
+                    if (item.status == DynamicToolCallStatus.InProgress) item.copy(status = DynamicToolCallStatus.Failed) else null
+
+                else -> null
+            }
+            if (failed != null) {
+                items[index] = failed
+                changed = true
+            }
+        }
+        if (changed) itemsRevision++
+    }
 
     fun addDiagnostic(diagnostic: SessionDiagnostic) {
         val slug = fallbackModelMetadataWarningSlug(diagnostic.message)
@@ -450,6 +630,12 @@ enum class DiagnosticCode {
 
     /** A rate-limit window hit 100%; requests queue until it resets. The argument is its label. */
     RateLimitReached,
+
+    /** A pasted image exceeded the 32 MiB transport limit; the notice names the file. */
+    ImageTooLarge,
+
+    /** `/recap` ran before any user/assistant exchange existed. */
+    RecapNoHistory,
 }
 
 /** One warning or error the transcript shows as a notice cell. */

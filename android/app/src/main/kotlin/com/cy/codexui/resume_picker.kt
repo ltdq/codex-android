@@ -19,8 +19,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -39,6 +41,7 @@ import com.cy.codexui.CodexApp
 import com.cy.codexui.CodexButton
 import com.cy.codexui.CodexButtonSize
 import com.cy.codexui.CodexDivider
+import com.cy.codexui.CodexTextField
 import com.cy.codexui.R
 import com.cy.codexui.SectionCard
 import com.cy.codexui.SurfaceHeader
@@ -50,17 +53,102 @@ import com.cy.codexui.app.FormSheet
 import com.cy.codexui.chatwidget.SidebarModel
 import com.cy.codexui.chatwidget.StatusChip
 import com.cy.codexui.pressableRow
+import com.cy.codexui.protocol.protocol.item.AgentMessageItem
+import com.cy.codexui.protocol.protocol.item.ThreadItem
+import com.cy.codexui.protocol.protocol.item.UserMessageItem
+import com.cy.codexui.protocol.protocol.v2.Thread
+import com.cy.codexui.protocol.protocol.v2.ThreadReadParams
 import com.cy.codexui.protocol.protocol.v2.ThreadSection
+import com.cy.codexui.protocol.protocol.v2.UserInput
 import com.cy.codexui.raisedSurface
 import com.cy.codexui.status.BackChevron
 import com.cy.codexui.statusDotColor
 import com.cy.codexui.tone
+import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Add
 import top.yukonga.miuix.kmp.icon.extended.GridView
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+
+/** How many lines an expanded card's transcript preview shows; the upstream cap is six. */
+internal const val ResumePreviewLineLimit = 6
+
+/** One line of an expanded card's recent transcript, with who said it. */
+internal data class ResumePreviewLine(val speaker: ResumePreviewSpeaker, val text: String)
+
+/** Who spoke one [ResumePreviewLine]. */
+internal enum class ResumePreviewSpeaker { User, Assistant }
+
+/**
+ * A thread's ordering timestamp.
+ *
+ * `recencyAt` is what the upstream picker's default sort reads when the server sent it, and
+ * [Thread.updatedAt] is the fallback for rows from servers that did not.
+ */
+internal fun threadRecency(thread: Thread): Long = thread.recencyAt ?: thread.updatedAt
+
+/**
+ * Whether [thread] mentions [query] in any field the picker searches.
+ *
+ * Mirrors `Row::matches_query` in `codex-rs/tui/src/resume_picker.rs`: name, preview, id, branch
+ * and cwd, case-insensitively, so the filter stays local to the rows already loaded.
+ */
+internal fun threadMatchesQuery(thread: Thread, query: String): Boolean {
+    if (query.isEmpty()) return true
+    return listOfNotNull(thread.name, thread.preview, thread.id, thread.gitInfo?.branch, thread.cwd)
+        .any { it.contains(query, ignoreCase = true) }
+}
+
+/**
+ * The rows the picker shows: [query] matched locally, newest activity first.
+ *
+ * Sorting is local as well. The upstream default is `ThreadSortKey::UpdatedAt`, and the sort is
+ * stable, so rows sharing a timestamp keep the order the server sent them in.
+ */
+internal fun resumeThreads(threads: List<Thread>, query: String): List<Thread> =
+    threads.filter { threadMatchesQuery(it, query) }
+        .sortedByDescending { threadRecency(it) }
+
+/**
+ * The newest user/assistant messages of one thread, one line each, oldest first.
+ *
+ * Mirrors the expanded preview of `codex-rs/tui/src/resume_picker_transcript_preview.rs`: only
+ * user and assistant text counts, the newest messages win, and the result is capped at [limit].
+ * Each message is reduced to its first non-blank line, the same shape the history browser uses.
+ */
+internal fun transcriptPreviewLines(
+    items: List<ThreadItem>,
+    limit: Int = ResumePreviewLineLimit,
+): List<ResumePreviewLine> {
+    if (limit <= 0) return emptyList()
+    return items.mapNotNull { item ->
+        when (item) {
+            is UserMessageItem -> item.content
+                .filterIsInstance<UserInput.Text>()
+                .joinToString(" ") { it.text }
+                .let { previewLine(ResumePreviewSpeaker.User, it) }
+
+            is AgentMessageItem -> previewLine(ResumePreviewSpeaker.Assistant, item.text)
+            else -> null
+        }
+    }.takeLast(limit)
+}
+
+/** The first non-blank line of one message, or null when the message carries no visible text. */
+private fun previewLine(speaker: ResumePreviewSpeaker, text: String): ResumePreviewLine? =
+    text.lineSequence()
+        .firstOrNull { it.isNotBlank() }
+        ?.trim()
+        ?.let { ResumePreviewLine(speaker, it) }
+
+/** One expanded card's preview read: in flight, the latest answer, or why it has none. */
+private sealed interface ResumePreviewState {
+    data object Loading : ResumePreviewState
+    data object Failed : ResumePreviewState
+    data class Loaded(val lines: List<ResumePreviewLine>) : ResumePreviewState
+}
 
 /**
  * Session picker and lifecycle actions.
@@ -81,6 +169,7 @@ fun SessionListScreen(
     val colors = MiuixTheme.colorScheme
     val threads = app.threads
     val showArchived = threads.includeArchived
+    val scope = rememberCoroutineScope()
     var renamed by remember { mutableStateOf<String?>(null) }
     var renameDraft by remember { mutableStateOf("") }
     // Which section row is being renamed, and what a new section should be called. Both are page
@@ -88,8 +177,36 @@ fun SessionListScreen(
     var renamingSection by remember { mutableStateOf<String?>(null) }
     var creatingSection by remember { mutableStateOf(false) }
 
-    val visible = remember(threads.threads, threads.archivedIds, showArchived) {
-        threads.threads.filter { showArchived || it.id !in threads.archivedIds }
+    // The search filters the rows already loaded: the listing carries name, preview, branch and
+    // cwd, so a keystroke never repeats `thread/list`.
+    var query by remember { mutableStateOf("") }
+
+    // Which card is expanded, and what its `thread/read` answered. The cache outlives the
+    // expansion: collapsing and reopening a card must not read the same thread twice.
+    var expandedThreadId by remember { mutableStateOf<String?>(null) }
+    val previews = remember { mutableStateMapOf<String, ResumePreviewState>() }
+
+    val visible = remember(threads.threads, threads.archivedIds, showArchived, query) {
+        resumeThreads(
+            threads.threads.filter { showArchived || it.id !in threads.archivedIds },
+            query,
+        )
+    }
+
+    fun toggleExpanded(threadId: String) {
+        if (expandedThreadId == threadId) {
+            expandedThreadId = null
+            return
+        }
+        expandedThreadId = threadId
+        if (previews.containsKey(threadId)) return
+        previews[threadId] = ResumePreviewState.Loading
+        scope.launch {
+            previews[threadId] = app.client.readThread(ThreadReadParams(threadId)).fold(
+                onSuccess = { ResumePreviewState.Loaded(transcriptPreviewLines(it.items)) },
+                onFailure = { ResumePreviewState.Failed },
+            )
+        }
     }
 
     Column(modifier = modifier.fillMaxSize()) {
@@ -118,6 +235,18 @@ fun SessionListScreen(
                     size = CodexButtonSize.Compact,
                 )
             },
+        )
+
+        CodexTextField(
+            value = query,
+            onValueChange = { query = it },
+            modifier = Modifier.padding(
+                start = horizontalPadding,
+                end = horizontalPadding,
+                top = UiConsts.Space8,
+                bottom = UiConsts.Space6,
+            ),
+            placeholder = stringResource(R.string.resume_picker_search_hint),
         )
 
         LazyColumn(
@@ -179,6 +308,9 @@ fun SessionListScreen(
                     onMoveToSection = { sectionId ->
                         app.onAppEvent(AppEvent.MoveThreadToSection(thread.id, sectionId))
                     },
+                    expanded = expandedThreadId == thread.id,
+                    previewState = previews[thread.id],
+                    onToggleExpand = { toggleExpanded(thread.id) },
                 )
             }
         }
@@ -222,6 +354,9 @@ private fun SessionCard(
     onDelete: () -> Unit,
     sections: List<ThreadSection>,
     onMoveToSection: (String?) -> Unit,
+    expanded: Boolean,
+    previewState: ResumePreviewState?,
+    onToggleExpand: () -> Unit,
     corner: Dp = UiConsts.CornerRow,
     horizontalPadding: Dp = 14.dp,
     verticalPadding: Dp = 12.dp,
@@ -327,6 +462,12 @@ private fun SessionCard(
                 ),
                 onClick = onArchiveToggle,
             )
+            SessionAction(
+                label = stringResource(
+                    if (expanded) R.string.resume_picker_collapse else R.string.resume_picker_expand,
+                ),
+                onClick = onToggleExpand,
+            )
         }
         if (sections.isNotEmpty()) {
             Spacer(Modifier.height(metaActionsSpacing))
@@ -351,7 +492,63 @@ private fun SessionCard(
                 )
             }
         }
+        if (expanded) {
+            Spacer(Modifier.height(metaActionsSpacing))
+            TranscriptPreview(previewState)
+        }
     }
+}
+
+/**
+ * An expanded card's recent transcript, or the state of reading it.
+ *
+ * One line per message, speaker included: the expanded card is a glance at how the conversation
+ * ended, and the thread's own screen remains the place that shows the transcript in full.
+ */
+@Composable
+private fun TranscriptPreview(state: ResumePreviewState?) {
+    when (state) {
+        null, ResumePreviewState.Loading -> PreviewLine(
+            text = stringResource(R.string.resume_picker_preview_loading),
+        )
+
+        ResumePreviewState.Failed -> PreviewLine(
+            text = stringResource(R.string.resume_picker_preview_failed),
+            error = true,
+        )
+
+        is ResumePreviewState.Loaded -> if (state.lines.isEmpty()) {
+            PreviewLine(text = stringResource(R.string.resume_picker_preview_empty))
+        } else {
+            Column(verticalArrangement = Arrangement.spacedBy(UiConsts.Space2)) {
+                state.lines.forEach { line ->
+                    PreviewLine(
+                        text = when (line.speaker) {
+                            ResumePreviewSpeaker.User ->
+                                stringResource(R.string.resume_picker_preview_user, line.text)
+
+                            ResumePreviewSpeaker.Assistant ->
+                                stringResource(R.string.resume_picker_preview_assistant, line.text)
+                        },
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** One line of the expanded preview, quiet enough to stay under the card's own preview. */
+@Composable
+private fun PreviewLine(text: String, error: Boolean = false) {
+    val colors = MiuixTheme.colorScheme
+    Text(
+        text = text,
+        fontSize = UiType.Footnote,
+        lineHeight = UiType.FootnoteLine,
+        color = if (error) colors.error else colors.onSurfaceVariantSummary,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+    )
 }
 
 /**

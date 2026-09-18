@@ -49,11 +49,12 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 fun GoalSheet(
     goal: ThreadGoalUpdated?,
     onSet: (String) -> Unit,
+    onSetStatus: (GoalStatus) -> Unit,
     onClear: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     val colors = MiuixTheme.colorScheme
-    var objective by remember(goal?.threadId, goal?.objective) { mutableStateOf("") }
+    var objective by remember(goal?.threadId, goal?.objective) { mutableStateOf(goal?.objective.orEmpty()) }
     ModalSheet(
         show = true,
         onDismiss = onDismiss,
@@ -113,23 +114,75 @@ fun GoalSheet(
                     color = colors.onSurfaceVariantSummary,
                 )
             }
-            Text(
-                text = goal.objective,
-                modifier = Modifier.padding(
-                    horizontal = UiConsts.Space4,
-                    vertical = UiConsts.Space4,
-                ),
-                fontSize = UiType.SheetBody,
-                lineHeight = UiType.SheetBodyLine,
-                color = colors.onSurface,
+            if (goal.tokenBudget != null) {
+                Text(
+                    text = stringResource(R.string.goal_sheet_budget, formatTokens(goal.tokenBudget)),
+                    modifier = Modifier.padding(
+                        horizontal = UiConsts.Space4,
+                        vertical = UiConsts.Space3,
+                    ),
+                    fontSize = UiType.Footnote,
+                    lineHeight = UiType.FootnoteLine,
+                    color = colors.onSurfaceVariantSummary,
+                )
+            }
+            // Editing keeps the status and the budget: `UpdateExisting` upstream carries both
+            // through `goal_menu.rs`, so a paused goal stays paused when its objective changes.
+            TextField(
+                value = objective,
+                onValueChange = { objective = it },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = UiConsts.Space4),
+                insideMargin = DpSize(UiConsts.Space12, UiConsts.Space10),
+                label = stringResource(R.string.goal_sheet_objective_hint),
+                minLines = 2,
+                maxLines = 4,
             )
             Text(
                 text = stringResource(R.string.goal_sheet_progress_hint),
-                modifier = Modifier.padding(horizontal = UiConsts.Space4),
+                modifier = Modifier.padding(
+                    horizontal = UiConsts.Space4,
+                    vertical = UiConsts.Space2,
+                ),
                 fontSize = UiType.Footnote,
                 lineHeight = UiType.FootnoteLine,
                 color = colors.onSurfaceVariantSummary,
             )
+            CodexButton(
+                text = stringResource(R.string.goal_sheet_save),
+                enabled = objective.isNotBlank() && objective.trim() != goal.objective,
+                onClick = {
+                    onSet(objective.trim())
+                    onDismiss()
+                },
+                modifier = Modifier.padding(top = UiConsts.Space4),
+            )
+            when (goal.status) {
+                GoalStatus.Active -> CodexButton(
+                    text = stringResource(R.string.goal_sheet_pause),
+                    role = ButtonRole.Secondary,
+                    onClick = {
+                        onSetStatus(GoalStatus.Paused)
+                        onDismiss()
+                    },
+                    modifier = Modifier.padding(top = UiConsts.Space4),
+                )
+
+                GoalStatus.Paused, GoalStatus.Blocked, GoalStatus.UsageLimited -> CodexButton(
+                    text = stringResource(R.string.goal_sheet_resume),
+                    role = ButtonRole.Secondary,
+                    onClick = {
+                        onSetStatus(GoalStatus.Active)
+                        onDismiss()
+                    },
+                    modifier = Modifier.padding(top = UiConsts.Space4),
+                )
+
+                // A budget-limited or finished goal has nothing left to run; upstream offers only
+                // edit and clear for these two, so no pause/resume button is drawn.
+                GoalStatus.BudgetLimited, GoalStatus.Complete -> Unit
+            }
             CodexButton(
                 text = stringResource(R.string.goal_sheet_clear),
                 role = ButtonRole.Secondary,
@@ -141,6 +194,22 @@ fun GoalSheet(
             )
         }
     }
+}
+
+/**
+ * Status an edit should carry over, mirroring `goal_menu.rs:edited_goal_status`.
+ *
+ * A goal that stopped for a terminal reason (budget limited, complete) restarts active when its
+ * objective is edited; paused / blocked / usage-limited goals stay in that state.
+ */
+internal fun editedGoalStatus(status: GoalStatus): GoalStatus = when (status) {
+    GoalStatus.Active -> GoalStatus.Active
+    GoalStatus.Paused,
+    GoalStatus.Blocked,
+    GoalStatus.UsageLimited,
+    -> status
+
+    GoalStatus.BudgetLimited, GoalStatus.Complete -> GoalStatus.Active
 }
 
 /** Status pill of a running goal, coloured by how the run ended or whether it is still going. */

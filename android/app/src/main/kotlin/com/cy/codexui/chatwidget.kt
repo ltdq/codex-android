@@ -5,6 +5,7 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import com.cy.codexui.chatwidget.executeDynamicTool
 import com.cy.codexui.diff.TurnDiffAccumulator
 import com.cy.codexui.protocol.AppServerClient
 import com.cy.codexui.protocol.AppServerEvent
@@ -174,6 +175,15 @@ class ChatWidget(
 
     /** Turns that already produced their one safety-buffering notice, bounded like [finishedTurns]. */
     private val safetyBufferedTurns = LinkedHashSet<String>()
+
+    /** Threads with an automatic title generation in flight. */
+    private val titleRequests = mutableSetOf<String>()
+
+    /** The manual recap request, if one is running; a second `/recap` is ignored. */
+    private var recapJob: Job? = null
+
+    /** The background git/PR probe for the status card. */
+    private var gitSummaryJob: Job? = null
 
     /**
      * When the composer last changed, on a monotonic clock.
@@ -419,14 +429,21 @@ class ChatWidget(
             if (version != loadVersion) return@launch
             history.onSuccess { response ->
                 if (version != loadVersion) return@onSuccess
+                // Separators after finished turns are rebuilt from the snapshot's turns: the server
+                // does not store the divider this client draws.
+                val transcript = if (response.turns.isNotEmpty()) {
+                    com.cy.codexui.history_cell.transcriptWithSeparators(response.turns)
+                } else {
+                    response.items
+                }
                 if (streamOvertookLoad) {
                     // The stream got there first, so this snapshot describes a thread that has
                     // already moved on: it may only fill the gaps it left. Applying it wholesale
                     // replaced freshly streamed bodies with the older copies the snapshot was taken
                     // from — a plan whose deltas had arrived collapsed back to an empty card.
-                    response.items.forEach(state::addIfAbsent)
+                    transcript.forEach(state::addIfAbsent)
                 } else {
-                    response.items.forEach(state::upsert)
+                    transcript.forEach(state::upsert)
                     response.turns.lastOrNull()?.usage?.let(state::applyUsage)
                     state.applyStatus(response.thread.status)
                 }
@@ -451,6 +468,7 @@ class ChatWidget(
             client.getGoal(threadId).onSuccess {
                 if (version == loadVersion) state.applyGoal(it)
             }
+            refreshGitSummary(threadId)
         }
     }
 
@@ -498,13 +516,21 @@ class ChatWidget(
     fun newThread(cwd: String) {
         resetApprovalState()
         scope.launch {
-            client.startThread(com.cy.codexui.protocol.protocol.v2.ThreadStartParams(cwd = cwd))
+            client.startThread(
+                com.cy.codexui.protocol.protocol.v2.ThreadStartParams(
+                    cwd = cwd,
+                    dynamicTools = com.cy.codexui.chatwidget.DynamicTools.specs(),
+                ),
+            )
                 .onSuccess { session ->
                     dropMarkdown()
                     state.beginLoad(session.threadId)
                     turnDiff.reset()
                     patchChanges.clear()
                     state.bindThread(session.threadId, session)
+                    // A brand-new thread starts with one tip, the way the TUI shows one in its
+                    // startup session cell.
+                    maybeShowStartupTip()
                 }
                 .onFailure { error ->
                     state.addDiagnostic(
@@ -535,7 +561,9 @@ class ChatWidget(
             // ---- thread lifecycle ---------------------------------------------
             is AppEvent.NewThread -> newThread(event.cwd ?: state.config.cwd)
             is AppEvent.ResumeThread -> open(event.threadId)
-            is AppEvent.ForkThread -> request({ client.forkThread(event.threadId) }) { bind(it) }
+            is AppEvent.ForkThread -> request({
+                client.forkThread(com.cy.codexui.protocol.protocol.v2.ThreadForkParams(event.threadId))
+            }) { bind(it) }
 
             is AppEvent.ArchiveThread -> request {
                 if (event.archived) client.archiveThread(event.threadId) else
@@ -578,7 +606,18 @@ class ChatWidget(
             is AppEvent.ResolveApproval -> resolve(event.requestId, event.response)
             is AppEvent.DismissApproval -> dismiss(event.requestId)
 
-            is AppEvent.SetGoal -> request({ client.setGoal(state.threadId, event.objective) }) { state.applyGoal(it) }
+            AppEvent.GenerateRecap -> generateRecap()
+            AppEvent.ContinueMisalignment -> continueMisalignment()
+
+            is AppEvent.SetGoal -> request({
+                client.setGoal(
+                    com.cy.codexui.protocol.protocol.v2.ThreadGoalSetParams(
+                        threadId = state.threadId,
+                        objective = event.objective,
+                        status = event.status,
+                    ),
+                )
+            }) { state.applyGoal(it) }
 
             AppEvent.ClearGoal -> request({ client.clearGoal(state.threadId) }) { state.applyGoal(null) }
 
@@ -665,7 +704,39 @@ class ChatWidget(
             }) { state.backgroundTerminals.clear() }
 
             // ---- composer ---------------------------------------------------------
-            is AppEvent.SetComposerDraft -> state.applyDraft(event.text)
+            //
+            // A paste that is exactly one local image path is staged as an attachment instead of
+            // typed out: the placeholder `[Image #N]` goes where the path would have been. The
+            // path must exist and fit the transport limit, which is why the check lives here and
+            // not in the pure diff.
+            is AppEvent.SetComposerDraft -> {
+                val pasted = detectPastedImagePath(state.composerDraft, event.text)
+                if (pasted == null) {
+                    state.applyDraft(event.text)
+                } else {
+                    val file = java.io.File(pasted.path)
+                    when {
+                        !file.isFile -> state.applyDraft(event.text)
+                        file.length() > MaxComposerImageBytes -> {
+                            state.applyDraft(event.text)
+                            state.addDiagnostic(
+                                SessionDiagnostic(
+                                    severity = DiagnosticSeverity.Warning,
+                                    code = DiagnosticCode.ImageTooLarge,
+                                    args = listOf(file.name),
+                                ),
+                            )
+                        }
+
+                        else -> {
+                            val placeholder = state.addComposerImage(pasted.path)
+                            state.applyDraft(event.text.replaceRange(pasted.start, pasted.end, "$placeholder "))
+                        }
+                    }
+                }
+            }
+
+            is AppEvent.RemoveComposerImage -> state.removeComposerImage(event.path)
 
             is AppEvent.SubmitSlashCommand,
 
@@ -673,6 +744,7 @@ class ChatWidget(
             //
             // Listed rather than caught by an `else`, so a new event has to be classified. These
             // never reach here: `CodexApp.onAppEvent` handles them before forwarding.
+            is AppEvent.ToggleSideConversation,
             is AppEvent.ReloadAccount,
             is AppEvent.ReloadRateLimits,
             is AppEvent.ReloadUsage,
@@ -801,6 +873,21 @@ class ChatWidget(
         state.bindThread(session.threadId, session)
     }
 
+    /**
+     * Put one startup tip at the top of a fresh conversation.
+     *
+     * Mirrors `tui/src/tooltips.rs`: gated by the `show_tooltips` appearance setting, picked at
+     * random, and only on a conversation that has no messages yet.
+     */
+    private fun maybeShowStartupTip() {
+        if (!com.cy.codexui.theme.Appearance.showTooltips) return
+        if (state.items.isNotEmpty()) return
+        val tip = com.cy.codexui.history_cell.Tooltips.random() ?: return
+        state.upsert(
+            com.cy.codexui.protocol.protocol.item.TipItem("tip-${state.threadId}", tip),
+        )
+    }
+
     fun clear() {
         loadJob?.cancel()
         loadVersion++
@@ -856,14 +943,15 @@ class ChatWidget(
     }
 
     private fun submitInput(inputs: List<UserInput>, clearDraft: Boolean = true) {
-        val text = inputs.filterIsInstance<UserInput.Text>().joinToString("\n") { it.text }.trim()
-        if (text.isEmpty() || !state.open || state.loading) return
+        val hasText = inputs.filterIsInstance<UserInput.Text>().any { it.text.isNotBlank() }
+        val hasMedia = inputs.any { it !is UserInput.Text }
+        if ((!hasText && !hasMedia) || !state.open || state.loading) return
         // Viewing a parent-owned sub-agent: the transcript is readable, input is not.
         if (state.config.blocksDirectInput) return
         val threadId = state.threadId
         if (state.running) {
             request({ client.addToQueue(threadId, inputs) }) {
-                if (clearDraft && state.threadId == threadId) state.applyDraft("")
+                if (clearDraft && state.threadId == threadId) clearComposer()
                 refreshQueue(threadId)
             }
             return
@@ -871,7 +959,7 @@ class ChatWidget(
         state.applyStatus(ThreadStatus.Active())
         scope.launch {
             client.startTurn(threadId, inputs).onSuccess {
-                if (clearDraft && state.threadId == threadId) state.applyDraft("")
+                if (clearDraft && state.threadId == threadId) clearComposer()
             }.onFailure { error ->
                 if (state.threadId != threadId) return@onFailure
                 state.applyStatus(ThreadStatus.Idle)
@@ -884,6 +972,28 @@ class ChatWidget(
                 )
             }
         }
+    }
+
+    /**
+     * Refresh the branch/PR/diff summary the status card shows.
+     *
+     * Mirrors `tui/src/branch_summary.rs`: `git` and `gh` run through `command/exec` in the
+     * session workspace, and failures are silent because the card simply omits the line.
+     */
+    private fun refreshGitSummary(threadId: String) {
+        val cwd = state.config.cwd
+        if (threadId.isBlank() || cwd.isBlank()) return
+        gitSummaryJob?.cancel()
+        gitSummaryJob = scope.launch {
+            val summary = com.cy.codexui.app.loadGitSummary(client, cwd)
+            if (state.threadId == threadId) state.applyGitSummary(summary)
+        }
+    }
+
+    /** Clear the draft and any staged local images after a submission consumed them. */
+    private fun clearComposer() {
+        state.applyDraft("")
+        state.clearComposerImages()
     }
 
     /** Re-read the server's queue for [threadId] and replace the local copy. */
@@ -946,6 +1056,31 @@ class ChatWidget(
             is ApprovalRequest.CurrentTimeRead -> {
                 scope.launch {
                     client.respond(request.requestId, ApprovalResponse.CurrentTime(System.currentTimeMillis()))
+                }
+                return
+            }
+
+            is ApprovalRequest.DynamicTool -> {
+                // Dynamic tools are the model delegating work to this client; they execute
+                // immediately and never surface as an approval card, the way `dynamic_tools.rs`
+                // answers them. The answer is a `DynamicToolCallResponse`, not a user decision.
+                val calling = request.threadId
+                val cwd = state.config.cwd
+                val model = state.config.model
+                scope.launch {
+                    val result = executeDynamicTool(
+                        client = client,
+                        callingThreadId = calling,
+                        cwd = cwd,
+                        model = model,
+                        params = request.params,
+                    )
+                    runCatching {
+                        client.respond(
+                            request.requestId,
+                            ApprovalResponse.DynamicTool(result),
+                        )
+                    }
                 }
                 return
             }
@@ -1051,6 +1186,8 @@ class ChatWidget(
             is AppServerEvent.TurnStarted -> {
                 state.applyStatus(ThreadStatus.Active())
                 state.applyStreaming(null)
+                // A new turn clears a previous safety stop; the gate is per turn.
+                state.applyMisalignment(null)
             }
 
             is AppServerEvent.TurnCompleted -> onTurnCompleted(event)
@@ -1173,18 +1310,24 @@ class ChatWidget(
 
             // A hook that failed is worth a notice; one that succeeded is not, or a session with
             // hooks on would fill the transcript with a line per tool call.
-            is AppServerEvent.HookCompleted -> if (event.delta.run.failed) {
-                state.addDiagnostic(
-                    SessionDiagnostic(
-                        severity = DiagnosticSeverity.Warning,
-                        message = event.delta.run.statusMessage,
-                        code = DiagnosticCode.HookFailed,
-                        args = listOf(event.delta.run.eventName.ifEmpty { event.delta.run.id }),
-                    ),
-                )
+            is AppServerEvent.HookCompleted -> {
+                state.applyHookCompleted()
+                if (event.delta.run.failed) {
+                    state.addDiagnostic(
+                        SessionDiagnostic(
+                            severity = DiagnosticSeverity.Warning,
+                            message = event.delta.run.statusMessage,
+                            code = DiagnosticCode.HookFailed,
+                            args = listOf(event.delta.run.eventName.ifEmpty { event.delta.run.id }),
+                        ),
+                    )
+                }
             }
 
-            is AppServerEvent.HookStarted -> Unit
+            is AppServerEvent.HookStarted -> state.applyHookStarted(
+                event.delta.run.statusMessage?.takeIf { it.isNotBlank() }
+                    ?: event.delta.run.eventName.ifBlank { event.delta.run.id },
+            )
 
             is AppServerEvent.McpOauthLoginCompleted -> if (!event.delta.success) {
                 state.addDiagnostic(
@@ -1323,6 +1466,9 @@ class ChatWidget(
         state.upsert(withStreamedText(item))
         state.endStream(item.id)
         if (state.streamingItemId == item.id) state.applyStreaming(null)
+        // The first completed user message is what a thread title is generated from; the hidden
+        // turn itself completes later and arrives as a foreign event this widget never renders.
+        if (item is com.cy.codexui.protocol.protocol.item.UserMessageItem) maybeGenerateTitle()
         // A finished item can never still be waiting for a decision: either this client answered it,
         // another client did (the server says so through `serverRequest/resolved`), or the server
         // resolved it itself. Leaving the card queued would show the user a decision that no longer
@@ -1363,9 +1509,132 @@ class ChatWidget(
         }
     }
 
+    /**
+     * Run `/recap` as a hidden structured turn and replace its loading cell with the answer.
+     *
+     * Mirrors `app/recap.rs`: the prompt carries only user/assistant exchange, and the result is a
+     * client-local transcript cell rather than anything the server persists.
+     */
+    private fun generateRecap() {
+        if (recapJob?.isActive == true) return
+        val threadId = state.threadId
+        val history = com.cy.codexui.app.recapHistory(state.items)
+        if (history == null) {
+            state.addDiagnostic(SessionDiagnostic(severity = DiagnosticSeverity.Info, code = DiagnosticCode.RecapNoHistory))
+            return
+        }
+        val itemId = "recap-$threadId-${System.currentTimeMillis()}"
+        state.upsert(com.cy.codexui.protocol.protocol.item.RecapItem(itemId, text = null))
+        recapJob = scope.launch {
+            try {
+                val result = com.cy.codexui.app.structuredTurn(
+                    client = client,
+                    cwd = state.config.cwd,
+                    model = state.config.model,
+                    developerInstructions = null,
+                    prompt = com.cy.codexui.app.RecapPromptPrefix + history,
+                    outputSchema = com.cy.codexui.app.recapOutputSchema(),
+                )
+                val recap = com.cy.codexui.app.parseRecap(result.getOrNull())
+                if (state.threadId != threadId) return@launch
+                state.upsert(
+                    com.cy.codexui.protocol.protocol.item.RecapItem(
+                        id = itemId,
+                        text = recap?.summary,
+                        nextAction = recap?.nextAction,
+                        failed = recap == null,
+                    ),
+                )
+            } finally {
+                recapJob = null
+            }
+        }
+    }
+
+    /**
+     * Generate and apply an automatic title once the thread has its first user message.
+     *
+     * Mirrors `app/thread_title.rs`: the request runs on an ephemeral structured thread, only sets
+     * a name the thread still does not have, and a manual rename wins because the name is re-checked
+     * when the generated one comes back.
+     */
+    private fun maybeGenerateTitle() {
+        val threadId = state.threadId
+        if (threadId.isBlank() || !state.open) return
+        if (!state.config.threadName.isNullOrBlank()) return
+        if (!titleRequests.add(threadId)) return
+        state.markTitleGenerationPending(true)
+        scope.launch {
+            try {
+                val prompt = com.cy.codexui.app.firstUserMessageText(state.items) ?: return@launch
+                val result = com.cy.codexui.app.structuredTurn(
+                    client = client,
+                    cwd = state.config.cwd,
+                    model = state.config.model,
+                    developerInstructions = null,
+                    prompt = com.cy.codexui.app.threadTitlePrompt(prompt),
+                    outputSchema = com.cy.codexui.app.threadTitleOutputSchema(),
+                    effort = com.cy.codexui.protocol.protocol.v2.ReasoningEffort.Low,
+                )
+                val title = com.cy.codexui.app.parseThreadTitle(result.getOrNull()) ?: return@launch
+                if (state.threadId != threadId || !state.config.threadName.isNullOrBlank()) return@launch
+                client.setThreadName(threadId, title).onSuccess {
+                    if (state.threadId == threadId) {
+                        state.applyConfig(state.config.copy(threadName = title))
+                    }
+                }
+            } finally {
+                titleRequests.remove(threadId)
+                if (state.threadId == threadId) state.markTitleGenerationPending(false)
+            }
+        }
+    }
+
+    /**
+     * Re-submit the safety stop's steer with the misalignment override.
+     *
+     * Mirrors `app/misalignment_policy.rs`: the steer text is the continuation message, a new turn
+     * needs the override metadata, and the gate only lifts once that turn starts. The steer is
+     * bounded to 1,024 characters, and a stop without one cannot be continued.
+     */
+    private fun continueMisalignment() {
+        val steer = state.misalignment?.steer?.message
+            ?.takeIf { it.isNotBlank() && it.length <= 1024 }
+            ?: return
+        val threadId = state.threadId
+        state.applyMisalignment(null)
+        state.applyStatus(ThreadStatus.Active())
+        scope.launch {
+            client.startTurn(
+                threadId = threadId,
+                inputs = listOf(UserInput.Text(steer)),
+                clientMetadata = mapOf(
+                    "misalignment_override" to "{\"timestamp\":${System.currentTimeMillis()}}",
+                ),
+            ).onFailure { error ->
+                if (state.threadId != threadId) return@onFailure
+                state.applyStatus(ThreadStatus.Idle)
+                state.addDiagnostic(
+                    SessionDiagnostic(
+                        severity = DiagnosticSeverity.Error,
+                        code = DiagnosticCode.SendFailed,
+                        detail = error.message,
+                    ),
+                )
+            }
+        }
+    }
+
     private fun onTurnCompleted(event: AppServerEvent.TurnCompleted) {
         flushMarkdown()
         state.applyStatus(ThreadStatus.Idle)
+        // A safety stop is not an ordinary failure: it holds input until the user reviews or
+        // confirms continuing, and the server dropped whatever was queued.
+        state.applyMisalignment(event.misalignment)
+        if (event.misalignment != null) {
+            state.queued.clear()
+            refreshQueue(event.threadId)
+        }
         // The agent is now waiting for the user; announce that only when nothing else will start a
         // turn on its own. The preview is the first line of the last answer, the same thing the
         // TUI puts in its `AgentTurnComplete` payload.
@@ -1383,6 +1652,23 @@ class ChatWidget(
         // into the item before the stream flag is cleared.
         state.settleStreams()
         state.applyStreaming(null)
+        // A completed turn gets the same divider upstream draws after the final answer. Its label
+        // is built from the notification's own duration and completion time, so a turn loaded from
+        // history (which rebuilds this from `Turn.durationMs`) and a live one read the same.
+        if (event.status == TurnStatus.Completed) {
+            val label = com.cy.codexui.history_cell.finalMessageSeparatorLabel(
+                elapsedSeconds = event.durationMs?.let { it / 1000 },
+                completedAtMillis = event.completedAt,
+            )
+            if (label != null) {
+                state.appendTurnSeparator(
+                    com.cy.codexui.protocol.protocol.item.TurnSeparatorItem(
+                        id = com.cy.codexui.history_cell.TurnSeparatorIdPrefix + event.turnId,
+                        label = label,
+                    ),
+                )
+            }
+        }
         refreshQueue(event.threadId)
         // Every approval belongs to the turn that asked for it. Card families with no item of their
         // own (`request_user_input`, permissions, elicitation) are settled exactly this way: when the
@@ -1392,6 +1678,9 @@ class ChatWidget(
         pendingApprovals.removeAll { it.turnId == event.turnId }
         syncCurrentApproval()
         if (event.status != TurnStatus.Completed) {
+            // Anything still running when an interrupted or failed turn ends will never receive its
+            // `item/completed`, so the cards are closed out here rather than left spinning.
+            state.failInProgressItems()
             // The notice is named by code, not by text: the status label is a string resource and
             // this reducer is not composable. `TurnFinished` carries the status so the transcript
             // can name it through the label it already has.
@@ -1417,6 +1706,8 @@ class ChatWidget(
         // keeps the parsed diff for the status card; only the accumulator's memory is released.
         turnDiff.reset()
         patchChanges.clear()
+        // The working tree may have moved during the turn; the status line follows it.
+        refreshGitSummary(event.threadId)
     }
 
     private fun refreshHistory(threadId: String) {
@@ -1435,7 +1726,12 @@ class ChatWidget(
                 if (version != loadVersion || state.threadId != threadId) return@launch
                 if (revision == eventRevision) {
                     state.items.clear()
-                    response.items.forEach(state::upsert)
+                    val transcript = if (response.turns.isNotEmpty()) {
+                        com.cy.codexui.history_cell.transcriptWithSeparators(response.turns)
+                    } else {
+                        response.items
+                    }
+                    transcript.forEach(state::upsert)
                     state.applyStatus(response.thread.status)
                     // A snapshot can be older than the live stream, so the buffer for the item
                     // still streaming is kept; only buffers for items this client no longer has
