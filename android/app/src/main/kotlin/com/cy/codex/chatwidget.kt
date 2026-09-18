@@ -123,19 +123,35 @@ class ChatWidget(
             ?: patchChanges[itemId].orEmpty()
 
     /**
-     * Markdown deltas waiting for the next commit tick.
+     * Streaming deltas waiting for the next commit tick.
      *
      * A server can emit a delta per token, and committing each one recomposes the transcript row
      * and the tail block with it. Deltas are therefore accumulated here and applied together at
      * [Motion.StreamCommitIntervalMs], which is the cadence the transcript renders at; an item that
      * completes flushes first, so nothing is lost at the end of a message.
      */
-    private class PendingMarkdown(val itemId: String, val plan: Boolean) {
-        val text = StringBuilder()
+    private enum class DeltaKind { AgentMessage, Plan, Reasoning, CommandOutput, McpProgress }
+
+    /**
+     * One item's pending deltas, in arrival order.
+     *
+     * A batch is not one string per item: `aggregatedOutput` and a reasoning summary are appended
+     * in arrival order across kinds, so a command's stdout and its terminal interaction must replay
+     * in the order the server sent them. Adjacent deltas of the same kind are concatenated; a kind
+     * change starts a new chunk.
+     */
+    private class PendingDeltas {
+        val chunks = mutableListOf<Pair<DeltaKind, StringBuilder>>()
+
+        fun append(kind: DeltaKind, delta: String) {
+            val last = chunks.lastOrNull()
+            if (last != null && last.first == kind) last.second.append(delta)
+            else chunks += kind to StringBuilder(delta)
+        }
     }
 
-    private val pendingMarkdown = linkedMapOf<String, PendingMarkdown>()
-    private var markdownFlushJob: Job? = null
+    private val pendingDeltas = linkedMapOf<String, PendingDeltas>()
+    private var deltaFlushJob: Job? = null
 
     /**
      * A bounded, per-thread queue of the notifications worth replaying on switch.
@@ -374,13 +390,13 @@ class ChatWidget(
     }
 
     fun detach() {
-        flushMarkdown()
+        flushDeltas()
         subscription?.cancel()
         subscription = null
     }
 
     fun connectionLost() {
-        flushMarkdown()
+        flushDeltas()
         resetApprovalState()
         patchChanges.clear()
         state.applyStatus(ThreadStatus.NotLoaded)
@@ -403,7 +419,7 @@ class ChatWidget(
     fun open(threadId: String, onLoaded: (Result<ThreadReadResponse>) -> Unit = {}) {
         loadJob?.cancel()
         val version = ++loadVersion
-        dropMarkdown()
+        dropDeltas()
         // Everything approval-scoped belongs to the old thread. `otherApprovals` survives the reset
         // by one step: a request for the thread being opened is adopted back into the queue once
         // `beginLoad` has made that thread current.
@@ -588,7 +604,7 @@ class ChatWidget(
                 ),
             )
                 .onSuccess { session ->
-                    dropMarkdown()
+                    dropDeltas()
                     state.beginLoad(session.threadId)
                     turnDiff.reset()
                     patchChanges.clear()
@@ -931,7 +947,7 @@ class ChatWidget(
     fun bind(session: com.cy.codex.protocol.protocol.v2.ThreadSessionState) {
         loadJob?.cancel()
         loadVersion++
-        dropMarkdown()
+        dropDeltas()
         resetApprovalState()
         state.beginLoad(session.threadId)
         turnDiff.reset()
@@ -960,9 +976,7 @@ class ChatWidget(
         loadVersion++
         resetApprovalState()
         patchChanges.clear()
-        markdownFlushJob?.cancel()
-        markdownFlushJob = null
-        pendingMarkdown.clear()
+        dropDeltas()
         turnDiff.reset()
         recap.resetForNewThread()
         state.clear()
@@ -973,39 +987,44 @@ class ChatWidget(
         state.queued.addAll(queued)
     }
 
-    private fun dropMarkdown() {
-        markdownFlushJob?.cancel()
-        markdownFlushJob = null
-        pendingMarkdown.clear()
+    private fun dropDeltas() {
+        deltaFlushJob?.cancel()
+        deltaFlushJob = null
+        pendingDeltas.clear()
     }
 
-    /** Buffer one markdown delta until the next commit tick. */
-    private fun appendMarkdownDelta(itemId: String, delta: String, plan: Boolean) {
-        pendingMarkdown.getOrPut(itemId) { PendingMarkdown(itemId, plan) }.text.append(delta)
-        if (markdownFlushJob == null) {
-            markdownFlushJob = scope.launch {
+    /** Buffer one streaming delta until the next commit tick. */
+    private fun appendDelta(itemId: String, kind: DeltaKind, delta: String) {
+        pendingDeltas.getOrPut(itemId) { PendingDeltas() }.append(kind, delta)
+        if (deltaFlushJob == null) {
+            deltaFlushJob = scope.launch {
                 delay(Motion.StreamCommitIntervalMs)
-                flushMarkdown()
+                flushDeltas()
             }
         }
     }
 
     /**
-     * Apply every buffered markdown delta now.
+     * Apply every buffered delta now.
      *
      * The tick calls this after [Motion.StreamCommitIntervalMs]; item completion and turn end call
      * it directly so a message never loses its tail to a pending flush.
      */
-    internal fun flushMarkdown() {
-        markdownFlushJob = null
-        if (pendingMarkdown.isEmpty()) return
-        val pending = pendingMarkdown.values.toList()
-        pendingMarkdown.clear()
-        for (entry in pending) {
-            if (entry.plan) {
-                state.appendPlanDelta(entry.itemId, entry.text.toString())
-            } else {
-                state.appendAgentDelta(entry.itemId, entry.text.toString())
+    internal fun flushDeltas() {
+        deltaFlushJob = null
+        if (pendingDeltas.isEmpty()) return
+        val pending = pendingDeltas.toMap()
+        pendingDeltas.clear()
+        for ((itemId, batch) in pending) {
+            for ((kind, text) in batch.chunks) {
+                val delta = text.toString()
+                when (kind) {
+                    DeltaKind.AgentMessage -> state.appendAgentDelta(itemId, delta)
+                    DeltaKind.Plan -> state.appendPlanDelta(itemId, delta)
+                    DeltaKind.Reasoning -> appendReasoningText(itemId, delta)
+                    DeltaKind.CommandOutput -> appendCommandOutput(itemId, delta)
+                    DeltaKind.McpProgress -> appendMcpProgress(itemId, delta)
+                }
             }
         }
     }
@@ -1236,22 +1255,40 @@ class ChatWidget(
             is AppServerEvent.ItemStarted -> state.upsert(event.item)
             is AppServerEvent.ItemCompleted -> onItemCompleted(event.item)
             is AppServerEvent.AgentMessageDelta ->
-                appendMarkdownDelta(event.delta.itemId, event.delta.delta, plan = false)
+                appendDelta(event.delta.itemId, DeltaKind.AgentMessage, event.delta.delta)
 
             is AppServerEvent.PlanDelta ->
-                appendMarkdownDelta(event.delta.itemId, event.delta.delta, plan = true)
+                appendDelta(event.delta.itemId, DeltaKind.Plan, event.delta.delta)
 
-            is AppServerEvent.ReasoningTextDelta -> appendReasoningText(event.delta.itemId, event.delta.delta)
-            is AppServerEvent.ReasoningSummaryDelta -> appendReasoningText(event.delta.itemId, event.delta.delta)
-            is AppServerEvent.ReasoningSummaryPartAdded -> appendReasoningText(event.delta.itemId, "\n\n")
-            is AppServerEvent.CommandOutputDelta -> appendCommandOutput(event.delta.itemId, event.delta.delta)
-            is AppServerEvent.CommandTerminalInteraction -> appendCommandOutput(
-                event.delta.itemId,
-                event.delta.stdin,
-            )
+            is AppServerEvent.ReasoningTextDelta ->
+                appendDelta(event.delta.itemId, DeltaKind.Reasoning, event.delta.delta)
+
+            is AppServerEvent.ReasoningSummaryDelta ->
+                appendDelta(event.delta.itemId, DeltaKind.Reasoning, event.delta.delta)
+
+            is AppServerEvent.ReasoningSummaryPartAdded ->
+                appendDelta(event.delta.itemId, DeltaKind.Reasoning, "\n\n")
+
+            is AppServerEvent.CommandOutputDelta ->
+                appendDelta(event.delta.itemId, DeltaKind.CommandOutput, event.delta.delta)
+
+            is AppServerEvent.CommandTerminalInteraction ->
+                appendDelta(event.delta.itemId, DeltaKind.CommandOutput, event.delta.stdin)
 
             is AppServerEvent.FileChangeOutputDelta -> Unit
-            is AppServerEvent.McpToolProgress -> appendMcpProgress(event.delta.itemId, event.delta.message)
+            is AppServerEvent.McpToolProgress ->
+                appendDelta(event.delta.itemId, DeltaKind.McpProgress, event.delta.message)
+
+            // The bridge dropped events, so deltas may have gone missing. Anything the transcript
+            // holds from the stream is untrustworthy; re-reading the thread is the same repair a
+            // compact or a revert uses.
+            is AppServerEvent.TransportLagged -> {
+                dropDeltas()
+                if (state.threadId.isNotEmpty()) {
+                    refreshHistory(state.threadId)
+                    refreshQueue(state.threadId)
+                }
+            }
             is AppServerEvent.TurnStarted -> {
                 state.applyStatus(ThreadStatus.Active())
                 state.applyStreaming(null)
@@ -1529,7 +1566,7 @@ class ChatWidget(
 
     private fun onItemCompleted(item: ThreadItem) {        // Any delta still waiting for its tick belongs to this item; the authoritative text that
         // follows would otherwise be overwritten by a late flush with an older prefix.
-        flushMarkdown()
+        flushDeltas()
         // The completed item carries the authoritative text; the streamed buffer is only a stand-in
         // for the case where it does not (a server that completes an item without a text body).
         state.upsert(withStreamedText(item))
@@ -1764,7 +1801,7 @@ class ChatWidget(
     }
 
     private fun onTurnCompleted(event: AppServerEvent.TurnCompleted) {
-        flushMarkdown()
+        flushDeltas()
         state.applyStatus(ThreadStatus.Idle)
         // Recap bookkeeping sees the turn's final status before any deferred check runs; the timer
         // is re-armed from the new completion count and idle deadline.

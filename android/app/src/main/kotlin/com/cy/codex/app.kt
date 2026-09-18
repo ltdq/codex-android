@@ -1417,6 +1417,18 @@ class CodexApp(
                 is AppServerEvent.McpOauthLoginCompleted ->
                     client.listMcpServers().onSuccess { catalog.mcpServers = it }
 
+                // The bridge skipped notifications, so catalog entries that only move on events may
+                // be stale. Startup rows are settled the way upstream's
+                // `finish_mcp_startup_after_lag` does — a `Ready`/`Cancelled` notification may be
+                // the one that was dropped, while a `Failed` row is kept because nothing else
+                // recalls it — and the thread list is re-read.
+                is AppServerEvent.TransportLagged -> {
+                    catalog.mcpStartup = catalog.mcpStartup.filterValues {
+                        it.status == com.cy.codex.protocol.protocol.v2.McpServerStartupState.Failed
+                    }
+                    refreshThreads()
+                }
+
                 // A config write from anywhere else invalidates the stack this page is showing.
                 is AppServerEvent.ConfigWarningEvent -> reloadConfig()
 

@@ -57,6 +57,8 @@ Compose UI / CodexApp
 ```
 
 - `CodexApplication` 持有会话与协程，Activity 重建不会重启 native 会话。
+- 后端固定 Embedded(in-process) 一种：没有 LocalDaemon/Remote 的选择、endpoint 发现与
+  websocket 通信（上游 `tui/src/lib.rs` 的 `AppServerTarget` 另外两种不采用）。
 - JNI 启动在 IO 线程完成，使用上游 `initialize` / `initialized` 握手。
 - 通信在 JNI 边界只编解码一次 JSON：消息以 UTF-8 字节（`ByteArray`）传递，并带
   `JsonRpcMessageKind`（request/notification/response/error）标记。Rust 按标记用 `serde_json`

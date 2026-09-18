@@ -12,6 +12,9 @@
 `UpstreamSchemaTest` 离线比对 Kotlin 协议类型与上游 schema（字段名、必填方向、枚举 wire 值、
 方法集合），`scripts/device-smoke-test.sh` 在真机上验证工具链安装、JNI 启动、
 账户/配置/模型/会话读取、`command/exec`、apply_patch、shell 消息流与重启恢复（不发模型请求）。
+流式 delta 统一按 `Motion.StreamCommitIntervalMs` 提交，`Lagged` 会触发重同步，无响应的
+worker 由 `JsonRpcAppServerClient` 的看门狗摘掉；`pack-jnilibs.sh` 对进 jniLibs 的每个 ELF
+做 16 KB 页对齐门禁（`native/build.sh` 同样校验自己的两个 `.so`）。
 下面的顺序是「先上真机验证，最后是功能与可选的架构扩展」。
 
 ## 1. 真机与真实账户验证（P0，需要账户 + 网络）
@@ -30,7 +33,8 @@
 - [ ] 登录状态：设备码登录 / API key / 取消 / 过期 / 登出，凭据是否只落在 `files/home/.codex/`。
 - [ ] 长会话的流式性能与内存。Kotlin 侧已改增量路径（markdown 只重解析 tail block、
       diff 只解析追加段），但这批改动只在 JVM 测试里验证过，仍需真机 trace 确认。
-- [ ] 进程被系统回收后的恢复、以及 `transportLagged` 之后的重新同步。
+- [ ] 进程被系统回收后的恢复、`transportLagged` 重同步，以及 worker 卡死时看门狗是否
+      如期进入重连横幅——三者目前都只有 JVM 测试。
 
 ## 2. UI 功能缺口
 
@@ -41,31 +45,7 @@
       （lifetime/peak、连续天数、最长 turn），见 `status/account.kt`；要补齐按模型/功能/任务/
       插件/技能与日期范围的报表，需要上游先新增 app-server 方法，再按协议三处同步绑定。
 
-## 3. Native / 宿主侧
-
-- [ ] **后端只有 Embedded(in-process) 一种。** LocalDaemon（UDS / `ws://127.0.0.1`）与
-      Remote（`ws://host:port`）都没有实现：无 websocket 依赖、无 endpoint 发现、
-      无 ws 鉴权接线、无 remote-workspace 语义、无断线重连降级。
-      若要做，先确认三件事：loopback 上不开 token 是否被拒、跨 UID 的 UDS 是否可行、
-      Android 16+ Linux 终端 / pKVM 与 App 的连接通道（都未验证）。
-- [ ] **后端选择与状态隔离**：无 Embedded/LocalDaemon/Remote 的选择与回退，
-      `SharedPreferences` 是全局一份（`app.kt:1097`）。
-- [ ] **Embedded 子进程 + stdio 形态**（`libcodex_app_server.so` + JSONL 客户端）未做。
-      当前设计明确走 in-process，除非要支持「服务端进程可独立存活」，否则不做。
-- [ ] **流式 delta 无节流**：`bridge.rs:373-384` 逐条转发；Kotlin 侧 agent/plan 的 markdown
-      delta 已按 `Motion.StreamCommitIntervalMs` 合并，reasoning 与命令输出仍逐条提交。
-- [ ] **`Lagged` 只降级成错误**（`bridge.rs:377` → `transportLagged` → IOException），
-      没有自动重同步/重放。
-- [ ] **worker 卡死/崩溃没有看门狗**：只有事件流关闭时报错，App 侧只能提示后手动重试。
-- [ ] **PTY / 交互式命令不支持**：`json_rpc_app_server_client.kt:531` 显式
-      `require(!tty)`，`process/spawn|write|resize|kill` 全在未实现列表里。
-- [ ] **体积与启动耗时**：`libcodex_android_jni.so` 168 MiB + `libcodex_helper.so` 18 MiB
-      （已 strip），jniLibs 合计约 361 MB；没有记录到文档，也没有裁剪（`native/Cargo.toml`
-      没有 `[features]`，`--no-default-features` 不生效）。
-- [ ] **16 KB 页对齐没有门禁**：`native/build.sh:16-18` 只校验自己产出的两个 `.so`，
-      toolchain 侧没有 `readelf` 检查（实测 bash/git/curl 都是 `0x4000`）。
-
-## 4. 未验证 / 未知
+## 3. 未验证 / 未知
 
 - [ ] core 在 `danger-full-access` 下是否真的会走 fs helper / arg0 路径；无沙箱退化
       （`exec-server` 的 `process_sandbox` / `fs_sandbox`）未实测；真机 instrumentation
@@ -77,21 +57,30 @@
 - [ ] `AgentMessageItem.questions` 是否被服务端用于回传答案（决定是否需要独立的
       `request_user_input` 结果 cell）。
 
-## 5. 不做
+## 4. 不做
 
 - 终端专有机制：vim 模态与键位重绑、crossterm 原始键事件、bracketed paste / Kitty 协议、
   终端光标与 scrollback 重排、ANSI/OSC 标记、终端标题与调色板、BEL/OSC 9、OSC-52、
   sixel 内联图片、pager overlay、PTY 终端网格渲染、daemon 菜单、IDE context IPC、
   `$EDITOR` → PTY。
+- PTY / 交互式命令：`process/spawn|write|resize|kill` 不实现，
+  `json_rpc_app_server_client.kt` 的 `require(!tty)` 保留；命令执行只走 `command/exec`
+  的非交互流。
 - 设备端编译工具链：clang/rustc/cmake/ninja/perl；JDK 与 Android 构建工具（aapt2/d8/
   apksigner/Gradle，glibc 程序，bionic 上跑不起来）。见 [toolchain.md](toolchain.md)。
 - node/npm（由 bun 取代）、wget（由 curl 取代）。
+
+## 5. 暂缓
+
+- **体积与启动耗时裁剪**：`libcodex_android_jni.so` 168 MiB + `libcodex_helper.so` 18 MiB
+  （已 strip），jniLibs 合计约 361 MB；`native/Cargo.toml` 没有 `[features]`，
+  `--no-default-features` 不生效。等体积成为实际问题再处理，届时先记启动耗时基线。
 
 ## 附录 A：上游参考位置
 
 | 主题 | 位置（`codex/codex-rs/`） |
 | --- | --- |
-| 客户端门面与后端枚举 | `app-server-client/src/lib.rs`（`AppServerClient` / `AppServerTarget`） |
+| 客户端门面 / 后端枚举 | `app-server-client/src/lib.rs`（`AppServerClient`、`InProcessAppServerClient`）、`tui/src/lib.rs`（`AppServerTarget`） |
 | in-process 事件与背压 | `app-server/src/in_process.rs` |
 | 后端选择 / 探测 / 回退 | `tui/src/lib.rs`（`can_reuse_implicit_local_daemon` 等） |
 | ws 鉴权参数 | `app-server-transport/src/transport/auth.rs` |
@@ -108,6 +97,11 @@
 
 ## 附录 B：有意分歧（不是缺口）
 
+- **后端只做 Embedded(in-process) 一种。** 上游 `tui/src/lib.rs` 的 `AppServerTarget` 有
+  `Embedded` / `LocalDaemon` / `Remote` 三种并带探测与回退；Android 固定同进程
+  `InProcessClientHandle`（`runtime/CodexApplication.kt` 直接构造 `NativeRpcTransport`），
+  没有 websocket 依赖、无 UDS/loopback endpoint、无 ws 鉴权、无 remote-workspace 语义，
+  也没有按后端的配置隔离（`SharedPreferences` 全局一份即可）。
 - collab / sub-agent 卡片进 transcript（本客户端用独立 Agents 页 + 页头导航，不把卡片插进
   transcript）。
 - dynamic / function-call 工具卡片（上游在 transcript 里忽略通用 `FunctionCallOutput`）。

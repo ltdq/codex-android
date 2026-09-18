@@ -317,6 +317,53 @@ class JsonRpcAppServerClientTest {
     }
 
     @Test
+    fun `transport lag is an event and the connection survives`() = runTest {
+        val transport = HarnessTransport()
+        val client = JsonRpcAppServerClient(transport, backgroundScope)
+        client.initialize(ClientInfo("android", version = "1")).getOrThrow()
+        val lag = async(UnconfinedTestDispatcher(testScheduler)) { client.events.first() }
+        transport.push("""{"method":"android/transportLagged","params":{"skipped":3}}""")
+        assertEquals(3L, assertIs<AppServerEvent.TransportLagged>(lag.await()).skipped)
+        assertEquals(ConnectionState.Ready, client.connection.value)
+        val account = async { client.readAccount().getOrThrow() }
+        transport.response(transport.request(), obj("account" to JsonNull))
+        assertNull(account.await().account)
+        client.close()
+    }
+
+    @Test
+    fun `a silent unanswered request trips the watchdog and fails the connection`() = runTest {
+        val transport = HarnessTransport()
+        val client = JsonRpcAppServerClient(transport, backgroundScope, watchdogIntervalMs = 30_000)
+        client.initialize(ClientInfo("android", version = "1")).getOrThrow()
+        val read = async { client.readAccount() }
+        transport.request()
+        // The first quiet tick probes the worker; the unanswered canary ends the session.
+        advanceTimeBy(30_001)
+        runCurrent()
+        val probe = transport.request()
+        assertEquals("thread/loaded/list", probe.text("method"))
+        advanceTimeBy(30_001)
+        runCurrent()
+        assertIs<IOException>(read.await().exceptionOrNull())
+        assertIs<ConnectionState.Failed>(client.connection.value)
+        assertEquals(1, transport.closes)
+        client.close()
+    }
+
+    @Test
+    fun `watchdog leaves an idle connection alone`() = runTest {
+        val transport = HarnessTransport()
+        val client = JsonRpcAppServerClient(transport, backgroundScope, watchdogIntervalMs = 30_000)
+        client.initialize(ClientInfo("android", version = "1")).getOrThrow()
+        advanceTimeBy(120_001)
+        runCurrent()
+        assertTrue(transport.outgoing.tryReceive().isFailure)
+        assertEquals(ConnectionState.Ready, client.connection.value)
+        client.close()
+    }
+
+    @Test
     fun `command approval preserves numeric server request ids`() = runTest {
         val transport = HarnessTransport()
         val client = JsonRpcAppServerClient(transport, backgroundScope)

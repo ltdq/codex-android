@@ -313,6 +313,18 @@ sealed interface AppServerEvent {
     data class RequestResolved(override val threadId: String?, val delta: ServerRequestResolved) :
         AppServerEvent
 
+    /**
+     * `android/transportLagged`: the bridge's bounded queue dropped [skipped] messages.
+     *
+     * A transport health marker, not an application event — upstream models it as
+     * `InProcessServerEvent::Lagged` (`app-server/src/in_process.rs:171-181`). The connection is
+     * still alive, but anything only known from deltas may have gone missing, so the reducers
+     * resync from the server instead of treating it as a lost connection.
+     */
+    data class TransportLagged(val skipped: Long) : AppServerEvent {
+        override val threadId: String? get() = null
+    }
+
     // ---- account, model, catalogs --------------------------------------------
     data class AccountUpdated(val account: AccountReadResponse) : AppServerEvent {
         override val threadId: String? get() = null

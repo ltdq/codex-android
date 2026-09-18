@@ -12,6 +12,7 @@ import com.cy.codex.protocol.protocol.v2.ClientInfo
 import com.cy.codex.protocol.protocol.v2.ItemTextDelta
 import com.cy.codex.protocol.protocol.v2.CommandExecutionApprovalDecision
 import com.cy.codex.protocol.protocol.v2.CommandExecutionApprovalParams
+import com.cy.codex.protocol.protocol.v2.CommandExecutionOutputDelta
 import com.cy.codex.protocol.protocol.v2.FileChangeApprovalParams
 import com.cy.codex.protocol.protocol.v2.FileChangePatchUpdatedNotification
 import com.cy.codex.protocol.protocol.v2.FileUpdateChange
@@ -24,6 +25,7 @@ import com.cy.codex.protocol.protocol.v2.Thread
 import com.cy.codex.protocol.protocol.v2.ThreadReadResponse
 import com.cy.codex.protocol.protocol.v2.ThreadTokenUsage
 import com.cy.codex.protocol.protocol.v2.TokenUsageBreakdown
+import com.cy.codex.protocol.protocol.v2.TerminalInteraction
 import com.cy.codex.protocol.protocol.v2.Turn
 import com.cy.codex.protocol.protocol.v2.TurnStatus
 import com.cy.codex.protocol.protocol.v2.TurnsPage
@@ -31,6 +33,7 @@ import com.cy.codex.protocol.protocol.v2.WarningNotification
 import com.cy.codex.protocol.protocol.item.AgentMessageItem
 import com.cy.codex.protocol.protocol.item.CommandExecutionItem
 import com.cy.codex.protocol.protocol.item.FileChangeItem
+import com.cy.codex.protocol.protocol.item.ReasoningItem
 import com.cy.codex.protocol.protocol.v2.UserInput
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -455,6 +458,52 @@ class ChatWidgetTest {
         runCurrent()
 
         assertEquals("kept", (widget.state.items.single() as AgentMessageItem).text)
+    }
+
+    @Test
+    fun `reasoning and command output deltas buffer and flush in arrival order`() = runTest {
+        val client = TestClient()
+        val widget = ChatWidget(client, backgroundScope)
+        widget.bind(ThreadSessionState(threadId = "thread"))
+        widget.attach()
+        val reasoning = "reasoning"
+        val command = "command"
+
+        client.events.emit(AppServerEvent.ItemStarted("thread", "turn", CommandExecutionItem(command, "ls", "/")))
+        client.events.emit(AppServerEvent.ReasoningTextDelta("thread", ItemTextDelta("thread", "turn", reasoning, "think ")))
+        client.events.emit(AppServerEvent.ReasoningTextDelta("thread", ItemTextDelta("thread", "turn", reasoning, "more")))
+        client.events.emit(AppServerEvent.CommandOutputDelta("thread", CommandExecutionOutputDelta("thread", "turn", command, "out ")))
+        client.events.emit(AppServerEvent.CommandTerminalInteraction("thread", TerminalInteraction("thread", "turn", command, "proc", "in\n")))
+        client.events.emit(AppServerEvent.CommandOutputDelta("thread", CommandExecutionOutputDelta("thread", "turn", command, "done")))
+        runCurrent()
+
+        // Nothing is committed until the tick.
+        assertNull(widget.state.item(reasoning))
+        assertNull((widget.state.item(command) as CommandExecutionItem).aggregatedOutput)
+
+        advanceTimeBy(Motion.StreamCommitIntervalMs + 1)
+        runCurrent()
+
+        assertEquals("think more", assertIs<ReasoningItem>(widget.state.item(reasoning)).summary.single())
+        // Stdout and the terminal interaction share one field, so their order must survive.
+        assertEquals("out in\ndone", (widget.state.item(command) as CommandExecutionItem).aggregatedOutput)
+    }
+
+    @Test
+    fun `transport lag reloads the open thread`() = runTest {
+        val actual = AgentMessageItem("actual", "Persisted history")
+        val client = TestClient().apply {
+            historyResult = Result.success(ThreadReadResponse(testThread("thread"), listOf(actual)))
+        }
+        val widget = ChatWidget(client, backgroundScope)
+        widget.bind(ThreadSessionState(threadId = "thread"))
+        widget.state.upsert(AgentMessageItem("stale", "Dropped deltas left this behind"))
+        widget.attach()
+
+        client.events.emit(AppServerEvent.TransportLagged(2))
+        runCurrent()
+
+        assertEquals(listOf(actual), widget.state.items.toList())
     }
 
     @Test

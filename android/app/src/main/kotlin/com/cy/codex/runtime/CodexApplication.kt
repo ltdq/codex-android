@@ -42,7 +42,12 @@ class CodexApplication : Application() {
     val configPath: String get() = File(filesDir, "home/.codex/config.toml").absolutePath
 
     val client: AppServerClient by lazy {
-        JsonRpcAppServerClient(NativeRpcTransport(this), appScope, defaultWorkspace)
+        JsonRpcAppServerClient(
+            NativeRpcTransport(this),
+            appScope,
+            defaultWorkspace,
+            watchdogIntervalMs = JsonRpcAppServerClient.WatchdogIntervalMs,
+        )
     }
 
     // Android owns this instance across Activity recreation; transcript and pending approvals

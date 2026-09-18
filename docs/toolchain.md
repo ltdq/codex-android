@@ -30,6 +30,10 @@ assets/toolchain/...     # 数据文件（python stdlib、git templates、cacert
 native-manifest.txt      # 运行时重建目录树的清单
 ```
 
+打包结束会对 jniLibs 里每个 ELF 做 16 KB 页对齐门禁：LOAD 段的 `p_align` 必须是 `0x4000`
+的整数倍（Go 工具链用的 `0x10000` 也通过，非 ELF 的脚本文件跳过），否则直接失败——16 KB
+页的设备无法 exec / dlopen 未对齐的库（`native/build.sh` 对自己的 `.so` 同样校验）。
+
 当前工具（arm64-v8a，API 36，`-O3 -flto` 尽可能开启）：
 
 | 类别 | 工具 |

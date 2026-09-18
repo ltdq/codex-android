@@ -26,6 +26,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -73,6 +74,18 @@ class JsonRpcAppServerClient(
     private val transport: JsonRpcTransport,
     private val scope: CoroutineScope,
     private val defaultWorkspace: String? = null,
+    /**
+     * How often the transport is watched while a request is still in flight, in milliseconds.
+     *
+     * `0` disables the watchdog. Production passes [WatchdogIntervalMs] from `CodexApplication`;
+     * JVM tests disable it because `runTest` skips virtual delays and a live watchdog would send
+     * probe requests in the middle of a scripted exchange.
+     *
+     * The watchdog is a liveness probe, not a request timeout: a tick only acts when the server
+     * has also been silent since the previous tick, so a healthy stream that is merely quiet is
+     * never probed, and long-running silent operations are only ever checked by the canary.
+     */
+    private val watchdogIntervalMs: Long = 0,
 ) : AppServerClient {
     private val state = MutableStateFlow<ConnectionState>(ConnectionState.Disconnected)
     override val connection = state.asStateFlow()
@@ -91,6 +104,11 @@ class JsonRpcAppServerClient(
     private val lifecycle = Mutex()
     private var reader: Job? = null
     private var publisher: Job? = null
+    private var watchdog: Job? = null
+
+    /** Set on every inbound message; the watchdog only probes a transport that stayed silent. */
+    @Volatile
+    private var receivedSinceWatchdogTick = false
 
     override suspend fun initialize(clientInfo: ClientInfo): Result<Unit> = result {
         lifecycle.withLock {
@@ -99,6 +117,7 @@ class JsonRpcAppServerClient(
             try {
                 transport.start()
                 state.value = ConnectionState.Ready
+                receivedSinceWatchdogTick = false
                 publisher = scope.launch {
                     for (event in eventQueue) eventStream.emit(event)
                 }
@@ -115,6 +134,9 @@ class JsonRpcAppServerClient(
                         }
                     }
                 }
+                if (watchdogIntervalMs > 0) {
+                    watchdog = scope.launch { watch() }
+                }
             } catch (error: Exception) {
                 runCatching { transport.close() }
                 fail(error)
@@ -123,7 +145,35 @@ class JsonRpcAppServerClient(
         }
     }
 
+    /**
+     * The worker watchdog: a wedged native session stops answering requests without closing the
+     * event stream, so silence alone is not evidence of a crash. A canary request breaks the tie.
+     */
+    private suspend fun watch() {
+        while (true) {
+            delay(watchdogIntervalMs)
+            if (state.value != ConnectionState.Ready) return
+            val silent = !receivedSinceWatchdogTick
+            receivedSinceWatchdogTick = false
+            if (!silent || pending.isEmpty()) continue
+            try {
+                rpc("thread/loaded/list", timeoutMs = WatchdogProbeTimeoutMs)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                lifecycle.withLock {
+                    runCatching { transport.close() }
+                    fail(IOException("App-server stopped responding to requests", error))
+                    reader = null
+                }
+                return
+            }
+        }
+    }
+
     private fun fail(error: Exception) {
+        watchdog?.cancel()
+        watchdog = null
         state.value = ConnectionState.Failed(error.message ?: error.javaClass.simpleName)
         pending.values.forEach { it.completeExceptionally(error) }
         pending.clear()
@@ -145,7 +195,7 @@ class JsonRpcAppServerClient(
         Result.failure(error)
     }
 
-    private suspend fun rpc(method: String, params: JsonElement? = obj()): JsonObject {
+    private suspend fun rpc(method: String, params: JsonElement? = obj(), timeoutMs: Long = RequestTimeoutMs): JsonObject {
         check(state.value == ConnectionState.Ready) { "App-server is not connected" }
         val id = "android-${sequence.incrementAndGet()}"
         val response = CompletableDeferred<JsonObject>()
@@ -157,7 +207,7 @@ class JsonRpcAppServerClient(
                 if (params != null) put("params", params)
             }))
             return try {
-                withTimeout(120_000) { response.await() }
+                withTimeout(timeoutMs) { response.await() }
             } catch (error: TimeoutCancellationException) {
                 throw IOException("App-server request timed out: $method", error)
             }
@@ -169,6 +219,7 @@ class JsonRpcAppServerClient(
     private suspend fun call(method: String, params: JsonElement? = obj()): Result<Unit> = result { rpc(method, params) }
 
     private suspend fun dispatch(message: String) {
+        receivedSinceWatchdogTick = true
         val envelope = Json.parse(message).objectValue()
         val method = envelope.text("method")
         val id = envelope["id"]
@@ -190,6 +241,8 @@ class JsonRpcAppServerClient(
             reader = null
             publisher?.cancel()
             publisher = null
+            watchdog?.cancel()
+            watchdog = null
             while (eventQueue.tryReceive().isSuccess) { /* Discard events from the closed connection. */ }
             while (requestStream.tryReceive().isSuccess) { /* Discard approvals from the closed connection. */ }
             try { transport.close() } finally {
@@ -1089,7 +1142,7 @@ class JsonRpcAppServerClient(
             "externalAgentConfig/import/completed" -> AppServerEvent.ExternalAgentImportCompleted(p.required("importId"),
                 p.array("itemTypeResults").map { WireCodec.externalAgentImportTypeResult(it.objectValue()) })
             "android/transportError" -> throw IOException(p.required("message"))
-            "android/transportLagged" -> throw IOException("App-server event stream lost ${p.long("skipped") ?: 0} messages; reconnect to reload the thread")
+            "android/transportLagged" -> AppServerEvent.TransportLagged(p.long("skipped") ?: 0L)
             "error" -> {
                 val e = p.objectOrNull("error")!!
                 AppServerEvent.ErrorEvent(threadId, ErrorNotification(TurnError(e.required("message"), e.text("additionalDetails"), e["codexErrorInfo"]?.wireText()), threadId, turnId, p.bool("willRetry") == true))
@@ -1296,5 +1349,16 @@ class JsonRpcAppServerClient(
         }
         transport.send(JsonRpcMessageKind.Response, Json.write(obj("id" to id, "result" to body)))
         approvals.remove(requestId.value)
+    }
+
+    companion object {
+        /** Watchdog tick wired by `CodexApplication`: a pending request is probed after one quiet tick. */
+        const val WatchdogIntervalMs = 30_000L
+
+        /** How long the canary request may take before the worker counts as wedged. */
+        private const val WatchdogProbeTimeoutMs = 30_000L
+
+        /** Ordinary request deadline; compaction and turn setup return long before it. */
+        private const val RequestTimeoutMs = 120_000L
     }
 }

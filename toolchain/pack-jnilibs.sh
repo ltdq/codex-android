@@ -77,6 +77,7 @@ while IFS= read -r path; do
 done < <(find "$SRC/bin" "$SRC/sbin" "$SRC/libexec" "$SRC/share" "$SRC/lib" -mindepth 1 2>/dev/null | sort)
 
 log "packed for $ABI: $libs libs, $links links, $data data files"
+check_16kb_alignment "$JNI"
 log "  jniLibs: $(du -sh "$JNI" | cut -f1)"
 log "  assets:  $(du -sh "$ASSETS" | cut -f1)"
 log "  manifest: $MANIFEST"

@@ -150,6 +150,37 @@ strip_binaries() {
     find "$dir/bin" -type f -exec "$STRIP" --strip-unneeded {} + 2>/dev/null || true
 }
 
+# check_16kb_alignment <dir>: every loadable ELF in <dir> must be 16 KB page compatible.
+#
+# API 35+ devices with 16 KB pages refuse to exec or dlopen a library whose LOAD segments are not
+# 16 KB aligned, and that failure appears on those devices only, so the build gates on it here.
+# Non-ELF files (toolchain scripts that live under bin/) have no LOAD segments and are skipped;
+# GO binaries use 0x10000, which is a larger multiple of 0x4000 and equally valid.
+check_16kb_alignment() {
+    local dir="$1" file align value bad=0 checked=0 reported=0
+    while IFS= read -r -d '' file; do
+        reported=0
+        while IFS= read -r align; do
+            [[ -n "$align" ]] || continue
+            checked=$((checked + 1))
+            value=$((align))
+            if (( value < 16384 || value % 16384 != 0 )); then
+                bad=1
+                if (( reported == 0 )); then
+                    reported=1
+                    printf 'error: %s has a LOAD segment with p_align %s, not a multiple of 0x4000\n' \
+                        "$file" "$align" >&2
+                fi
+            fi
+        done < <("$NDK_BIN/llvm-readelf" --program-headers --wide "$file" 2>/dev/null |
+            awk '$1 == "LOAD" { print $NF }')
+    done < <(find "$dir" -type f -print0)
+    if [[ $bad -ne 0 ]]; then
+        die "$dir contains binaries that are not 16 KB page aligned"
+    fi
+    [[ $checked -gt 0 ]] || die "$dir has no loadable binaries to check"
+}
+
 jobs() {
     if command -v nproc >/dev/null; then nproc; else echo 4; fi
 }
