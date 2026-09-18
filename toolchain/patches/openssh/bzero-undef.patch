@@ -1,0 +1,13 @@
+--- a/openbsd-compat/bsd-misc.c
++++ b/openbsd-compat/bsd-misc.c
+@@ -444,6 +444,10 @@
+ #endif
+ 
+ #ifndef HAVE_BZERO
++/* bionic defines bzero() as a macro; get it out of the way first. */
++#ifdef bzero
++#undef bzero
++#endif
+ void
+ bzero(void *b, size_t n)
+ {

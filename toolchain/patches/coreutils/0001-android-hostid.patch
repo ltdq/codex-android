@@ -1,0 +1,16 @@
+bionic has no gethostid (there is no stable host id on Android).
+
+--- a/src/hostid.c
++++ b/src/hostid.c
+@@ -25,6 +25,11 @@
+ #include "long-options.h"
+ #include "quote.h"
+ 
++#ifdef __ANDROID__
++/* bionic has no gethostid; Android has no stable host id to report.  */
++# define gethostid() 0
++#endif
++
+ /* The official name of this program (e.g., no 'g' prefix).  */
+ #define PROGRAM_NAME "hostid"
+ 

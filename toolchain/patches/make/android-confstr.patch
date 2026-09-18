@@ -1,0 +1,20 @@
+--- a/src/job.c
++++ b/src/job.c
+@@ -2430,6 +2430,9 @@
+     /* execvp() will use a default PATH if none is set; emulate that.  */
+     if (p == NULL)
+       {
++#ifdef __ANDROID__
++        p = "/system/bin:/system/xbin";
++#else
+         size_t l = confstr (_CS_PATH, NULL, 0);
+         if (l)
+           {
+@@ -2437,6 +2440,7 @@
+             confstr (_CS_PATH, dp, l);
+             p = dp;
+           }
++#endif
+       }
+ 
+     cmd = (char *)find_in_given_path (argv[0], p, NULL, 0);

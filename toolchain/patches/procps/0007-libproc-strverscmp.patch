@@ -1,0 +1,15 @@
+bionic has no strverscmp; library code must see the bundled implementation.
+
+--- a/library/include/sort.h
++++ b/library/include/sort.h
+@@ -35,6 +35,10 @@
+  *   implied by the absence of that qsort 'size' parm!
+  */
+ 
++#ifdef __ANDROID__
++extern int strverscmp (const char *, const char *);
++#endif
++
+ int mergesort_r (
+         void *base,
+         size_t nmemb,

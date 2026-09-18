@@ -1,0 +1,31 @@
+--- a/openbsd-compat/getrrsetbyname.c
++++ b/openbsd-compat/getrrsetbyname.c
+@@ -47,6 +47,23 @@
+ 
+ #include "includes.h"
+ 
++#include "getrrsetbyname.h"
++
++#ifdef __ANDROID__
++/* bionic does not expose the resolver internals this compat relies on.
++ * Stub out SSHFP DNS lookups; known_hosts verification still works. */
++int
++getrrsetbyname(const char *hostname, unsigned int rdclass, unsigned int rdtype,
++    unsigned int flags, struct rrsetinfo **res)
++{
++	return -1;
++}
++
++void
++freerrset(struct rrsetinfo *rrset)
++{
++}
++#else
+ #if !defined (HAVE_GETRRSETBYNAME) && !defined (HAVE_LDNS)
+ 
+ #include <stdlib.h>
+@@ -647,3 +664,4 @@
+ }
+ 
+ #endif /*  !defined (HAVE_GETRRSETBYNAME) && !defined (HAVE_LDNS) */
++#endif /* __ANDROID__ */

@@ -1,0 +1,12 @@
+diff --git a/tempfile.c b/tempfile.c
+--- a/tempfile.c
++++ b/tempfile.c
+@@ -170,7 +170,7 @@
+ 
+ 	tmpdir = getenv("TMPDIR");
+ 	if (!tmpdir)
+-		tmpdir = "/tmp";
++		tmpdir = ".";
+ 
+ 	strbuf_addf(&tempfile->filename, "%s/%s", tmpdir, template);
+ 	tempfile->fd = git_mkstemps_mode(tempfile->filename.buf, suffixlen, mode);
