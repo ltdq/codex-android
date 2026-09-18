@@ -49,11 +49,14 @@ import com.cy.codexui.protocol.protocol.v2.AccountRateLimits
 import com.cy.codexui.protocol.protocol.v2.AccountReadResponse
 import com.cy.codexui.protocol.protocol.v2.AccountUsage
 import com.cy.codexui.protocol.protocol.v2.CreditsSnapshot
+import com.cy.codexui.protocol.protocol.v2.RateLimitResetCredit
 import com.cy.codexui.protocol.protocol.v2.RateLimitWindow
 import com.cy.codexui.AppEvent
 import com.cy.codexui.CatalogState
 import com.cy.codexui.CodexButton
+import com.cy.codexui.CodexButtonSize
 import com.cy.codexui.CodexTextField
+import com.cy.codexui.ModalSheet
 import com.cy.codexui.ButtonRole
 import com.cy.codexui.protocol.protocol.v2.LoginAccountParams
 import com.cy.codexui.protocol.protocol.v2.LoginAccountResponse
@@ -141,6 +144,7 @@ fun AccountScreen(
             AccountLoginSection(account)
             if (account.signedIn) {
                 AccountLimitSection(rateLimits)
+                AccountResetCreditsSection(rateLimits, onEvent)
                 if (catalog.usageLoaded) AccountUsageSection(usage)
                 AccountLogoutSection(loggedIn = true, onLogout = { onEvent(AppEvent.Logout) })
             } else {
@@ -333,6 +337,130 @@ private fun accountCreditsText(credits: CreditsSnapshot): String = when {
     !credits.hasCredits -> stringResource(R.string.account_screen_credits_none)
     credits.balance != null -> stringResource(R.string.account_screen_credits_balance, credits.balance)
     else -> stringResource(R.string.account_screen_credits_none)
+}
+
+/**
+ * The reset credits the account holds, and the one action that spends one.
+ *
+ * Mirrors the TUI's `/usage` reset picker (`chatwidget/usage.rs`): the list is sorted by expiry,
+ * an already-consumed credit is not actionable, and redeeming is confirmed first because a
+ * consumed credit cannot be returned. The card stays hidden when the account reported none.
+ */
+@Composable
+private fun AccountResetCreditsSection(limits: AccountRateLimits, onEvent: (AppEvent) -> Unit) {
+    val colors = MiuixTheme.colorScheme
+    val summary = limits.rateLimitResetCredits ?: return
+    val credits = (summary.credits.orEmpty()).sortedBy { it.expiresAt ?: Long.MAX_VALUE }
+    if (summary.availableCount <= 0 && credits.isEmpty()) return
+    var pending by remember { mutableStateOf<RateLimitResetCredit?>(null) }
+
+    SectionCard(
+        title = stringResource(R.string.account_screen_reset_credits),
+        icon = MiuixIcons.Refresh,
+        trailing = summary.availableCount.toString(),
+    ) {
+        AccountText(
+            stringResource(R.string.account_screen_reset_credits_note),
+            size = UiType.Footnote,
+            color = colors.disabledOnSurface,
+        )
+        credits.forEach { credit ->
+            Spacer(Modifier.height(UiConsts.Space11))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(modifier = Modifier.weight(1f)) {
+                    AccountText(
+                        credit.title ?: stringResource(R.string.account_screen_reset_credit_untitled),
+                        size = UiType.RowTitle,
+                        weight = FontWeight.Medium,
+                    )
+                    if (!credit.description.isNullOrBlank()) {
+                        AccountText(credit.description, size = UiType.Meta, color = colors.onSurfaceVariantSummary)
+                    }
+                    AccountText(resetCreditExpiry(credit), size = UiType.Footnote, color = colors.disabledOnSurface)
+                }
+                Spacer(Modifier.width(UiConsts.Space8))
+                if (credit.status.equals("available", ignoreCase = true)) {
+                    CodexButton(
+                        text = stringResource(R.string.account_screen_reset_credit_use),
+                        onClick = { pending = credit },
+                        role = ButtonRole.Primary,
+                        size = CodexButtonSize.Compact,
+                    )
+                } else {
+                    AccountChip(resetCreditStatusLabel(credit.status), colors.disabledOnSurface)
+                }
+            }
+        }
+    }
+
+    pending?.let { credit ->
+        ResetCreditSheet(
+            credit = credit,
+            onDismiss = { pending = null },
+            onConfirm = {
+                onEvent(AppEvent.ConsumeResetCredit(credit.id))
+                pending = null
+            },
+        )
+    }
+}
+
+/** Expiry in local time, or the explicit "does not expire" the TUI prints. */
+@Composable
+@ReadOnlyComposable
+private fun resetCreditExpiry(credit: RateLimitResetCredit): String =
+    credit.expiresAt?.let {
+        stringResource(R.string.account_screen_reset_credit_expires, accountFormatReset(it * 1000))
+    } ?: stringResource(R.string.account_screen_reset_credit_no_expiry)
+
+@Composable
+@ReadOnlyComposable
+private fun resetCreditStatusLabel(status: String): String = when {
+    status.equals("redeeming", ignoreCase = true) -> stringResource(R.string.account_screen_reset_credit_redeeming)
+    status.equals("redeemed", ignoreCase = true) -> stringResource(R.string.account_screen_reset_credit_redeemed)
+    else -> stringResource(R.string.account_screen_reset_credit_unknown)
+}
+
+/** The irreversibility is the whole reason this confirmation exists. */
+@Composable
+private fun ResetCreditSheet(
+    credit: RateLimitResetCredit,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit,
+) {
+    ModalSheet(
+        show = true,
+        onDismiss = onDismiss,
+        onDismissFinished = onDismiss,
+        title = stringResource(R.string.account_screen_reset_credit_confirm_title),
+        subtitle = credit.title ?: stringResource(R.string.account_screen_reset_credit_untitled),
+    ) {
+        val colors = MiuixTheme.colorScheme
+        Text(
+            text = stringResource(R.string.account_screen_reset_credit_confirm_body),
+            modifier = Modifier.padding(horizontal = UiConsts.Space4),
+            fontSize = UiType.Body,
+            lineHeight = UiType.BodyLine,
+            color = colors.onSurfaceVariantSummary,
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = UiConsts.Space4),
+            horizontalArrangement = Arrangement.spacedBy(UiConsts.Space8),
+        ) {
+            CodexButton(
+                text = stringResource(R.string.account_screen_reset_credit_confirm_cancel),
+                onClick = onDismiss,
+                modifier = Modifier.weight(1f),
+                role = ButtonRole.Secondary,
+            )
+            CodexButton(
+                text = stringResource(R.string.account_screen_reset_credit_confirm_action),
+                onClick = onConfirm,
+                modifier = Modifier.weight(1f),
+                role = ButtonRole.Primary,
+            )
+        }
+    }
 }
 
 @Composable

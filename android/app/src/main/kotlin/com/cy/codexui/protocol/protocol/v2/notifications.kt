@@ -93,13 +93,15 @@ data class ThreadTokenUsageUpdated(
 /** `thread/name/updated`. */
 data class ThreadNameUpdated(val threadId: String, val name: String?)
 
-/** `thread/settings/updated`: model, effort, approval policy and reviewer changed server-side. */
+/** `thread/settings/updated`: model, effort, approval policy, reviewer and modes changed server-side. */
 data class ThreadSettingsUpdated(
     val threadId: String,
     val model: String? = null,
     val reasoningEffort: ReasoningEffort? = null,
     val approvalPolicy: AskForApproval? = null,
     val approvalsReviewer: ApprovalsReviewer? = null,
+    val collaborationMode: CollaborationMode? = null,
+    val serviceTier: String? = null,
 )
 
 /**
@@ -230,8 +232,10 @@ data class RateLimitsUpdated(val rateLimits: RateLimitSnapshot)
 /** `mcpServer/startupStatus/updated`. */
 data class McpStartupStatusUpdated(
     val serverName: String,
-    val status: McpServerConnectionStatus,
+    val status: McpServerStartupState,
     val error: String? = null,
+    /** `reauthenticationRequired` when the failure is an expired credential. */
+    val failureReason: String? = null,
 )
 
 /** `skills/changed` / `app/list/updated`: a catalog the UI is showing went stale. */

@@ -24,6 +24,7 @@ import com.cy.codexui.ButtonRole
 import com.cy.codexui.CatalogState
 import com.cy.codexui.CodexButton
 import com.cy.codexui.CodexDivider
+import com.cy.codexui.CodexSwitchRow
 import com.cy.codexui.EmptyState
 import com.cy.codexui.ModalSheet
 import com.cy.codexui.R
@@ -106,6 +107,12 @@ fun MemoriesScreen(
             verticalArrangement = Arrangement.spacedBy(UiConsts.SectionGap),
         ) {
             MemoriesStatusCard(memories = memories, onRead = { onEvent(AppEvent.ReloadMemories) })
+            MemoriesSettingsCard(
+                // Absent `[memories]` means the server's defaults (both on), not "off".
+                useMemories = catalog.configSnapshot.useMemories ?: true,
+                generateMemories = catalog.configSnapshot.generateMemories ?: true,
+                onEvent = onEvent,
+            )
             MemoriesResetCard(onReset = { resetting = true })
         }
     }
@@ -199,6 +206,38 @@ private fun MemoriesStatusCard(
             Spacer(Modifier.height(UiConsts.Space8))
             MemoriesNote(stringResource(R.string.memories_screen_count_only))
         }
+    }
+}
+
+/**
+ * The two persisted memory settings.
+ *
+ * Both writes go through one [AppEvent.SetMemorySettings], because upstream saves them together
+ * (`build_memory_settings_edits`) and only re-applies the thread mode when generation changed.
+ */
+@Composable
+private fun MemoriesSettingsCard(
+    useMemories: Boolean,
+    generateMemories: Boolean,
+    onEvent: (AppEvent) -> Unit,
+) {
+    SectionCard(
+        title = stringResource(R.string.memories_screen_section_settings),
+        icon = MiuixIcons.Notes,
+    ) {
+        CodexSwitchRow(
+            title = stringResource(R.string.memories_screen_use),
+            subtitle = stringResource(R.string.memories_screen_use_detail),
+            checked = useMemories,
+            onCheckedChange = { onEvent(AppEvent.SetMemorySettings(it, generateMemories)) },
+        )
+        CodexDivider()
+        CodexSwitchRow(
+            title = stringResource(R.string.memories_screen_generate),
+            subtitle = stringResource(R.string.memories_screen_generate_detail),
+            checked = generateMemories,
+            onCheckedChange = { onEvent(AppEvent.SetMemorySettings(useMemories, it)) },
+        )
     }
 }
 

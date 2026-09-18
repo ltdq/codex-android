@@ -24,20 +24,17 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import com.cy.codexui.R
-import com.cy.codexui.protocol.protocol.v2.ConfigBatchWriteParams
-import com.cy.codexui.protocol.protocol.v2.ConfigEdit
-import com.cy.codexui.protocol.protocol.v2.HookMetadata
-import com.cy.codexui.protocol.protocol.v2.MergeStrategy
-import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.put
 import com.cy.codexui.AppEvent
 import com.cy.codexui.CatalogState
+import com.cy.codexui.CodexButton
+import com.cy.codexui.CodexButtonSize
+import com.cy.codexui.R
 import com.cy.codexui.SectionCard
 import com.cy.codexui.SurfaceHeader
 import com.cy.codexui.UiConsts
 import com.cy.codexui.UiType
 import com.cy.codexui.codeSurface
+import com.cy.codexui.protocol.protocol.v2.HookMetadata
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.Switch
@@ -50,11 +47,10 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 /**
  * `/hooks` output as a page.
  *
- * Mirrors `hooks/list` and `bottom_pane/hooks_browser_view.rs`: the TUI shows the event, whether the
- * hook is active and whether it still needs review. The phone shows the same facts in one card.
- *
- * The switch is visual only: the write path is `hooks/list` plus a config batch write, and neither
- * is implemented in this client yet, so toggling must not pretend to persist.
+ * Mirrors `hooks/list` and `bottom_pane/hooks_browser_view.rs`: hooks are grouped by lifecycle
+ * event, each row shows its handler, and a hook that still needs review blocks the enable switch
+ * until it is trusted. Trust and enablement are `config/batchWrite` upserts into `hooks.state`, the
+ * same table the TUI writes (`hooks_rpc.rs`), so both clients pin the same hash.
  */
 @Composable
 fun HooksScreen(
@@ -66,6 +62,9 @@ fun HooksScreen(
     val colors = MiuixTheme.colorScheme
     val hooks = catalog.hooks
     val enabled = hooks.count { it.enabled }
+    val review = hooks.count { it.needsReview }
+    // First-seen event order: the server's display order, not the alphabet.
+    val groups = hooks.groupBy { it.eventName }
 
     Column(
         modifier = modifier
@@ -74,7 +73,7 @@ fun HooksScreen(
     ) {
         SurfaceHeader(
             title = stringResource(R.string.hooks_screen_title),
-            subtitle = stringResource(R.string.hooks_screen_subtitle, hooks.size, enabled),
+            subtitle = stringResource(R.string.hooks_screen_subtitle, hooks.size, enabled, review),
             leading = { HooksBackButton(onBack) },
         )
         Column(
@@ -86,12 +85,11 @@ fun HooksScreen(
                 .padding(bottom = UiConsts.PageBottomInset),
             verticalArrangement = Arrangement.spacedBy(UiConsts.SectionGap),
         ) {
-            SectionCard(
-                title = stringResource(R.string.hooks_screen_section),
-                icon = MiuixIcons.ConvertFile,
-                trailing = hooks.size.toString(),
-            ) {
-                if (hooks.isEmpty()) {
+            if (hooks.isEmpty()) {
+                SectionCard(
+                    title = stringResource(R.string.hooks_screen_section),
+                    icon = MiuixIcons.ConvertFile,
+                ) {
                     Text(
                         text = stringResource(R.string.hooks_screen_empty),
                         modifier = Modifier.padding(vertical = UiConsts.Space4),
@@ -99,13 +97,25 @@ fun HooksScreen(
                         lineHeight = UiType.MetaLine,
                         color = colors.disabledOnSurface,
                     )
-                } else {
-                    hooks.forEachIndexed { index, hook ->
-                        if (index > 0) HooksDivider()
-                        HooksRow(hook, onEvent)
+                }
+            } else {
+                groups.forEach { (event, eventHooks) ->
+                    SectionCard(
+                        title = event,
+                        icon = MiuixIcons.ConvertFile,
+                        trailing = eventHooks.size.toString(),
+                    ) {
+                        eventHooks.forEachIndexed { index, hook ->
+                            if (index > 0) HooksDivider()
+                            HooksRow(hook, onEvent)
+                        }
                     }
                 }
-                HooksDivider()
+            }
+            SectionCard(
+                title = stringResource(R.string.hooks_screen_section),
+                icon = MiuixIcons.ConvertFile,
+            ) {
                 Text(
                     text = stringResource(R.string.hooks_screen_note),
                     modifier = Modifier.padding(vertical = UiConsts.Space6),
@@ -118,14 +128,22 @@ fun HooksScreen(
     }
 }
 
+/** A hook that has not been pinned to the reviewed bytes yet. */
+internal val HookMetadata.needsReview: Boolean
+    get() = trustStatus.equals("untrusted", ignoreCase = true) || trustStatus.equals("modified", ignoreCase = true)
+
+private val HookMetadata.trusted: Boolean
+    get() = trustStatus.equals("trusted", ignoreCase = true)
+
 @Composable
 private fun HooksRow(hook: HookMetadata, onEvent: (AppEvent) -> Unit) {
     val colors = MiuixTheme.colorScheme
+    val blocked = hook.isManaged || hook.needsReview
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = UiConsts.Space4, vertical = UiConsts.Space9),
-        verticalAlignment = Alignment.CenterVertically,
+        verticalAlignment = Alignment.Top,
     ) {
         Column(modifier = Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -140,10 +158,13 @@ private fun HooksRow(hook: HookMetadata, onEvent: (AppEvent) -> Unit) {
                     overflow = TextOverflow.Ellipsis,
                 )
                 Spacer(Modifier.width(UiConsts.Space6))
-                HooksChip(
-                    text = hook.eventName,
-                    tint = if (hook.enabled) colors.primary else colors.disabledOnSurface,
-                )
+                if (hook.isManaged) {
+                    HooksChip(stringResource(R.string.hooks_screen_trust_managed), colors.disabledOnSurface)
+                } else if (hook.needsReview) {
+                    HooksChip(stringResource(R.string.hooks_screen_trust_review), colors.error)
+                } else if (hook.trusted) {
+                    HooksChip(stringResource(R.string.hooks_screen_trust_trusted), colors.primary)
+                }
             }
             Spacer(Modifier.height(UiConsts.Space5))
             Text(
@@ -160,28 +181,46 @@ private fun HooksRow(hook: HookMetadata, onEvent: (AppEvent) -> Unit) {
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
+            val detail = hook.detailSummary()
+            if (detail.isNotEmpty()) {
+                Spacer(Modifier.height(UiConsts.Space5))
+                Text(
+                    text = detail,
+                    fontSize = UiType.Footnote,
+                    lineHeight = UiType.FootnoteLine,
+                    color = colors.onSurfaceVariantSummary,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            when {
+                hook.isManaged -> {
+                    Spacer(Modifier.height(UiConsts.Space5))
+                    Text(
+                        text = stringResource(R.string.hooks_screen_managed_note),
+                        fontSize = UiType.Footnote,
+                        lineHeight = UiType.FootnoteLine,
+                        color = colors.disabledOnSurface,
+                    )
+                }
+
+                hook.needsReview && hook.currentHash.isNotBlank() -> {
+                    Spacer(Modifier.height(UiConsts.Space7))
+                    CodexButton(
+                        text = stringResource(R.string.hooks_screen_trust_action),
+                        onClick = { onEvent(AppEvent.SetHookTrust(hook.key, hook.currentHash)) },
+                        size = CodexButtonSize.Compact,
+                    )
+                }
+            }
         }
         Spacer(Modifier.width(UiConsts.Space10))
         Switch(
             checked = hook.enabled,
-            // A hook's on/off lives under `hooks.state."<key>".enabled`, so the toggle is one upsert
-            // into that table keyed by the hook's own identity. A write that a managed layer shadows
-            // comes back `okOverridden`, which the caller surfaces rather than silently ignoring.
-            onCheckedChange = { enabled ->
-                onEvent(
-                    AppEvent.WriteConfigBatch(
-                        ConfigBatchWriteParams(
-                            edits = listOf(
-                                ConfigEdit(
-                                    keyPath = "hooks.state",
-                                    value = buildJsonObject { put(hook.key, buildJsonObject { put("enabled", enabled) }) },
-                                    mergeStrategy = MergeStrategy.Upsert,
-                                ),
-                            ),
-                        ),
-                    ),
-                )
-            },
+            enabled = !blocked,
+            // The write lands asynchronously and re-reads `hooks/list`; the row keeps showing the
+            // server's answer rather than a local guess.
+            onCheckedChange = { enabled -> onEvent(AppEvent.SetHookEnabled(hook.key, enabled)) },
         )
     }
 }
@@ -198,6 +237,15 @@ private fun HookMetadata.handlerSummary(): String = when {
     server != null && tool != null -> "$server/$tool"
     else -> handlerType
 }
+
+/** Matcher, timeout, origin and async marker, in the order the TUI prints them. */
+private fun HookMetadata.detailSummary(): String = buildList {
+    matcher?.takeIf { it.isNotBlank() }?.let { add(it) }
+    if (timeoutSec > 0) add("${timeoutSec}s")
+    if (async) add("async")
+    sourcePath.takeIf { it.isNotBlank() }?.let { add(it) }
+    pluginId?.takeIf { it.isNotBlank() }?.let { add(it) }
+}.joinToString(" · ")
 
 @Composable
 private fun HooksBackButton(onBack: () -> Unit) {

@@ -9,14 +9,17 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -35,7 +38,11 @@ import com.cy.codexui.MarkdownText
 import com.cy.codexui.SquircleShape
 import com.cy.codexui.UiConsts
 import com.cy.codexui.UiType
+import com.cy.codexui.pressableRow
+import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.extended.Ok
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
@@ -111,6 +118,7 @@ fun AgentMessageCell(
     labelLineHeight: TextUnit = UiType.SheetTitle,
     labelSpacing: Dp = 5.dp,
     questionSpacing: Dp = 10.dp,
+    onAnswerQuestion: (String) -> Unit = {},
 ) {
     val colors = MiuixTheme.colorScheme
     val questions = item.questions.orEmpty()
@@ -134,7 +142,7 @@ fun AgentMessageCell(
         }
         if (questions.isNotEmpty()) {
             Spacer(Modifier.height(questionSpacing))
-            QuestionList(questions)
+            QuestionList(questions, onAnswer = onAnswerQuestion)
         }
     }
 }
@@ -178,10 +186,16 @@ private fun AttachmentChip(
 /**
  * Questions the agent asked inside its message, shown as a bordered list so a request that is
  * waiting on the user never reads as plain prose.
+ *
+ * Tapping an option answers it: the answer goes back as an ordinary user message, which is how
+ * `chatwidget/questions.rs` resolves an inline question upstream. Picking one locks the question
+ * locally; the list itself is a snapshot of the message, so the only way to answer twice is a
+ * replayed item, and the widget drops those.
  */
 @Composable
 private fun QuestionList(
     questions: List<AsyncUserInputQuestion>,
+    onAnswer: (String) -> Unit,
     corner: Dp = UiConsts.CornerControl,
     borderWidth: Dp = 1.dp,
     horizontalPadding: Dp = 12.dp,
@@ -193,9 +207,14 @@ private fun QuestionList(
     bulletWidth: Dp = 12.dp,
     optionFontSize: TextUnit = UiType.Subtitle,
     optionLineHeight: TextUnit = UiType.BodyLine,
+    optionHorizontalPadding: Dp = 6.dp,
+    optionVerticalPadding: Dp = 4.dp,
 ) {
     val colors = MiuixTheme.colorScheme
     val shape = remember(corner) { RoundedCornerShape(corner) }
+    val optionShape = remember(corner) { RoundedCornerShape(corner) }
+    // question index -> option already answered with; empty for free-text-only questions.
+    val answered = remember(questions) { mutableStateMapOf<Int, String>() }
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -204,7 +223,7 @@ private fun QuestionList(
             .padding(horizontal = horizontalPadding, vertical = verticalPadding),
         verticalArrangement = Arrangement.spacedBy(questionSpacing),
     ) {
-        questions.forEach { question ->
+        questions.forEachIndexed { questionIndex, question ->
             Column(verticalArrangement = Arrangement.spacedBy(optionSpacing)) {
                 Text(
                     text = question.title,
@@ -212,22 +231,50 @@ private fun QuestionList(
                     lineHeight = titleLineHeight,
                     color = colors.onSurface,
                 )
+                val chosen = answered[questionIndex]
                 question.options.orEmpty().forEach { option ->
-                    Row(verticalAlignment = Alignment.Top) {
+                    val selected = chosen == option
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .pressableRow(
+                                shape = optionShape,
+                                container = if (selected) colors.primary.copy(alpha = 0.1f) else Color.Transparent,
+                                onClick = {
+                                    if (answered.containsKey(questionIndex)) return@pressableRow
+                                    answered[questionIndex] = option
+                                    onAnswer(option)
+                                },
+                            )
+                            .padding(
+                                horizontal = optionHorizontalPadding,
+                                vertical = optionVerticalPadding,
+                            ),
+                        verticalAlignment = Alignment.Top,
+                    ) {
                         Text(
                             text = stringResource(R.string.messages_cell_option_bullet),
                             modifier = Modifier.width(bulletWidth),
                             fontSize = optionFontSize,
                             lineHeight = optionLineHeight,
-                            color = colors.onSurfaceVariantSummary,
+                            color = if (selected) colors.primary else colors.onSurfaceVariantSummary,
                         )
                         Text(
                             text = option,
                             modifier = Modifier.weight(1f),
                             fontSize = optionFontSize,
                             lineHeight = optionLineHeight,
-                            color = colors.onSurfaceVariantSummary,
+                            color = if (selected) colors.primary else colors.onSurfaceVariantSummary,
                         )
+                        if (selected) {
+                            Spacer(Modifier.width(UiConsts.Space6))
+                            Icon(
+                                imageVector = MiuixIcons.Ok,
+                                contentDescription = stringResource(R.string.request_user_input_view_selected),
+                                modifier = Modifier.size(UiConsts.IconInline),
+                                tint = colors.primary,
+                            )
+                        }
                     }
                 }
             }

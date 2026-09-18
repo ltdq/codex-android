@@ -146,6 +146,47 @@ class JsonRpcAppServerClientTest {
     }
 
     @Test
+    fun `agent message decodes inline questions`() = runTest {
+        val transport = HarnessTransport()
+        val client = JsonRpcAppServerClient(transport, backgroundScope)
+        client.initialize(ClientInfo("android", version = "1")).getOrThrow()
+        val read = async { client.readThread(com.cy.codexui.protocol.protocol.v2.ThreadReadParams("t")).getOrThrow() }
+        transport.response(transport.request(), obj("thread" to obj("id" to "t", "turns" to listOf(
+            obj("id" to "turn", "status" to "completed", "items" to listOf(
+                obj("type" to "agentMessage", "id" to "item", "text" to "Pick one", "questions" to listOf(
+                    obj("title" to "Which one?", "options" to listOf("a", "b")),
+                    obj("title" to "Why?", "options" to null),
+                )),
+            )),
+        ))))
+        val item = read.await().items.single() as AgentMessageItem
+        val questions = item.questions!!
+        assertEquals(listOf("Which one?", "Why?"), questions.map { it.title })
+        assertEquals(listOf("a", "b"), questions[0].options)
+        assertNull(questions[1].options, "an explicit null options list is free text, not an empty choice")
+        client.close()
+    }
+
+    @Test
+    fun `session decodes collaboration mode, service tier and parent ownership`() = runTest {
+        val transport = HarnessTransport()
+        val client = JsonRpcAppServerClient(transport, backgroundScope)
+        client.initialize(ClientInfo("android", version = "1")).getOrThrow()
+        val resumed = async { client.resumeThread("t").getOrThrow() }
+        transport.response(transport.request(), obj(
+            "thread" to obj("id" to "t", "cwd" to "/w", "parentThreadId" to "parent", "canAcceptDirectInput" to false),
+            "model" to "gpt-5", "modelProvider" to "openai", "cwd" to "/w",
+            "collaborationMode" to obj("mode" to "plan", "settings" to obj("model" to "gpt-5")),
+            "serviceTier" to "fast",
+        ))
+        val state = resumed.await()
+        assertEquals(com.cy.codexui.protocol.protocol.v2.CollaborationMode.Plan, state.collaborationMode)
+        assertEquals("fast", state.serviceTier)
+        assertTrue(state.blocksDirectInput)
+        client.close()
+    }
+
+    @Test
     fun `start and steer preserve text escaping and active turn precondition`() = runTest {
         val transport = HarnessTransport()
         val client = JsonRpcAppServerClient(transport, backgroundScope)
@@ -780,15 +821,53 @@ class JsonRpcAppServerClientTest {
             "rateLimits" to obj("primary" to obj("usedPercent" to 42, "windowDurationMins" to 300, "resetsAt" to 99),
                 "credits" to obj("hasCredits" to true, "unlimited" to false, "balance" to "12.5"), "limitId" to "codex"),
             "accountId" to "acct",
+            "rateLimitResetCredits" to obj("availableCount" to 2, "credits" to listOf(
+                obj("id" to "rc1", "status" to "available", "resetType" to "weekly", "grantedAt" to 10,
+                    "title" to "Weekly reset", "expiresAt" to 200),
+            )),
         ))
         val decoded = limits.await()
-        assertEquals(42L, decoded.rateLimits.primary!!.usedPercent)
-        assertEquals(300L, decoded.rateLimits.primary!!.windowDurationMins)
-        assertEquals(99_000L, decoded.rateLimits.primary!!.resetsAt)
+        val primary = decoded.rateLimits.primary!!
+        assertEquals(42L, primary.usedPercent)
+        assertEquals(300L, primary.windowDurationMins)
+        assertEquals(99_000L, primary.resetsAt)
         assertEquals("12.5", decoded.rateLimits.credits!!.balance)
         assertEquals("codex", decoded.rateLimits.limitId)
         assertEquals("acct", decoded.accountId)
+        val reset = decoded.rateLimitResetCredits!!
+        assertEquals(2L, reset.availableCount)
+        val credit = reset.credits!!.single()
+        assertEquals("rc1", credit.id)
+        assertEquals("available", credit.status)
+        assertEquals(200L, credit.expiresAt)
         client.close()
+    }
+
+    @Test
+    fun `mcp status list decodes auth status and tool counts`() = runTest {
+        val transport = HarnessTransport()
+        val client = JsonRpcAppServerClient(transport, backgroundScope)
+        client.initialize(ClientInfo("android", version = "1")).getOrThrow()
+        val servers = async { client.listMcpServers().getOrThrow() }
+        transport.response(transport.request(), obj("data" to listOf(
+            obj("name" to "srv", "runtimeStatus" to "authenticationRequired", "authStatus" to "notLoggedIn",
+                "tools" to obj("a" to obj(), "b" to obj()), "resources" to listOf(obj("uri" to "u"))),
+        )))
+        val server = servers.await().single()
+        assertEquals(com.cy.codexui.protocol.protocol.v2.McpAuthStatus.NotLoggedIn, server.authStatus)
+        assertEquals(2, server.tools)
+        assertEquals(1, server.resources)
+        assertEquals(com.cy.codexui.protocol.protocol.v2.McpServerConnectionStatus.AuthenticationRequired, server.status)
+        client.close()
+    }
+
+    @Test
+    fun `config snapshot reads the memory settings`() {
+        val snapshot = com.cy.codexui.protocol.protocol.v2.ConfigSnapshot.from(
+            obj("memories" to obj("use_memories" to false, "generate_memories" to true)),
+        )
+        assertEquals(false, snapshot.useMemories)
+        assertEquals(true, snapshot.generateMemories)
     }
 
     @Test

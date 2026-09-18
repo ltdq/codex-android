@@ -57,6 +57,8 @@ import com.cy.codexui.protocol.protocol.v2.ThreadSessionState
 import com.cy.codexui.label
 import com.cy.codexui.app.AgentRole
 import com.cy.codexui.app.AgentRosterEntry
+import com.cy.codexui.app.statusLabel
+import com.cy.codexui.app.tone
 import com.cy.codexui.chatwidget.PlanTimeline
 import com.cy.codexui.protocol.protocol.v2.ThreadStatus
 import com.cy.codexui.protocol.protocol.v2.ThreadTokenUsage
@@ -68,8 +70,11 @@ import com.cy.codexui.displayDiffPath
 import com.cy.codexui.languageFromPath
 import com.cy.codexui.runtimeHome
 import com.cy.codexui.shortenedParent
+import com.cy.codexui.protocol.protocol.v2.AccountRateLimits
 import com.cy.codexui.protocol.protocol.v2.ApprovalsReviewer
 import com.cy.codexui.protocol.protocol.v2.AskForApproval
+import com.cy.codexui.protocol.protocol.v2.CollaborationMode
+import com.cy.codexui.protocol.protocol.v2.CreditsSnapshot
 import com.cy.codexui.protocol.protocol.v2.ModelPreset
 import com.cy.codexui.protocol.protocol.v2.ReasoningEffort
 import com.cy.codexui.description
@@ -82,6 +87,7 @@ import com.cy.codexui.SectionCard
 import com.cy.codexui.SquircleShape
 import com.cy.codexui.ThreadStatusTone
 import com.cy.codexui.UiConsts
+import com.cy.codexui.ValueRow
 import com.cy.codexui.floatingSurface
 import com.cy.codexui.panelColor
 import com.cy.codexui.pressableRow
@@ -102,6 +108,7 @@ import top.yukonga.miuix.kmp.icon.extended.Community
 import top.yukonga.miuix.kmp.icon.extended.Layers
 import top.yukonga.miuix.kmp.icon.extended.Close
 import top.yukonga.miuix.kmp.icon.extended.Tasks
+import top.yukonga.miuix.kmp.icon.extended.Timer
 import top.yukonga.miuix.kmp.icon.extended.Notes
 import top.yukonga.miuix.kmp.icon.extended.Tune
 import top.yukonga.miuix.kmp.basic.DropdownArrowEndAction
@@ -138,10 +145,17 @@ fun StatusCard(
     width: Dp,
     maxHeight: Dp,
     models: List<ModelPreset>,
+    rateLimits: AccountRateLimits,
     onModel: (String) -> Unit,
     onEffort: (ReasoningEffort) -> Unit,
     onPolicy: (AskForApproval) -> Unit,
     onReviewer: (ApprovalsReviewer) -> Unit,
+    /** Whether managed policy and `guardian_approval` allow AutoReview; see `CatalogState`. */
+    autoReviewAvailable: Boolean,
+    onServiceTier: (String?) -> Unit,
+    /** Whether `collaborationMode/list` offered a plan preset; hides the row when it did not. */
+    planAvailable: Boolean,
+    onCollaborationMode: (CollaborationMode) -> Unit,
 
     onCompact: () -> Unit,
     onOpenAgents: () -> Unit,
@@ -169,10 +183,15 @@ fun StatusCard(
             roster = roster,
             items = items,
             models = models,
+            rateLimits = rateLimits,
             onModel = onModel,
             onEffort = onEffort,
             onPolicy = onPolicy,
             onReviewer = onReviewer,
+            autoReviewAvailable = autoReviewAvailable,
+            onServiceTier = onServiceTier,
+            planAvailable = planAvailable,
+            onCollaborationMode = onCollaborationMode,
             onCompact = onCompact,
             onOpenAgents = onOpenAgents,
             onOpenAgent = onOpenAgent,
@@ -230,10 +249,15 @@ private fun SectionsColumn(
     roster: List<AgentRosterEntry>,
     items: List<ThreadItem>,
     models: List<ModelPreset>,
+    rateLimits: AccountRateLimits,
     onModel: (String) -> Unit,
     onEffort: (ReasoningEffort) -> Unit,
     onPolicy: (AskForApproval) -> Unit,
     onReviewer: (ApprovalsReviewer) -> Unit,
+    autoReviewAvailable: Boolean,
+    onServiceTier: (String?) -> Unit,
+    planAvailable: Boolean,
+    onCollaborationMode: (CollaborationMode) -> Unit,
 
     onCompact: () -> Unit,
     onOpenAgents: () -> Unit,
@@ -266,6 +290,18 @@ private fun SectionsColumn(
             onCompact = onCompact,
         )
 
+        // Only when the account answered with something worth drawing: an empty limits card on a
+        // platform without rate limits (Bedrock, API key) would read as "no limits left".
+        if (rateLimits.rateLimits.primary != null || rateLimits.rateLimits.secondary != null ||
+            rateLimits.rateLimits.credits != null || (rateLimits.rateLimitResetCredits?.availableCount ?: 0) > 0
+        ) {
+            RateLimitsSection(
+                rateLimits = rateLimits,
+                collapsed = state.isFolded(StatusSection.RateLimits),
+                onToggle = { state.toggleSection(StatusSection.RateLimits) },
+            )
+        }
+
         ModelSection(
             session = session,
             models = models,
@@ -275,6 +311,10 @@ private fun SectionsColumn(
             onEffort = onEffort,
             onPolicy = onPolicy,
             onReviewer = onReviewer,
+            autoReviewAvailable = autoReviewAvailable,
+            onServiceTier = onServiceTier,
+            planAvailable = planAvailable,
+            onCollaborationMode = onCollaborationMode,
         )
 
         if (plan.isNotEmpty()) {
@@ -475,6 +515,22 @@ private fun UsageSection(
             color = colors.onSurfaceVariantSummary,
             maxLines = 1,
         )
+        // The two halves of the total that the first line folds away: reasoning is part of output,
+        // cache writes are part of input, and the TUI prints them only when they are non-zero.
+        if (usage.total.reasoningOutputTokens != 0L || usage.total.cacheWriteInputTokens != 0L) {
+            Spacer(Modifier.height(noteGap))
+            Text(
+                text = stringResource(
+                    R.string.status_card_usage_tokens_more,
+                    formatTokens(usage.total.reasoningOutputTokens),
+                    formatTokens(usage.total.cacheWriteInputTokens),
+                ),
+                fontSize = detailSize,
+                lineHeight = detailLineHeight,
+                color = colors.onSurfaceVariantSummary,
+                maxLines = 1,
+            )
+        }
         if (compacted) {
             Spacer(Modifier.height(noteGap))
             Text(
@@ -486,6 +542,103 @@ private fun UsageSection(
         }
     }
 }
+
+/**
+ * The account's rate-limit windows and credits.
+ *
+ * Mirrors the rows in `status/rate_limits.rs`: a bar per window, the reset time under it, and the
+ * credits line. The card only appears when the account reported something, so a server without
+ * rate limits (Bedrock, API key) never shows an empty one.
+ */
+@Composable
+private fun RateLimitsSection(
+    rateLimits: AccountRateLimits,
+    collapsed: Boolean,
+    onToggle: () -> Unit,
+    barGap: Dp = 7.dp,
+    progressHeight: Dp = 7.dp,
+) {
+    val colors = MiuixTheme.colorScheme
+    val snapshot = rateLimits.rateLimits
+    val windows = listOfNotNull(
+        snapshot.primary?.let { it to stringResource(R.string.status_card_rate_primary) },
+        snapshot.secondary?.let { it to stringResource(R.string.status_card_rate_secondary) },
+    )
+    SectionCard(
+        title = stringResource(R.string.status_card_rate_title),
+        icon = MiuixIcons.Timer,
+        trailing = snapshot.limitName,
+        expandable = true,
+        expanded = !collapsed,
+        onToggle = onToggle,
+    ) {
+        windows.forEachIndexed { index, (window, label) ->
+            if (index > 0) Spacer(Modifier.height(barGap))
+            val fraction = (window.usedPercent / 100.0).toFloat().coerceIn(0f, 1f)
+            Column {
+                Row(verticalAlignment = Alignment.Bottom) {
+                    Text(
+                        text = label,
+                        modifier = Modifier.weight(1f),
+                        fontSize = UiType.Body,
+                        lineHeight = UiType.BodyLine,
+                        color = colors.onSurface,
+                    )
+                    Text(
+                        text = stringResource(R.string.status_card_usage_percent, window.usedPercent.toInt()),
+                        fontSize = UiType.Footnote,
+                        lineHeight = UiType.CardTitle,
+                        color = if (fraction >= 0.9f) colors.error else colors.onSurfaceVariantSummary,
+                    )
+                }
+                Spacer(Modifier.height(UiConsts.Space4))
+                LinearProgressIndicator(
+                    progress = fraction,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ProgressIndicatorDefaults.progressIndicatorColors(
+                        foregroundColor = usageColor(fraction),
+                        backgroundColor = colors.onBackground.copy(alpha = 0.08f),
+                    ),
+                    height = progressHeight,
+                )
+                window.resetsAt?.let { resetsAt ->
+                    Spacer(Modifier.height(UiConsts.Space3))
+                    Text(
+                        text = stringResource(R.string.status_card_rate_resets, formatResetTime(resetsAt)),
+                        fontSize = UiType.Footnote,
+                        lineHeight = UiType.CardTitle,
+                        color = colors.onSurfaceVariantSummary,
+                    )
+                }
+            }
+        }
+        snapshot.credits?.let { credits ->
+            if (windows.isNotEmpty()) Spacer(Modifier.height(barGap))
+            ValueRow(
+                label = stringResource(R.string.status_card_credits_label),
+                value = creditsText(credits),
+            )
+        }
+        rateLimits.rateLimitResetCredits?.takeIf { it.availableCount > 0 }?.let { summary ->
+            ValueRow(
+                label = stringResource(R.string.status_card_reset_credits_label),
+                value = summary.availableCount.toString(),
+            )
+        }
+    }
+}
+
+@Composable
+private fun creditsText(credits: CreditsSnapshot): String = when {
+    credits.unlimited -> stringResource(R.string.status_card_credits_unlimited)
+    !credits.hasCredits -> stringResource(R.string.status_card_credits_none)
+    credits.balance != null -> stringResource(R.string.status_card_credits_remaining, credits.balance)
+    else -> stringResource(R.string.status_card_none)
+}
+
+/** Local wall-clock time; the server sends epoch millis and the reader compares against a clock. */
+private fun formatResetTime(epochMillis: Long): String =
+    java.text.SimpleDateFormat("MMM d, HH:mm", Locale.getDefault()).format(java.util.Date(epochMillis))
 
 /**
  * The compact-context action of the usage row.
@@ -521,6 +674,10 @@ private fun ModelSection(
     onEffort: (ReasoningEffort) -> Unit,
     onPolicy: (AskForApproval) -> Unit,
     onReviewer: (ApprovalsReviewer) -> Unit,
+    autoReviewAvailable: Boolean,
+    onServiceTier: (String?) -> Unit,
+    planAvailable: Boolean,
+    onCollaborationMode: (CollaborationMode) -> Unit,
 ) {
     SectionCard(
         title = stringResource(R.string.status_card_model_title),
@@ -570,8 +727,11 @@ private fun ModelSection(
             )
 
             // The reviewer beside the policy: the policy decides whether a request is raised, the
-            // reviewer decides who answers it.
-            val reviewers = ApprovalsReviewer.entries
+            // reviewer decides who answers it. AutoReview is offered only when the feature flag is
+            // on and managed policy allows the value (`auto_review_available` upstream).
+            val reviewers = ApprovalsReviewer.entries.filter {
+                it != ApprovalsReviewer.AutoReview || autoReviewAvailable
+            }
             PickerRow(
                 label = stringResource(R.string.status_card_reviewer_label),
                 value = session.approvalsReviewer.label(),
@@ -581,9 +741,85 @@ private fun ModelSection(
                 selectedIndex = reviewers.indexOf(session.approvalsReviewer).coerceAtLeast(0),
                 onSelectedIndexChange = { onReviewer(reviewers[it]) },
             )
+
+            // Fast and other service tiers are per model. The row only exists when the catalog
+            // offers tiers for the current model, so a model without them never grows an empty
+            // picker; `null` selection is the model's own default (`"default"` on the wire).
+            val serviceTiers = models.getOrNull(modelIndex)?.serviceTiers.orEmpty()
+            if (serviceTiers.isNotEmpty()) {
+                val tierIds = listOf<String?>(null) + serviceTiers.map { it.id }
+                val tierIndex = tierIds.indexOf(session.serviceTier).coerceAtLeast(0)
+                PickerRow(
+                    label = stringResource(R.string.status_card_service_tier_label),
+                    value = serviceTiers.firstOrNull { it.id == session.serviceTier }?.name
+                        ?: stringResource(R.string.status_card_service_tier_default),
+                    items = listOf(
+                        DropdownItem(text = stringResource(R.string.status_card_service_tier_default)),
+                    ) + serviceTiers.map { tier -> DropdownItem(text = tier.name, summary = tier.description) },
+                    selectedIndex = tierIndex,
+                    onSelectedIndexChange = { index -> onServiceTier(tierIds[index]) },
+                )
+            }
+
+            // The collaboration mode row the TUI's status card prints: Default and Plan, the two
+            // modes it makes user-selectable (`TUI_VISIBLE_COLLABORATION_MODES`).
+            if (planAvailable) {
+                val modes = listOf(CollaborationMode.Default, CollaborationMode.Plan)
+                PickerRow(
+                    label = stringResource(R.string.status_card_collaboration_label),
+                    value = session.collaborationMode.label(),
+                    items = modes.map { mode -> DropdownItem(text = mode.label(), summary = mode.description()) },
+                    selectedIndex = modes.indexOf(session.collaborationMode).coerceAtLeast(0),
+                    onSelectedIndexChange = { onCollaborationMode(modes[it]) },
+                )
+            }
+
+            if (session.modelProviderId.isNotBlank()) {
+                ValueRow(
+                    label = stringResource(R.string.status_card_model_provider_label),
+                    value = session.modelProviderId,
+                )
+            }
+            ValueRow(
+                label = stringResource(R.string.status_card_access_label),
+                value = accessSummary(session),
+            )
+            ValueRow(
+                label = stringResource(R.string.status_card_agents_md_label),
+                value = agentsSummary(session),
+            )
+            if (session.forkedFromId != null) {
+                ValueRow(
+                    label = stringResource(R.string.status_card_forked_from_label),
+                    value = session.forkedFromId,
+                    monospace = true,
+                )
+            }
         }
     }
 }
+
+/** The sandbox policy as one line: mode plus the two switches that change what it permits. */
+@Composable
+private fun accessSummary(session: ThreadSessionState): String {
+    val parts = buildList {
+        add(session.sandboxPolicy.mode.label())
+        if (session.sandboxPolicy.networkAccess) {
+            add(stringResource(R.string.status_card_access_network))
+        }
+        session.activePermissionProfile?.let { add(it.name) }
+    }
+    return parts.joinToString(" · ")
+}
+
+/** `Agents.md` as the file names that contributed instructions, or an explicit "none". */
+@Composable
+private fun agentsSummary(session: ThreadSessionState): String =
+    session.instructionSourcePaths
+        .map { it.substringAfterLast('/').ifEmpty { it } }
+        .distinct()
+        .joinToString(", ")
+        .ifEmpty { stringResource(R.string.status_card_none) }
 
 /**
  * A row that *is* its own picker: the value on the right is the current choice, and tapping the row
@@ -1175,7 +1411,7 @@ fun DiffPane(
  * which agents and files it has touched — and a reader who is watching one of them pays for the other
  * four with rows they are not reading, so each folds on its own.
  */
-enum class StatusSection { Usage, Model, Plan, Agents, Files }
+enum class StatusSection { Usage, RateLimits, Model, Plan, Agents, Files }
 
 /** Panel-local toggle state, hoisted out of the card so it survives collapse/reopen. */
 class StatusPanelState {
@@ -1329,43 +1565,4 @@ internal fun formatTokens(tokens: Long): String = when {
     else -> tokens.toString()
 }
 
-internal fun AgentRosterEntry.tone(): ThreadStatusTone = when {
-    activity == com.cy.codexui.protocol.protocol.v2.SubAgentActivityKind.Completed -> ThreadStatusTone.Done
-    activity == com.cy.codexui.protocol.protocol.v2.SubAgentActivityKind.Interrupted -> ThreadStatusTone.Failed
-    status == com.cy.codexui.protocol.protocol.v2.AgentRunStatus.Errored -> ThreadStatusTone.Failed
-    status == com.cy.codexui.protocol.protocol.v2.AgentRunStatus.Completed -> ThreadStatusTone.Done
-    status == com.cy.codexui.protocol.protocol.v2.AgentRunStatus.Running -> ThreadStatusTone.Running
-    status == com.cy.codexui.protocol.protocol.v2.AgentRunStatus.PendingInit -> ThreadStatusTone.Waiting
-    role == AgentRole.Main -> ThreadStatusTone.Idle
-    else -> ThreadStatusTone.Idle
-}
 
-@Composable
-@ReadOnlyComposable
-internal fun AgentRosterEntry.statusLabel(): String = when {
-    activity == com.cy.codexui.protocol.protocol.v2.SubAgentActivityKind.Completed ->
-        stringResource(R.string.status_card_agent_status_completed)
-
-    activity == com.cy.codexui.protocol.protocol.v2.SubAgentActivityKind.Interrupted ->
-        stringResource(R.string.status_card_agent_status_interrupted)
-
-    activity == com.cy.codexui.protocol.protocol.v2.SubAgentActivityKind.Interacted ->
-        stringResource(R.string.status_card_agent_status_interacting)
-
-    activity == com.cy.codexui.protocol.protocol.v2.SubAgentActivityKind.Started ->
-        stringResource(R.string.status_card_agent_status_running)
-
-    status == com.cy.codexui.protocol.protocol.v2.AgentRunStatus.Errored ->
-        stringResource(R.string.status_card_agent_status_failed)
-
-    status == com.cy.codexui.protocol.protocol.v2.AgentRunStatus.Completed ->
-        stringResource(R.string.status_card_agent_status_completed)
-
-    status == com.cy.codexui.protocol.protocol.v2.AgentRunStatus.Running ->
-        stringResource(R.string.status_card_agent_status_running)
-
-    status == com.cy.codexui.protocol.protocol.v2.AgentRunStatus.PendingInit ->
-        stringResource(R.string.status_card_agent_status_starting)
-
-    else -> stringResource(R.string.status_card_agent_status_idle)
-}

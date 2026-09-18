@@ -26,8 +26,14 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import com.cy.codexui.AppEvent
+import com.cy.codexui.ButtonRole
+import com.cy.codexui.CodexButton
+import com.cy.codexui.CodexButtonSize
 import com.cy.codexui.R
+import com.cy.codexui.protocol.protocol.v2.McpAuthStatus
 import com.cy.codexui.protocol.protocol.v2.McpServerConnectionStatus
+import com.cy.codexui.protocol.protocol.v2.McpServerStartupState
 import com.cy.codexui.protocol.protocol.v2.McpServerStatusEntry
 import com.cy.codexui.CatalogState
 import com.cy.codexui.label
@@ -57,11 +63,15 @@ fun McpScreen(
     catalog: CatalogState,
     onBack: () -> Unit,
     onOpenServer: (String) -> Unit,
+    onEvent: (AppEvent) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val colors = MiuixTheme.colorScheme
     val servers = catalog.mcpServers
     val ready = servers.count { it.status == McpServerConnectionStatus.Connected }
+    // Failed first, then still-starting, so a server that needs attention is above one that is
+    // merely slow.
+    val startup = catalog.mcpStartup.values.sortedBy { it.status != McpServerStartupState.Failed }
 
     Column(
         modifier = modifier
@@ -82,6 +92,18 @@ fun McpScreen(
                 .padding(bottom = UiConsts.PageBottomInset),
             verticalArrangement = Arrangement.spacedBy(UiConsts.SectionGap),
         ) {
+            if (startup.isNotEmpty()) {
+                SectionCard(
+                    title = stringResource(R.string.mcp_screen_startup_section),
+                    icon = MiuixIcons.Community,
+                    trailing = startup.size.toString(),
+                ) {
+                    startup.forEachIndexed { index, update ->
+                        if (index > 0) McpDivider()
+                        McpStartupRow(update)
+                    }
+                }
+            }
             SectionCard(
                 title = stringResource(R.string.mcp_screen_section_servers),
                 icon = MiuixIcons.Community,
@@ -98,7 +120,11 @@ fun McpScreen(
                 } else {
                     servers.forEachIndexed { index, server ->
                         if (index > 0) McpDivider()
-                        McpServerRow(server, onClick = { onOpenServer(server.name) })
+                        McpServerRow(
+                            server = server,
+                            onClick = { onOpenServer(server.name) },
+                            onLogin = { onEvent(AppEvent.McpLogin(server.name)) },
+                        )
                     }
                 }
             }
@@ -107,9 +133,57 @@ fun McpScreen(
 }
 
 @Composable
-private fun McpServerRow(server: McpServerStatusEntry, onClick: () -> Unit) {
+private fun McpStartupRow(update: com.cy.codexui.protocol.protocol.v2.McpStartupStatusUpdated) {
+    val colors = MiuixTheme.colorScheme
+    val failed = update.status == McpServerStartupState.Failed
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = UiConsts.Space4, vertical = UiConsts.Space8),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(UiConsts.DotSize)
+                .clip(CircleShape)
+                .background(statusDotColor(if (failed) ThreadStatusTone.Failed else ThreadStatusTone.Waiting)),
+        )
+        Spacer(Modifier.width(UiConsts.Space8))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = if (failed) {
+                    stringResource(R.string.mcp_screen_startup_failed, update.serverName)
+                } else {
+                    stringResource(R.string.mcp_screen_startup_starting, update.serverName)
+                },
+                fontSize = UiType.Subtitle,
+                lineHeight = UiType.SubtitleLine,
+                color = colors.onSurface,
+            )
+            val detail = update.error ?: if (failed && update.failureReason == "reauthenticationRequired") {
+                stringResource(R.string.mcp_screen_startup_reauth)
+            } else {
+                null
+            }
+            if (detail != null) {
+                Spacer(Modifier.height(UiConsts.Space2))
+                Text(
+                    text = detail,
+                    fontSize = UiType.Meta,
+                    lineHeight = UiType.MetaLine,
+                    color = colors.error,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun McpServerRow(server: McpServerStatusEntry, onClick: () -> Unit, onLogin: () -> Unit) {
     val colors = MiuixTheme.colorScheme
     val tone = mcpTone(server.status)
+    val needsLogin = server.authStatus == McpAuthStatus.NotLoggedIn ||
+        server.status == McpServerConnectionStatus.AuthenticationRequired
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -166,6 +240,24 @@ private fun McpServerRow(server: McpServerStatusEntry, onClick: () -> Unit) {
                 lineHeight = UiType.MetaLine,
                 color = colors.error,
             )
+        }
+        // The action `authStatus` exists for: without it the server stays disconnected and the
+        // reason is only visible as a status word.
+        if (needsLogin) {
+            Spacer(Modifier.height(UiConsts.Space8))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                McpChip(
+                    text = stringResource(R.string.mcp_screen_auth_not_logged_in),
+                    tint = colors.error,
+                )
+                Spacer(Modifier.weight(1f))
+                CodexButton(
+                    text = stringResource(R.string.mcp_screen_auth_login),
+                    onClick = onLogin,
+                    role = ButtonRole.Primary,
+                    size = CodexButtonSize.Compact,
+                )
+            }
         }
     }
 }

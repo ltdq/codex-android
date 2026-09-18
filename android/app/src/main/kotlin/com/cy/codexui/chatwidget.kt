@@ -33,6 +33,9 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
+/** The wire's "no tier preference" value (`SERVICE_TIER_DEFAULT_REQUEST_VALUE` upstream). */
+private const val ServiceTierDefault = "default"
+
 /**
  * The reducer that owns one open thread.
  *
@@ -408,7 +411,10 @@ class ChatWidget(
 
             is AppEvent.RunShellCommand -> request {
                 client.runShellCommand(event.threadId, event.command).onSuccess {
-                    if (state.threadId == event.threadId && state.composerDraft.startsWith("/shell ")) {
+                    if (state.threadId != event.threadId) return@onSuccess
+                    // Both spellings are cleared: `/shell cmd`, and the `!cmd` escape the composer
+                    // now recognizes.
+                    if (state.composerDraft.startsWith("/shell ") || state.composerDraft.startsWith("!")) {
                         state.applyDraft("")
                     }
                 }
@@ -425,6 +431,7 @@ class ChatWidget(
 
             // ---- turns ----------------------------------------------------------
             is AppEvent.SubmitUserMessage -> submitInput(event.inputs)
+            is AppEvent.AnswerAsyncQuestion -> submitInput(listOf(UserInput.Text(event.text)), clearDraft = false)
             AppEvent.InterruptTurn -> interrupt()
             is AppEvent.ResolveApproval -> resolve(event.requestId, event.response)
             is AppEvent.DismissApproval -> dismiss(event.requestId)
@@ -482,6 +489,26 @@ class ChatWidget(
                 )
             }) { state.applyConfig(state.config.copy(approvalsReviewer = event.reviewer)) }
 
+            is AppEvent.SetCollaborationMode -> request({
+                client.updateThreadSettingsFull(
+                    ThreadSettingsUpdateParams(
+                        threadId = state.threadId,
+                        collaborationMode = event.mode,
+                    ),
+                )
+            }) { state.applyConfig(state.config.copy(collaborationMode = event.mode)) }
+
+            is AppEvent.SetServiceTier -> request({
+                client.updateThreadSettingsFull(
+                    ThreadSettingsUpdateParams(
+                        threadId = state.threadId,
+                        // The wire spells "no preference" as the literal `default`, not as a missing
+                        // field; `SERVICE_TIER_DEFAULT_REQUEST_VALUE` upstream.
+                        serviceTier = event.tier ?: ServiceTierDefault,
+                    ),
+                )
+            }) { state.applyConfig(state.config.copy(serviceTier = event.tier)) }
+
             // ---- attachments and background terminals -----------------------------
             is AppEvent.RemoveAttachment -> request({
                 client.removeAttachment(event.threadId, event.type, event.identityKey)
@@ -513,6 +540,9 @@ class ChatWidget(
             is AppEvent.ReloadPluginShares,
             is AppEvent.ReloadApps,
             is AppEvent.ReloadHooks,
+            is AppEvent.SetHookTrust,
+            is AppEvent.SetHookEnabled,
+            is AppEvent.SetMemorySettings,
             is AppEvent.ReloadMcpServers,
             is AppEvent.ReloadProjects,
             is AppEvent.ReloadEnvironments,
@@ -680,13 +710,15 @@ class ChatWidget(
         }
     }
 
-    private fun submitInput(inputs: List<UserInput>) {
+    private fun submitInput(inputs: List<UserInput>, clearDraft: Boolean = true) {
         val text = inputs.filterIsInstance<UserInput.Text>().joinToString("\n") { it.text }.trim()
         if (text.isEmpty() || !state.open || state.loading) return
+        // Viewing a parent-owned sub-agent: the transcript is readable, input is not.
+        if (state.config.blocksDirectInput) return
         val threadId = state.threadId
         if (state.running) {
             request({ client.addToQueue(threadId, inputs) }) {
-                if (state.threadId == threadId) state.applyDraft("")
+                if (clearDraft && state.threadId == threadId) state.applyDraft("")
                 refreshQueue(threadId)
             }
             return
@@ -694,7 +726,7 @@ class ChatWidget(
         state.applyStatus(ThreadStatus.Active())
         scope.launch {
             client.startTurn(threadId, inputs).onSuccess {
-                if (state.threadId == threadId) state.applyDraft("")
+                if (clearDraft && state.threadId == threadId) state.applyDraft("")
             }.onFailure { error ->
                 if (state.threadId != threadId) return@onFailure
                 state.applyStatus(ThreadStatus.Idle)
@@ -879,6 +911,8 @@ class ChatWidget(
                         reasoningEffort = delta.reasoningEffort ?: state.config.reasoningEffort,
                         approvalPolicy = delta.approvalPolicy ?: state.config.approvalPolicy,
                         approvalsReviewer = delta.approvalsReviewer ?: state.config.approvalsReviewer,
+                        collaborationMode = delta.collaborationMode ?: state.config.collaborationMode,
+                        serviceTier = delta.serviceTier ?: state.config.serviceTier,
                     ),
                 )
             }

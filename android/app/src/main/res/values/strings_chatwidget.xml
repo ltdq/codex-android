@@ -8,6 +8,8 @@
     <string name="chat_transcript_assistant_label">Codex</string>
     <string name="chat_composer_hint_open">Ask Codex to do anything</string>
     <string name="chat_composer_hint_empty">Select a session to start</string>
+    <string name="chat_composer_hint_shell">Run a shell command in the session shell</string>
+    <string name="chat_composer_hint_parent_owned">Viewing sub-agent — direct input is disabled</string>
 
     <!-- SidebarPanel.kt -->
     <string name="sidebar_title">Codex</string>
@@ -54,6 +56,25 @@
     <string name="status_card_reasoning_label">Reasoning effort</string>
     <string name="status_card_approval_label">Approval</string>
     <string name="status_card_reviewer_label">Reviewer</string>
+    <string name="status_card_service_tier_label">Service tier</string>
+    <string name="status_card_service_tier_default">Default</string>
+    <string name="status_card_collaboration_label">Collaboration mode</string>
+    <string name="status_card_model_provider_label">Model provider</string>
+    <string name="status_card_access_label">Access</string>
+    <string name="status_card_access_network">network</string>
+    <string name="status_card_agents_md_label">AGENTS.md</string>
+    <string name="status_card_forked_from_label">Forked from</string>
+    <string name="status_card_none">None</string>
+    <string name="status_card_usage_tokens_more">reasoning %1$s · cache write %2$s</string>
+    <string name="status_card_rate_title">Rate limits</string>
+    <string name="status_card_rate_primary">Primary limit</string>
+    <string name="status_card_rate_secondary">Secondary limit</string>
+    <string name="status_card_rate_resets">Resets %1$s</string>
+    <string name="status_card_credits_label">Credits</string>
+    <string name="status_card_credits_unlimited">Unlimited</string>
+    <string name="status_card_credits_none">None</string>
+    <string name="status_card_credits_remaining">%1$s remaining</string>
+    <string name="status_card_reset_credits_label">Reset credits</string>
     <string name="status_card_plan_title">Plan</string>
     <string name="status_card_agents_title">Agents</string>
     <string name="status_card_agents_count">%1$d</string>
@@ -71,13 +92,6 @@
     <string name="status_card_expand_panel">Expand status panel</string>
     <string name="status_card_collapse_panel">Collapse status panel</string>
     <string name="status_card_back">Back</string>
-    <string name="status_card_agent_status_completed">Done</string>
-    <string name="status_card_agent_status_interrupted">Interrupted</string>
-    <string name="status_card_agent_status_interacting">Interacting</string>
-    <string name="status_card_agent_status_running">Running</string>
-    <string name="status_card_agent_status_failed">Failed</string>
-    <string name="status_card_agent_status_starting">Starting</string>
-    <string name="status_card_agent_status_idle">Idle</string>
     <string name="sidebar_library_projects">Projects</string>
     <string name="sidebar_library_history">History</string>
     <string name="sidebar_library_files">Files</string>

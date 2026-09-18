@@ -408,7 +408,8 @@ class JsonRpcAppServerClient(
             "serviceTier" to params.serviceTier, "cwd" to params.cwd, "disabledPluginIds" to params.disabledPluginIds, "multiAgentMode" to params.multiAgentMode))
         if (current != null) sessions[params.threadId] = current.copy(model = params.model ?: current.model, reasoningEffort = params.effort ?: current.reasoningEffort,
             approvalPolicy = params.approvalPolicy ?: current.approvalPolicy, approvalsReviewer = params.approvalsReviewer ?: current.approvalsReviewer,
-            collaborationMode = params.collaborationMode ?: current.collaborationMode)
+            collaborationMode = params.collaborationMode ?: current.collaborationMode,
+            serviceTier = (params.serviceTier ?: current.serviceTier)?.takeUnless { it == "default" })
         Unit
     }
     override suspend fun updateTurnSettings(params: TurnSettingsUpdateParams) = result {
@@ -557,7 +558,8 @@ class JsonRpcAppServerClient(
             val page = rpc("mcpServerStatus/list", obj("cursor" to cursor, "limit" to 100))
             servers += page.array("data").map { value -> value.objectValue().let { o -> McpServerStatusEntry(o.required("name"),
                 McpServerConnectionStatus.entries.find { it.wire == o.text("runtimeStatus") } ?: McpServerConnectionStatus.Starting,
-                o.objectOrNull("tools")?.size ?: 0, o.array("resources").size, o.text("toolsError")) } }
+                o.objectOrNull("tools")?.size ?: 0, o.array("resources").size, o.text("toolsError"),
+                McpAuthStatus.fromWire(o.text("authStatus"))) } }
             val next = page.text("nextCursor")
             check(next == null || next != cursor) { "MCP pagination did not advance" }
             cursor = next
@@ -910,7 +912,9 @@ class JsonRpcAppServerClient(
                 val settings = p.objectOrNull("threadSettings") ?: p
                 AppServerEvent.ThreadSettingsUpdatedEvent(threadId, ThreadSettingsUpdated(threadId, settings.text("model"),
                     settings.text("effort")?.let(ReasoningEffort::fromWire), settings.text("approvalPolicy")?.let(AskForApproval::fromWire),
-                    settings.text("approvalsReviewer")?.let(ApprovalsReviewer::fromWire)))
+                    settings.text("approvalsReviewer")?.let(ApprovalsReviewer::fromWire),
+                    settings.objectOrNull("collaborationMode")?.text("mode")?.let(CollaborationMode::fromWire),
+                    settings.text("serviceTier")))
             }
             "thread/tokenUsage/updated" -> {
                 val usage = p.objectOrNull("tokenUsage")!!
@@ -930,7 +934,7 @@ class JsonRpcAppServerClient(
             "app/list/updated" -> AppServerEvent.AppListUpdated(CatalogChanged())
             "model/rerouted" -> AppServerEvent.ModelReroutedEvent(threadId, ModelRerouted(threadId, p.required("fromModel"), p.required("toModel"), p.required("reason")))
             "mcpServer/startupStatus/updated" -> AppServerEvent.McpStartupStatusEvent(McpStartupStatusUpdated(p.required("name"),
-                McpServerConnectionStatus.entries.find { it.wire == p.text("status") } ?: McpServerConnectionStatus.Starting, p.text("error")))
+                McpServerStartupState.fromWire(p.text("status")), p.text("error"), p.text("failureReason")))
             "mcpServer/event/stream/notification" -> AppServerEvent.McpServerEvent(McpServerEventStreamNotification(
                 subscriptionId = p.required("subscriptionId"),
                 notification = p.objectOrNull("notification")?.let { n -> McpServerEventNotification(n.required("method"), n["params"] ?: JsonNull) }

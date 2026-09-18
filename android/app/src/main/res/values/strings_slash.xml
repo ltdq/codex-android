@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Slash-command popup descriptions for commands whose label alone is not enough. -->
+    <string name="slash_desc_compact">Compact the conversation context</string>
+    <string name="slash_desc_revert">Revert the thread to an earlier item</string>
+    <string name="slash_desc_plan">Plan before editing; run again to leave plan mode</string>
+    <string name="slash_desc_status">Open the runtime diagnostics page</string>
+    <string name="slash_desc_init">Create an AGENTS.md file for this workspace</string>
+
+    <!-- Rejections are shown as a snackbar and the draft is kept so it can be corrected. -->
+    <string name="slash_unavailable_during_task">/%1$s is not available while the agent is working.</string>
+    <string name="slash_plan_unavailable">Plan mode is not available right now.</string>
+</resources>

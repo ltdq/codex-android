@@ -48,11 +48,13 @@ fun ThreadItemCell(
     cwd: String? = null,
     onOpenAgent: (String) -> Unit = {},
     onOpenAgentInfo: (String) -> Unit = {},
+    onAnswerQuestion: (String) -> Unit = {},
 ) {
     when (item) {
         is UserMessageItem -> UserMessageCell(item, modifier)
         is HookPromptItem -> HookPromptCell(item, modifier)
-        is AgentMessageItem -> AgentMessageCell(item, modifier, stream, streaming, assistantLabel, cwd = cwd)
+        is AgentMessageItem ->
+            AgentMessageCell(item, modifier, stream, streaming, assistantLabel, cwd = cwd, onAnswerQuestion = onAnswerQuestion)
         is FunctionCallOutputItem -> FunctionCallOutputCell(item, modifier)
         is PlanItem -> PlanItemCell(item, modifier, stream, streaming, cwd = cwd)
         is ReasoningItem -> ReasoningCell(item, modifier, streaming)
@@ -141,4 +143,15 @@ private fun diagnosticText(code: DiagnosticCode, args: List<String>): String = w
     )
 
     DiagnosticCode.SafetyBuffering -> stringResource(R.string.chatwidget_diagnostic_safety_buffering)
+
+    DiagnosticCode.RateLimitWarning -> stringResource(
+        R.string.chatwidget_diagnostic_rate_limit_warning,
+        args.firstOrNull()?.toIntOrNull() ?: 0,
+        args.getOrNull(1).orEmpty(),
+    )
+
+    DiagnosticCode.RateLimitReached -> stringResource(
+        R.string.chatwidget_diagnostic_rate_limit_reached,
+        args.firstOrNull().orEmpty(),
+    )
 }

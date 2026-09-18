@@ -7,6 +7,7 @@ import com.cy.codexui.protocol.protocol.RequestId
 import com.cy.codexui.protocol.protocol.v2.ApprovalsReviewer
 import com.cy.codexui.protocol.protocol.v2.AskForApproval
 import com.cy.codexui.protocol.protocol.v2.AttachmentType
+import com.cy.codexui.protocol.protocol.v2.CollaborationMode
 import com.cy.codexui.protocol.protocol.v2.ConfigBatchWriteParams
 import com.cy.codexui.protocol.protocol.v2.LoginAccountParams
 import com.cy.codexui.protocol.protocol.v2.MergeStrategy
@@ -76,6 +77,15 @@ sealed interface AppEvent {
     // ---- turns -----------------------------------------------------------------
     data class SubmitUserMessage(val inputs: List<UserInput>, val queued: Boolean = false) : AppEvent
     data object InterruptTurn : AppEvent
+
+    /**
+     * Answer one inline question tapping an option in the transcript.
+     *
+     * The answer is an ordinary user message (upstream `chatwidget/questions.rs` does the same), but
+     * it must bypass the composer: slash classification would eat an option that begins with `/`,
+     * and submitting it must not clear a draft the user is still writing.
+     */
+    data class AnswerAsyncQuestion(val text: String) : AppEvent
     data class SetGoal(val objective: String) : AppEvent
     data object ClearGoal : AppEvent
 
@@ -113,7 +123,34 @@ sealed interface AppEvent {
     data class SetReasoningEffort(val effort: ReasoningEffort) : AppEvent
     data class SetApprovalPolicy(val policy: AskForApproval) : AppEvent
     data class SetApprovalsReviewer(val reviewer: ApprovalsReviewer) : AppEvent
+
+    /** Switch the thread between Default and Plan; `thread/settings/update` carries the mask. */
+    data class SetCollaborationMode(val mode: CollaborationMode) : AppEvent
+
+    /** Select a model service tier; `null` means the model's default tier. */
+    data class SetServiceTier(val tier: String?) : AppEvent
     data class SetExperimentalFeature(val id: String, val enabled: Boolean) : AppEvent
+
+    // ---- memories --------------------------------------------------------------
+    /**
+     * Persist both memory settings and, when generation changed, apply the mode to the open thread.
+     *
+     * Mirrors `update_memory_settings_with_app_server`: the config write is the durable half, the
+     * `thread/memoryMode/set` is what makes the open thread honor it without a restart.
+     */
+    data class SetMemorySettings(val useMemories: Boolean, val generateMemories: Boolean) : AppEvent
+
+    // ---- hooks -----------------------------------------------------------------
+    /**
+     * Trust one hook by writing its current hash under `hooks.state.<key>`.
+     *
+     * The hash is what `hook_needs_review` compares against: an untrusted or modified hook stays
+     * blocked until the reviewed bytes are pinned.
+     */
+    data class SetHookTrust(val key: String, val currentHash: String) : AppEvent
+
+    /** Enable or disable one hook under `hooks.state.<key>.enabled`. */
+    data class SetHookEnabled(val key: String, val enabled: Boolean) : AppEvent
 
     // ---- account ---------------------------------------------------------------
     data object ReloadAccount : AppEvent

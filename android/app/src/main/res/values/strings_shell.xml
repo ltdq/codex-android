@@ -60,6 +60,8 @@
     <string name="chatwidget_diagnostic_hook_failed">Hook %1$s failed</string>
     <string name="chatwidget_diagnostic_mcp_login_failed">Sign-in for MCP server %1$s failed</string>
     <string name="chatwidget_diagnostic_safety_buffering">Giving this request a little extra thought. No action is required.</string>
+    <string name="chatwidget_diagnostic_rate_limit_warning">Heads up: less than %1$d%% of the %2$s is left. Open the account page for a breakdown.</string>
+    <string name="chatwidget_diagnostic_rate_limit_reached">The %1$s is used up. Requests wait until it resets.</string>
     <string name="shell_request_failed">The server rejected that request</string>
 
     <!-- keymap/shortcuts_overlay.kt -->

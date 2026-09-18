@@ -3,6 +3,8 @@
     <string name="goal_status_usage_limited">Usage limited</string>
     <string name="runtime_project_count">%1$d projects</string>
     <string name="runtime_disconnected">Codex disconnected</string>
+    <string name="connection_banner_title">Connection lost</string>
+    <string name="connection_banner_retry">Reconnect</string>
     <string name="runtime_android_sandbox">Android app sandbox</string>
     <string name="runtime_android_sandbox_detail">Commands run with this app\'s Android UID and file and network permissions. Access is not additionally restricted to the workspace.</string>
     <string name="runtime_fixed">Fixed</string>

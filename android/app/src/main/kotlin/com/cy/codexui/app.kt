@@ -49,6 +49,7 @@ import com.cy.codexui.Surface
 import com.cy.codexui.ThreadListState
 import com.cy.codexui.app.DiagnosticsScreen
 import com.cy.codexui.app.EnvironmentDetailScreen
+import com.cy.codexui.app.deriveAgentRoster
 import com.cy.codexui.app.ProjectsScreen
 import com.cy.codexui.app.SubAgentScreen
 import com.cy.codexui.app.SubAgentThreadScreen
@@ -89,8 +90,15 @@ import com.cy.codexui.protocol.AppServerClient
 import com.cy.codexui.protocol.AppServerEvent
 import com.cy.codexui.protocol.ConnectionState
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
+import com.cy.codexui.protocol.protocol.v2.CollaborationMode
+import com.cy.codexui.protocol.protocol.v2.ConfigBatchWriteParams
+import com.cy.codexui.protocol.protocol.v2.ConfigEdit
+import com.cy.codexui.protocol.protocol.v2.DiagnosticSeverity
 import com.cy.codexui.protocol.protocol.v2.ConfigValueWriteParams
 import com.cy.codexui.protocol.protocol.v2.FeedbackUploadParams
+import com.cy.codexui.protocol.protocol.v2.MergeStrategy
 import com.cy.codexui.protocol.protocol.v2.LoginAccountResponse
 import com.cy.codexui.protocol.protocol.v2.ThreadSessionState
 import com.cy.codexui.protocol.protocol.v2.UserVerificationVerifyParams
@@ -170,10 +178,29 @@ class CodexApp(
         private set
     var startupError by mutableStateOf<String?>(null)
         private set
+
+    /**
+     * A connection lost *after* the first successful start.
+     *
+     * Kept apart from [startupError] so the transcript stays on screen: the TUI shows a banner and
+     * keeps what the user was reading, while replacing the whole screen is only right before the
+     * first load. [reconnect] is the banner's retry.
+     */
+    var connectionLostMessage by mutableStateOf<String?>(null)
+        private set
     var creatingThread by mutableStateOf(false)
         private set
     private var observersStarted = false
     var goalMenuOpen by mutableStateOf(false)
+
+    /**
+     * The highest usage threshold already announced per rate-limit window.
+     *
+     * Keyed by label and `resetsAt` so a new window starts clean and a rolling update that does not
+     * move usage does not repeat the notice. Mirrors the threshold ladder in
+     * `codex-rs/tui/src/chatwidget/rate_limits.rs`.
+     */
+    private val rateLimitWarnings = mutableMapOf<String, Long>()
 
     init {
         widget.state.applyConfig(ThreadSessionState(threadId = "", cwd = defaultWorkspace))
@@ -220,6 +247,13 @@ class CodexApp(
                 }
                 when (val input = commandText?.let { classifySlashInput(it, ComposerCommands) }) {
                     is SlashInput.Command -> {
+                        // Upstream rejects an unavailable command at submission and keeps the draft
+                        // (`reject_slash_command_if_unavailable`); the popup still lists it.
+                        val spec = SlashCommands.find(input.name)
+                        if (spec != null && widget.state.running && !spec.availableDuringTask) {
+                            reportUnavailableCommand(spec.name)
+                            return
+                        }
                         runSlashCommand(AppEvent.SubmitSlashCommand(input.name, input.args))
                         if (input.name != "shell") widget.state.applyDraft("")
                         return
@@ -236,6 +270,21 @@ class CodexApp(
                     // Plain text, an upload, or a path that happens to begin with a slash.
                     else -> Unit
                 }
+                // `!command` is the local shell escape (`is_bang_shell_command` upstream): it runs in
+                // the session shell without starting a turn. A bare `!` is ordinary text.
+                if (commandText != null && commandText.startsWith("!") && commandText.length > 1) {
+                    val command = commandText.substring(1).trim()
+                    if (command.isNotEmpty()) {
+                        if (widget.state.open) {
+                            onAppEvent(AppEvent.RunShellCommand(widget.state.threadId, command))
+                        } else {
+                            createThread(afterCreated = {
+                                onAppEvent(AppEvent.RunShellCommand(widget.state.threadId, command))
+                            })
+                        }
+                        return
+                    }
+                }
                 if (catalog.account.account == null) {
                     openSurface(Surface.Account)
                 } else if (!widget.state.open) {
@@ -246,7 +295,10 @@ class CodexApp(
             }
             // ---- reads that fill a catalog ------------------------------------
             AppEvent.ReloadAccount -> load({ client.readAccount() }) { catalog.account = it }
-            AppEvent.ReloadRateLimits -> load({ client.readRateLimits() }) { catalog.rateLimits = it }
+            AppEvent.ReloadRateLimits -> load({ client.readRateLimits() }) {
+                catalog.rateLimits = it
+                warnRateLimits()
+            }
             AppEvent.ReloadUsage -> load({ client.readUsage() }) { catalog.usage = it; catalog.usageLoaded = true }
 
             AppEvent.ReloadConfig -> request { reloadConfig() }
@@ -625,6 +677,52 @@ class CodexApp(
                 }
             }
 
+            is AppEvent.SetMemorySettings -> request {
+                client.writeConfigBatch(
+                    ConfigBatchWriteParams(
+                        edits = listOf(
+                            ConfigEdit("memories.use_memories", JsonPrimitive(event.useMemories), MergeStrategy.Replace),
+                            ConfigEdit("memories.generate_memories", JsonPrimitive(event.generateMemories), MergeStrategy.Replace),
+                        ),
+                    ),
+                ).onSuccess { response ->
+                    catalog.lastWrite = response
+                    reloadConfig()
+                    // The open thread reads generation from `thread/memoryMode`, which was fixed at
+                    // start; the config write alone would not change it until the next thread.
+                    if (widget.state.open) {
+                        client.setThreadMemoryMode(
+                            widget.state.threadId,
+                            if (event.generateMemories) {
+                                com.cy.codexui.protocol.protocol.v2.ThreadMemoryMode.Enabled
+                            } else {
+                                com.cy.codexui.protocol.protocol.v2.ThreadMemoryMode.Disabled
+                            },
+                        )
+                    }
+                }
+            }
+
+            is AppEvent.SetHookTrust -> request {
+                client.writeConfigBatch(hookStateWrite(event.key, "trusted_hash", JsonPrimitive(event.currentHash)))
+                    .onSuccess { response ->
+                        catalog.lastWrite = response
+                        reloadConfig()
+                        // The page reads trust from `hooks/list`, so the list has to be re-read once
+                        // the write lands or the chip would keep showing the pre-trust state.
+                        onAppEvent(AppEvent.ReloadHooks)
+                    }
+            }
+
+            is AppEvent.SetHookEnabled -> request {
+                client.writeConfigBatch(hookStateWrite(event.key, "enabled", JsonPrimitive(event.enabled)))
+                    .onSuccess { response ->
+                        catalog.lastWrite = response
+                        reloadConfig()
+                        onAppEvent(AppEvent.ReloadHooks)
+                    }
+            }
+
             is AppEvent.SetExperimentalFeature -> request {
                 client.setExperimentalFeature(event.id, event.enabled).onSuccess {
                     client.listExperimentalFeatures().onSuccess { catalog.experimentalFeatures = it }
@@ -679,6 +777,25 @@ class CodexApp(
             "usage" -> openSurface(Surface.Account)
             "status" -> openSurface(Surface.Diagnostics)
             "model", "approvals", "permissions" -> openSurface(Surface.Settings)
+            "memories" -> openSurface(Surface.Memories)
+
+            // `/plan` toggles, where upstream's `/plan` only sets and a separate cycle key goes
+            // back. The phone has no mode-cycle binding, so the one command has to do both or plan
+            // mode would be a one-way door.
+            "plan" -> {
+                if (catalog.collaborationModes.none { it.mode == CollaborationMode.Plan }) {
+                    scope.launch { snackbar.showSnackbar(context.getString(R.string.slash_plan_unavailable)) }
+                } else {
+                    val target = if (widget.state.config.collaborationMode == CollaborationMode.Plan) {
+                        CollaborationMode.Default
+                    } else {
+                        CollaborationMode.Plan
+                    }
+                    if (widget.state.open) onAppEvent(AppEvent.SetCollaborationMode(target)) else {
+                        createThread(afterCreated = { onAppEvent(AppEvent.SetCollaborationMode(target)) })
+                    }
+                }
+            }
 
             // `/init` is a *turn*: the TUI submits a fixed instruction and lets the agent write the
             // file, because only the agent knows what the project's conventions are.
@@ -713,6 +830,69 @@ class CodexApp(
     private fun reportUnknownCommand(name: String) {
         scope.launch {
             snackbar.showSnackbar(context.getString(R.string.runtime_unknown_slash_command, name))
+        }
+    }
+
+    /**
+     * One `hooks.state.<key>` upsert.
+     *
+     * The same table and merge strategy `hooks_rpc.rs` uses, so trust pinned here and trust pinned
+     * by the TUI agree on the file layout.
+     */
+    private fun hookStateWrite(key: String, field: String, value: kotlinx.serialization.json.JsonElement) =
+        ConfigBatchWriteParams(
+            edits = listOf(
+                ConfigEdit(
+                    keyPath = "hooks.state",
+                    value = buildJsonObject { put(key, buildJsonObject { put(field, value) }) },
+                    mergeStrategy = MergeStrategy.Upsert,
+                ),
+            ),
+            reloadUserConfig = true,
+        )
+
+    /**
+     * Announce a rate-limit threshold crossing once per window.
+     *
+     * Upstream emits the same warnings from `chatwidget/rate_limits.rs` at 50/75/90/95 percent and
+     * suppresses them when workspace credits make a full window waitable. The notice goes into the
+     * transcript rather than a banner because that is where the TUI puts it.
+     */
+    private fun warnRateLimits() {
+        val snapshot = catalog.rateLimits.rateLimits
+        if (snapshot.credits?.unlimited == true || snapshot.credits?.hasCredits == true) return
+        val windows = listOfNotNull(
+            snapshot.primary?.let { it to context.getString(R.string.status_card_rate_primary) },
+            snapshot.secondary?.let { it to context.getString(R.string.status_card_rate_secondary) },
+        )
+        rateLimitWarnings.keys.retainAll(windows.mapTo(mutableSetOf()) { (window, label) -> "$label:${window.resetsAt ?: 0L}" })
+        for ((window, label) in windows) {
+            val key = "$label:${window.resetsAt ?: 0L}"
+            val threshold = UsageWarningThresholds.lastOrNull { window.usedPercent >= it } ?: continue
+            if (threshold <= (rateLimitWarnings[key] ?: Long.MIN_VALUE)) continue
+            rateLimitWarnings[key] = threshold
+            widget.state.addDiagnostic(
+                if (window.usedPercent >= 100) {
+                    SessionDiagnostic(
+                        severity = DiagnosticSeverity.Error,
+                        code = DiagnosticCode.RateLimitReached,
+                        args = listOf(label),
+                    )
+                } else {
+                    SessionDiagnostic(
+                        severity = DiagnosticSeverity.Warning,
+                        code = DiagnosticCode.RateLimitWarning,
+                        args = listOf((100 - window.usedPercent).coerceAtLeast(0).toString(), label),
+                    )
+                },
+            )
+        }
+    }
+
+    /** Say that [name] exists but cannot run mid-turn; the caller keeps the draft. */
+    private fun reportUnavailableCommand(name: String) {
+        scope.launch {
+            snackbar.showSnackbar(context.getString(R.string.slash_unavailable_during_task, name))
         }
     }
 
@@ -843,8 +1023,10 @@ class CodexApp(
                         .onSuccess { threads.applyListing(it) }
                 }
                 is AppServerEvent.AccountUpdated -> catalog.account = event.account
-                is AppServerEvent.RateLimitsUpdatedEvent ->
+                is AppServerEvent.RateLimitsUpdatedEvent -> {
                     catalog.rateLimits = catalog.rateLimits.copy(rateLimits = catalog.rateLimits.rateLimits.mergedWith(event.rateLimits))
+                    warnRateLimits()
+                }
                 is AppServerEvent.AccountLoginCompleted -> {
                     catalog.pendingLogin = null
                     catalog.loginError = event.delta.error
@@ -858,8 +1040,19 @@ class CodexApp(
                 is AppServerEvent.AppListUpdated ->
                     client.listApps().onSuccess { catalog.apps = it }
 
-                is AppServerEvent.McpStartupStatusEvent ->
+                is AppServerEvent.McpStartupStatusEvent -> {
+                    val delta = event.delta
+                    catalog.mcpStartup = when (delta.status) {
+                        com.cy.codexui.protocol.protocol.v2.McpServerStartupState.Ready,
+                        com.cy.codexui.protocol.protocol.v2.McpServerStartupState.Cancelled,
+                        -> catalog.mcpStartup - delta.serverName
+
+                        com.cy.codexui.protocol.protocol.v2.McpServerStartupState.Starting,
+                        com.cy.codexui.protocol.protocol.v2.McpServerStartupState.Failed,
+                        -> catalog.mcpStartup + (delta.serverName to delta)
+                    }
                     client.listMcpServers().onSuccess { catalog.mcpServers = it }
+                }
 
                 is AppServerEvent.McpOauthLoginCompleted ->
                     client.listMcpServers().onSuccess { catalog.mcpServers = it }
@@ -919,6 +1112,7 @@ class CodexApp(
                     onAppEvent(AppEvent.ReloadUsage)
                 }
             }
+            Surface.Hooks -> onAppEvent(AppEvent.ReloadHooks)
             Surface.McpServers -> onAppEvent(AppEvent.ReloadMcpServers)
             Surface.Skills -> onAppEvent(AppEvent.ReloadSkills)
             Surface.Projects -> onAppEvent(AppEvent.ReloadProjects)
@@ -1019,6 +1213,19 @@ class CodexApp(
         }
     }
 
+    /**
+     * Retry after a lost connection, from the in-transcript banner.
+     *
+     * `bootstrap` refuses to run while `startupReady`, so the banner lowers the flag first; the
+     * transcript it replaces is rebuilt by the reload that follows a successful start.
+     */
+    fun reconnect() {
+        if (startupLoading || !startupReady) return
+        startupReady = false
+        connectionLostMessage = null
+        bootstrap()
+    }
+
     /** Start the embedded server once; a failed startup can be retried. */
     fun bootstrap() {
         if (startupLoading || startupReady) return
@@ -1032,13 +1239,19 @@ class CodexApp(
                 client.connection.collect { connection ->
                     when (connection) {
                         is ConnectionState.Failed -> {
-                            startupReady = false
-                            startupError = connection.message
+                            // Before the first load there is no transcript to keep; after it the
+                            // banner is the right surface and the session stays on screen.
+                            if (startupReady) {
+                                connectionLostMessage = connection.message
+                            } else {
+                                startupError = connection.message
+                            }
                             widget.connectionLost()
                         }
                         ConnectionState.Disconnected -> if (startupReady) {
-                            startupReady = false
-                            startupError = context.getString(R.string.runtime_disconnected)
+                            // A drop after the first load keeps the screen; the banner offers the
+                            // same retry the startup screen does.
+                            connectionLostMessage = context.getString(R.string.runtime_disconnected)
                             widget.connectionLost()
                         }
                         else -> Unit
@@ -1058,11 +1271,20 @@ class CodexApp(
                 threads.applyListing(client.listThreads().getOrThrow())
                 catalog.account = client.readAccount().getOrThrow()
                 client.listModels().onSuccess { catalog.models = it }
+                // The plan row in the composer and `/plan` both gate on this list, so it is loaded
+                // once at startup rather than lazily when the popup first opens.
+                client.listCollaborationModes().onSuccess { catalog.collaborationModes = it }
+                // Managed policy decides whether AutoReview is offerable; it does not change while
+                // the app runs, so one read at startup is enough.
+                client.readConfigRequirements().onSuccess {
+                    catalog.allowedApprovalsReviewers = it.allowedApprovalsReviewers
+                }
                 reloadConfig()
                 check(client.connection.first() == ConnectionState.Ready) {
                     context.getString(R.string.runtime_disconnected)
                 }
                 startupReady = true
+                connectionLostMessage = null
                 val stored = preferences.getString(KeySelectedSession, null)?.takeIf { it.isNotBlank() }
                 // Threads without a user-message preview can be persisted but omitted by thread/list.
                 val fallback = threads.threads.firstOrNull { it.id != stored }?.id
@@ -1106,17 +1328,14 @@ class CodexApp(
         /**
          * Every command [CodexApp.runSlashCommand] answers.
          *
-         * This list and that dispatch are one set: a name that is handled but missing here is
-         * unreachable, and a name that is listed but handled nowhere is the same failure seen from
-         * the other side. `/diff`, `/hooks`, `/status`, `/permissions` and `/revert` were handled
-         * before they were listed, so typing them sent the literal line to the model.
+         * Derived from [SlashCommands.All] so the recognized set, the popup and the dispatch cannot
+         * drift apart: a name that is handled but missing from the catalog is unreachable, and a
+         * name that is listed but handled nowhere is the same failure seen from the other side.
          */
-        val ComposerCommands = setOf(
-            "new", "resume", "fork", "archive", "compact", "revert",
-            "review", "diff", "init", "goal", "shell",
-            "mcp", "skills", "plugins", "apps", "hooks", "status", "permissions",
-            "model", "approvals", "settings", "usage",
-        )
+        val ComposerCommands: Set<String> = SlashCommands.All.map { it.name }.toSet()
+
+        /** Usage percentages that earn a warning, ascending; the TUI's ladder. */
+        val UsageWarningThresholds = listOf(50L, 75L, 90L, 95L)
     }
 }
 
@@ -1319,7 +1538,8 @@ fun CodexScreen(
                 entry<Surface.McpServers>(swipeDismiss = NavSwipeDirection.TopToBottom) {
                     SheetPage(onDismiss = app::closeSurface) {
                         McpScreen(catalog = app.catalog, onBack = app::closeSurface,
-                            onOpenServer = { app.openSurface(Surface.McpToolbox(it)) })
+                            onOpenServer = { app.openSurface(Surface.McpToolbox(it)) },
+                            onEvent = app::onAppEvent)
                     }
                 }
 
@@ -1569,10 +1789,32 @@ fun CodexScreen(
 
                 entry<Surface.SubAgentThread>(swipeDismiss = NavSwipeDirection.TopToBottom) { route ->
                     SheetPage(onDismiss = app::closeSurface) {
+                        // The roster is folded once per visited agent rather than observed: the
+                        // parent transcript keeps streaming behind this page, and subscribing to it
+                        // would rebuild the page on every delta. Spawn order is fixed by the time an
+                        // agent is open, so a snapshot is enough to navigate by.
+                        val mainLabel = stringResource(R.string.agent_roster_main_label)
+                        val nameFormat = stringResource(R.string.agent_roster_sub_agent_name)
+                        val roster = remember(route.threadId, mainLabel, nameFormat) {
+                            deriveAgentRoster(
+                                items = app.widget.state.items,
+                                mainThreadId = app.widget.state.threadId,
+                                mainLabel = mainLabel,
+                                subAgentNameFormat = nameFormat,
+                            )
+                        }
                         SubAgentThreadScreen(
                             threadId = route.threadId,
                             client = app.client,
                             onBack = app::closeSurface,
+                            roster = roster,
+                            // Replace rather than stack: switching agents is changing the subject,
+                            // not drilling further in, and a back stack of ten agents would bury
+                            // the transcript the pages were opened from.
+                            onSwitchAgent = { threadId ->
+                                app.closeSurface()
+                                app.openSurface(Surface.SubAgentThread(threadId))
+                            },
                         )
                     }
                 }

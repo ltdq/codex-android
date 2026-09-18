@@ -98,6 +98,7 @@ import com.cy.codexui.protocol.protocol.item.AgentMessageItem
 import com.cy.codexui.protocol.protocol.item.CommandExecutionItem
 import com.cy.codexui.protocol.protocol.item.ThreadItem
 import com.cy.codexui.protocol.protocol.v2.AttachmentType
+import com.cy.codexui.protocol.protocol.v2.CollaborationMode
 import com.cy.codexui.protocol.protocol.v2.CommandExecutionStatus
 import com.cy.codexui.protocol.protocol.v2.ThreadAttachment
 import com.cy.codexui.protocol.protocol.v2.UserInput
@@ -295,6 +296,22 @@ fun ChatScreen(
                 ),
         )
 
+        // A drop after the first load keeps the transcript; this banner is the retry. It sits just
+        // above the composer rather than at the top so it does not fight the status-card button.
+        app.connectionLostMessage?.let { message ->
+            ConnectionBanner(
+                message = message,
+                onRetry = app::reconnect,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(
+                        start = UiConsts.ScreenMargin,
+                        end = UiConsts.ScreenMargin,
+                        bottom = bottomInset + UiConsts.PromptBarHeight + UiConsts.ScreenMargin,
+                    ),
+            )
+        }
+
         StatusCardButton(
             open = panelState.open,
             onClick = { panelState.toggle() },
@@ -389,10 +406,15 @@ fun ChatScreen(
                         width = statusWidth,
                         maxHeight = statusCardMaxHeight,
                         models = app.catalog.models,
+                        rateLimits = app.catalog.rateLimits,
                         onModel = { app.onAppEvent(AppEvent.SetModel(it)) },
                         onEffort = { app.onAppEvent(AppEvent.SetReasoningEffort(it)) },
                         onPolicy = { app.onAppEvent(AppEvent.SetApprovalPolicy(it)) },
                         onReviewer = { app.onAppEvent(AppEvent.SetApprovalsReviewer(it)) },
+                        autoReviewAvailable = app.catalog.autoReviewAvailable,
+                        onServiceTier = { app.onAppEvent(AppEvent.SetServiceTier(it)) },
+                        planAvailable = app.catalog.collaborationModes.any { it.mode == CollaborationMode.Plan },
+                        onCollaborationMode = { app.onAppEvent(AppEvent.SetCollaborationMode(it)) },
                         onCompact = { app.onAppEvent(AppEvent.CompactThread(session.threadId)) },
                         onOpenAgents = { overviewOpen = true },
                         onOpenAgent = { threadId -> app.openSurface(Surface.SubAgentThread(threadId)) },
@@ -552,6 +574,7 @@ private fun TranscriptPane(
         cwd = session.config.cwd,
         onOpenAgent = { threadId -> app.openSurface(Surface.SubAgentThread(threadId)) },
         onOpenAgentInfo = { threadId -> app.openSurface(Surface.SubAgent(threadId)) },
+        onAnswerQuestion = { text -> app.onAppEvent(AppEvent.AnswerAsyncQuestion(text)) },
         contentPadding = PaddingValues(
             start = UiConsts.TranscriptGutter,
             end = UiConsts.TranscriptGutter,
@@ -592,6 +615,45 @@ private class AgentRosterMemo(
     }
 
     val roster: List<AgentRosterEntry> get() = state.value
+}
+
+/**
+ * The in-transcript "connection lost" banner and its retry.
+ *
+ * Mirrors the backend banner the TUI shows on disconnect: the session stays readable, and the one
+ * action that helps — reconnect — is on the notice instead of replacing the screen.
+ */
+@Composable
+private fun ConnectionBanner(message: String, onRetry: () -> Unit, modifier: Modifier = Modifier) {
+    val colors = MiuixTheme.colorScheme
+    val shape = remember { SquircleShape(UiConsts.PanelCorner) }
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .floatingSurface(shape = shape, tint = glassTint(0.94f), elevation = UiConsts.PanelElevation)
+            .padding(horizontal = UiConsts.Space12, vertical = UiConsts.Space10),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = stringResource(R.string.connection_banner_title),
+                fontSize = UiType.Body,
+                lineHeight = UiType.BodyLine,
+                fontWeight = FontWeight.Medium,
+                color = colors.onSurface,
+            )
+            Text(
+                text = message,
+                fontSize = UiType.Meta,
+                lineHeight = UiType.MetaLine,
+                color = colors.onSurfaceVariantSummary,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        Spacer(Modifier.width(UiConsts.Space10))
+        CodexButton(stringResource(R.string.connection_banner_retry), onRetry, size = com.cy.codexui.CodexButtonSize.Compact)
+    }
 }
 
 @Composable
@@ -777,6 +839,7 @@ private fun Transcript(
     cwd: String?,
     onOpenAgent: (String) -> Unit,
     onOpenAgentInfo: (String) -> Unit,
+    onAnswerQuestion: (String) -> Unit,
     contentPadding: androidx.compose.foundation.layout.PaddingValues,
     itemGap: Dp = 18.dp,
     planGap: Dp = 10.dp,
@@ -824,6 +887,7 @@ private fun Transcript(
                         cwd = cwd,
                         onOpenAgent = onOpenAgent,
                         onOpenAgentInfo = onOpenAgentInfo,
+                        onAnswerQuestion = onAnswerQuestion,
                     )
                 }
                 if (item is AgentMessageItem && plan.isNotEmpty() && index == rows.lastIndex) {
@@ -1190,17 +1254,24 @@ private fun ComposerDock(
             onInterrupt = { app.onAppEvent(AppEvent.InterruptTurn) },
             onAttach = onAttach,
             running = session.running,
-            enabled = app.startupReady && !session.loading && !app.creatingThread,
-            hint = if (session.open) {
-                stringResource(R.string.chat_composer_hint_open)
-            } else {
-                stringResource(R.string.chat_composer_hint_empty)
+            enabled = app.startupReady && !session.loading && !app.creatingThread &&
+                !session.config.blocksDirectInput,
+            hint = when {
+                session.config.blocksDirectInput ->
+                    stringResource(R.string.chat_composer_hint_parent_owned)
+                // The same shell-mode signal upstream shows in its footer.
+                prompt.startsWith("!") -> stringResource(R.string.chat_composer_hint_shell)
+                session.open -> stringResource(R.string.chat_composer_hint_open)
+                else -> stringResource(R.string.chat_composer_hint_empty)
             },
             queuedCount = session.queued.size,
             slashSuggestions = if (prompt.startsWith("/")) {
-                SidebarModel.slashSuggestions().filter {
-                    prompt.length <= 1 || it.command.startsWith(prompt, ignoreCase = true)
-                }
+                SidebarModel.slashSuggestions(
+                    query = prompt,
+                    planAvailable = app.catalog.collaborationModes.any {
+                        it.mode == com.cy.codexui.protocol.protocol.v2.CollaborationMode.Plan
+                    },
+                )
             } else {
                 emptyList()
             },

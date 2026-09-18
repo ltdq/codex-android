@@ -85,7 +85,8 @@ internal object WireCodec {
             model = o.text("model"), reasoningEffort = o.text("reasoningEffort")?.let(ReasoningEffort::fromWire),
             path = o.text("path"), historyMode = o.text("historyMode") ?: "legacy",
             recencyAt = o.long("recencyAt")?.times(1000), originator = o.text("originator"),
-            parentThreadId = o.text("parentThreadId"), agentNickname = o.text("agentNickname"), agentRole = o.text("agentRole"),
+            parentThreadId = o.text("parentThreadId"), canAcceptDirectInput = o.bool("canAcceptDirectInput"),
+            agentNickname = o.text("agentNickname"), agentRole = o.text("agentRole"),
         )
     }
 
@@ -112,8 +113,12 @@ internal object WireCodec {
             approvalPolicy = AskForApproval.fromWire(value.text("approvalPolicy").orEmpty()),
             approvalsReviewer = ApprovalsReviewer.fromWire(value.text("approvalsReviewer")),
             sandboxPolicy = SandboxPolicy(mode, sandbox?.strings("writableRoots").orEmpty(), sandbox?.bool("networkAccess") ?: (mode == SandboxMode.DangerFullAccess)),
+            collaborationMode = value.objectOrNull("collaborationMode")?.text("mode")?.let(CollaborationMode::fromWire)
+                ?: CollaborationMode.Default,
+            serviceTier = value.text("serviceTier"),
             cwd = cwd, workspaceRoots = listOf(cwd), instructionSourcePaths = value.strings("instructionSources"),
             gitBranch = t.objectOrNull("gitInfo")?.text("branch"), rolloutPath = t.text("path"),
+            parentThreadId = t.text("parentThreadId"), canAcceptDirectInput = t.bool("canAcceptDirectInput"),
         )
     }
 
@@ -128,7 +133,12 @@ internal object WireCodec {
         val status = o.text("status")
         return when (val type = o.required("type")) {
             "userMessage" -> UserMessageItem(id, o.text("clientId"), o.array("content").map { input(it) })
-            "agentMessage" -> AgentMessageItem(id, o.text("text").orEmpty(), MessagePhase.entries.find { it.wire == o.text("phase") || (it == MessagePhase.FinalAnswer && o.text("phase") == "final_answer") })
+            "agentMessage" -> AgentMessageItem(
+                id,
+                o.text("text").orEmpty(),
+                MessagePhase.entries.find { it.wire == o.text("phase") || (it == MessagePhase.FinalAnswer && o.text("phase") == "final_answer") },
+                asyncQuestions(o),
+            )
             "plan" -> PlanItem(id, o.text("text").orEmpty())
             "reasoning" -> ReasoningItem(id, o.strings("summary"), o.strings("content"))
             "commandExecution" -> CommandExecutionItem(id, o.required("command"), o.required("cwd"), o.text("processId"),
@@ -158,6 +168,23 @@ internal object WireCodec {
             "hookPrompt" -> HookPromptItem(id, o.array("fragments").map { it.objectValue().let { f -> HookPromptFragment(f.required("text"), f.text("hookName").orEmpty()) } })
             "functionCallOutput" -> FunctionCallOutputItem(id, o.required("name"), o.text("namespace"), o["output"]?.wireText().orEmpty())
             else -> FunctionCallOutputItem(id, type, output = Json.write(o))
+        }
+    }
+
+    /**
+     * Inline questions an `agentMessage` carries, or `null` when the field is absent.
+     *
+     * `options` is nullable upstream, so an explicit JSON null has to stay distinct from an empty
+     * list: the first means "free text only", the second a choice with nothing to choose.
+     */
+    private fun asyncQuestions(o: JsonObject): List<AsyncUserInputQuestion>? {
+        val raw = o["questions"] ?: return null
+        if (raw is JsonNull) return null
+        return o.array("questions").map { element ->
+            element.objectValue().let { q ->
+                val options = q["options"]?.takeUnless { it is JsonNull }?.let { q.strings("options") }
+                AsyncUserInputQuestion(q.required("title"), options)
+            }
         }
     }
 

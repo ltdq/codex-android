@@ -53,6 +53,8 @@ data class Thread(
     val originator: String? = null,
     /** Set when this thread is a sub-agent of another thread. */
     val parentThreadId: String? = null,
+    /** Whether the server accepts direct turn input for this loaded thread; `null` when unknown. */
+    val canAcceptDirectInput: Boolean? = null,
     /** Random unique nickname assigned to an AgentControl-spawned sub-agent. */
     val agentNickname: String? = null,
     /** Role assigned to an AgentControl-spawned sub-agent. */
@@ -301,6 +303,8 @@ data class McpServerStatusEntry(
     val tools: Int = 0,
     val resources: Int = 0,
     val error: String? = null,
+    /** How the server authenticates; `null` when an older server did not report it. */
+    val authStatus: McpAuthStatus? = null,
 )
 
 /** Mirrors upstream `McpServerConnectionStatus`. */
@@ -312,6 +316,40 @@ enum class McpServerConnectionStatus(val wire: String) {
     Failed("failed"),
     Cancelled("cancelled"),
     Disabled("disabled"),
+}
+
+/**
+ * Mirrors upstream `McpAuthStatus`.
+ *
+ * This is what decides whether a "Log in" affordance can work at all: a server on a bearer token
+ * or an unsupported mode has no OAuth flow to start.
+ */
+enum class McpAuthStatus(val wire: String) {
+    Unknown("unknown"),
+    Unsupported("unsupported"),
+    NotLoggedIn("notLoggedIn"),
+    BearerToken("bearerToken"),
+    OAuth("oAuth"),
+    ;
+
+    companion object {
+        fun fromWire(value: String?): McpAuthStatus? =
+            value?.let { wire -> entries.firstOrNull { it.wire == wire } }
+    }
+}
+
+/** Mirrors upstream `McpServerStartupState`: the phases of the startup broadcast. */
+enum class McpServerStartupState(val wire: String) {
+    Starting("starting"),
+    Ready("ready"),
+    Failed("failed"),
+    Cancelled("cancelled"),
+    ;
+
+    companion object {
+        fun fromWire(value: String?): McpServerStartupState =
+            entries.firstOrNull { it.wire == value } ?: Starting
+    }
 }
 
 /** `skills/list` entry. */

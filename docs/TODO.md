@@ -33,11 +33,8 @@
 
 ### 2.2 多 agent 与会话编排
 
-- [ ] `AgentPickerSheet` 未挂载（`app/agent_picker.kt:182` 只有定义）；
-      `AgentRosterEntry.statusLabel()/tone()` 在 `app/agents_overview.kt:136` 与
-      `status/card.kt:1293,1306` 各一份，哪份生效未验证。
-- [ ] agent 导航（上/下一个、按 spawn 顺序）、`/subagents` 状态流、总览的 open/stop/
-      archive/rename 操作、总览 usage 列填充。
+- [ ] `/subagents` 状态流缺失；总览仍只有 open，缺 stop/archive/rename；总览 usage 列对子
+      agent 仍为空（`AgentRosterEntry.tokens` 无来源；agent 上/下一个导航已在子 agent 页头落地）。
 - [ ] 事件缓冲与 replay、按线程路由缺失：非当前线程的事件仍被丢弃（`chatwidget.kt`），
       `EventBuffer`/`replayFilter`/`threadRouting` 命中 0。
 - [ ] worktree 相关整块缺失（上游约 1142 行；`chatwidget/worktree_picker.kt` 现在是目录选择器，
@@ -48,7 +45,7 @@
 - [ ] 服务端历史分页只进独立浏览页（`app/history_ui.kt:549` 是唯一调用点），
       打开的 transcript 不加载更早的页；resume picker 只有一行 `thread.preview`
       （`resume_picker.kt:153`）。
-- [ ] `ConnectionState` 已有订阅者，但 backend banner、断线重连 UI、服务端版本提示仍缺。
+- [ ] 服务端版本提示缺失：`Thread.cliVersion` 被解析但无任何 UI 读取（断线横幅与重连已实现）。
 - [ ] turn 级活动指示器（计时器、折行的工具细节、hook 状态槽位）、turn 完成分隔行、
       标题生成中指示、`InProgress` item 收尾、misalignment 策略缺失。
 
@@ -78,41 +75,30 @@
 
 ### 2.5 命令与输入
 
-- [ ] 命令目录 14 条建议 / 22 条识别 vs 上游约 60 条；`/plan` 无 dispatch 分支、无
-      `SetCollaborationMode` 事件、`catalog.collaborationModes` 从不读取 → 计划/目标模式
-      无法从 UI 进入。
-- [ ] 命令门控缺失：别名抑制、`available_during_task`、feature flag 显隐、精确匹配优先排序。
+- [ ] 命令目录 24 条 vs 上游约 60 条：`/clear`、`/logout`、`/theme`、`/side`、`/cd` 等
+      无对应实现；上游别名表（`clean`/`cwd`/`pet`）在本客户端没有目标命令。
 - [ ] `@` 提及只是读一次 cwd 目录（`rendering.kt:166-171`），不是上游的
       mentions_v2（Plugin/Skill/Task/File/Directory 候选 + 评分 + 搜索模式）；
       `$` skill 弹窗、task mentions、connector mentions 缺失。
-- [ ] `!command` 本地 shell 逃逸：`AppEvent.RunShellCommand` 有 handler，composer 不做 `!` 检测。
-- [ ] 异步内联提问只能看不能答（`history_cell/messages.kt` 只读列表）；
-      `request_user_input` 的「其他」答案会覆盖已选选项。
-- [ ] 提交被拒时草稿被清空（上游保留草稿）；composer 无法被禁用（父级拥有输入权 /
-      子 agent 线程时应禁用并换占位符）。
 
 ### 2.6 管理面
 
-- [ ] hooks 浏览器深度不足：无 trust 操作、无 review-needed 状态、无按事件分组与计数、
-      无 handler 细节（`HookMetadata` 已带 `trustStatus`，但 UI 不显示也不写）。
-- [ ] MCP：`authStatus` 未建模（「去登录」按钮无法判断）、startup 进度与警告缺失、
-      结果里的 image/audio/resource 投影缺失。
+- [ ] `hooks/list` 的 warnings/errors 被绑定丢弃（`json_rpc_app_server_client.kt` 只取
+      `hooks` 数组），页面上看不到解析失败与告警。
+- [ ] MCP 工具结果的 image/audio/resource 内容块投影缺失：客户端仍把整个结果折叠成
+      JSON 字符串（`McpToolCallItem.result` 同样）。
 - [ ] 插件目录：无按 marketplace 的 tab、无安装后鉴权流；`PluginEntry` 无 `enabled`。
 - [ ] app-link 的 install URL / 确认屏 / 连接器鉴权流缺失。
-- [ ] memories 模式无 UI（`thread/memoryMode/set` 只有 client 绑定，无 UI 入口）。
-- [ ] approvals reviewer 不看 `[features] guardian_approval` 与 `configRequirements/read` 的
-      `allowedApprovalsReviewers`（experimental）：上游只在允许时才提供 AutoReview，当前始终可选。
-- [ ] service tier / fast 模式无 UI；`/status` 打开的是 `server/diagnostics`，
-      而会话状态读出缺失。
+- [ ] `/status` 打开的是 `server/diagnostics`，而会话状态读出缺失（service tier 选择已进
+      状态卡）。
 
 ### 2.7 状态与用量
 
-- [ ] 状态卡字段窄于上游：缺权限摘要、`AGENTS.md` 摘要、model provider、thread name、
-      协作模式行、费率条与过期警告、credits/spend-control、按线程 credits/USD、
-      各类 token 拆分（protocol 已携带，UI 未展示）。
-- [ ] 费率恢复逻辑缺失（高用量换模型提示、用量警告、恢复期暂挂）；`DiagnosticCode`
-      13 个码里没有费率/用量限制码。
-- [ ] reset credits / credits nudge 不可达（无 UI 入口；`account/rateLimitResetCredit/consume` 已绑定）。
+- [ ] 状态卡缺按线程 credits/USD 与 spend-control；`RateLimitSnapshot.individualLimit`
+      未建模，费率窗口没有 stale 警告（无刷新时间戳）。
+- [ ] 费率恢复逻辑缺失：高用量换模型提示、恢复期暂挂与按用量加速轮询都未做；
+      已有 50/75/90/95 的警告 notice（`DiagnosticCode.RateLimitWarning/RateLimitReached`）。
+- [ ] credits nudge（`account/sendAddCreditsNudgeEmail`）仍无 UI 入口。
 - [ ] 客户端设置项只有 3 个 SharedPreferences 键，无动效/主题/通知设置。
 
 ## 3. Native / 宿主侧
@@ -146,8 +132,6 @@
 
 ## 4. 未验证 / 未知
 
-- [ ] `AgentRosterEntry.statusLabel()/tone()` 两份定义里哪一份生效（取决于 import 优先级，
-      未编译验证）。
 - [ ] core 在 `danger-full-access` 下是否真的会走 fs helper / arg0 路径；无沙箱退化
       （`exec-server` 的 `process_sandbox` / `fs_sandbox`）未实测；真机 instrumentation
       不含 fs helper 与 tty。

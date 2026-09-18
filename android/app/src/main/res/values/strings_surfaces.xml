@@ -31,6 +31,19 @@
     <string name="account_screen_rate_limit_note">Once a window reaches 100%, requests queue until it resets.</string>
     <string name="account_screen_resets_at">Resets %1$s</string>
     <string name="account_screen_reset_format">MMM d, HH:mm</string>
+    <string name="account_screen_reset_credits">Usage limit resets</string>
+    <string name="account_screen_reset_credits_note">Redeeming a reset credit clears the current rate-limit window. Use one before it expires.</string>
+    <string name="account_screen_reset_credit_untitled">Reset credit</string>
+    <string name="account_screen_reset_credit_use">Use</string>
+    <string name="account_screen_reset_credit_no_expiry">Does not expire</string>
+    <string name="account_screen_reset_credit_expires">Expires %1$s</string>
+    <string name="account_screen_reset_credit_redeeming">Redeeming</string>
+    <string name="account_screen_reset_credit_redeemed">Redeemed</string>
+    <string name="account_screen_reset_credit_unknown">Unknown</string>
+    <string name="account_screen_reset_credit_confirm_title">Use this reset credit?</string>
+    <string name="account_screen_reset_credit_confirm_body">The current usage window is cleared using this credit. A consumed credit cannot be returned.</string>
+    <string name="account_screen_reset_credit_confirm_cancel">Cancel</string>
+    <string name="account_screen_reset_credit_confirm_action">Use credit</string>
     <string name="account_screen_percent">%1$d%%</string>
     <string name="account_screen_usage">Token activity</string>
     <string name="account_screen_usage_empty">No token activity yet.</string>
@@ -53,11 +66,16 @@
 
     <!-- HooksScreen -->
     <string name="hooks_screen_title">Hooks</string>
-    <string name="hooks_screen_subtitle">%1$d hooks · %2$d enabled</string>
+    <string name="hooks_screen_subtitle">%1$d hooks · %2$d enabled · %3$d need review</string>
     <string name="hooks_screen_section">Lifecycle hooks</string>
     <string name="hooks_screen_empty">No hooks configured.</string>
-    <string name="hooks_screen_note">Hooks come from the project config, and changes are written back to config; this client is read-only.</string>
+    <string name="hooks_screen_note">Enabled and trust are written back to the user config; a hook that still needs review cannot be enabled until it is trusted.</string>
     <string name="hooks_screen_back">Back</string>
+    <string name="hooks_screen_trust_trusted">Trusted</string>
+    <string name="hooks_screen_trust_review">Needs review</string>
+    <string name="hooks_screen_trust_managed">Managed</string>
+    <string name="hooks_screen_trust_action">Trust</string>
+    <string name="hooks_screen_managed_note">Managed by policy; enabled and trust cannot be changed here.</string>
 
     <!-- McpScreen -->
     <string name="mcp_screen_title">MCP servers</string>
@@ -65,6 +83,12 @@
     <string name="mcp_screen_section_servers">Servers</string>
     <string name="mcp_screen_empty">No MCP servers configured.</string>
     <string name="mcp_screen_tools_resources">%1$d tools · %2$d resources</string>
+    <string name="mcp_screen_startup_section">Startup</string>
+    <string name="mcp_screen_startup_starting">Starting %1$s…</string>
+    <string name="mcp_screen_startup_failed">Failed to start %1$s</string>
+    <string name="mcp_screen_startup_reauth">Reauthentication required</string>
+    <string name="mcp_screen_auth_not_logged_in">Not logged in</string>
+    <string name="mcp_screen_auth_login">Log in</string>
     <string name="mcp_screen_add_server">Add server</string>
     <string name="mcp_screen_not_connected">Not available yet</string>
     <string name="mcp_screen_back">Back</string>
@@ -181,6 +205,9 @@
     <string name="sub_agent_thread_subtitle">This agent\'s own session, read alongside the one it was spawned from</string>
     <string name="sub_agent_thread_empty">This agent\'s session has no items yet.</string>
     <string name="sub_agent_thread_assistant">Subagent</string>
+    <string name="sub_agent_thread_previous">Previous agent</string>
+    <string name="sub_agent_thread_next">Next agent</string>
+    <string name="sub_agent_thread_pick">Choose agent</string>
     <string name="session_list_sections">Sections</string>
     <string name="session_list_section_new">New section</string>
     <string name="session_list_section_new_detail">Group threads by what they are for, not only by directory</string>

@@ -136,7 +136,7 @@ fun SettingsScreen(
 
                     SettingsTab.Model -> SettingsModelSection(catalog, preset, config.model, config.reasoningEffort, onEvent)
                     SettingsTab.Approval -> {
-                        SettingsApprovalSection(config, onEvent)
+                        SettingsApprovalSection(config, catalog.autoReviewAvailable, onEvent)
                     }
 
                     SettingsTab.Session -> SettingsSessionSection(config, session.usage)
@@ -427,7 +427,11 @@ private fun SettingsModelSection(
 
 /** 4. 审批与沙箱: the policy radio group, the effective sandbox, and the granular switches. */
 @Composable
-private fun SettingsApprovalSection(config: ThreadSessionState, onEvent: (AppEvent) -> Unit) {
+private fun SettingsApprovalSection(
+    config: ThreadSessionState,
+    autoReviewAvailable: Boolean,
+    onEvent: (AppEvent) -> Unit,
+) {
     SettingsGroup(stringResource(R.string.settings_group_approval)) {
         AskForApproval.entries.forEachIndexed { index, option ->
             if (index > 0) HorizontalDivider()
@@ -455,9 +459,12 @@ private fun SettingsApprovalSection(config: ThreadSessionState, onEvent: (AppEve
 
     // A reviewer, not a policy: the policy decides *whether* a request is raised, and the reviewer
     // decides who answers it. Upstream pairs the two in the permissions popup; a separate group here
-    // keeps each choice a single question.
+    // keeps each choice a single question. AutoReview is offered only when `guardian_approval` is on
+    // and `configRequirements/read` allows it; a value selected under a looser policy stays shown.
     SettingsGroup(stringResource(R.string.settings_group_reviewer)) {
-        ApprovalsReviewer.entries.forEachIndexed { index, option ->
+        ApprovalsReviewer.entries
+            .filter { it != ApprovalsReviewer.AutoReview || autoReviewAvailable }
+            .forEachIndexed { index, option ->
             if (index > 0) HorizontalDivider()
             RadioButtonPreference(
                 title = option.label(),

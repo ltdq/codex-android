@@ -6,6 +6,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import com.cy.codexui.R
+import com.cy.codexui.SlashCommands
 import com.cy.codexui.ThreadListState
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.AddFolder
@@ -144,24 +145,25 @@ object SidebarModel {
         }
     }
 
-    /** Slash-command suggestions for the composer. */
+    /**
+     * Slash-command suggestions for the composer.
+     *
+     * Built from [SlashCommands.All], the same table submission recognizes, so the popup cannot
+     * drift from the dispatch. [planAvailable] mirrors the feature gate upstream applies to
+     * `SlashCommand::Plan`: the row is hidden until `collaborationMode/list` has answered with a
+     * plan preset.
+     */
     @Composable
-    fun slashSuggestions(): List<SlashCommand> = listOf(
-        SlashCommand("/new", stringResource(R.string.runtime_new_thread)),
-        SlashCommand("/resume", stringResource(R.string.sidebar_library_all_sessions)),
-        SlashCommand("/model", stringResource(R.string.settings_tab_model)),
-        SlashCommand("/approvals", stringResource(R.string.settings_tab_approval)),
-        SlashCommand("/settings", stringResource(R.string.settings_screen_title)),
-        SlashCommand("/usage", stringResource(R.string.account_screen_title)),
-        SlashCommand("/mcp", stringResource(R.string.sidebar_library_mcp_servers)),
-        SlashCommand("/skills", stringResource(R.string.sidebar_library_skills)),
-        SlashCommand("/plugins", stringResource(R.string.sidebar_library_plugins)),
-        SlashCommand("/apps", stringResource(R.string.sidebar_library_apps)),
-        SlashCommand("/review", stringResource(R.string.sidebar_library_review)),
-        SlashCommand("/diff", stringResource(R.string.git_diff_screen_description)),
-        SlashCommand("/goal", stringResource(R.string.goal_sheet_title)),
-        SlashCommand("/shell", stringResource(R.string.exec_command_title), takesArgument = true),
-    )
+    fun slashSuggestions(query: String = "/", planAvailable: Boolean = true): List<SlashCommand> =
+        SlashCommands.filter(query)
+            .filter { spec -> planAvailable || spec.name != "plan" }
+            .map { spec ->
+                SlashCommand(
+                    command = "/" + spec.name,
+                    description = stringResource(spec.descriptionRes),
+                    takesArgument = spec.takesArgument,
+                )
+            }
 }
 
 data class SlashCommand(val command: String, val description: String, val takesArgument: Boolean = false)

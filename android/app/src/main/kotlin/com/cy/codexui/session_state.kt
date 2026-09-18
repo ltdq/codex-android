@@ -13,6 +13,7 @@ import com.cy.codexui.protocol.protocol.item.ThreadItem
 import com.cy.codexui.protocol.protocol.v2.AccountReadResponse
 import com.cy.codexui.protocol.protocol.v2.AccountUsage
 import com.cy.codexui.protocol.protocol.v2.AppInfo
+import com.cy.codexui.protocol.protocol.v2.ApprovalsReviewer
 import com.cy.codexui.protocol.protocol.v2.CollaborationModeEntry
 import com.cy.codexui.protocol.protocol.v2.ConfigReadResponse
 import com.cy.codexui.protocol.protocol.v2.ConfigWriteResponse
@@ -421,6 +422,17 @@ enum class DiagnosticCode {
      * hung one.
      */
     SafetyBuffering,
+
+    /**
+     * A rate-limit window crossed a warning threshold.
+     *
+     * Arguments are the percent still available and the window label, because "less than 10% of the
+     * primary limit left" needs both.
+     */
+    RateLimitWarning,
+
+    /** A rate-limit window hit 100%; requests queue until it resets. The argument is its label. */
+    RateLimitReached,
 }
 
 /** One warning or error the transcript shows as a notice cell. */
@@ -487,6 +499,9 @@ class CatalogState {
     var permissionProfiles by mutableStateOf<List<PermissionProfileEntry>>(emptyList())
     var experimentalFeatures by mutableStateOf<List<ExperimentalFeatureEntry>>(emptyList())
     var mcpServers by mutableStateOf<List<McpServerStatusEntry>>(emptyList())
+
+    /** Live `mcpServer/startupStatus/updated` broadcasts; an entry leaves once the server is ready. */
+    var mcpStartup by mutableStateOf<Map<String, com.cy.codexui.protocol.protocol.v2.McpStartupStatusUpdated>>(emptyMap())
     var skills by mutableStateOf<List<SkillEntry>>(emptyList())
     var plugins by mutableStateOf<List<PluginEntry>>(emptyList())
     var apps by mutableStateOf<List<AppInfo>>(emptyList())
@@ -528,6 +543,22 @@ class CatalogState {
 
     /** Collaboration modes the server offers; `null` until `collaborationMode/list` answers. */
     var collaborationModes by mutableStateOf<List<CollaborationModeEntry>>(emptyList())
+
+    /**
+     * Reviewers `configRequirements/read` permits, or `null` when policy does not restrict them.
+     *
+     * `null` and "empty list" mean different things: the first is unrestricted, the second allows
+     * no reviewer at all.
+     */
+    var allowedApprovalsReviewers by mutableStateOf<List<ApprovalsReviewer>?>(null)
+
+    /** Whether `[features] guardian_approval` is on, which is what makes AutoReview offerable. */
+    val guardianApprovalEnabled: Boolean get() = configSnapshot.features["guardian_approval"] == true
+
+    /** AutoReview may be selected only when the feature is on and policy allows the value. */
+    val autoReviewAvailable: Boolean
+        get() = guardianApprovalEnabled &&
+            (allowedApprovalsReviewers?.contains(ApprovalsReviewer.AutoReview) ?: true)
 
     /** `modelProvider/capabilities/read`; empty means "not asked yet". */
     var modelProviderCapabilities by mutableStateOf<Map<String, Boolean>>(emptyMap())

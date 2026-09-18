@@ -45,8 +45,9 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
  * `request_user_input`: the agent blocks on a question it cannot answer itself.
  *
  * Mirrors `codex-rs/tui/src/bottom_pane/request_user_input/`: one block per question, a tappable
- * option list, and an extra free-text row when `isOther` is set. Selection is single-choice, and
- * the free-text row wins over the selected option whenever it holds something.
+ * option list, and an extra free-text row when `isOther` is set. Selection is single-choice; a
+ * selected option and the free-text row are both submitted, the note as a second `user_note:`
+ * entry, matching `submit_answers` in the upstream bottom pane.
  *
  * The numbered badge is the only decoration: it is what makes "2 of 3 answered" countable at a
  * glance without reading the footer.
@@ -54,6 +55,9 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /** Sentinel selection for the free-text ("其他") row of a question. */
 private const val OtherChoice = -1
+
+/** Prefix marking notes that ride along with a selected option. */
+private const val UserNotePrefix = "user_note: "
 
 /** Tappable option row of a question. */
 private val OptionShape = RoundedCornerShape(UiConsts.CornerControl)
@@ -73,18 +77,18 @@ internal fun RequestUserInputForm(
     val questions = request.params.questions
     // questionId -> selected option index, or [OtherChoice] for the free-text row.
     val selections = remember(questions) { mutableStateMapOf<String, Int>() }
-    // questionId -> free-text content; used whenever it is non-blank.
+    // questionId -> free-text content; appended as a `user_note:` answer when non-blank.
     val notes = remember(questions) { mutableStateMapOf<String, String>() }
     var submitted by remember(questions) { mutableStateOf(false) }
 
-    val answered = questions.count { answerFor(it, selections, notes) != null }
+    val answered = questions.count { answersFor(it, selections, notes) != null }
     val complete = questions.isNotEmpty() && answered == questions.size
 
     fun submit() {
         if (!complete || submitted) return
         submitted = true
         onSubmit(questions.mapNotNull { question ->
-            answerFor(question, selections, notes)?.let { UserInputAnswer(question.id, listOf(it)) }
+            answersFor(question, selections, notes)?.let { UserInputAnswer(question.id, it) }
         })
     }
 
@@ -129,17 +133,27 @@ internal fun RequestUserInputForm(
     }
 }
 
-/** The answer a question currently holds, or `null` while it is still unanswered. */
-private fun answerFor(
+/**
+ * The answers a question currently holds, or `null` while it is still unanswered.
+ *
+ * The selected label comes first and a non-blank note follows as `user_note: <text>`, so choosing
+ * an option and adding detail preserves both instead of the note replacing the choice.
+ */
+private fun answersFor(
     question: ToolRequestUserInputQuestion,
     selections: Map<String, Int>,
     notes: Map<String, String>,
-): String? {
+): List<String>? {
+    val answers = mutableListOf<String>()
+    val selected = selections[question.id]
+    if (selected != null && selected != OtherChoice) {
+        question.options.orEmpty().getOrNull(selected)?.label?.let(answers::add)
+    }
     val note = notes[question.id]?.trim().orEmpty()
-    if (note.isNotEmpty()) return note
-    val selected = selections[question.id] ?: return null
-    val options = question.options.orEmpty()
-    return options.getOrNull(selected)?.label
+    if (note.isNotEmpty()) {
+        answers += if (answers.isEmpty()) note else "$UserNotePrefix$note"
+    }
+    return answers.ifEmpty { null }
 }
 
 @Composable
@@ -195,7 +209,7 @@ private fun QuestionBlock(
                 OptionRow(
                     label = option.label,
                     description = option.description,
-                    selected = selected == optionIndex && note.isBlank(),
+                    selected = selected == optionIndex,
                     onClick = { onSelect(optionIndex) },
                 )
                 if (optionIndex != options.lastIndex) Spacer(Modifier.height(UiConsts.Space6))

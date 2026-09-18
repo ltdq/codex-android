@@ -73,6 +73,12 @@ enum class CollaborationMode(val wire: String) {
     Default("default"),
     Plan("plan"),
     Goal("goal"),
+    ;
+
+    companion object {
+        fun fromWire(value: String?): CollaborationMode =
+            entries.firstOrNull { it.wire == value } ?: Default
+    }
 }
 
 enum class Personality(val wire: String) {
@@ -102,11 +108,25 @@ data class ThreadSessionState(
     val activePermissionProfile: PermissionProfileEntry? = null,
     val collaborationMode: CollaborationMode = CollaborationMode.Default,
     val personality: Personality = Personality.None,
+    /** Effective `serviceTier`; `null` means the server is on its default. */
+    val serviceTier: String? = null,
     val cwd: String = "",
     val workspaceRoots: List<String> = emptyList(),
     val instructionSourcePaths: List<String> = emptyList(),
     val gitBranch: String? = null,
     val rolloutPath: String? = null,
+    /** Set when this thread is a sub-agent of another thread. */
+    val parentThreadId: String? = null,
+    /** Whether the server accepts direct turn input; `null` when the capability is unavailable. */
+    val canAcceptDirectInput: Boolean? = null,
 ) {
     val displayName: String get() = threadName ?: cwd.substringAfterLast('/').ifEmpty { threadId }
+
+    /**
+     * Whether the composer must refuse direct input.
+     *
+     * Mirrors `set_parent_owned_thread` upstream: a sub-agent thread, or one the server says does
+     * not accept direct input, is viewable but not writable from the composer.
+     */
+    val blocksDirectInput: Boolean get() = parentThreadId != null || canAcceptDirectInput == false
 }

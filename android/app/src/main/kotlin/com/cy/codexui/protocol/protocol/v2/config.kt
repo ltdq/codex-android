@@ -185,7 +185,24 @@ data class OverriddenMetadata(
 data class ConfigRequirementsReadResponse(
     /** Raw `requirements.toml`, untyped for the same reason as the config body. */
     val requirements: JsonElement = JsonObject(emptyMap()),
-)
+) {
+    /**
+     * The reviewers managed policy permits, or `null` when it does not restrict them.
+     *
+     * Mirrors `allowed_approvals_reviewers`: an absent or non-array field means "any reviewer",
+     * which is different from an empty list ("none").
+     */
+    val allowedApprovalsReviewers: List<ApprovalsReviewer>?
+        get() {
+            val raw = (requirements as? JsonObject)?.get("allowedApprovalsReviewers") as? JsonArray
+                ?: return null
+            return raw.mapNotNull { element ->
+                (element as? JsonPrimitive)?.content?.let { wire ->
+                    ApprovalsReviewer.entries.find { it.wire == wire }
+                }
+            }
+        }
+}
 
 /**
  * The subset of `config.toml` the phone renders, read out of the raw tree.
@@ -219,6 +236,10 @@ data class ConfigSnapshot(
     val features: Map<String, Boolean> = emptyMap(),
     val notifications: Boolean? = null,
     val historyPersistence: String? = null,
+    /** `[memories] use_memories`: inject stored memories into future threads. */
+    val useMemories: Boolean? = null,
+    /** `[memories] generate_memories`: consolidate threads into the store. */
+    val generateMemories: Boolean? = null,
     /** `[experimental]` keys that are on. */
     val experimental: Map<String, Boolean> = emptyMap(),
 ) {
@@ -264,6 +285,8 @@ data class ConfigSnapshot(
                 features = flags("features"),
                 notifications = bool("notifications"),
                 historyPersistence = str("history"),
+                useMemories = obj("memories")?.bool("use_memories"),
+                generateMemories = obj("memories")?.bool("generate_memories"),
                 experimental = flags("experimental"),
             )
         }
