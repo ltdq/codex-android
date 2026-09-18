@@ -39,8 +39,8 @@ cd android
 ./gradlew :app:assembleDebug
 ```
 
-APK：`android/app/build/outputs/apk/debug/app-debug.apk`。应用 ID 为 `com.cy.codex.android`
-（包名 `com.cy.codexui`）。`native/build.sh` 使用 Cargo 增量构建；修改 Kotlin 后，
+APK：`android/app/build/outputs/apk/debug/app-debug.apk`。应用 ID 与包名均为 `com.cy.codex`。
+`native/build.sh` 使用 Cargo 增量构建；修改 Kotlin 后，
 可在已有原生产物基础上用 `-PskipNativeBuild` 跳过 Rust 构建，缺少 JNI 或 helper 时打包会直接报错。
 `assemble*` 结束后还会执行 `verify*ToolchainAssets`，逐条核对 `native-manifest.txt` 里每个 `data`
 条目确实进了 APK——工具链必须原样打包，资产合并静默丢文件会直接失败在构建期。
@@ -103,7 +103,7 @@ cd android
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 adb install -r -t app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
 adb shell am instrument -w \
-  com.cy.codex.android.test/com.cy.codexui.runtime.RuntimeSmokeInstrumentation
+  com.cy.codex.test/com.cy.codex.runtime.RuntimeSmokeInstrumentation
 ```
 
 真机测试在真实 App UID 下验证工具链安装、JNI 启动、账户/配置/模型/会话读取、文件读写、

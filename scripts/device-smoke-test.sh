@@ -8,7 +8,7 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 adb install -r -t app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
 mkdir -p "$PROJECT_ROOT/artifacts"
 adb shell am instrument -w \
-  com.cy.codex.android.test/com.cy.codexui.runtime.RuntimeSmokeInstrumentation \
+  com.cy.codex.test/com.cy.codex.runtime.RuntimeSmokeInstrumentation \
   | tee "$PROJECT_ROOT/artifacts/device-smoke.txt"
 if ! rg -q 'PASS native restart and thread resume' "$PROJECT_ROOT/artifacts/device-smoke.txt" ||
    rg -q 'FAIL|INSTRUMENTATION_FAILED|Process crashed' "$PROJECT_ROOT/artifacts/device-smoke.txt"; then

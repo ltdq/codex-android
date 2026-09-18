@@ -8,17 +8,17 @@ plugins {
 }
 
 android {
-    namespace = "com.cy.codexui"
+    namespace = "com.cy.codex"
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "com.cy.codex.android"
+        applicationId = "com.cy.codex"
         minSdk = 36
         targetSdk = 37
         versionCode = 1
         versionName = "1.0"
         ndk { abiFilters += "arm64-v8a" }
-        testInstrumentationRunner = "com.cy.codexui.runtime.RuntimeSmokeInstrumentation"
+        testInstrumentationRunner = "com.cy.codex.runtime.RuntimeSmokeInstrumentation"
     }
 
     buildTypes {

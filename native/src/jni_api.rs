@@ -46,7 +46,7 @@ fn boundary<T: Default>(
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_cy_codexui_runtime_NativeBridge_nativeStart(
+pub extern "system" fn Java_com_cy_codex_runtime_NativeBridge_nativeStart(
     mut env: JNIEnv,
     _object: JObject,
     config: JByteArray,
@@ -71,7 +71,7 @@ pub extern "system" fn Java_com_cy_codexui_runtime_NativeBridge_nativeStart(
 
 /// `kind` is `JsonRpcMessageKind`: 0 request, 1 notification, 2 response, 3 error.
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_cy_codexui_runtime_NativeBridge_nativeSend(
+pub extern "system" fn Java_com_cy_codex_runtime_NativeBridge_nativeSend(
     mut env: JNIEnv,
     _object: JObject,
     handle: jlong,
@@ -92,7 +92,7 @@ pub extern "system" fn Java_com_cy_codexui_runtime_NativeBridge_nativeSend(
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_cy_codexui_runtime_NativeBridge_nativeReceive(
+pub extern "system" fn Java_com_cy_codex_runtime_NativeBridge_nativeReceive(
     mut env: JNIEnv,
     _object: JObject,
     handle: jlong,
@@ -108,7 +108,7 @@ pub extern "system" fn Java_com_cy_codexui_runtime_NativeBridge_nativeReceive(
 }
 
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_com_cy_codexui_runtime_NativeBridge_nativeStop(
+pub extern "system" fn Java_com_cy_codex_runtime_NativeBridge_nativeStop(
     mut env: JNIEnv,
     _object: JObject,
     handle: jlong,

@@ -63,11 +63,6 @@
 - [ ] **worker 卡死/崩溃没有看门狗**：只有事件流关闭时报错，App 侧只能提示后手动重试。
 - [ ] **PTY / 交互式命令不支持**：`json_rpc_app_server_client.kt:531` 显式
       `require(!tty)`，`process/spawn|write|resize|kill` 全在未实现列表里。
-- [ ] **markdown 交给 Rust**（`libcodex_fmt.so`，pulldown-cmark + syntect）未做；
-      当前选定的是 Kotlin 增量实现，只有需要 syntect 高亮时才值得再评估 Rust。
-      若做，要先解决 oniguruma/two-face 依赖
-      （`toolchain/env.sh` 里的 `ONIGURUMA_VER` 目前无人引用，`jq.sh` 会删掉头文件）
-      与高亮上限（上游 >512 KiB / >10 000 行跳过）。
 - [ ] **体积与启动耗时**：`libcodex_android_jni.so` 168 MiB + `libcodex_helper.so` 18 MiB
       （已 strip），jniLibs 合计约 361 MB；没有记录到文档，也没有裁剪（`native/Cargo.toml`
       没有 `[features]`，`--no-default-features` 不生效）。
@@ -127,4 +122,3 @@
 - 凭据不额外套 Keystore/EncryptedSharedPreferences：`auth.json` 由内嵌的 Rust 服务直接读写
   （`login/src/auth/storage.rs`，unix 下 0600），加密文件它读不了；落盘位置在应用私有目录
   `files/home/.codex/`，依赖 Android 沙箱而非密钥库。
-- 迁移后没有 mock 层：所有数据来自真实 app-server。

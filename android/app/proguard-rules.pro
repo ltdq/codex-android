@@ -6,9 +6,9 @@
 
 # JNI entry points -------------------------------------------------------------
 # native/src/jni_api.rs binds these functions by their JVM names
-# (Java_com_cy_codexui_runtime_NativeBridge_<method>), so the class, its member names and its
+# (Java_com_cy_codex_runtime_NativeBridge_<method>), so the class, its member names and its
 # exact signatures have to survive R8 untouched.
--keep class com.cy.codexui.runtime.NativeBridge { *; }
+-keep class com.cy.codex.runtime.NativeBridge { *; }
 
 # kotlinx.serialization --------------------------------------------------------
 # The generated serializers are referenced from the @Serializable companions and survive on their
