@@ -11,10 +11,12 @@ import com.cy.codexui.protocol.protocol.required
 import com.cy.codexui.protocol.protocol.strings
 import com.cy.codexui.protocol.protocol.text
 import com.cy.codexui.protocol.protocol.item.AgentMessageItem
+import com.cy.codexui.protocol.protocol.v2.ApprovalsReviewer
 import com.cy.codexui.protocol.protocol.v2.AttachmentType
 import com.cy.codexui.protocol.protocol.v2.ClientInfo
 import com.cy.codexui.protocol.protocol.v2.CommandExecutionApprovalDecision
 import com.cy.codexui.protocol.protocol.v2.PatchChangeKind
+import com.cy.codexui.protocol.protocol.v2.ThreadSettingsUpdateParams
 import com.cy.codexui.protocol.protocol.v2.TimelineEntry
 import com.cy.codexui.protocol.protocol.v2.TurnStatus
 import com.cy.codexui.protocol.protocol.v2.UserInput
@@ -645,6 +647,52 @@ class JsonRpcAppServerClientTest {
         assertEquals("rm -rf /", event.objectOrNull("action")!!.required("command"))
         transport.response(request, obj())
         approve.await()
+        client.close()
+    }
+
+    @Test
+    fun `approvals reviewer round-trips as its wire value`() = runTest {
+        val transport = HarnessTransport()
+        val client = JsonRpcAppServerClient(transport, backgroundScope)
+        client.initialize(ClientInfo("android", version = "1")).getOrThrow()
+        val update = async {
+            client.updateThreadSettingsFull(
+                ThreadSettingsUpdateParams("t", approvalsReviewer = ApprovalsReviewer.AutoReview),
+            ).getOrThrow()
+        }
+        val request = transport.request()
+        assertEquals("thread/settings/update", request.required("method"))
+        assertEquals("auto_review", request.objectOrNull("params")!!.required("approvalsReviewer"))
+        transport.response(request, obj())
+        update.await()
+
+        // The legacy `guardian_subagent` alias is the same mode and must fold into AutoReview.
+        val settings = async(UnconfinedTestDispatcher(testScheduler)) { client.events.first() }
+        transport.push(
+            """{"method":"thread/settings/updated","params":{"threadId":"t","threadSettings":{"model":"gpt","approvalPolicy":"on-request","approvalsReviewer":"guardian_subagent"}}}""",
+        )
+        val event = assertIs<AppServerEvent.ThreadSettingsUpdatedEvent>(settings.await())
+        assertEquals(ApprovalsReviewer.AutoReview, event.delta.approvalsReviewer)
+        client.close()
+    }
+
+    @Test
+    fun `guardian review notification carries the judged action`() = runTest {
+        val transport = HarnessTransport()
+        val client = JsonRpcAppServerClient(transport, backgroundScope)
+        client.initialize(ClientInfo("android", version = "1")).getOrThrow()
+        val started = async(UnconfinedTestDispatcher(testScheduler)) { client.events.first() }
+        transport.push(
+            """{"method":"item/autoApprovalReview/started","params":{"threadId":"t","turnId":"turn","startedAtMs":1,"reviewId":"r1","targetItemId":"item","review":{"status":"inProgress"},"action":{"type":"applyPatch","cwd":"/workspace","files":["/workspace/a.kt"]}}}""",
+        )
+        val event = assertIs<AppServerEvent.AutoApprovalReviewStarted>(started.await())
+        assertEquals("r1", event.delta.reviewId)
+        assertEquals("inProgress", event.delta.status)
+        assertEquals("item", event.delta.itemId)
+        assertEquals(
+            "applyPatch",
+            event.delta.action!!.objectValue().required("type"),
+        )
         client.close()
     }
 

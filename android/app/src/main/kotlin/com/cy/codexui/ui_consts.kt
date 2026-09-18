@@ -5,6 +5,7 @@ import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.ui.res.stringResource
 import com.cy.codexui.R
 import com.cy.codexui.protocol.ElicitationAction
+import com.cy.codexui.protocol.protocol.v2.ApprovalsReviewer
 import com.cy.codexui.protocol.protocol.v2.AskForApproval
 import com.cy.codexui.protocol.protocol.v2.AttachmentType
 import com.cy.codexui.protocol.protocol.v2.CollabAgentTool
@@ -201,6 +202,24 @@ fun AskForApproval.description(): String = stringResource(
         AskForApproval.OnRequest -> R.string.approval_policy_on_request_description
         AskForApproval.Granular -> R.string.approval_policy_granular_description
         AskForApproval.Never -> R.string.approval_policy_never_description
+    },
+)
+
+@Composable
+@ReadOnlyComposable
+fun ApprovalsReviewer.label(): String = stringResource(
+    when (this) {
+        ApprovalsReviewer.User -> R.string.approvals_reviewer_user
+        ApprovalsReviewer.AutoReview -> R.string.approvals_reviewer_auto
+    },
+)
+
+@Composable
+@ReadOnlyComposable
+fun ApprovalsReviewer.description(): String = stringResource(
+    when (this) {
+        ApprovalsReviewer.User -> R.string.approvals_reviewer_user_description
+        ApprovalsReviewer.AutoReview -> R.string.approvals_reviewer_auto_description
     },
 )
 

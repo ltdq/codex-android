@@ -107,6 +107,7 @@
     <string name="settings_screen_effort_title">Reasoning effort</string>
     <string name="settings_screen_effort_summary">How much thinking budget the model may spend before answering.</string>
     <string name="settings_group_approval">Approval policy</string>
+    <string name="settings_group_reviewer">Approvals reviewer</string>
     <string name="settings_screen_sandbox_mode">Sandbox mode</string>
     <string name="settings_screen_network_access">Network access</string>
     <string name="settings_screen_network_allowed">Enabled</string>

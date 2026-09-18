@@ -247,7 +247,7 @@ class JsonRpcAppServerClient(
     override suspend fun startThread(params: ThreadStartParams) = session("thread/start", obj(
         "cwd" to (params.cwd?.takeIf { it.isNotBlank() } ?: defaultWorkspace.orEmpty()), "model" to params.model,
         "modelProvider" to params.modelProvider, "approvalPolicy" to params.approvalPolicy?.wire,
-        "approvalsReviewer" to params.approvalsReviewer, "sandbox" to params.sandbox?.let(::sandboxPolicyJson),
+        "approvalsReviewer" to params.approvalsReviewer?.wire, "sandbox" to params.sandbox?.let(::sandboxPolicyJson),
         "personality" to params.personality?.wire, "serviceTier" to params.serviceTier, "ephemeral" to params.ephemeral,
         "developerInstructions" to params.developerInstructions, "baseInstructions" to params.baseInstructions,
         "sessionStartSource" to params.sessionStartSource, "config" to params.config,
@@ -403,16 +403,17 @@ class JsonRpcAppServerClient(
             "reasoning_effort" to (params.effort ?: current?.reasoningEffort)?.wire, "developer_instructions" to JsonNull)) }
         val sandbox = params.sandboxPolicy?.let(::sandboxPolicyJson)
         rpc("thread/settings/update", obj("threadId" to params.threadId, "model" to params.model, "effort" to params.effort?.wire,
-            "approvalPolicy" to params.approvalPolicy?.wire, "approvalsReviewer" to params.approvalsReviewer, "summary" to params.summary,
+            "approvalPolicy" to params.approvalPolicy?.wire, "approvalsReviewer" to params.approvalsReviewer?.wire, "summary" to params.summary,
             "sandboxPolicy" to sandbox, "permissions" to params.permissions, "collaborationMode" to collaboration, "personality" to params.personality?.wire,
             "serviceTier" to params.serviceTier, "cwd" to params.cwd, "disabledPluginIds" to params.disabledPluginIds, "multiAgentMode" to params.multiAgentMode))
         if (current != null) sessions[params.threadId] = current.copy(model = params.model ?: current.model, reasoningEffort = params.effort ?: current.reasoningEffort,
-            approvalPolicy = params.approvalPolicy ?: current.approvalPolicy, collaborationMode = params.collaborationMode ?: current.collaborationMode)
+            approvalPolicy = params.approvalPolicy ?: current.approvalPolicy, approvalsReviewer = params.approvalsReviewer ?: current.approvalsReviewer,
+            collaborationMode = params.collaborationMode ?: current.collaborationMode)
         Unit
     }
     override suspend fun updateTurnSettings(params: TurnSettingsUpdateParams) = result {
         val response = rpc("turn/settings/update", obj("threadId" to params.threadId, "turnId" to params.turnId, "model" to params.model,
-            "effort" to params.effort?.wire, "summary" to params.summary, "approvalsReviewer" to params.approvalsReviewer, "serviceTier" to params.serviceTier))
+            "effort" to params.effort?.wire, "summary" to params.summary, "approvalsReviewer" to params.approvalsReviewer?.wire, "serviceTier" to params.serviceTier))
         check(response.text("status") == "applied") { "The active turn is no longer available" }
         Unit
     }
@@ -908,7 +909,8 @@ class JsonRpcAppServerClient(
             "thread/settings/updated" -> {
                 val settings = p.objectOrNull("threadSettings") ?: p
                 AppServerEvent.ThreadSettingsUpdatedEvent(threadId, ThreadSettingsUpdated(threadId, settings.text("model"),
-                    settings.text("effort")?.let(ReasoningEffort::fromWire), settings.text("approvalPolicy")?.let(AskForApproval::fromWire)))
+                    settings.text("effort")?.let(ReasoningEffort::fromWire), settings.text("approvalPolicy")?.let(AskForApproval::fromWire),
+                    settings.text("approvalsReviewer")?.let(ApprovalsReviewer::fromWire)))
             }
             "thread/tokenUsage/updated" -> {
                 val usage = p.objectOrNull("tokenUsage")!!
@@ -955,8 +957,16 @@ class JsonRpcAppServerClient(
             "item/autoApprovalReview/started", "item/autoApprovalReview/completed" -> {
                 val review = p.objectOrNull("review") ?: obj()
                 val status = review.text("status").orEmpty()
-                val notification = GuardianApprovalReviewNotification(threadId, p.text("turnId").orEmpty(), p.text("targetItemId").orEmpty(),
-                    status, review.text("rationale"))
+                val notification = GuardianApprovalReviewNotification(
+                    threadId = threadId,
+                    turnId = p.text("turnId").orEmpty(),
+                    reviewId = p.required("reviewId"),
+                    status = status,
+                    itemId = p.text("targetItemId").orEmpty(),
+                    rationale = review.text("rationale"),
+                    riskLevel = review.text("riskLevel"),
+                    action = p["action"],
+                )
                 if (method == "item/autoApprovalReview/completed") {
                     // The approve call needs the core-shaped event, not the notification; synthesize
                     // it here so the item's denial can be overridden later.

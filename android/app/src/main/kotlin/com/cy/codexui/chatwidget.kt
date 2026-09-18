@@ -112,8 +112,38 @@ class ChatWidget(
     /** Turns that already produced their one safety-buffering notice, bounded like [finishedTurns]. */
     private val safetyBufferedTurns = LinkedHashSet<String>()
 
-    /** Requests the UI can currently answer; only the head is on screen. */
-    val currentApproval: ApprovalRequest? get() = pendingApprovals.firstOrNull()
+    /**
+     * When the composer last changed, on a monotonic clock.
+     *
+     * An approval that lands mid-sentence must not take the keyboard away, so a request waits for
+     * typing to be idle for [ApprovalTypingIdleDelayMs] before the dialog appears — the same
+     * one-second gate upstream keeps in `tui/src/bottom_pane/mod.rs`. Monotonic because a wall-clock
+     * adjustment must not turn a live keystroke into an old one; zero means "nothing typed yet".
+     */
+    private var composerActiveAtMs = 0L
+
+    /** Cancels the pending promotion when a new request or a keystroke restarts the idle window. */
+    private var promotionJob: Job? = null
+
+    /**
+     * Requests from a thread other than the open one.
+     *
+     * They cannot be answered from this transcript — the dialog belongs to the thread on screen —
+     * so they are kept apart and surfaced as a banner that switches threads. Upstream lists them
+     * above the composer the same way (`bottom_pane/pending_thread_approvals.rs`).
+     */
+    private val otherApprovals = mutableStateListOf<ApprovalRequest>()
+
+    /** In-flight auto reviews, arrival order, for the aggregated review footer. */
+    private val reviewsInFlight = mutableStateListOf<PendingReview>()
+
+    /** Recent auto-review denials the user may override once; newest first, bounded. */
+    private val autoReviewDenials = mutableStateListOf<AutoReviewDenial>()
+
+    /** The request the dialog is showing; only the head of the queue is ever on screen. */
+    var currentApproval by mutableStateOf<ApprovalRequest?>(null)
+        private set
+
     var answeringApproval by mutableStateOf(false)
         private set
     var approvalError by mutableStateOf<String?>(null)
@@ -127,7 +157,80 @@ class ChatWidget(
      */
     private var streamOvertookLoad = false
 
-    val approvalQueueSize: Int get() = pendingApprovals.size
+    /** How many requests are actually on screen, i.e. eligible for the "in queue" line. */
+    val approvalQueueSize: Int get() = if (currentApproval == null) 0 else pendingApprovals.size
+
+    /** Per-thread counts of approvals waiting in threads that are not open. */
+    val otherThreadApprovals: List<ForeignApproval>
+        get() = otherApprovals.groupBy { it.threadId }.map { (threadId, requests) ->
+            ForeignApproval(threadId, requests.size)
+        }
+
+    val pendingReviews: List<PendingReview> get() = reviewsInFlight
+    val approvalDenials: List<AutoReviewDenial> get() = autoReviewDenials
+
+    /**
+     * Record a composer edit.
+     *
+     * Called on every text change. When the head of the queue is waiting out the idle window, the
+     * deadline moves to one second from this keystroke, so a user who keeps typing is never
+     * interrupted.
+     */
+    fun noteComposerActivity() {
+        composerActiveAtMs = monotonicMs()
+        if (currentApproval == null && pendingApprovals.isNotEmpty() && promotionJob != null) {
+            schedulePromotion()
+        }
+    }
+
+    private fun monotonicMs(): Long = System.nanoTime() / 1_000_000
+
+    /** Milliseconds until the composer has been idle long enough to show an approval. */
+    private fun typingIdleRemainingMs(): Long {
+        if (composerActiveAtMs == 0L) return 0L
+        return composerActiveAtMs + ApprovalTypingIdleDelayMs - monotonicMs()
+    }
+
+    private fun schedulePromotion() {
+        promotionJob?.cancel()
+        val remaining = typingIdleRemainingMs()
+        promotionJob = scope.launch {
+            if (remaining > 0) delay(remaining)
+            promotionJob = null
+            // Only the head is promoted; the rest is the modal's own queue.
+            if (currentApproval == null) currentApproval = pendingApprovals.firstOrNull()
+        }
+    }
+
+    /**
+     * Show the head unless the composer is still being typed in.
+     *
+     * A request that arrives while nothing has been typed (or after the idle window) appears at
+     * once; otherwise the dialog waits and [noteComposerActivity] moves the deadline with each
+     * keystroke.
+     */
+    private fun promoteApprovalIfIdle() {
+        if (currentApproval != null) return
+        if (typingIdleRemainingMs() > 0) {
+            schedulePromotion()
+        } else {
+            promotionJob?.cancel()
+            promotionJob = null
+            currentApproval = pendingApprovals.firstOrNull()
+        }
+    }
+
+    /** Approvals queued for a thread that is not open, adopted when that thread is opened. */
+    private fun adoptOtherThreadApprovals() {
+        if (state.threadId.isBlank()) return
+        val mine = otherApprovals.filter { it.threadId == state.threadId }
+        if (mine.isEmpty()) return
+        otherApprovals.removeAll(mine)
+        mine.forEach { request ->
+            if (pendingApprovals.none { it.requestId == request.requestId }) pendingApprovals.add(request)
+        }
+        promoteApprovalIfIdle()
+    }
 
     fun attach() {
         subscription?.cancel()
@@ -153,11 +256,22 @@ class ChatWidget(
 
     fun connectionLost() {
         flushMarkdown()
-        pendingApprovals.clear()
+        resetApprovalState()
         patchChanges.clear()
+        state.applyStatus(ThreadStatus.NotLoaded)
+    }
+
+    /** Drop every approval-scoped queue and notice; the thread they belonged to is gone. */
+    private fun resetApprovalState() {
+        promotionJob?.cancel()
+        promotionJob = null
+        pendingApprovals.clear()
+        currentApproval = null
+        otherApprovals.clear()
+        reviewsInFlight.clear()
+        autoReviewDenials.clear()
         answeringApproval = false
         approvalError = null
-        state.applyStatus(ThreadStatus.NotLoaded)
     }
 
     /** Open a thread and load its history. */
@@ -165,7 +279,19 @@ class ChatWidget(
         loadJob?.cancel()
         val version = ++loadVersion
         dropMarkdown()
+        // Everything approval-scoped belongs to the old thread. `otherApprovals` survives the reset
+        // by one step: a request for the thread being opened is adopted back into the queue once
+        // `beginLoad` has made that thread current.
+        promotionJob?.cancel()
+        promotionJob = null
+        pendingApprovals.clear()
+        currentApproval = null
+        reviewsInFlight.clear()
+        autoReviewDenials.clear()
+        answeringApproval = false
+        approvalError = null
         state.beginLoad(threadId)
+        adoptOtherThreadApprovals()
         turnDiff.reset()
         patchChanges.clear()
         streamOvertookLoad = false
@@ -225,6 +351,7 @@ class ChatWidget(
 
     /** Start a fresh thread in [cwd]. */
     fun newThread(cwd: String) {
+        resetApprovalState()
         scope.launch {
             client.startThread(com.cy.codexui.protocol.protocol.v2.ThreadStartParams(cwd = cwd))
                 .onSuccess { session ->
@@ -279,16 +406,6 @@ class ChatWidget(
                 client.moveThreadToSection(event.threadId, event.sectionId)
             }
 
-            is AppEvent.UnsubscribeThread -> request { client.unsubscribeThread(event.threadId) }
-
-            is AppEvent.UpdateThreadMetadata -> request {
-                client.updateThreadMetadata(event.threadId, name = event.name, projectId = event.branch)
-            }
-
-            is AppEvent.InjectThreadItems -> request {
-                client.injectThreadItems(event.threadId, event.items)
-            }
-
             is AppEvent.RunShellCommand -> request {
                 client.runShellCommand(event.threadId, event.command).onSuccess {
                     if (state.threadId == event.threadId && state.composerDraft.startsWith("/shell ")) {
@@ -297,17 +414,17 @@ class ChatWidget(
                 }
             }
 
-            is AppEvent.ApproveGuardianDeniedAction -> request {
+            is AppEvent.ApproveGuardianDeniedAction -> request({
                 client.approveGuardianDeniedAction(event.threadId, event.itemId)
+            }) {
+                autoReviewDenials.removeAll { it.itemId == event.itemId }
             }
 
-            is AppEvent.SetThreadMemoryMode -> request {
-                client.setThreadMemoryMode(event.threadId, event.mode)
-            }
+            is AppEvent.DismissAutoReviewDenial ->
+                autoReviewDenials.removeAll { it.itemId == event.itemId }
 
             // ---- turns ----------------------------------------------------------
             is AppEvent.SubmitUserMessage -> submitInput(event.inputs)
-            is AppEvent.SteerTurn -> steer(event.inputs)
             AppEvent.InterruptTurn -> interrupt()
             is AppEvent.ResolveApproval -> resolve(event.requestId, event.response)
             is AppEvent.DismissApproval -> dismiss(event.requestId)
@@ -315,8 +432,6 @@ class ChatWidget(
             is AppEvent.SetGoal -> request({ client.setGoal(state.threadId, event.objective) }) { state.applyGoal(it) }
 
             AppEvent.ClearGoal -> request({ client.clearGoal(state.threadId) }) { state.applyGoal(null) }
-
-            is AppEvent.UpdateTurnSettings -> request { client.updateTurnSettings(event.params) }
 
             // ---- server-side queue ----------------------------------------------
             is AppEvent.StartQueuedMessage -> request { client.startQueued(state.threadId, event.queuedId) }
@@ -358,32 +473,16 @@ class ChatWidget(
                 client.updateThreadSettings(state.threadId, approvalPolicy = event.policy)
             }) { state.applyConfig(state.config.copy(approvalPolicy = event.policy)) }
 
-            // `permissions` and `experimentalFeature/enablement/set` are server-side settings, not
-            // view state. They used to fall into the `else` arm and vanish, so the radio group and
-            // the switches rendered but changed nothing; both now round-trip.
-            is AppEvent.SetPermissionProfile -> request {
+            is AppEvent.SetApprovalsReviewer -> request({
                 client.updateThreadSettingsFull(
                     ThreadSettingsUpdateParams(
                         threadId = state.threadId,
-                        permissions = event.profileId,
+                        approvalsReviewer = event.reviewer,
                     ),
                 )
-            }
-
-            is AppEvent.UpdateThreadSettings -> request {
-                client.updateThreadSettingsFull(event.params)
-            }
+            }) { state.applyConfig(state.config.copy(approvalsReviewer = event.reviewer)) }
 
             // ---- attachments and background terminals -----------------------------
-            is AppEvent.AddAttachment -> request({
-                client.addAttachment(
-                    threadId = event.threadId,
-                    type = event.type,
-                    identityKey = event.identityKey,
-                    payload = event.payload,
-                )
-            }) { state.attachments.add(it) }
-
             is AppEvent.RemoveAttachment -> request({
                 client.removeAttachment(event.threadId, event.type, event.identityKey)
             }) { state.attachments.removeAll { it.identityKey == event.identityKey } }
@@ -408,7 +507,6 @@ class ChatWidget(
             is AppEvent.ReloadAccount,
             is AppEvent.ReloadRateLimits,
             is AppEvent.ReloadUsage,
-            is AppEvent.ReloadWorkspaceMessages,
             is AppEvent.ReloadConfig,
             is AppEvent.ReloadSkills,
             is AppEvent.ReloadPlugins,
@@ -521,6 +619,7 @@ class ChatWidget(
         loadJob?.cancel()
         loadVersion++
         dropMarkdown()
+        resetApprovalState()
         state.beginLoad(session.threadId)
         turnDiff.reset()
         patchChanges.clear()
@@ -530,10 +629,8 @@ class ChatWidget(
     fun clear() {
         loadJob?.cancel()
         loadVersion++
-        pendingApprovals.clear()
+        resetApprovalState()
         patchChanges.clear()
-        answeringApproval = false
-        approvalError = null
         markdownFlushJob?.cancel()
         markdownFlushJob = null
         pendingMarkdown.clear()
@@ -621,10 +718,6 @@ class ChatWidget(
         }
     }
 
-    private fun steer(inputs: List<UserInput>) {
-        scope.launch { client.steerTurn(state.threadId, inputs) }
-    }
-
     private fun interrupt() {
         scope.launch {
             client.interruptTurn(state.threadId).onFailure { error ->
@@ -647,6 +740,9 @@ class ChatWidget(
             try {
                 client.respond(requestId, response)
                 pendingApprovals.removeAll { it.requestId == requestId }
+                // The modal already has the user's attention, so the next queued request follows
+                // immediately instead of waiting out the typing window again.
+                if (currentApproval?.requestId == requestId) currentApproval = pendingApprovals.firstOrNull()
                 if (pendingApprovals.isEmpty() && state.running) state.applyStatus(ThreadStatus.Active())
             } catch (error: kotlinx.coroutines.CancellationException) {
                 throw error
@@ -660,6 +756,8 @@ class ChatWidget(
 
     private fun dismiss(requestId: com.cy.codexui.protocol.protocol.RequestId) {
         pendingApprovals.removeAll { it.requestId == requestId }
+        otherApprovals.removeAll { it.requestId == requestId }
+        if (currentApproval?.requestId == requestId) currentApproval = pendingApprovals.firstOrNull()
     }
 
     private fun onApprovalRequest(request: ApprovalRequest) {
@@ -708,9 +806,16 @@ class ChatWidget(
         }
 
         if (pendingApprovals.any { it.requestId == request.requestId }) return
+        if (otherApprovals.any { it.requestId == request.requestId }) return
         // A request whose turn already finished is stale: the server resolved it while this client
         // was not listening. Showing it would offer a decision with no effect.
         if (request.turnId != null && request.turnId in finishedTurns) return
+        // A request for another thread must not take over this transcript. It is tracked for the
+        // cross-thread banner, and adopted if the user switches to that thread.
+        if (request.threadId.isNotBlank() && request.threadId != state.threadId) {
+            otherApprovals.add(request)
+            return
+        }
         pendingApprovals.add(request)
         state.applyStatus(
             ThreadStatus.Active(
@@ -719,6 +824,9 @@ class ChatWidget(
                 ),
             ),
         )
+        // The dialog waits out the composer's idle window; a request that arrives while nothing has
+        // been typed (or after the window) is shown at once.
+        promoteApprovalIfIdle()
     }
 
     // ---------------------------------------------------------------------------------------
@@ -770,6 +878,7 @@ class ChatWidget(
                         modelDisplayName = delta.model ?: state.config.modelDisplayName,
                         reasoningEffort = delta.reasoningEffort ?: state.config.reasoningEffort,
                         approvalPolicy = delta.approvalPolicy ?: state.config.approvalPolicy,
+                        approvalsReviewer = delta.approvalsReviewer ?: state.config.approvalsReviewer,
                     ),
                 )
             }
@@ -786,15 +895,12 @@ class ChatWidget(
 
             // The five diagnostic notifications are separate methods on the wire with different
             // payloads, so they are folded into the transcript one by one rather than through a
-            // shared "diagnostic" shape that would have to drop `willRetry` and `path`.
+            // shared "diagnostic" shape that would have to drop `path`.
             is AppServerEvent.ErrorEvent -> state.addDiagnostic(
                 SessionDiagnostic(
                     severity = DiagnosticSeverity.Error,
                     message = event.delta.error.message,
                     detail = event.delta.error.additionalDetails,
-                    // A server-side retry is already in flight; the notice must say so instead of
-                    // offering a manual retry against a turn that is still running.
-                    willRetry = event.delta.willRetry,
                 ),
             )
 
@@ -858,11 +964,11 @@ class ChatWidget(
                 if (item != null) state.upsert(item.copy(changes = event.delta.changes))
             }
 
-            // The review's own item already renders on the transcript; these two only say it began
-            // and ended, which the item's status field also says.
-            is AppServerEvent.AutoApprovalReviewStarted,
-            is AppServerEvent.AutoApprovalReviewCompleted,
-            -> Unit
+            // The review lifecycle does not render per item; in-flight reviews are aggregated into
+            // the composer's approval notice, and a denial is remembered there so it can be
+            // overridden once.
+            is AppServerEvent.AutoApprovalReviewStarted -> onReviewStarted(event.delta)
+            is AppServerEvent.AutoApprovalReviewCompleted -> onReviewCompleted(event.delta)
 
             is AppServerEvent.StrictReviewRequired -> state.addDiagnostic(
                 SessionDiagnostic(
@@ -956,6 +1062,45 @@ class ChatWidget(
     }
 
     /**
+     * Fold an in-flight auto review into the aggregated review notice.
+     *
+     * Parallel reviews are aggregated the way upstream's `PendingGuardianReviewStatus` does it: one
+     * entry per review, keyed by the review id so an update replaces rather than duplicates.
+     */
+    private fun onReviewStarted(delta: com.cy.codexui.protocol.protocol.v2.GuardianApprovalReviewNotification) {
+        if (delta.status != "inProgress") return
+        val detail = reviewActionSummary(delta.action) ?: return
+        val index = reviewsInFlight.indexOfFirst { it.id == delta.reviewId }
+        val entry = PendingReview(delta.reviewId, detail)
+        if (index >= 0) reviewsInFlight[index] = entry else reviewsInFlight.add(entry)
+    }
+
+    /**
+     * Drop a finished review and remember a denial so it can be overridden once.
+     *
+     * A denial is the one review outcome the user can act on: `thread/approveGuardianDeniedAction`
+     * needs the serialized assessment, which the client cached under the target item id.
+     */
+    private fun onReviewCompleted(delta: com.cy.codexui.protocol.protocol.v2.GuardianApprovalReviewNotification) {
+        reviewsInFlight.removeAll { it.id == delta.reviewId }
+        if (delta.status != "denied" || delta.itemId.isBlank()) return
+        autoReviewDenials.removeAll { it.itemId == delta.itemId }
+        autoReviewDenials.add(
+            0,
+            AutoReviewDenial(
+                threadId = delta.threadId,
+                id = delta.reviewId,
+                itemId = delta.itemId,
+                summary = reviewActionSummary(delta.action).orEmpty(),
+                rationale = delta.rationale,
+            ),
+        )
+        while (autoReviewDenials.size > MaxRememberedDenials) {
+            autoReviewDenials.removeAt(autoReviewDenials.lastIndex)
+        }
+    }
+
+    /**
      * Note the safety buffer once per turn.
      *
      * The notification can repeat while the turn waits, and the TUI only re-shows its transient
@@ -1009,6 +1154,20 @@ class ChatWidget(
         }
         if (!settled) return
         pendingApprovals.removeAll { it.itemId == item.id }
+        syncCurrentApproval()
+    }
+
+    /**
+     * Show the next request after the one on screen was removed from the queue underneath it.
+     *
+     * Called only when a request is guaranteed gone; a head that is merely waiting out the typing
+     * window has `currentApproval == null` already and must not be promoted early.
+     */
+    private fun syncCurrentApproval() {
+        val shown = currentApproval ?: return
+        if (pendingApprovals.none { it.requestId == shown.requestId }) {
+            currentApproval = pendingApprovals.firstOrNull()
+        }
     }
 
     private fun onTurnCompleted(event: AppServerEvent.TurnCompleted) {
@@ -1025,6 +1184,7 @@ class ChatWidget(
         finishedTurns.addLast(event.turnId)
         while (finishedTurns.size > MaxRememberedTurns) finishedTurns.removeFirst()
         pendingApprovals.removeAll { it.turnId == event.turnId }
+        syncCurrentApproval()
         if (event.status != TurnStatus.Completed) {
             // The notice is named by code, not by text: the status label is a string resource and
             // this reducer is not composable. `TurnFinished` carries the status so the transcript
@@ -1123,8 +1283,65 @@ class ChatWidget(
     private companion object {
         /** How many completed turns are remembered for late-approval filtering. */
         const val MaxRememberedTurns = 8
+
+        /** How long the composer must be untouched before an approval dialog may appear. */
+        const val ApprovalTypingIdleDelayMs = 1_000L
+
+        /** How many auto-review denials stay overridable, mirroring `auto_review_denials.rs`. */
+        const val MaxRememberedDenials = 10
     }
 }
 
 private fun com.cy.codexui.protocol.protocol.v2.Thread.threadIdOr(fallback: String): String =
     id.ifEmpty { fallback }
+
+/**
+ * One-line summary of the action an auto review is judging.
+ *
+ * Mirrors `tui/src/auto_review_denials.rs::action_summary`: the strings are the wire's own nouns
+ * (commands, paths, hosts), so they stay in the action's language rather than being translated.
+ * Returns `null` for a shape this client does not know, which keeps it out of the review notice
+ * instead of showing an empty bullet.
+ */
+private fun reviewActionSummary(action: kotlinx.serialization.json.JsonElement?): String? {
+    val o = action as? kotlinx.serialization.json.JsonObject ?: return null
+    fun str(key: String): String? =
+        (o[key] as? kotlinx.serialization.json.JsonPrimitive)?.takeIf { it.isString }?.content
+
+    fun strs(key: String): List<String> =
+        (o[key] as? kotlinx.serialization.json.JsonArray).orEmpty()
+            .mapNotNull { (it as? kotlinx.serialization.json.JsonPrimitive)?.takeIf { p -> p.isString }?.content }
+
+    val type = str("type") ?: return null
+    return when (type) {
+        "command" -> str("command")
+        "execve" -> {
+            val program = str("program") ?: return null
+            (listOf(program) + strs("argv")).joinToString(" ")
+        }
+
+        "writeStdin" -> {
+            val processId = str("processId") ?: return null
+            "send input to terminal $processId: ${str("stdin").orEmpty()}"
+        }
+
+        "applyPatch" -> {
+            val files = strs("files")
+            when (files.size) {
+                0 -> "apply_patch"
+                1 -> "apply_patch touching ${files[0]}"
+                else -> "apply_patch touching ${files.size} files"
+            }
+        }
+
+        "networkAccess" -> "network access to ${str("target") ?: str("host") ?: return null}"
+        "mcpToolCall" -> {
+            val tool = str("toolName") ?: return null
+            val label = str("connectorName") ?: str("server") ?: return null
+            "MCP $tool on $label"
+        }
+
+        "requestPermissions" -> str("reason")?.let { "permission request: $it" } ?: "permission request"
+        else -> null
+    }
+}

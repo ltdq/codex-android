@@ -110,6 +110,7 @@ internal object WireCodec {
             model = model, modelDisplayName = model, modelProviderId = value.required("modelProvider"),
             reasoningEffort = value.text("reasoningEffort")?.let(ReasoningEffort::fromWire) ?: ReasoningEffort.Medium,
             approvalPolicy = AskForApproval.fromWire(value.text("approvalPolicy").orEmpty()),
+            approvalsReviewer = ApprovalsReviewer.fromWire(value.text("approvalsReviewer")),
             sandboxPolicy = SandboxPolicy(mode, sandbox?.strings("writableRoots").orEmpty(), sandbox?.bool("networkAccess") ?: (mode == SandboxMode.DangerFullAccess)),
             cwd = cwd, workspaceRoots = listOf(cwd), instructionSourcePaths = value.strings("instructionSources"),
             gitBranch = t.objectOrNull("gitInfo")?.text("branch"), rolloutPath = t.text("path"),

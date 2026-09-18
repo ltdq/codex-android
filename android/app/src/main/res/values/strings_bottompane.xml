@@ -72,13 +72,19 @@
     <string name="composer_send">Send</string>
     <string name="composer_queued_count">%1$d queued messages</string>
 
+    <!-- ApprovalNoticeBar.kt: cross-thread approvals, in-flight reviews and denials. -->
+    <string name="approval_notice_foreign">Approval needed in %1$s</string>
+    <string name="approval_notice_switch">Open</string>
+    <string name="approval_notice_reviewing">Reviewing %1$d approval requests</string>
+    <string name="approval_notice_review_detail">"• %1$s"</string>
+    <string name="approval_notice_review_more">+%1$d more</string>
+    <string name="approval_notice_denied_title">Auto-review denied an action</string>
+    <string name="approval_notice_denied_approve">Allow once</string>
+    <string name="approval_notice_denied_dismiss">Dismiss</string>
+
     <!-- DecisionBar.kt -->
     <string name="decision_bar_cancel">Cancel</string>
     <string name="decision_bar_remaining_queue">%1$d more approvals pending</string>
-
-    <!-- FileSearchPopup.kt -->
-    <string name="file_search_popup_prompt">Type a file name to search</string>
-    <string name="file_search_popup_empty">No matches</string>
 
     <!-- McpServerElicitation.kt -->
     <string name="mcp_server_elicitation_required">Required</string>
@@ -95,6 +101,5 @@
     <string name="request_user_input_view_unanswered">%1$d questions still need answers</string>
     <string name="request_user_input_view_selected">Selected</string>
     <string name="request_user_input_view_submit">Submit</string>
-    <string name="file_search_popup_searching">Searching…</string>
     <string name="composer_remove_attachment">Remove this attachment</string>
 </resources>

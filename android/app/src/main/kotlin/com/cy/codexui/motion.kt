@@ -102,9 +102,6 @@ object Motion {
 
     /** The same content on the way out. */
     const val ContentExitMs = ExitMs
-
-    /** The caret and the running chip: the slow end of the ladder, a loop rather than a state. */
-    const val LoopMs = 900
 }
 
 /**
@@ -411,6 +408,12 @@ object UiConsts {
 
     /** Files a patch dialog lists before it folds the rest behind a "more files" affordance. */
     const val PatchPreviewFiles = 4
+
+    /** Threads the cross-thread approval notice lists before it stops; upstream caps at three. */
+    const val ApprovalNoticeThreads = 3
+
+    /** Review details the aggregated auto-review notice shows before "+N more". */
+    const val ApprovalNoticeReviews = 3
 
     /** Height of the thin usage meters inside an overlay row. */
     val ProgressHeightRow = 4.dp

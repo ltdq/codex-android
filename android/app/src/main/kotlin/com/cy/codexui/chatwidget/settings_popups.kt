@@ -30,6 +30,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.cy.codexui.R
+import com.cy.codexui.protocol.protocol.v2.ApprovalsReviewer
 import com.cy.codexui.protocol.protocol.v2.AskForApproval
 import com.cy.codexui.protocol.protocol.v2.ModelPreset
 import com.cy.codexui.protocol.protocol.v2.ReasoningEffort
@@ -450,6 +451,21 @@ private fun SettingsApprovalSection(config: ThreadSessionState, onEvent: (AppEve
                 MonoValue(stringResource(R.string.settings_screen_network_allowed))
             },
         )
+    }
+
+    // A reviewer, not a policy: the policy decides *whether* a request is raised, and the reviewer
+    // decides who answers it. Upstream pairs the two in the permissions popup; a separate group here
+    // keeps each choice a single question.
+    SettingsGroup(stringResource(R.string.settings_group_reviewer)) {
+        ApprovalsReviewer.entries.forEachIndexed { index, option ->
+            if (index > 0) HorizontalDivider()
+            RadioButtonPreference(
+                title = option.label(),
+                summary = option.description(),
+                selected = option == config.approvalsReviewer,
+                onClick = { onEvent(AppEvent.SetApprovalsReviewer(option)) },
+            )
+        }
     }
 
     if (config.approvalPolicy == AskForApproval.Granular) {

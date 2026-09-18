@@ -93,12 +93,13 @@ data class ThreadTokenUsageUpdated(
 /** `thread/name/updated`. */
 data class ThreadNameUpdated(val threadId: String, val name: String?)
 
-/** `thread/settings/updated`: model, effort and approval policy changed server-side. */
+/** `thread/settings/updated`: model, effort, approval policy and reviewer changed server-side. */
 data class ThreadSettingsUpdated(
     val threadId: String,
     val model: String? = null,
     val reasoningEffort: ReasoningEffort? = null,
     val approvalPolicy: AskForApproval? = null,
+    val approvalsReviewer: ApprovalsReviewer? = null,
 )
 
 /**
@@ -136,8 +137,8 @@ data class ThreadCompacted(val threadId: String, val summary: String? = null)
 // Diagnostics
 //
 // These are five *separate* notifications on the wire, with different payloads, so they are five
-// separate types here. Collapsing them into one "diagnostic" shape loses `willRetry` (which the
-// notice cell needs to offer a retry) and `path`/`range` (which locate a bad config key).
+// separate types here. Collapsing them into one "diagnostic" shape loses `willRetry` and
+// `path`/`range` (which locate a bad config key).
 // ---------------------------------------------------------------------------------------------
 
 /** `error` — a turn-level failure. */
@@ -145,7 +146,11 @@ data class ErrorNotification(
     val error: TurnError,
     val threadId: String,
     val turnId: String,
-    /** The server is retrying the turn itself; the notice must not offer a manual retry. */
+    /**
+     * The server is retrying the turn itself.
+     *
+     * Kept for wire parity: the transcript has no manual retry to suppress, so nothing reads it.
+     */
     val willRetry: Boolean = false,
 )
 

@@ -7,8 +7,6 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.referentialEqualityPolicy
 import androidx.compose.runtime.setValue
-import kotlinx.serialization.json.JsonElement
-import kotlinx.serialization.json.JsonObject
 import com.cy.codexui.protocol.protocol.item.AgentMessageItem
 import com.cy.codexui.protocol.protocol.item.PlanItem
 import com.cy.codexui.protocol.protocol.item.ThreadItem
@@ -51,7 +49,6 @@ import com.cy.codexui.protocol.protocol.v2.TurnStatus
 import com.cy.codexui.protocol.protocol.v2.UserVerificationEnrollResponse
 import com.cy.codexui.protocol.protocol.v2.UserVerificationStatusResponse
 import com.cy.codexui.protocol.protocol.v2.WindowsSandboxReadiness
-import com.cy.codexui.protocol.protocol.v2.WorkspaceMessage
 
 /**
  * Canonical session state, shared by the transcript, the status card and the sidebar.
@@ -444,17 +441,31 @@ data class SessionDiagnostic(
      * through the label it already has instead of the model reaching for one.
      */
     val args: List<String> = emptyList(),
-    /**
-     * The server is retrying the turn itself.
-     *
-     * Kept apart from the message because it changes what the notice may *offer*: a retryable error
-     * already has a retry in flight, so the cell must not present one.
-     */
-    val willRetry: Boolean = false,
 )
 
 /** Last status a turn finished with, used to colour the notice cell. */
 data class TurnOutcome(val turnId: String, val status: TurnStatus, val error: String? = null)
+
+/** Another thread blocked on a decision the open transcript cannot answer. */
+data class ForeignApproval(val threadId: String, val count: Int)
+
+/** One auto-review that is deciding a request right now. */
+data class PendingReview(val id: String, val detail: String)
+
+/**
+ * An auto-review denial the user may override for one retry.
+ *
+ * Mirrors `chatwidget/auto_review_denials.rs`: only the most recent entries are kept, and
+ * `thread/approveGuardianDeniedAction` needs the serialized assessment the client cached when the
+ * review completed — [itemId] is how that cache is addressed.
+ */
+data class AutoReviewDenial(
+    val threadId: String,
+    val id: String,
+    val itemId: String,
+    val summary: String,
+    val rationale: String? = null,
+)
 
 /**
  * How far an `externalAgentConfig/import` has got.
@@ -497,9 +508,6 @@ class CatalogState {
     /** The readable projection of the merged config; see [ConfigSnapshot.from]. */
     val configSnapshot: ConfigSnapshot get() = config.snapshot
 
-    /** `requirements.toml`, whose keys constrain what the page may offer. */
-    var configRequirements by mutableStateOf<JsonElement>(JsonObject(emptyMap()))
-
     /**
      * The last `config/…/write` result.
      *
@@ -511,9 +519,6 @@ class CatalogState {
 
     /** Marketplaces the account can install plugins from. */
     var marketplaces by mutableStateOf<List<MarketplaceEntry>>(emptyList())
-
-    /** Account-level notices shown on the account page. */
-    var workspaceMessages by mutableStateOf<List<WorkspaceMessage>>(emptyList())
 
     /** A sign-in waiting for the browser or a device code. */
     var pendingLogin by mutableStateOf<LoginAccountResponse?>(null)
@@ -600,14 +605,6 @@ class CatalogState {
     // ---- windows sandbox -------------------------------------------------------
     /** `windowsSandbox/readiness`; `null` until asked, and only ever non-null on Windows. */
     var windowsSandboxReadiness by mutableStateOf<WindowsSandboxReadiness?>(null)
-
-    /**
-     * `thread/increment_elicitation`: how many open-form questions the session has outstanding.
-     *
-     * The server pauses a turn while this is above zero, so the number is part of the session's
-     * state rather than a counter the elicitation dialog keeps to itself.
-     */
-    var elicitationCount by mutableStateOf(0)
 
     fun modelPreset(id: String): ModelPreset? = models.firstOrNull { it.id == id || it.model == id }
 

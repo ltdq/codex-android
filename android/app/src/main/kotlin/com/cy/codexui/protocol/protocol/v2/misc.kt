@@ -349,7 +349,7 @@ data class ThreadSettingsUpdateParams(
     val effort: ReasoningEffort? = null,
     val summary: String? = null,
     val approvalPolicy: AskForApproval? = null,
-    val approvalsReviewer: String? = null,
+    val approvalsReviewer: ApprovalsReviewer? = null,
     val sandboxPolicy: SandboxPolicy? = null,
     val permissions: String? = null,
     val collaborationMode: CollaborationMode? = null,
@@ -367,7 +367,7 @@ data class TurnSettingsUpdateParams(
     val model: String? = null,
     val effort: ReasoningEffort? = null,
     val summary: String? = null,
-    val approvalsReviewer: String? = null,
+    val approvalsReviewer: ApprovalsReviewer? = null,
     val serviceTier: String? = null,
 )
 
@@ -970,12 +970,22 @@ data class StrictReviewRequiredNotification(
     val reason: String? = null,
 )
 
+/**
+ * `item/autoApprovalReview/started` and `.../completed`.
+ *
+ * The lifecycle part is `review` (status and rationale); `action` is the request the subagent is
+ * judging and is kept raw because the review action union has seven shapes and only a summary of it
+ * is ever displayed.
+ */
 data class GuardianApprovalReviewNotification(
     val threadId: String,
     val turnId: String,
+    val reviewId: String = "",
+    val status: String = "",
     val itemId: String = "",
-    val decision: String = "",
-    val reason: String? = null,
+    val rationale: String? = null,
+    val riskLevel: String? = null,
+    val action: JsonElement? = null,
 )
 
 data class FileChangePatchUpdatedNotification(

@@ -81,6 +81,12 @@
     <string name="approval_policy_never">Never</string>
     <string name="approval_policy_never_description">Never request user approval. Commands remain subject to Android app permissions.</string>
 
+    <!-- config_types.kt: ApprovalsReviewer -->
+    <string name="approvals_reviewer_user">Ask me</string>
+    <string name="approvals_reviewer_user_description">Approval requests are shown to you.</string>
+    <string name="approvals_reviewer_auto">Approve for me</string>
+    <string name="approvals_reviewer_auto_description">A review subagent judges each request and only asks you when it cannot decide.</string>
+
     <!-- config_types.kt: SandboxMode -->
     <string name="sandbox_mode_read_only">Read only</string>
     <string name="sandbox_mode_workspace_write">Workspace write</string>

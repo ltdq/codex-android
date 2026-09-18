@@ -210,6 +210,9 @@ class CodexApp(
             is AppEvent.SetApprovalPolicy -> if (widget.state.open) widget.action(event) else {
                 onAppEvent(AppEvent.WriteConfigValue("approval_policy", JsonPrimitive(event.policy.wire)))
             }
+            is AppEvent.SetApprovalsReviewer -> if (widget.state.open) widget.action(event) else {
+                onAppEvent(AppEvent.WriteConfigValue("approvals_reviewer", JsonPrimitive(event.reviewer.wire)))
+            }
             is AppEvent.SubmitUserMessage -> {
                 if (!startupReady || creatingThread || widget.state.loading) return
                 val commandText = event.inputs.singleOrNull()?.let {
@@ -245,8 +248,6 @@ class CodexApp(
             AppEvent.ReloadAccount -> load({ client.readAccount() }) { catalog.account = it }
             AppEvent.ReloadRateLimits -> load({ client.readRateLimits() }) { catalog.rateLimits = it }
             AppEvent.ReloadUsage -> load({ client.readUsage() }) { catalog.usage = it; catalog.usageLoaded = true }
-            AppEvent.ReloadWorkspaceMessages ->
-                load({ client.readWorkspaceMessages() }) { catalog.workspaceMessages = it }
 
             AppEvent.ReloadConfig -> request { reloadConfig() }
             AppEvent.ReloadSkills -> load({ client.listSkills() }) { catalog.skills = it }
@@ -551,13 +552,9 @@ class CodexApp(
                 client.appendRealtimeAudio(event.threadId, event.audio)
             }
 
-            is AppEvent.IncrementElicitation -> load({ client.incrementElicitation(event.threadId) }) {
-                catalog.elicitationCount = it.count
-            }
+            is AppEvent.IncrementElicitation -> request { client.incrementElicitation(event.threadId) }
 
-            is AppEvent.DecrementElicitation -> load({ client.decrementElicitation(event.threadId) }) {
-                catalog.elicitationCount = it.count
-            }
+            is AppEvent.DecrementElicitation -> request { client.decrementElicitation(event.threadId) }
 
             // ---- review ---------------------------------------------------------
             is AppEvent.StartReview -> request {
@@ -763,9 +760,9 @@ class CodexApp(
         }
     }
 
-    /** Re-read the config stack and its requirements, which the settings page renders together. */
+    /** Re-read the config stack, which the settings page renders. */
     private suspend fun reloadConfig(): Result<*> {
-        client.readConfig().onSuccess {
+        return client.readConfig().onSuccess {
             catalog.config = it
             if (!widget.state.open) {
                 val config = it.snapshot
@@ -777,10 +774,10 @@ class CodexApp(
                         ?: catalog.modelPreset(model)?.defaultReasoningEffort
                         ?: widget.state.config.reasoningEffort,
                     approvalPolicy = config.approvalPolicy ?: widget.state.config.approvalPolicy,
+                    approvalsReviewer = config.approvalsReviewer ?: widget.state.config.approvalsReviewer,
                 ))
             }
         }
-        return client.readConfigRequirements().onSuccess { catalog.configRequirements = it.requirements }
     }
 
     /**

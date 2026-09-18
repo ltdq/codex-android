@@ -27,6 +27,7 @@
   `toolchain/device-smoke-test.sh`。
 - 改协议或客户端时同步三处：`protocol/protocol/**` 的 wire 类型、
   `json_rpc_app_server_client.kt` 的绑定、`app/src/test` 的 JVM 测试。
+- 优先复用 `miuix` 已有组件，遵循 `miuix` 风格。
 
 ## 验证
 

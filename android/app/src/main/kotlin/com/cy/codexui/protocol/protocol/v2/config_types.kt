@@ -28,6 +28,27 @@ data class GranularApprovalConfig(
     val mcpElicitations: Boolean = true,
 )
 
+/**
+ * Who an approval request is routed to for review.
+ *
+ * Mirrors upstream `ApprovalsReviewer`: `auto_review` hands the request to the review subagent
+ * instead of showing it to the user. The legacy wire value `guardian_subagent` is the same mode and
+ * is folded into [AutoReview] on read.
+ */
+enum class ApprovalsReviewer(val wire: String) {
+    User("user"),
+    AutoReview("auto_review"),
+    ;
+
+    companion object {
+        fun fromWire(value: String?): ApprovalsReviewer =
+            when (value) {
+                "auto_review", "guardian_subagent" -> AutoReview
+                else -> User
+            }
+    }
+}
+
 enum class SandboxMode(val wire: String) {
     ReadOnly("read-only"),
     WorkspaceWrite("workspace-write"),
@@ -75,6 +96,7 @@ data class ThreadSessionState(
     val modelProviderId: String = "openai",
     val reasoningEffort: ReasoningEffort = ReasoningEffort.High,
     val approvalPolicy: AskForApproval = AskForApproval.OnRequest,
+    val approvalsReviewer: ApprovalsReviewer = ApprovalsReviewer.User,
     val granularApproval: GranularApprovalConfig = GranularApprovalConfig(),
     val sandboxPolicy: SandboxPolicy = SandboxPolicy(),
     val activePermissionProfile: PermissionProfileEntry? = null,

@@ -106,6 +106,7 @@
     <string name="settings_screen_effort_title">思考强度</string>
     <string name="settings_screen_effort_summary">模型在回答前可以花多少思考预算</string>
     <string name="settings_group_approval">审批策略</string>
+    <string name="settings_group_reviewer">审批者</string>
     <string name="settings_screen_sandbox_mode">沙箱模式</string>
     <string name="settings_screen_network_access">网络访问</string>
     <string name="settings_screen_network_allowed">允许</string>

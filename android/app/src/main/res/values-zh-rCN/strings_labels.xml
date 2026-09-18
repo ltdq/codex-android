@@ -81,6 +81,12 @@
     <string name="approval_policy_never">从不询问</string>
     <string name="approval_policy_never_description">不请求用户审批；命令仍受 Android 应用权限限制。</string>
 
+    <!-- config_types.kt: ApprovalsReviewer -->
+    <string name="approvals_reviewer_user">由我决定</string>
+    <string name="approvals_reviewer_user_description">审批请求直接展示给你。</string>
+    <string name="approvals_reviewer_auto">替我批准</string>
+    <string name="approvals_reviewer_auto_description">由审查子代理按风险判定；无法决定时仍会询问你。</string>
+
     <!-- config_types.kt: SandboxMode -->
     <string name="sandbox_mode_read_only">只读</string>
     <string name="sandbox_mode_workspace_write">可写工作区</string>

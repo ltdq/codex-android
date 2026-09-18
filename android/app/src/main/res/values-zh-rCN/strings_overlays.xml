@@ -52,25 +52,6 @@
     <string name="goal_sheet_duration_minutes">%1$d 分</string>
     <string name="goal_sheet_duration_seconds">%1$d 秒</string>
 
-    <!-- ModelSheet.kt：模型与思考强度选择器。 -->
-    <string name="model_sheet_title">模型与思考强度</string>
-    <string name="model_sheet_subtitle">当前 %1$s · %2$s</string>
-    <string name="model_sheet_empty">模型列表尚未返回</string>
-    <string name="model_sheet_effort_section">思考强度</string>
-    <string name="model_sheet_effort_default_and_hint">%1$s默认 %2$s · %3$s</string>
-    <string name="model_sheet_this_model">该模型</string>
-    <string name="model_sheet_effort_sheet_subtitle">越高推理越充分，响应也越慢</string>
-    <string name="model_sheet_effort_current">当前 %1$s · %2$s</string>
-    <string name="model_sheet_default_badge">默认</string>
-    <string name="model_sheet_context">默认 %1$s</string>
-    <string name="model_sheet_selected_model">已选模型</string>
-    <string name="model_sheet_selected_effort">已选强度</string>
-    <string name="model_sheet_hint_minimal">几乎不推理，最快</string>
-    <string name="model_sheet_hint_low">轻量推理，适合小改动</string>
-    <string name="model_sheet_hint_medium">均衡，默认档位</string>
-    <string name="model_sheet_hint_high">深入推理，适合复杂改动</string>
-    <string name="model_sheet_hint_xhigh">最深推理，最慢</string>
-
     <!-- PlanTimeline.kt：计划时间线与顶部胶囊。 -->
     <string name="plan_timeline_summary">%1$d 步 · 已完成 %2$d 步</string>
     <string name="plan_timeline_chip">%1$d/%2$d 步</string>

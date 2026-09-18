@@ -201,6 +201,7 @@ data class ConfigSnapshot(
     val modelReasoningSummary: String? = null,
     val modelVerbosity: String? = null,
     val approvalPolicy: AskForApproval? = null,
+    val approvalsReviewer: ApprovalsReviewer? = null,
     val sandboxMode: SandboxMode? = null,
     val sandboxWorkspaceWrite: List<String> = emptyList(),
     val sandboxNetworkAccess: Boolean? = null,
@@ -247,6 +248,7 @@ data class ConfigSnapshot(
                 modelReasoningSummary = str("model_reasoning_summary"),
                 modelVerbosity = str("model_verbosity"),
                 approvalPolicy = str("approval_policy")?.let(AskForApproval::fromWire),
+                approvalsReviewer = str("approvals_reviewer")?.let(ApprovalsReviewer::fromWire),
                 sandboxMode = str("sandbox_mode")?.let(SandboxMode::fromWire),
                 sandboxWorkspaceWrite = (sandbox?.get("writable_roots") as? JsonArray)
                     .orEmpty().mapNotNull { it.stringOrNull() },

@@ -6,8 +6,10 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -58,6 +60,8 @@ import com.cy.codexui.R
 import com.cy.codexui.chatwidget.SlashCommand
 import com.cy.codexui.Motion
 import com.cy.codexui.SquircleShape
+import com.cy.codexui.UiConsts
+import com.cy.codexui.codeSurface
 import com.cy.codexui.fileName
 import com.cy.codexui.floatingSurface
 import com.cy.codexui.glassTint
@@ -184,6 +188,8 @@ fun Composer(
     onSuggestionPicked: (SlashCommand) -> Unit = {},
     mentionCandidates: List<String> = emptyList(),
     onMentionPicked: (String) -> Unit = {},
+    /** Called on every text edit, so the host can defer an approval dialog while the user types. */
+    onActivity: () -> Unit = {},
     backdrop: Backdrop? = null,
     maxInputLines: Int = 6,
     /** Opens the system picker; the host registers the launcher, a composable cannot. */
@@ -319,6 +325,7 @@ fun Composer(
     fun handle(action: KeyAction): Boolean = when (action) {
         KeyAction.Submit -> {
             if (enabled && value.isNotBlank()) {
+                onActivity()
                 onSubmit()
                 leaveField()
             }
@@ -444,6 +451,7 @@ fun Composer(
                 )
                 IconButton(
                     onClick = {
+                        onActivity()
                         onSubmit()
                         leaveField()
                     },
@@ -572,6 +580,7 @@ fun Composer(
                         // reopens it if the trigger is still there.
                         popupDismissed = false
                         field = next
+                        onActivity()
                         onValueChange(next.text)
                     },
                     modifier = Modifier
@@ -584,6 +593,7 @@ fun Composer(
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
                     keyboardActions = KeyboardActions(
                         onSend = {
+                            onActivity()
                             onSubmit()
                             leaveField()
                         },
@@ -619,12 +629,45 @@ fun Composer(
 }
 
 /**
+ * Corner radius of the popup card; it is a card of rows, so it takes the shared row corner.
+ */
+private val PopupCorner = RoundedCornerShape(UiConsts.RowCorner)
+
+/** Corner radius of one popup row, shared by the slash and `@`-mention lists. */
+private val PopupRowCorner = 11.dp
+
+/** Gap between two popup rows, and the padding inside the popup shell. */
+private val PopupRowGap = 4.dp
+private val PopupPadding = 6.dp
+
+/**
+ * The raised card both suggestion lists draw into.
+ *
+ * Each list already narrows itself to `MaxPopupRows` items, so the shell only has to wrap them: a
+ * clipped scroll region would cut a row in half and hide the fact that more matches exist.
+ */
+@Composable
+private fun PopupShell(
+    modifier: Modifier = Modifier,
+    rows: @Composable () -> Unit,
+) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .background(codeSurface(), PopupCorner)
+            .padding(PopupPadding),
+        verticalArrangement = Arrangement.spacedBy(PopupRowGap),
+        content = { rows() },
+    )
+}
+
+/**
  * The slash popup with a keyboard cursor.
  *
- * The shared `CommandPopup` highlights the first row because taps were its only input; a hardware
- * keyboard needs the highlight to move, so this draws the same rows with the cursor on whichever
- * row Enter would take. Row style is shared through [PopupShell], [PopupRowCorner] and
- * `pressableRow`, so a tap still picks exactly the row it lands on.
+ * The first row is only highlighted when the cursor points at it; a hardware keyboard needs the
+ * highlight to move, so this draws rows with the cursor on whichever row Enter would take. Row
+ * style is shared through [PopupShell], [PopupRowCorner] and `pressableRow`, so a tap still picks
+ * exactly the row it lands on.
  */
 @Composable
 private fun CommandSuggestionList(
@@ -754,4 +797,26 @@ private fun isSubsequence(query: String, candidate: String): Boolean {
         }
     }
     return false
+}
+
+/**
+ * Narrow [candidates] by [query].
+ *
+ * A subsequence hit (`cs` matches `CodexScreen.kt`) is what the TUI's fuzzy matcher rewards, so
+ * those come first; a plain case-insensitive `contains` pass follows so a query whose characters
+ * are not in order still finds something instead of showing an empty popup.
+ */
+private fun filterPaths(query: String, candidates: List<String>): List<String> {
+    val needle = query.trim().lowercase()
+    if (needle.isEmpty()) return candidates
+    val subsequence = mutableListOf<String>()
+    val contains = mutableListOf<String>()
+    for (candidate in candidates) {
+        val haystack = candidate.lowercase()
+        when {
+            isSubsequence(needle, haystack) -> subsequence += candidate
+            haystack.contains(needle) -> contains += candidate
+        }
+    }
+    return subsequence + contains
 }

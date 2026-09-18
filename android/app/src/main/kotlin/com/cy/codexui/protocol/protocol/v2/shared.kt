@@ -153,17 +153,12 @@ enum class ReasoningEffort(val wire: String) {
 
 /** Input the user contributed to a turn; text is the only variant the phone composes today. */
 sealed interface UserInput {
-    data class Text(val text: String, val textElements: List<TextElement> = emptyList()) : UserInput
+    data class Text(val text: String) : UserInput
     data class Image(val url: String) : UserInput
     data class LocalImage(val path: String) : UserInput
     data class Skill(val name: String, val path: String) : UserInput
     data class Mention(val name: String, val path: String) : UserInput
 }
-
-/** UI-defined span inside a user message, e.g. an `@file` mention that should render as a chip. */
-data class TextElement(val start: Int, val end: Int, val kind: TextElementKind)
-
-enum class TextElementKind { Mention, Skill, File }
 
 /** One `request_user_input` question and its options. */
 data class ToolRequestUserInputQuestion(

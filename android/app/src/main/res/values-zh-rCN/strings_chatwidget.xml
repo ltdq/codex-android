@@ -53,6 +53,7 @@
     <string name="status_card_model_label">模型</string>
     <string name="status_card_reasoning_label">思考强度</string>
     <string name="status_card_approval_label">审批策略</string>
+    <string name="status_card_reviewer_label">审批者</string>
     <string name="status_card_plan_title">本轮计划</string>
     <string name="status_card_agents_title">代理</string>
     <string name="status_card_agents_count">%1$d 个</string>

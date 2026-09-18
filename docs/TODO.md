@@ -22,20 +22,14 @@
       `/compact`、会话恢复。
 - [ ] `HookStarted/HookCompleted`、`FileChange` 审批、`currentTime/read` 等只有真实服务端
       才会发的路径。
+- [ ] 审批 UX 新路径：输入中延后（`ChatWidget.ApprovalTypingIdleDelayMs`）、跨线程审批提示与
+      切换、自动审查聚合与「允许一次」覆盖——目前只有 JVM 测试，真机与真实服务端未验证。
 - [ ] 登录状态：设备码登录 / API key / 取消 / 过期 / 登出，凭据是否只落在 `files/home/.codex/`。
 - [ ] 长会话的流式性能与内存。Kotlin 侧已改增量路径（markdown 只重解析 tail block、
       diff 只解析追加段），但这批改动只在 JVM 测试里验证过，仍需真机 trace 确认。
 - [ ] 进程被系统回收后的恢复、以及 `transportLagged` 之后的重新同步。
 
 ## 2. UI 功能缺口
-
-### 2.1 审批
-
-- [ ] approvals reviewer 选择缺失：`approvalsReviewer` 只在协议与 client 里，
-      `AskForApproval` 无 `AutoReview`（`protocol/protocol/v2/config_types.kt:9-14`），无 UI。
-- [ ] 「输入中延后」门控缺失：上游在用户打字后延迟 1 秒再弹审批（`bottom_pane/mod.rs`）。
-- [ ] 跨线程待审批提示、可操作内联 banner 缺失。
-- [ ] guardian review 的 `+N more` 聚合缺失。
 
 ### 2.2 多 agent 与会话编排
 
@@ -60,8 +54,6 @@
 
 ### 2.3 登录与 onboarding
 
-- [ ] 登录本身已可用（`status/account.kt:148-221`：设备码 + API key + 取消 + 错误态），
-      但缺首次启动引导/欢迎屏，只在提交时按 `loggedIn` 拦一次（`app.kt:205`）。
 - [ ] OAuth 回调通道：manifest 无 `<data android:scheme>`、Activity 无 `onNewIntent`
       （当前走设备码，影响有限）。
 - [ ] 目录信任提示缺失：`trustedProjects` 只解析（`protocol/protocol/v2/config.kt:211,256`），
@@ -76,7 +68,7 @@
 - [ ] 剪贴板：复制消息、复制代码块、状态卡复制、`/copy`（目前只有 links.kt 复制本地链接路径）。
 - [ ] 系统通知：`POST_NOTIFICATIONS` 未申请，无 channel（上游有按类型白名单）。
 - [ ] 图片通路：picker 是 `OpenDocument("*/*")` 且只插 `@path` 文本；composer 只构造
-      `UserInput.Text`（`rendering.kt:463`），`onMentionPicked = {}`，`TextElement` 从不构造；
+      `UserInput.Text`（`rendering.kt:463`），`onMentionPicked = {}`，`text_elements` 恒为空；
       缺 `LocalImage`、路径粘贴识别、`[Image #N]` 占位、32 MiB 上限。
 - [ ] 输入历史与反向搜索（硬件键盘层已在 `keymap/` 落地）：composer 没有草稿历史，
       Ctrl+R/Ctrl+S 未绑定；Ctrl+O 复制、Ctrl+G 外部编辑器等待平台能力（见本条上文）。
@@ -107,7 +99,9 @@
       结果里的 image/audio/resource 投影缺失。
 - [ ] 插件目录：无按 marketplace 的 tab、无安装后鉴权流；`PluginEntry` 无 `enabled`。
 - [ ] app-link 的 install URL / 确认屏 / 连接器鉴权流缺失。
-- [ ] memories 模式无 UI（`SetThreadMemoryMode` 无生产者）。
+- [ ] memories 模式无 UI（`thread/memoryMode/set` 只有 client 绑定，无 UI 入口）。
+- [ ] approvals reviewer 不看 `[features] guardian_approval` 与 `configRequirements/read` 的
+      `allowedApprovalsReviewers`（experimental）：上游只在允许时才提供 AutoReview，当前始终可选。
 - [ ] service tier / fast 模式无 UI；`/status` 打开的是 `server/diagnostics`，
       而会话状态读出缺失。
 
@@ -120,19 +114,6 @@
       13 个码里没有费率/用量限制码。
 - [ ] reset credits / credits nudge 不可达（无 UI 入口；`account/rateLimitResetCredit/consume` 已绑定）。
 - [ ] 客户端设置项只有 3 个 SharedPreferences 键，无动效/主题/通知设置。
-
-### 2.8 死代码与只写不读（顺手清理）
-
-- [ ] 零引用：`theme/running_outline.kt`（119 行）、`Motion.LoopMs`、
-      `FuzzySearchSession`、`ModelSheet`/`EffortSheet`、
-      `CommandPopup`/`FileSearchPopup`（composer 改用带键盘游标的私有列表；`PopupShell`
-      仍被两者共用）。
-- [ ] 只写不读：`catalog.elicitationCount`、`SessionDiagnostic.willRetry`、
-      `workspaceMessages`、`configRequirements`、`TextElement`。
-- [ ] 只有 handler 没有生产者的 `AppEvent`：`UnsubscribeThread`、`UpdateThreadMetadata`、
-      `InjectThreadItems`、`ApproveGuardianDeniedAction`、`SetThreadMemoryMode`、`SteerTurn`、
-      `UpdateTurnSettings`、`SetPermissionProfile`、`UpdateThreadSettings`、`AddAttachment`。
-      （`DismissApproval` 不在内：审批框有意不可关闭，它不是缺陷。）
 
 ## 3. Native / 宿主侧
 
@@ -210,6 +191,6 @@
 
 - collab / sub-agent 卡片进 transcript（上游走 `/subagents` + agent 导航）。
 - dynamic / function-call 工具卡片（上游在 transcript 里忽略通用 `FunctionCallOutput`）。
-- 只读的细粒度审批开关、线程附件托盘、`project/*` 与 `threadSection/*` 界面、
-  `ModelSheet` / `EffortSheet`：上游 TUI 无对应物（有的是协议定义）。
+- 只读的细粒度审批开关、线程附件托盘、`project/*` 与 `threadSection/*` 界面：
+  上游 TUI 无对应物（有的是协议定义）。
 - 迁移后没有 mock 层：所有数据来自真实 app-server。

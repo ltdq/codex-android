@@ -225,7 +225,7 @@ data class ThreadStartParams(
     val model: String? = null,
     val modelProvider: String? = null,
     val approvalPolicy: AskForApproval? = null,
-    val approvalsReviewer: String? = null,
+    val approvalsReviewer: ApprovalsReviewer? = null,
     val sandbox: SandboxPolicy? = null,
     val personality: Personality? = null,
     val serviceTier: String? = null,

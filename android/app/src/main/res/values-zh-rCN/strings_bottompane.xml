@@ -72,13 +72,19 @@
     <string name="composer_send">发送</string>
     <string name="composer_queued_count">已排队 %1$d 条</string>
 
+    <!-- ApprovalNoticeBar.kt：跨会话审批、审查中与拒绝提示。 -->
+    <string name="approval_notice_foreign">%1$s 有待审批</string>
+    <string name="approval_notice_switch">切换</string>
+    <string name="approval_notice_reviewing">正在审查 %1$d 个审批请求</string>
+    <string name="approval_notice_review_detail">"• %1$s"</string>
+    <string name="approval_notice_review_more">还有 %1$d 个</string>
+    <string name="approval_notice_denied_title">自动审查拒绝了操作</string>
+    <string name="approval_notice_denied_approve">允许一次</string>
+    <string name="approval_notice_denied_dismiss">忽略</string>
+
     <!-- DecisionBar.kt -->
     <string name="decision_bar_cancel">取消</string>
     <string name="decision_bar_remaining_queue">还有 %1$d 个待处理请求</string>
-
-    <!-- FileSearchPopup.kt -->
-    <string name="file_search_popup_prompt">输入文件名以搜索</string>
-    <string name="file_search_popup_empty">没有匹配的文件</string>
 
     <!-- McpServerElicitation.kt -->
     <string name="mcp_server_elicitation_required">必填</string>
@@ -95,6 +101,5 @@
     <string name="request_user_input_view_unanswered">还有 %1$d 个问题需要回答</string>
     <string name="request_user_input_view_selected">已选择</string>
     <string name="request_user_input_view_submit">提交</string>
-    <string name="file_search_popup_searching">搜索中…</string>
     <string name="composer_remove_attachment">移除这个附件</string>
 </resources>

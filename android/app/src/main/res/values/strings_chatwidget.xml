@@ -53,6 +53,7 @@
     <string name="status_card_model_label">Model</string>
     <string name="status_card_reasoning_label">Reasoning effort</string>
     <string name="status_card_approval_label">Approval</string>
+    <string name="status_card_reviewer_label">Reviewer</string>
     <string name="status_card_plan_title">Plan</string>
     <string name="status_card_agents_title">Agents</string>
     <string name="status_card_agents_count">%1$d</string>

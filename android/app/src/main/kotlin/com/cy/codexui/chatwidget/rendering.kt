@@ -81,6 +81,7 @@ import com.cy.codexui.app.AgentRosterEntry
 import com.cy.codexui.app.AgentsOverview
 import com.cy.codexui.app.deriveAgentRoster
 import com.cy.codexui.bottom_pane.ApprovalDialog
+import com.cy.codexui.bottom_pane.ApprovalNoticeBar
 import com.cy.codexui.bottom_pane.Composer
 import com.cy.codexui.chatwidget.QueuedMessages
 import com.cy.codexui.floatingSurface
@@ -198,6 +199,16 @@ fun ChatScreen(
     }
     val roster = rosterMemo.roster
     val approval = app.widget.currentApproval
+    // Names the thread the way the sidebar and the resume picker do, for the cross-thread
+    // approval notice; the state read happens where the notice renders.
+    val threadNameOf: (String) -> String = { threadId ->
+        threads.threads.firstOrNull { it.id == threadId }
+            ?.let { thread ->
+                thread.name?.takeIf { it.isNotBlank() }
+                    ?: thread.preview.take(48).takeIf { it.isNotBlank() }
+            }
+            ?: threadId.take(8)
+    }
     val backdrop = rememberLayerBackdrop {
         drawRect(colors.background)
         drawContent()
@@ -381,6 +392,7 @@ fun ChatScreen(
                         onModel = { app.onAppEvent(AppEvent.SetModel(it)) },
                         onEffort = { app.onAppEvent(AppEvent.SetReasoningEffort(it)) },
                         onPolicy = { app.onAppEvent(AppEvent.SetApprovalPolicy(it)) },
+                        onReviewer = { app.onAppEvent(AppEvent.SetApprovalsReviewer(it)) },
                         onCompact = { app.onAppEvent(AppEvent.CompactThread(session.threadId)) },
                         onOpenAgents = { overviewOpen = true },
                         onOpenAgent = { threadId -> app.openSurface(Surface.SubAgentThread(threadId)) },
@@ -408,6 +420,7 @@ fun ChatScreen(
             app = app,
             session = session,
             mentionPaths = mentionPaths,
+            threadNameOf = threadNameOf,
             promptBarStartInset = promptBarStartInset,
             backdrop = backdrop,
             onAttach = { attachmentPicker.launch(arrayOf("*/*")) },
@@ -1078,6 +1091,7 @@ private fun ComposerDock(
     app: CodexApp,
     session: SessionState,
     mentionPaths: List<String>,
+    threadNameOf: (String) -> String,
     promptBarStartInset: Dp,
     backdrop: Backdrop,
     onAttach: () -> Unit,
@@ -1098,6 +1112,18 @@ private fun ComposerDock(
             .padding(bottom = UiConsts.ScreenMargin),
         verticalArrangement = Arrangement.spacedBy(composerGap),
     ) {
+        ApprovalNoticeBar(
+            foreign = app.widget.otherThreadApprovals,
+            threadName = threadNameOf,
+            reviews = app.widget.pendingReviews,
+            denials = app.widget.approvalDenials,
+            onOpenThread = app::openThread,
+            onApproveDenial = { denial ->
+                app.onAppEvent(AppEvent.ApproveGuardianDeniedAction(denial.threadId, denial.itemId))
+            },
+            onDismissDenial = { denial -> app.onAppEvent(AppEvent.DismissAutoReviewDenial(denial.itemId)) },
+            modifier = Modifier.padding(horizontal = UiConsts.ScreenMargin),
+        )
         AnimatedVisibility(
             visible = session.queued.isNotEmpty(),
             enter = fadeIn(tween(queuedEnterDurationMs, easing = Motion.EnterEasing)) +
@@ -1149,6 +1175,9 @@ private fun ComposerDock(
         Composer(
             value = prompt,
             onValueChange = onPromptChange,
+            // An approval dialog must not steal the keyboard mid-sentence; the widget uses this
+            // signal to hold the dialog for a second after the last edit.
+            onActivity = app.widget::noteComposerActivity,
             onSubmit = {
                 if (prompt.isNotBlank()) {
                     app.onAppEvent(

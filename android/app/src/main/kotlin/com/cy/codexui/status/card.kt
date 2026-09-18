@@ -68,6 +68,7 @@ import com.cy.codexui.displayDiffPath
 import com.cy.codexui.languageFromPath
 import com.cy.codexui.runtimeHome
 import com.cy.codexui.shortenedParent
+import com.cy.codexui.protocol.protocol.v2.ApprovalsReviewer
 import com.cy.codexui.protocol.protocol.v2.AskForApproval
 import com.cy.codexui.protocol.protocol.v2.ModelPreset
 import com.cy.codexui.protocol.protocol.v2.ReasoningEffort
@@ -140,6 +141,7 @@ fun StatusCard(
     onModel: (String) -> Unit,
     onEffort: (ReasoningEffort) -> Unit,
     onPolicy: (AskForApproval) -> Unit,
+    onReviewer: (ApprovalsReviewer) -> Unit,
 
     onCompact: () -> Unit,
     onOpenAgents: () -> Unit,
@@ -170,6 +172,7 @@ fun StatusCard(
             onModel = onModel,
             onEffort = onEffort,
             onPolicy = onPolicy,
+            onReviewer = onReviewer,
             onCompact = onCompact,
             onOpenAgents = onOpenAgents,
             onOpenAgent = onOpenAgent,
@@ -230,6 +233,7 @@ private fun SectionsColumn(
     onModel: (String) -> Unit,
     onEffort: (ReasoningEffort) -> Unit,
     onPolicy: (AskForApproval) -> Unit,
+    onReviewer: (ApprovalsReviewer) -> Unit,
 
     onCompact: () -> Unit,
     onOpenAgents: () -> Unit,
@@ -270,6 +274,7 @@ private fun SectionsColumn(
             onModel = onModel,
             onEffort = onEffort,
             onPolicy = onPolicy,
+            onReviewer = onReviewer,
         )
 
         if (plan.isNotEmpty()) {
@@ -515,6 +520,7 @@ private fun ModelSection(
     onModel: (String) -> Unit,
     onEffort: (ReasoningEffort) -> Unit,
     onPolicy: (AskForApproval) -> Unit,
+    onReviewer: (ApprovalsReviewer) -> Unit,
 ) {
     SectionCard(
         title = stringResource(R.string.status_card_model_title),
@@ -561,6 +567,19 @@ private fun ModelSection(
                 },
                 selectedIndex = policies.indexOf(session.approvalPolicy).coerceAtLeast(0),
                 onSelectedIndexChange = { onPolicy(policies[it]) },
+            )
+
+            // The reviewer beside the policy: the policy decides whether a request is raised, the
+            // reviewer decides who answers it.
+            val reviewers = ApprovalsReviewer.entries
+            PickerRow(
+                label = stringResource(R.string.status_card_reviewer_label),
+                value = session.approvalsReviewer.label(),
+                items = reviewers.map { reviewer ->
+                    DropdownItem(text = reviewer.label(), summary = reviewer.description())
+                },
+                selectedIndex = reviewers.indexOf(session.approvalsReviewer).coerceAtLeast(0),
+                onSelectedIndexChange = { onReviewer(reviewers[it]) },
             )
         }
     }

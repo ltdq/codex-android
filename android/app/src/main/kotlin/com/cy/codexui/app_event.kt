@@ -4,6 +4,7 @@ import com.cy.codexui.protocol.ApprovalResponse
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import com.cy.codexui.protocol.protocol.RequestId
+import com.cy.codexui.protocol.protocol.v2.ApprovalsReviewer
 import com.cy.codexui.protocol.protocol.v2.AskForApproval
 import com.cy.codexui.protocol.protocol.v2.AttachmentType
 import com.cy.codexui.protocol.protocol.v2.ConfigBatchWriteParams
@@ -13,10 +14,7 @@ import com.cy.codexui.protocol.protocol.v2.PluginShareDiscoverability
 import com.cy.codexui.protocol.protocol.v2.PluginShareTarget
 import com.cy.codexui.protocol.protocol.v2.ReasoningEffort
 import com.cy.codexui.protocol.protocol.v2.ReviewTarget
-import com.cy.codexui.protocol.protocol.v2.ThreadMemoryMode
 import com.cy.codexui.protocol.protocol.v2.ThreadRealtimeAudioChunk
-import com.cy.codexui.protocol.protocol.v2.ThreadSettingsUpdateParams
-import com.cy.codexui.protocol.protocol.v2.TurnSettingsUpdateParams
 import com.cy.codexui.protocol.protocol.v2.UserInput
 import com.cy.codexui.protocol.protocol.v2.WindowsSandboxSetupMode
 
@@ -64,26 +62,11 @@ sealed interface AppEvent {
     data class SetThreadListScope(val includeArchived: Boolean) : AppEvent
     data class MoveThreadToSection(val threadId: String, val sectionId: String?) : AppEvent
 
-    /** Drop the server-side subscription without closing the thread. */
-    data class UnsubscribeThread(val threadId: String) : AppEvent
-
-    /** Patch `thread/metadata/update`; `null` leaves a field alone. */
-    data class UpdateThreadMetadata(
-        val threadId: String,
-        val branch: String? = null,
-        val name: String? = null,
-    ) : AppEvent
-
-    /** Append raw item JSON this client did not author, for replaying a foreign transcript. */
-    data class InjectThreadItems(val threadId: String, val items: List<JsonElement>) : AppEvent
-
     /** Run one shell command in the session's shell, without starting a turn. */
     data class RunShellCommand(val threadId: String, val command: String) : AppEvent
 
     /** Override a guardian denial for one item. */
     data class ApproveGuardianDeniedAction(val threadId: String, val itemId: String) : AppEvent
-
-    data class SetThreadMemoryMode(val threadId: String, val mode: ThreadMemoryMode) : AppEvent
 
     // ---- sidebar sections ------------------------------------------------------
     data class CreateSection(val name: String) : AppEvent
@@ -92,13 +75,9 @@ sealed interface AppEvent {
 
     // ---- turns -----------------------------------------------------------------
     data class SubmitUserMessage(val inputs: List<UserInput>, val queued: Boolean = false) : AppEvent
-    data class SteerTurn(val inputs: List<UserInput>) : AppEvent
     data object InterruptTurn : AppEvent
     data class SetGoal(val objective: String) : AppEvent
     data object ClearGoal : AppEvent
-
-    /** `turn/settings/update`, the per-turn half of the settings split. */
-    data class UpdateTurnSettings(val params: TurnSettingsUpdateParams) : AppEvent
 
     // ---- server-side queue -----------------------------------------------------
     //
@@ -126,21 +105,20 @@ sealed interface AppEvent {
     /** A request the UI is showing was resolved elsewhere. */
     data class DismissApproval(val requestId: RequestId) : AppEvent
 
+    /** Hide an auto-review denial from the notice bar without approving it. */
+    data class DismissAutoReviewDenial(val itemId: String) : AppEvent
+
     // ---- settings --------------------------------------------------------------
     data class SetModel(val model: String) : AppEvent
     data class SetReasoningEffort(val effort: ReasoningEffort) : AppEvent
     data class SetApprovalPolicy(val policy: AskForApproval) : AppEvent
-    data class SetPermissionProfile(val profileId: String?) : AppEvent
+    data class SetApprovalsReviewer(val reviewer: ApprovalsReviewer) : AppEvent
     data class SetExperimentalFeature(val id: String, val enabled: Boolean) : AppEvent
-
-    /** Apply a whole settings patch at once; the per-field events above are the common case. */
-    data class UpdateThreadSettings(val params: ThreadSettingsUpdateParams) : AppEvent
 
     // ---- account ---------------------------------------------------------------
     data object ReloadAccount : AppEvent
     data object ReloadRateLimits : AppEvent
     data object ReloadUsage : AppEvent
-    data object ReloadWorkspaceMessages : AppEvent
 
     /** Start sign-in. The browser/device-code flow completes through `account/login/completed`. */
     data class Login(val params: LoginAccountParams) : AppEvent
@@ -316,13 +294,6 @@ sealed interface AppEvent {
     ) : AppEvent
 
     // ---- attachments and background terminals ---------------------------------
-    data class AddAttachment(
-        val threadId: String,
-        val type: AttachmentType,
-        val identityKey: String,
-        val payload: JsonElement = JsonNull,
-    ) : AppEvent
-
     data class RemoveAttachment(
         val threadId: String,
         val type: AttachmentType,

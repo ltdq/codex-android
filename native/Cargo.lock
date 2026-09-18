@@ -1899,6 +1899,7 @@ dependencies = [
  "codex-network-proxy",
  "codex-otel",
  "codex-plugin",
+ "codex-prompts",
  "codex-protocol",
  "codex-queue-extension",
  "codex-rmcp-client",
@@ -1992,6 +1993,7 @@ dependencies = [
  "hmac 0.12.1",
  "httpdate",
  "jsonwebtoken",
+ "libc",
  "owo-colors",
  "rand 0.9.5",
  "serde",
@@ -2056,6 +2058,7 @@ name = "codex-attachment-store"
 version = "0.0.0"
 dependencies = [
  "serde",
+ "tracing",
 ]
 
 [[package]]
@@ -2712,6 +2715,7 @@ dependencies = [
  "codex-core",
  "codex-extension-api",
  "codex-otel",
+ "codex-prompts",
  "codex-protocol",
  "codex-rollout",
  "codex-state",
@@ -2744,6 +2748,7 @@ dependencies = [
  "codex-guardian-context",
  "codex-mcp",
  "codex-otel",
+ "codex-prompts",
  "codex-protocol",
  "rand 0.9.5",
  "serde",
@@ -2760,6 +2765,8 @@ dependencies = [
  "anyhow",
  "codex-analytics",
  "codex-api",
+ "codex-config",
+ "codex-context-fragments",
  "codex-core",
  "codex-extension-api",
  "codex-features",
@@ -2769,6 +2776,7 @@ dependencies = [
  "codex-http-client",
  "codex-login",
  "codex-model-provider",
+ "codex-prompts",
  "codex-protocol",
  "dirs",
  "http 1.5.0",
@@ -2922,6 +2930,7 @@ dependencies = [
  "codex-process-hardening",
  "codex-protocol",
  "codex-sandboxing",
+ "codex-uds",
  "codex-utils-absolute-path",
  "globset",
  "landlock",
@@ -3127,10 +3136,10 @@ name = "codex-models-manager"
 version = "0.0.0"
 dependencies = [
  "chrono",
- "codex-collaboration-mode-templates",
  "codex-http-client",
  "codex-login",
  "codex-otel",
+ "codex-prompts",
  "codex-protocol",
  "codex-utils-output-truncation",
  "serde",
@@ -3173,6 +3182,7 @@ dependencies = [
  "globset",
  "opentelemetry",
  "rama-core",
+ "rama-dns",
  "rama-http",
  "rama-http-backend",
  "rama-net",
@@ -3255,12 +3265,15 @@ name = "codex-prompts"
 version = "0.0.0"
 dependencies = [
  "anyhow",
+ "codex-collaboration-mode-templates",
  "codex-context-fragments",
  "codex-execpolicy",
  "codex-git-utils",
+ "codex-guardian-context",
  "codex-protocol",
  "codex-utils-absolute-path",
  "codex-utils-template",
+ "tracing",
 ]
 
 [[package]]
@@ -3419,6 +3432,7 @@ dependencies = [
  "codex-network-proxy",
  "codex-otel",
  "codex-protocol",
+ "codex-uds",
  "codex-utils-absolute-path",
  "codex-utils-home-dir",
  "codex-utils-path-uri",
@@ -3618,6 +3632,7 @@ name = "codex-uds"
 version = "0.0.0"
 dependencies = [
  "async-io",
+ "libc",
  "tokio",
  "tokio-util",
  "uds_windows",

@@ -13,6 +13,7 @@ import com.cy.codexui.protocol.protocol.v2.CommandExecutionApprovalParams
 import com.cy.codexui.protocol.protocol.v2.FileChangeApprovalParams
 import com.cy.codexui.protocol.protocol.v2.FileChangePatchUpdatedNotification
 import com.cy.codexui.protocol.protocol.v2.FileUpdateChange
+import com.cy.codexui.protocol.protocol.v2.GuardianApprovalReviewNotification
 import com.cy.codexui.protocol.protocol.v2.PatchApplyStatus
 import com.cy.codexui.protocol.protocol.v2.PatchChangeKind
 import com.cy.codexui.protocol.protocol.v2.ThreadSessionState
@@ -32,6 +33,8 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
 import org.junit.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -78,6 +81,95 @@ class ChatWidgetTest {
         runCurrent()
         assertNull(widget.currentApproval)
         assertNull(widget.approvalError)
+    }
+
+    @Test
+    fun `an approval waits for the composer to go idle`() = runTest {
+        val client = TestClient()
+        val widget = ChatWidget(client, backgroundScope)
+        widget.bind(ThreadSessionState(threadId = "thread"))
+        widget.attach()
+        widget.noteComposerActivity()
+        val request = ApprovalRequest.Exec(
+            RequestId("approval"), "thread", "turn", "item", 0,
+            CommandExecutionApprovalParams("thread", "turn", "item", command = "pwd"),
+        )
+        client.requests.emit(request)
+        runCurrent()
+        assertNull(widget.currentApproval)
+
+        advanceTimeBy(500)
+        runCurrent()
+        assertNull(widget.currentApproval)
+
+        advanceTimeBy(600)
+        runCurrent()
+        assertEquals(request, widget.currentApproval)
+    }
+
+    @Test
+    fun `a request for another thread is counted instead of shown`() = runTest {
+        val client = TestClient()
+        val widget = ChatWidget(client, backgroundScope)
+        widget.bind(ThreadSessionState(threadId = "thread"))
+        widget.attach()
+        client.requests.emit(
+            ApprovalRequest.Exec(
+                RequestId("other-approval"), "other", "turn", "item", 0,
+                CommandExecutionApprovalParams("other", "turn", "item", command = "pwd"),
+            ),
+        )
+        runCurrent()
+        assertNull(widget.currentApproval)
+        assertEquals(listOf(ForeignApproval("other", 1)), widget.otherThreadApprovals)
+    }
+
+    @Test
+    fun `parallel reviews aggregate and a denial stays overridable`() = runTest {
+        val client = TestClient()
+        val widget = ChatWidget(client, backgroundScope)
+        widget.bind(ThreadSessionState(threadId = "thread"))
+        widget.attach()
+        val command = buildJsonObject {
+            put("type", JsonPrimitive("command"))
+            put("command", JsonPrimitive("rm -rf /tmp/x"))
+        }
+        client.events.emit(
+            AppServerEvent.AutoApprovalReviewStarted(
+                "thread",
+                GuardianApprovalReviewNotification(
+                    threadId = "thread", turnId = "turn", reviewId = "r1", status = "inProgress",
+                    itemId = "item-1", action = command,
+                ),
+            ),
+        )
+        client.events.emit(
+            AppServerEvent.AutoApprovalReviewStarted(
+                "thread",
+                GuardianApprovalReviewNotification(
+                    threadId = "thread", turnId = "turn", reviewId = "r2", status = "inProgress",
+                    itemId = "item-2", action = command,
+                ),
+            ),
+        )
+        runCurrent()
+        assertEquals(2, widget.pendingReviews.size)
+
+        client.events.emit(
+            AppServerEvent.AutoApprovalReviewCompleted(
+                "thread",
+                GuardianApprovalReviewNotification(
+                    threadId = "thread", turnId = "turn", reviewId = "r1", status = "denied",
+                    itemId = "item-1", rationale = "outside the workspace", action = command,
+                ),
+            ),
+        )
+        runCurrent()
+        assertEquals(listOf("r2"), widget.pendingReviews.map { it.id })
+        assertEquals("rm -rf /tmp/x", widget.approvalDenials.single().summary)
+
+        widget.action(AppEvent.DismissAutoReviewDenial("item-1"))
+        assertTrue(widget.approvalDenials.isEmpty())
     }
 
     @Test
