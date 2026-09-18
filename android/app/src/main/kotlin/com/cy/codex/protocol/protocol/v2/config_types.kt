@@ -120,10 +120,24 @@ data class ThreadSessionState(
     /** Whether the server accepts direct turn input; `null` when the capability is unavailable. */
     val canAcceptDirectInput: Boolean? = null,
     /**
-     * Cursor for `thread/items/list` with `sortDirection: desc`, when the resume response offered
-     * one. Its first page includes the item the cursor names.
+     * Cursor for `thread/turns/list` with `sortDirection: desc`, as `thread/resume` reported it.
+     *
+     * It names the newest turn of the loaded history; the transcript itself pages forward from the
+     * bounded page's `nextCursor`.
      */
-    val itemsBackwardsCursor: String? = null,
+    val turnsBackwardsCursor: String? = null,
+    /**
+     * The bounded `thread/turns/list` page `thread/resume.initialTurnsPage` returned, if the server
+     * answered one. This is what keeps opening a long thread from replaying the whole rollout.
+     */
+    val initialTurnsPage: TurnsPage? = null,
+    /**
+     * Raw `thread/resume` metadata row, for surfaces that merge the opened thread into a list.
+     *
+     * Not part of upstream's `ThreadSessionState`; it exists so opening a thread can update the
+     * sidebar without a second full `thread/read`.
+     */
+    val thread: Thread? = null,
 ) {
     val displayName: String get() = threadName ?: cwd.substringAfterLast('/').ifEmpty { threadId }
 

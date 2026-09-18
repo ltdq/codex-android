@@ -34,6 +34,8 @@
     <string name="account_screen_usage">用量趋势</string>
     <string name="account_screen_usage_empty">还没有用量记录。</string>
     <string name="account_screen_usage_peak">峰值 %1$s · 共 %2$d 天</string>
+    <string name="account_screen_usage_streak">当前连续 %1$d 天 · 最长 %2$d 天</string>
+    <string name="account_screen_usage_longest_turn">最长回合 %1$s</string>
     <string name="account_screen_credentials">会话凭据</string>
     <string name="account_screen_sign_out">退出登录</string>
     <string name="account_screen_remove_credentials">移除本机凭据</string>
@@ -117,6 +119,9 @@
     <string name="settings_reduce_motion_summary">跳过过渡与回弹；系统动画设置仍然生效</string>
     <string name="settings_show_tooltips">显示启动提示</string>
     <string name="settings_show_tooltips_summary">打开新会话时显示一条使用提示</string>
+    <string name="settings_group_recap">回顾</string>
+    <string name="settings_auto_recap">自动回顾</string>
+    <string name="settings_auto_recap_summary">应用进入后台 30 分钟后自动生成回顾；/recap 随时可用</string>
     <string name="settings_group_about">关于</string>
     <string name="settings_app_version">应用版本</string>
     <string name="settings_group_notifications">通知</string>

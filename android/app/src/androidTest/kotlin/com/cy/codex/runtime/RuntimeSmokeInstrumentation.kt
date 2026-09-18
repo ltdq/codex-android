@@ -8,6 +8,7 @@ import com.cy.codex.protocol.AppServerEvent
 import com.cy.codex.protocol.protocol.item.CommandExecutionItem
 import com.cy.codex.protocol.protocol.v2.ClientInfo
 import com.cy.codex.protocol.protocol.v2.ThreadReadParams
+import com.cy.codex.protocol.protocol.v2.ThreadResumeParams
 import com.cy.codex.protocol.protocol.v2.ThreadStartParams
 import com.cy.codex.protocol.protocol.v2.TurnStatus
 import java.io.File
@@ -137,7 +138,7 @@ class RuntimeSmokeInstrumentation : Instrumentation() {
                         check(restored.items.filterIsInstance<CommandExecutionItem>().any {
                             it.exitCode == 0 && it.aggregatedOutput.orEmpty().contains("thread-shell-ok")
                         }) { "Persisted shell transcript disappeared after restarting the native server" }
-                        check(client.resumeThread(thread.threadId).getOrThrow().threadId == thread.threadId)
+                        check(client.resumeThread(ThreadResumeParams(thread.threadId)).getOrThrow().threadId == thread.threadId)
                         report.appendLine("PASS native restart and thread resume")
                         client.unsubscribeThread(thread.threadId).getOrThrow()
                         client.deleteThread(thread.threadId).getOrThrow()

@@ -77,7 +77,7 @@
     <string name="shortcuts_overlay_group_suggestions">Suggestions</string>
     <string name="shortcuts_overlay_global_escape">Interrupt the running turn, or leave the field</string>
     <string name="shortcuts_overlay_global_interrupt">Interrupt the running turn</string>
-    <string name="shortcuts_overlay_global_transcript">Open conversation history</string>
+    <string name="shortcuts_overlay_global_transcript">Open transcript</string>
     <string name="shortcuts_overlay_global_help">Show this list</string>
     <string name="shortcuts_overlay_composer_submit">Send the message</string>
     <string name="shortcuts_overlay_composer_newline">Insert a line break</string>

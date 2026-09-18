@@ -172,17 +172,48 @@ class JsonRpcAppServerClientTest {
         val transport = HarnessTransport()
         val client = JsonRpcAppServerClient(transport, backgroundScope)
         client.initialize(ClientInfo("android", version = "1")).getOrThrow()
-        val resumed = async { client.resumeThread("t").getOrThrow() }
-        transport.response(transport.request(), obj(
+        val resumed = async {
+            client.resumeThread(
+                com.cy.codex.protocol.protocol.v2.ThreadResumeParams(
+                    threadId = "t",
+                    excludeTurns = true,
+                    initialTurnsPage = com.cy.codex.protocol.protocol.v2.ThreadResumeInitialTurnsPageParams(
+                        limit = 20,
+                        sortDirection = com.cy.codex.protocol.protocol.v2.SortDirection.Desc,
+                        itemsView = com.cy.codex.protocol.protocol.v2.TurnItemsView.Full,
+                    ),
+                ),
+            ).getOrThrow()
+        }
+        val request = transport.request()
+        assertEquals("thread/resume", request.text("method"))
+        val params = request.objectOrNull("params")!!
+        assertEquals(true, params.bool("excludeTurns"))
+        val requestedPage = params.objectOrNull("initialTurnsPage")!!
+        assertEquals(20, requestedPage.int("limit"))
+        assertEquals("desc", requestedPage.text("sortDirection"))
+        assertEquals("full", requestedPage.text("itemsView"))
+        transport.response(request, obj(
             "thread" to obj("id" to "t", "cwd" to "/w", "parentThreadId" to "parent", "canAcceptDirectInput" to false),
             "model" to "gpt-5", "modelProvider" to "openai", "cwd" to "/w",
             "collaborationMode" to obj("mode" to "plan", "settings" to obj("model" to "gpt-5")),
             "serviceTier" to "fast",
+            "turnsBackwardsCursor" to "cursor-head",
+            "initialTurnsPage" to obj(
+                "data" to listOf(obj("id" to "turn", "status" to "completed", "itemsView" to "summary", "items" to emptyList<String>())),
+                "nextCursor" to "cursor-older",
+                "backwardsCursor" to "cursor-newer",
+            ),
         ))
         val state = resumed.await()
         assertEquals(com.cy.codex.protocol.protocol.v2.CollaborationMode.Plan, state.collaborationMode)
         assertEquals("fast", state.serviceTier)
         assertTrue(state.blocksDirectInput)
+        assertEquals("t", state.thread?.id)
+        assertEquals("cursor-head", state.turnsBackwardsCursor)
+        assertEquals("cursor-older", state.initialTurnsPage?.nextCursor)
+        assertEquals("turn", state.initialTurnsPage?.turns?.single()?.id)
+        assertEquals(com.cy.codex.protocol.protocol.v2.TurnItemsView.Summary, state.initialTurnsPage?.turns?.single()?.itemsView)
         client.close()
     }
 
@@ -990,6 +1021,35 @@ class JsonRpcAppServerClientTest {
         assertEquals(7L, usage.total.cacheWriteInputTokens)
         assertEquals(1000L, usage.modelContextWindow)
         assertEquals(0.1f, usage.usedFraction)
+        client.close()
+    }
+
+    @Test
+    fun `account usage decodes the full summary`() = runTest {
+        val transport = HarnessTransport()
+        val client = JsonRpcAppServerClient(transport, backgroundScope)
+        client.initialize(ClientInfo("android", version = "1")).getOrThrow()
+        val usage = async { client.readUsage().getOrThrow() }
+        transport.response(
+            transport.request(),
+            obj(
+                "dailyUsageBuckets" to listOf(obj("startDate" to "2026-01-01", "tokens" to 10)),
+                "summary" to obj(
+                    "lifetimeTokens" to 123L,
+                    "peakDailyTokens" to 45L,
+                    "longestRunningTurnSec" to 7200L,
+                    "currentStreakDays" to 3L,
+                    "longestStreakDays" to 9L,
+                ),
+            ),
+        )
+        val decoded = usage.await()
+        assertEquals(123L, decoded.totalTokens)
+        assertEquals(45L, decoded.peakDailyTokens)
+        assertEquals(7200L, decoded.longestRunningTurnSec)
+        assertEquals(3L, decoded.currentStreakDays)
+        assertEquals(9L, decoded.longestStreakDays)
+        assertEquals("2026-01-01", decoded.dailyBuckets.single().day)
         client.close()
     }
 

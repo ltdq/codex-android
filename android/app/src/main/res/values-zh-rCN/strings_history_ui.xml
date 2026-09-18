@@ -1,46 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- 已关闭会话的历史：搜索、命中、时间线索引与分页列表（app/history_ui.kt）。 -->
-    <string name="history_ui_title">会话历史</string>
+    <!-- Ctrl+T 的只读 transcript 覆盖层（app/history_ui.kt）。 -->
+    <string name="history_ui_title">会话记录</string>
     <string name="history_ui_back">返回</string>
-    <string name="history_ui_no_thread">还没有选择会话</string>
-    <string name="history_ui_failed">服务器无法响应</string>
-
-    <string name="history_ui_find">查找会话</string>
-    <string name="history_ui_find_placeholder">会话里的词句</string>
-    <string name="history_ui_find_action">搜索</string>
-    <string name="history_ui_no_search">还没有搜索</string>
-    <string name="history_ui_no_search_detail">已关闭的会话没有可直接打开的正文，搜索是唯一的入口。输入关键词，找到你想查看历史的会话。</string>
-    <string name="history_ui_no_results">没有匹配</string>
-    <string name="history_ui_no_results_detail">服务器对这次搜索没有返回任何结果。在搜过的历史里从未出现过的词是找不到的。</string>
-    <string name="history_ui_updated_format">yyyy-MM-dd HH:mm</string>
-
-    <string name="history_ui_scan">在这个会话内搜索</string>
-    <string name="history_ui_scan_placeholder">条目里的词句</string>
-    <string name="history_ui_scan_action">搜索</string>
-    <string name="history_ui_no_scan">还没有在会话内搜索</string>
-    <string name="history_ui_no_scan_detail">这和上面的会话搜索是两个不同的调用，它只在这个会话内部查找。</string>
-    <string name="history_ui_hit_note">每条命中都给出它所在的条目，以及命中落在该条目内的什么位置。这里没有能把正文滚动到某条命中的操作，所以这些行只用于阅读。</string>
-    <string name="history_ui_hit_offset">偏移 %1$d</string>
-    <string name="history_ui_hit_no_snippet">服务器没有为这条命中返回片段</string>
-
-    <string name="history_ui_index">时间线索引</string>
-    <string name="history_ui_index_note">拖动条背后的稀疏索引：每个被记录的回合、条目、压缩或目标各占一行。</string>
-    <string name="history_ui_index_empty">没有索引条目</string>
-    <string name="history_ui_index_empty_detail">服务器没有为这个会话返回时间线条目。</string>
-
-    <string name="history_ui_pages">分页</string>
-    <string name="history_ui_tab_items">条目</string>
-    <string name="history_ui_tab_turns">回合</string>
-    <string name="history_ui_tab_timeline">时间线</string>
-    <string name="history_ui_loading">加载中…</string>
-    <string name="history_ui_load_more">加载更多</string>
-    <string name="history_ui_page_empty">这一页是空的</string>
-    <string name="history_ui_page_empty_detail">服务器对这份列表返回了空页。</string>
-    <string name="history_ui_turn_detail">%1$s · %2$d 项</string>
-
-    <string name="history_ui_item_files">%1$s（共 %2$d 个文件）</string>
-    <string name="history_ui_item_sleep">%1$d 毫秒</string>
-    <string name="history_ui_item_compaction">上下文压缩</string>
-    <string name="history_ui_timeline_turn_detail">%1$s · %2$d 毫秒</string>
 </resources>

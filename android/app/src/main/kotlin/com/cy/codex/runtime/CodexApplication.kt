@@ -7,6 +7,7 @@ import android.os.Bundle
 import com.cy.codex.CodexApp
 import com.cy.codex.ComposerHistory
 import com.cy.codex.NotificationSettings
+import com.cy.codex.app.RecapSettings
 import com.cy.codex.ensureAgentNotificationChannel
 import com.cy.codex.protocol.AppServerClient
 import com.cy.codex.protocol.JsonRpcAppServerClient
@@ -14,6 +15,9 @@ import java.io.File
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 class CodexApplication : Application() {
     val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -28,6 +32,11 @@ class CodexApplication : Application() {
      */
     var inForeground = false
         private set
+
+    private val foregroundFlow = MutableStateFlow(false)
+
+    /** Foreground/background transitions; the recap scheduler uses them as terminal focus. */
+    val foreground: StateFlow<Boolean> = foregroundFlow.asStateFlow()
     val defaultWorkspace: String get() = File(filesDir, "workspaces/default").absolutePath
     val shellPath: String get() = File(filesDir, "runtime/toolchain/bin/bash").absolutePath
     val configPath: String get() = File(filesDir, "home/.codex/config.toml").absolutePath
@@ -51,6 +60,7 @@ class CodexApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         NotificationSettings.load(this)
+        RecapSettings.load(this)
         ComposerHistory.load(this)
         ensureAgentNotificationChannel(this)
         registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
@@ -59,11 +69,15 @@ class CodexApplication : Application() {
             override fun onActivityStarted(activity: Activity) {
                 started++
                 inForeground = true
+                foregroundFlow.value = true
             }
 
             override fun onActivityStopped(activity: Activity) {
                 started = (started - 1).coerceAtLeast(0)
-                if (started == 0) inForeground = false
+                if (started == 0) {
+                    inForeground = false
+                    foregroundFlow.value = false
+                }
             }
 
             override fun onActivityCreated(activity: Activity, state: Bundle?) = Unit

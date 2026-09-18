@@ -267,6 +267,9 @@ class CodexApp(
 
     init {
         widget.state.applyConfig(ThreadSessionState(threadId = "", cwd = defaultWorkspace))
+        // Side conversations inherit their parent's dynamic tools (forks carry no specs of their
+        // own), so the widget needs the parent map to refuse delegation inside them.
+        widget.isSideThread = { sideThreadParents.containsKey(it) }
     }
 
     /**
@@ -1898,6 +1901,13 @@ class CodexApp(
             scope.launch(start = CoroutineStart.UNDISPATCHED) {
                 widget.notices.collect { notice -> postNotice(notice) }
             }
+            scope.launch(start = CoroutineStart.UNDISPATCHED) {
+                // Terminal focus has no Android equivalent; backgrounding is what starts the
+                // automatic recap's idle clock (`app.rs` focus handlers).
+                (context.applicationContext as? CodexApplication)?.foreground?.collect { inForeground ->
+                    widget.noteForegroundChanged(inForeground)
+                }
+            }
             scope.launch { pollRateLimits() }
             scope.launch(start = CoroutineStart.UNDISPATCHED) {
                 client.connection.collect { connection ->
@@ -2509,7 +2519,7 @@ fun CodexScreen(
 
                 entry<Surface.ThreadHistory>(swipeDismiss = NavSwipeDirection.TopToBottom) {
                     SheetPage(onDismiss = app::closeSurface) {
-                        ThreadHistoryScreen(client = app.client, onBack = app::closeSurface)
+                        ThreadHistoryScreen(app = app, onBack = app::closeSurface)
                     }
                 }
 

@@ -24,6 +24,9 @@
       才会发的路径。
 - [ ] 审批 UX 新路径：输入中延后（`ChatWidget.ApprovalTypingIdleDelayMs`）、跨线程审批提示与
       切换、自动审查聚合与「允许一次」覆盖——目前只有 JVM 测试，真机与真实服务端未验证。
+- [ ] 新增的自动 recap（后台 30 分钟触发）、Ctrl+T 只读 transcript、首屏分页
+      （`thread/resume.initialTurnsPage` + `thread/turns/list`）与 `wait_threads` 动态工具目前
+      只有 JVM 测试，真机行为未验证。
 - [ ] 登录状态：设备码登录 / API key / 取消 / 过期 / 登出，凭据是否只落在 `files/home/.codex/`。
 - [ ] 长会话的流式性能与内存。Kotlin 侧已改增量路径（markdown 只重解析 tail block、
       diff 只解析追加段），但这批改动只在 JVM 测试里验证过，仍需真机 trace 确认。
@@ -31,19 +34,12 @@
 
 ## 2. UI 功能缺口
 
-### 2.2 多 agent 与会话编排
-
-- [ ] analytics 仪表盘：上游 `tui/src/analytics/` 走 `codex_backend_client::AnalyticsSession`
-      的 HTTP 报表（按模型/功能/任务/插件/技能、日期范围），本客户端没有后端 HTTP 通道，
-      账户页只有 `account/usage/read` 的每日用量。
-- [ ] 自动 recap：`/recap` 手动可用；上游空闲 30 分钟、至少 3 个已完成 turn、距上次 recap
-      至少 2 个 turn 的自动调度（`local_settings.tui.auto_recap`）未做。
-- [ ] `app/history_ui.kt` 的独立浏览页仍未与 transcript 合并：Ctrl+T 打开的是它，上游没有
-      独立历史页（`thread/searchOccurrences`、`thread/timeline/list` 上游也只定义未消费）。
-- [ ] dynamic tools 只托管 `codex_tui` 子集：`wait_threads` 明确失败；side 线程未像上游
-      `non_delegation_tool_specs` 那样禁用 delegation 三件套。
-- [ ] 首屏历史仍是一次 `thread/read(includeTurns=true)` 全量加载；没有
-      `initialTurnsPage` / `turnsBackwardsCursor` 的有界首屏（顶部「加载更早」分页已可用）。
+- [ ] **账户分析仪表盘**：完整 analytics 没有做，且在本仓库当前无法做：上游 `tui/src/analytics/`
+      直连 ChatGPT 私有 HTTP 接口（`codex_backend_client::AnalyticsSession`，路由见
+      `backend-client/src/client/analytics.rs:41-75`），而 app-server 协议没有 analytics 方法，
+      本客户端只走 app-server。已有的部分是 `account/usage/read` 的每日用量与 summary
+      （lifetime/peak、连续天数、最长 turn），见 `status/account.kt`；要补齐按模型/功能/任务/
+      插件/技能与日期范围的报表，需要上游先新增 app-server 方法，再按协议三处同步绑定。
 
 ## 3. Native / 宿主侧
 

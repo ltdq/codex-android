@@ -254,7 +254,13 @@ class JsonRpcAppServerClient(
         "sessionStartSource" to params.sessionStartSource, "config" to params.config,
         "dynamicTools" to params.dynamicTools,
     ))
-    override suspend fun resumeThread(threadId: String) = session("thread/resume", obj("threadId" to threadId))
+    override suspend fun resumeThread(params: ThreadResumeParams) = session("thread/resume", obj(
+        "threadId" to params.threadId,
+        "excludeTurns" to params.excludeTurns,
+        "initialTurnsPage" to params.initialTurnsPage?.let {
+            obj("limit" to it.limit, "sortDirection" to it.sortDirection?.wire, "itemsView" to it.itemsView?.wire)
+        },
+    ))
     override suspend fun forkThread(params: com.cy.codex.protocol.protocol.v2.ThreadForkParams) =
         session("thread/fork", obj(
             "threadId" to params.threadId,
@@ -287,7 +293,7 @@ class JsonRpcAppServerClient(
     override suspend fun listThreadTurns(params: ThreadTurnsListParams) = result {
         val o = rpc("thread/turns/list", obj("threadId" to params.threadId, "cursor" to params.cursor, "limit" to params.limit,
             "itemsView" to params.itemsView?.wire, "sortDirection" to params.sortDirection?.wire))
-        ThreadTurnsPage(o.array("data").map(WireCodec::turn), o.text("nextCursor"))
+        ThreadTurnsPage(o.array("data").map(WireCodec::turn), o.text("nextCursor"), o.text("backwardsCursor"))
     }
     override suspend fun revertThread(threadId: String, itemId: String?) = result {
         val history = readThread(ThreadReadParams(threadId)).getOrThrow()
@@ -516,8 +522,17 @@ class JsonRpcAppServerClient(
     override suspend fun readRateLimits() = result { WireCodec.accountRateLimits(rpc("account/rateLimits/read")) }
     override suspend fun readUsage() = result {
         val o = rpc("account/usage/read")
-        AccountUsage(o.array("dailyUsageBuckets").map { it.objectValue().let { bucket -> UsageBucket(bucket.required("startDate"), bucket.int("tokens") ?: 0) } },
-            o.objectOrNull("summary")?.int("lifetimeTokens") ?: 0)
+        val summary = o.objectOrNull("summary")
+        AccountUsage(
+            dailyBuckets = o.array("dailyUsageBuckets").map {
+                it.objectValue().let { bucket -> UsageBucket(bucket.required("startDate"), bucket.int("tokens") ?: 0) }
+            },
+            totalTokens = summary?.long("lifetimeTokens") ?: 0L,
+            peakDailyTokens = summary?.long("peakDailyTokens") ?: 0L,
+            longestRunningTurnSec = summary?.long("longestRunningTurnSec") ?: 0L,
+            currentStreakDays = summary?.long("currentStreakDays") ?: 0L,
+            longestStreakDays = summary?.long("longestStreakDays") ?: 0L,
+        )
     }
     override suspend fun readThreadUsage(threadId: String) = result {
         val o = rpc("account/usage/read", obj("threadId" to threadId))

@@ -452,6 +452,16 @@ class SessionState {
         streamingItemId = id
     }
 
+    /**
+     * Drop one item by id.
+     *
+     * Used when a manual recap's loading cell must disappear because the result turned out to be
+     * stale; nothing the server owns is ever removed from the transcript.
+     */
+    fun remove(itemId: String) {
+        if (items.removeAll { it.id == itemId }) itemsRevision++
+    }
+
     /** Append or replace one item, preserving arrival order. */
     fun upsert(item: ThreadItem) {
         val index = items.indexOfFirst { it.id == item.id }

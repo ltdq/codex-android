@@ -864,7 +864,7 @@ private fun ExploredGroupRow(
  * checklist is rendered inline where the `PlanItem` sits, so the transcript reads in order.
  */
 @Composable
-private fun Transcript(
+internal fun Transcript(
     items: List<ThreadItem>,
     diagnostics: List<SessionDiagnostic>,
     isStreaming: (ThreadItem) -> Boolean,

@@ -6,6 +6,7 @@ import com.cy.codex.protocol.ApprovalRequest
 import com.cy.codex.protocol.ApprovalResponse
 import com.cy.codex.protocol.ConnectionState
 import com.cy.codex.protocol.ThreadItemsPage
+import com.cy.codex.protocol.ThreadTurnsPage
 import com.cy.codex.protocol.protocol.RequestId
 import com.cy.codex.protocol.protocol.v2.ClientInfo
 import com.cy.codex.protocol.protocol.v2.ItemTextDelta
@@ -17,14 +18,15 @@ import com.cy.codex.protocol.protocol.v2.FileUpdateChange
 import com.cy.codex.protocol.protocol.v2.GuardianApprovalReviewNotification
 import com.cy.codex.protocol.protocol.v2.PatchApplyStatus
 import com.cy.codex.protocol.protocol.v2.PatchChangeKind
-import com.cy.codex.protocol.protocol.v2.ThreadItemsListParams
 import com.cy.codex.protocol.protocol.v2.ThreadSessionState
 import com.cy.codex.protocol.protocol.v2.ThreadStatus
 import com.cy.codex.protocol.protocol.v2.Thread
 import com.cy.codex.protocol.protocol.v2.ThreadReadResponse
 import com.cy.codex.protocol.protocol.v2.ThreadTokenUsage
 import com.cy.codex.protocol.protocol.v2.TokenUsageBreakdown
+import com.cy.codex.protocol.protocol.v2.Turn
 import com.cy.codex.protocol.protocol.v2.TurnStatus
+import com.cy.codex.protocol.protocol.v2.TurnsPage
 import com.cy.codex.protocol.protocol.v2.WarningNotification
 import com.cy.codex.protocol.protocol.item.AgentMessageItem
 import com.cy.codex.protocol.protocol.item.CommandExecutionItem
@@ -248,15 +250,23 @@ class ChatWidgetTest {
         val newest = CommandExecutionItem("newest", "second", "/workspace", aggregatedOutput = "2\n", exitCode = 0)
         val older = CommandExecutionItem("older", "first", "/workspace", aggregatedOutput = "1\n", exitCode = 0)
         val client = TestClient().apply {
-            resumeResult = Result.success(ThreadSessionState(threadId = thread.id, itemsBackwardsCursor = "cursor-1"))
-            historyResult = Result.success(ThreadReadResponse(thread, listOf(newest)))
-            // `thread/items/list` pages backwards, so its data arrives newest-first and the page
-            // overlaps the snapshot's newest item.
-            earlierResult = Result.success(ThreadItemsPage(listOf(newest, older), nextCursor = null))
+            resumeResult = Result.success(
+                ThreadSessionState(
+                    threadId = thread.id,
+                    thread = thread,
+                    initialTurnsPage = TurnsPage(
+                        data = listOf(Turn("turn-newest", listOf(newest))),
+                        nextCursor = "cursor-1",
+                    ),
+                ),
+            )
+            // `thread/turns/list` pages backwards, so its data arrives newest-first.
+            earlierResult = Result.success(ThreadTurnsPage(listOf(Turn("turn-older", listOf(older))), nextCursor = null))
         }
         val widget = ChatWidget(client, backgroundScope)
         widget.open(thread.id)
         runCurrent()
+        assertEquals(listOf(newest), widget.state.items.toList())
         assertTrue(widget.canLoadEarlier)
 
         widget.loadEarlier()
@@ -269,8 +279,13 @@ class ChatWidgetTest {
     fun `failed earlier page keeps the cursor for a retry`() = runTest {
         val thread = testThread("paged")
         val client = TestClient().apply {
-            resumeResult = Result.success(ThreadSessionState(threadId = thread.id, itemsBackwardsCursor = "cursor-1"))
-            historyResult = Result.success(ThreadReadResponse(thread, emptyList()))
+            resumeResult = Result.success(
+                ThreadSessionState(
+                    threadId = thread.id,
+                    thread = thread,
+                    initialTurnsPage = TurnsPage(data = emptyList(), nextCursor = "cursor-1"),
+                ),
+            )
             earlierResult = Result.failure(IllegalStateException("offline"))
         }
         val widget = ChatWidget(client, backgroundScope)
@@ -281,6 +296,33 @@ class ChatWidgetTest {
         runCurrent()
         assertTrue(widget.canLoadEarlier)
         assertFalse(widget.loadingEarlier)
+    }
+
+    @Test
+    fun `first screen uses the bounded resume page without a full read`() = runTest {
+        val thread = testThread("long")
+        val first = AgentMessageItem("first", "newest kept")
+        val dropped = AgentMessageItem("dropped", "whole rollout")
+        val client = TestClient().apply {
+            resumeResult = Result.success(
+                ThreadSessionState(
+                    threadId = thread.id,
+                    thread = thread,
+                    initialTurnsPage = TurnsPage(data = listOf(Turn("turn-1", listOf(first))), nextCursor = "cursor-1"),
+                ),
+            )
+            // A full read would surface `dropped`; the bounded first screen must never make it.
+            historyResult = Result.success(ThreadReadResponse(thread, listOf(dropped)))
+        }
+        val widget = ChatWidget(client, backgroundScope)
+        var loaded: Result<ThreadReadResponse>? = null
+        widget.open(thread.id) { loaded = it }
+        runCurrent()
+
+        assertEquals(listOf(first), widget.state.items.toList())
+        assertEquals(thread, loaded?.getOrThrow()?.thread)
+        assertFalse(client.readThreadCalled)
+        assertTrue(widget.canLoadEarlier)
     }
 
     @Test
@@ -465,6 +507,94 @@ class ChatWidgetTest {
         assertTrue(response.result.contentItems.single().contains("t1"))
     }
 
+    @Test
+    fun `wait_threads answers a snapshot instead of failing`() = runTest {
+        val thread = testThread("t1")
+        val turn = Turn("turn-1", listOf(AgentMessageItem("m1", "done")), status = TurnStatus.Completed)
+        val client = TestClient().apply {
+            historyResult = Result.success(ThreadReadResponse(thread, emptyList(), listOf(turn)))
+            earlierResult = Result.success(ThreadTurnsPage(listOf(turn), nextCursor = null))
+            itemsResult = Result.success(ThreadItemsPage(listOf(AgentMessageItem("m1", "done"))))
+        }
+        val widget = ChatWidget(client, backgroundScope)
+        widget.bind(ThreadSessionState(threadId = "parent"))
+        widget.attach()
+        client.requests.emit(
+            ApprovalRequest.DynamicTool(
+                RequestId("call"), "parent", "turn", "item", 0,
+                com.cy.codex.protocol.protocol.v2.DynamicToolCallParams(
+                    threadId = "parent",
+                    turnId = "turn",
+                    callId = "call",
+                    namespace = "codex_tui",
+                    tool = "wait_threads",
+                    arguments = """{"targets":[{"threadId":"t1"}],"timeoutMs":0}""",
+                ),
+            ),
+        )
+        runCurrent()
+
+        val response = assertIs<ApprovalResponse.DynamicTool>(client.responses.single())
+        assertTrue(response.result.success)
+        val text = response.result.contentItems.single()
+        assertTrue(""""timedOut":false""" in text, text)
+        assertTrue(""""reason":"turnCompleted"""" in text, text)
+        assertTrue(""""id":"m1"""" in text, text)
+    }
+
+    @Test
+    fun `wait_threads rejects waiting on the calling task`() = runTest {
+        val client = TestClient()
+        val widget = ChatWidget(client, backgroundScope)
+        widget.bind(ThreadSessionState(threadId = "parent"))
+        widget.attach()
+        client.requests.emit(
+            ApprovalRequest.DynamicTool(
+                RequestId("call"), "parent", "turn", "item", 0,
+                com.cy.codex.protocol.protocol.v2.DynamicToolCallParams(
+                    threadId = "parent",
+                    turnId = "turn",
+                    callId = "call",
+                    namespace = "codex_tui",
+                    tool = "wait_threads",
+                    arguments = """{"targets":[{"threadId":"parent"}],"timeoutMs":0}""",
+                ),
+            ),
+        )
+        runCurrent()
+
+        val response = assertIs<ApprovalResponse.DynamicTool>(client.responses.single())
+        assertFalse(response.result.success)
+        assertTrue(response.result.contentItems.single().contains("calling task"))
+    }
+
+    @Test
+    fun `delegation tools are refused in side conversations`() = runTest {
+        val client = TestClient()
+        val widget = ChatWidget(client, backgroundScope)
+        widget.isSideThread = { it == "side" }
+        widget.bind(ThreadSessionState(threadId = "side"))
+        widget.attach()
+        client.requests.emit(
+            ApprovalRequest.DynamicTool(
+                RequestId("call"), "side", "turn", "item", 0,
+                com.cy.codex.protocol.protocol.v2.DynamicToolCallParams(
+                    threadId = "side",
+                    turnId = "turn",
+                    callId = "call",
+                    namespace = "codex_tui",
+                    tool = "create_thread",
+                    arguments = """{"prompt":"do something"}""",
+                ),
+            ),
+        )
+        runCurrent()
+
+        val response = assertIs<ApprovalResponse.DynamicTool>(client.responses.single())
+        assertFalse(response.result.success)
+        assertTrue(response.result.contentItems.single().contains("side conversation"))
+    }
+
     private class TestClient : AppServerClient {
         override val events = MutableSharedFlow<AppServerEvent>()
         override val requests = MutableSharedFlow<ApprovalRequest>()
@@ -486,10 +616,16 @@ class ChatWidgetTest {
             effort: com.cy.codex.protocol.protocol.v2.ReasoningEffort?,
             clientMetadata: Map<String, String>?,
         ) = turnResult
-        override suspend fun resumeThread(threadId: String) = resumeResult
-        override suspend fun readThread(params: com.cy.codex.protocol.protocol.v2.ThreadReadParams) = historyResult
-        var earlierResult: Result<ThreadItemsPage> = Result.failure(IllegalStateException("unavailable"))
-        override suspend fun listThreadItems(params: ThreadItemsListParams) = earlierResult
+        override suspend fun resumeThread(params: com.cy.codex.protocol.protocol.v2.ThreadResumeParams) = resumeResult
+        var readThreadCalled = false
+        override suspend fun readThread(params: com.cy.codex.protocol.protocol.v2.ThreadReadParams): Result<ThreadReadResponse> {
+            readThreadCalled = true
+            return historyResult
+        }
+        var earlierResult: Result<ThreadTurnsPage> = Result.failure(IllegalStateException("unavailable"))
+        override suspend fun listThreadTurns(params: com.cy.codex.protocol.protocol.v2.ThreadTurnsListParams) = earlierResult
+        var itemsResult: Result<ThreadItemsPage> = Result.failure(IllegalStateException("unavailable"))
+        override suspend fun listThreadItems(params: com.cy.codex.protocol.protocol.v2.ThreadItemsListParams) = itemsResult
         override suspend fun respond(requestId: RequestId, response: ApprovalResponse) {
             check(!rejectResponse) { "connection lost" }
             responses += response

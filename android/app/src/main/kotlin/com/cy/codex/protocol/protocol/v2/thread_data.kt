@@ -107,6 +107,8 @@ data class MisalignmentSteer(val message: String)
 data class Turn(
     val id: String,
     val items: List<ThreadItem> = emptyList(),
+    /** How much of [items] this payload loaded. Mirrors `TurnItemsView`; defaults to `full`. */
+    val itemsView: TurnItemsView = TurnItemsView.Full,
     val status: TurnStatus = TurnStatus.Completed,
     val startedAt: Long = 0L,
     val completedAt: Long? = null,
@@ -220,6 +222,41 @@ data class ThreadTurnsListParams(
     val limit: Int? = null,
     val sortDirection: SortDirection? = null,
 )
+
+/**
+ * `thread/resume` params.
+ *
+ * `excludeTurns` keeps the response metadata-only, which is what makes a bounded first screen
+ * possible: the client asks for [initialTurnsPage] instead of letting the server replay the whole
+ * rollout. Both fields exist upstream (`v2::ThreadResumeParams`).
+ */
+data class ThreadResumeParams(
+    val threadId: String,
+    /** When true, do not populate `thread.turns`; hydrate with pages instead. */
+    val excludeTurns: Boolean? = null,
+    /** Experimental `thread/resume.initialTurnsPage`: embed one bounded turns page. */
+    val initialTurnsPage: ThreadResumeInitialTurnsPageParams? = null,
+)
+
+/** Experimental `thread/resume.initialTurnsPage`; defaults to descending order and `summary`. */
+data class ThreadResumeInitialTurnsPageParams(
+    val limit: Int? = null,
+    val sortDirection: SortDirection? = null,
+    val itemsView: TurnItemsView? = null,
+)
+
+/**
+ * One `thread/turns/list` page. Mirrors `TurnsPage`, which `thread/resume.initialTurnsPage` also
+ * uses. [backwardsCursor] names the newest row in the page and is only meaningful when reversing
+ * direction; older pages follow [nextCursor].
+ */
+data class TurnsPage(
+    val data: List<Turn> = emptyList(),
+    val nextCursor: String? = null,
+    val backwardsCursor: String? = null,
+) {
+    val turns: List<Turn> get() = data
+}
 
 /** Which item payloads `thread/turns/list` inlines; mirrors `TurnItemsView`. */
 enum class TurnItemsView(val wire: String) {
@@ -633,10 +670,20 @@ data class RateLimitResetCredit(
     val expiresAt: Long? = null,
 )
 
-/** `account/usage/read` response. */
+/**
+ * `account/usage/read` response.
+ *
+ * [dailyBuckets] carries the per-day series; the summary fields mirror `AccountTokenUsageSummary`
+ * (lifetime/peak tokens, streaks, longest turn) and are zero when an older server omits them.
+ */
 data class AccountUsage(
     val dailyBuckets: List<UsageBucket> = emptyList(),
-    val totalTokens: Int = 0,
+    /** `summary.lifetimeTokens`. */
+    val totalTokens: Long = 0L,
+    val peakDailyTokens: Long = 0L,
+    val longestRunningTurnSec: Long = 0L,
+    val currentStreakDays: Long = 0L,
+    val longestStreakDays: Long = 0L,
 )
 
 data class UsageBucket(val day: String, val tokens: Int)

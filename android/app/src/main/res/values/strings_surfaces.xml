@@ -48,6 +48,8 @@
     <string name="account_screen_usage">Token activity</string>
     <string name="account_screen_usage_empty">No token activity yet.</string>
     <string name="account_screen_usage_peak">Peak %1$s · %2$d days</string>
+    <string name="account_screen_usage_streak">Current streak %1$d days · Longest %2$d days</string>
+    <string name="account_screen_usage_longest_turn">Longest turn %1$s</string>
     <string name="account_screen_credentials">Credentials</string>
     <string name="account_screen_sign_out">Log out</string>
     <string name="account_screen_remove_credentials">Remove local credentials</string>
@@ -142,6 +144,9 @@
     <string name="settings_reduce_motion_summary">Skip transitions and springs; the system animator setting still applies</string>
     <string name="settings_show_tooltips">Show startup tips</string>
     <string name="settings_show_tooltips_summary">Show a usage tip when a fresh conversation opens</string>
+    <string name="settings_group_recap">Recap</string>
+    <string name="settings_auto_recap">Automatic recaps</string>
+    <string name="settings_auto_recap_summary">Write a catch-up recap after the app has been in the background for 30 minutes; /recap stays available</string>
     <string name="settings_group_about">About</string>
     <string name="settings_app_version">App version</string>
     <string name="settings_group_notifications">Notifications</string>

@@ -91,7 +91,7 @@ sealed interface Surface : NavKey {
     /** The realtime voice session for the open thread. */
     data object Realtime : Surface
 
-    /** `thread/search` and the paged history behind the scrubber. */
+    /** Ctrl+T: the read-only transcript overlay, mirroring the TUI's transcript pager. */
     data object ThreadHistory : Surface
 
     // ---- diagnostics and maintenance --------------------------------------------

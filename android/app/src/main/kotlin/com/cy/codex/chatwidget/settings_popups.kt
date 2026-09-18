@@ -39,6 +39,7 @@ import com.cy.codex.BuildConfig
 import com.cy.codex.NotificationSettings
 import com.cy.codex.R
 import com.cy.codex.agentNotificationsAllowed
+import com.cy.codex.app.RecapSettings
 import com.cy.codex.protocol.protocol.v2.ApprovalsReviewer
 import com.cy.codex.protocol.protocol.v2.AskForApproval
 import com.cy.codex.protocol.protocol.v2.ModelPreset
@@ -143,6 +144,7 @@ fun SettingsScreen(
                     SettingsTab.General -> {
                         SettingsAppearanceSection()
                         SettingsNotificationSection()
+                        SettingsRecapSection()
                         SettingsWorkspaceSection(config.cwd, config.workspaceRoots, onOpenWorkspacePicker)
                         SettingsConfigSourcesSection(catalog, configPath)
                         SettingsExperimentalSection(catalog, onEvent)
@@ -454,7 +456,26 @@ private fun SettingsNotificationSection() {
 }
 
 /**
- * 2.6 关于: the packaged app version.
+ * 2.6 回顾: the Android value of `tui.auto_recap`.
+ *
+ * A client-side toggle rather than a `config/value/write`, because the automatic recap is
+ * orchestrated entirely in the widget and the server has no recap method.
+ */
+@Composable
+private fun SettingsRecapSection() {
+    val context = LocalContext.current
+    SettingsGroup(stringResource(R.string.settings_group_recap)) {
+        SwitchPreference(
+            title = stringResource(R.string.settings_auto_recap),
+            summary = stringResource(R.string.settings_auto_recap_summary),
+            checked = RecapSettings.autoRecap,
+            onCheckedChange = { RecapSettings.setAutoRecap(context, it) },
+        )
+    }
+}
+
+/**
+ * 2.7 关于: the packaged app version.
  *
  * Read from [BuildConfig] rather than a hand-written string: the same value initializes the
  * app-server client, so the version the user sees here is the version the server was told.

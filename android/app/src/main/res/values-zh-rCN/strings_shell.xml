@@ -68,7 +68,7 @@
     <string name="shortcuts_overlay_group_suggestions">建议</string>
     <string name="shortcuts_overlay_global_escape">中断当前任务，或退出输入框</string>
     <string name="shortcuts_overlay_global_interrupt">中断当前任务</string>
-    <string name="shortcuts_overlay_global_transcript">打开历史记录</string>
+    <string name="shortcuts_overlay_global_transcript">打开会话记录</string>
     <string name="shortcuts_overlay_global_help">显示本列表</string>
     <string name="shortcuts_overlay_composer_submit">发送消息</string>
     <string name="shortcuts_overlay_composer_newline">插入换行</string>

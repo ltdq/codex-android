@@ -104,6 +104,7 @@ import com.cy.codex.protocol.protocol.v2.ThreadListParams
 import com.cy.codex.protocol.protocol.v2.ThreadListing
 import com.cy.codex.protocol.protocol.v2.ThreadReadParams
 import com.cy.codex.protocol.protocol.v2.ThreadReadResponse
+import com.cy.codex.protocol.protocol.v2.ThreadResumeParams
 import com.cy.codex.protocol.protocol.v2.ThreadStartParams
 import com.cy.codex.protocol.protocol.v2.ThreadTurnsListParams
 import com.cy.codex.protocol.protocol.v2.ThreadRealtimeAudioChunk
@@ -622,7 +623,7 @@ interface AppServerClient {
     suspend fun listLoadedThreads(): Result<List<String>> = unsupported("listLoadedThreads")
     suspend fun readThread(params: ThreadReadParams): Result<ThreadReadResponse> = unsupported("readThread")
     suspend fun startThread(params: ThreadStartParams): Result<ThreadSessionState> = unsupported("startThread")
-    suspend fun resumeThread(threadId: String): Result<ThreadSessionState> = unsupported("resumeThread")
+    suspend fun resumeThread(params: ThreadResumeParams): Result<ThreadSessionState> = unsupported("resumeThread")
     suspend fun forkThread(params: com.cy.codex.protocol.protocol.v2.ThreadForkParams): Result<ThreadSessionState> = unsupported("forkThread")
     suspend fun archiveThread(threadId: String): Result<Unit> = unsupported("archiveThread")
     suspend fun unarchiveThread(threadId: String): Result<Unit> = unsupported("unarchiveThread")
@@ -1046,6 +1047,8 @@ data class ThreadItemsPage(
 data class ThreadTurnsPage(
     val turns: List<com.cy.codex.protocol.protocol.v2.Turn> = emptyList(),
     val nextCursor: String? = null,
+    /** Names the newest turn in the page; only meaningful when reversing direction. */
+    val backwardsCursor: String? = null,
 )
 
 /** One `thread/searchOccurrences` hit. */

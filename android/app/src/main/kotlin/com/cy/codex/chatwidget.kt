@@ -23,11 +23,14 @@ import com.cy.codex.protocol.protocol.v2.FileUpdateChange
 import com.cy.codex.protocol.protocol.v2.QueuedSubmission
 import com.cy.codex.protocol.protocol.v2.ReviewTarget
 import com.cy.codex.protocol.protocol.v2.SortDirection
-import com.cy.codex.protocol.protocol.v2.ThreadItemsListParams
+import com.cy.codex.protocol.protocol.v2.ThreadResumeInitialTurnsPageParams
+import com.cy.codex.protocol.protocol.v2.ThreadResumeParams
 import com.cy.codex.protocol.protocol.v2.ThreadSettingsUpdateParams
 import com.cy.codex.protocol.protocol.v2.ThreadReadResponse
 import com.cy.codex.protocol.protocol.v2.ThreadStatus
 import com.cy.codex.protocol.protocol.v2.ThreadTokenUsage
+import com.cy.codex.protocol.protocol.v2.ThreadTurnsListParams
+import com.cy.codex.protocol.protocol.v2.TurnItemsView
 import com.cy.codex.protocol.protocol.v2.TurnStatus
 import com.cy.codex.protocol.protocol.v2.UserInput
 import kotlinx.coroutines.CoroutineScope
@@ -42,8 +45,11 @@ import kotlinx.coroutines.launch
 /** The wire's "no tier preference" value (`SERVICE_TIER_DEFAULT_REQUEST_VALUE` upstream). */
 private const val ServiceTierDefault = "default"
 
-/** Items per "load earlier" page; the server clamps whatever the client asks for. */
-private const val EarlierPageSize = 50
+/** Turns in the bounded first screen `thread/resume` returns; older turns stay a click away. */
+private const val FirstScreenTurnLimit = 20
+
+/** Turns per "load earlier" page; the server clamps whatever the client asks for. */
+private const val EarlierPageSize = 25
 
 /**
  * The reducer that owns one open thread.
@@ -182,6 +188,14 @@ class ChatWidget(
     /** The manual recap request, if one is running; a second `/recap` is ignored. */
     private var recapJob: Job? = null
 
+    /**
+     * Automatic recap bookkeeping, mirroring `app/recap.rs`.
+     *
+     * Automatic recaps are generated silently once the app has been in the background for 30
+     * minutes with enough completed turns; `/recap` still runs on demand.
+     */
+    private val recap = com.cy.codex.app.RecapScheduler()
+
     /** The background git/PR probe for the status card. */
     private var gitSummaryJob: Job? = null
 
@@ -245,22 +259,31 @@ class ChatWidget(
     /**
      * Cursor into the turns older than what [open] loaded.
      *
-     * `thread/resume` answers with an `itemsBackwardsCursor` when the server can page backwards;
-     * the transcript uses it to offer "load earlier" and replaces it with each page's own
-     * `nextCursor`. Null means either the server predates the field or the thread is fully loaded,
-     * and in both cases the button is absent rather than disabled.
+     * `thread/resume` answers with a bounded `initialTurnsPage` when the client asks for one; the
+     * transcript uses the page's `nextCursor` to offer "load earlier" and replaces it with each
+     * subsequent page's own cursor. Null means there is nothing older on the server, so the button
+     * is absent rather than disabled.
      */
-    var itemsBackwardsCursor by mutableStateOf<String?>(null)
+    var nextTurnCursor by mutableStateOf<String?>(null)
         private set
 
     var loadingEarlier by mutableStateOf(false)
         private set
 
     /** Whether a "load earlier" affordance should be on screen right now. */
-    val canLoadEarlier: Boolean get() = itemsBackwardsCursor != null && !loadingEarlier
+    val canLoadEarlier: Boolean get() = nextTurnCursor != null && !loadingEarlier
 
     /** How many requests are actually on screen, i.e. eligible for the "in queue" line. */
     val approvalQueueSize: Int get() = if (currentApproval == null) 0 else pendingApprovals.size
+
+    /**
+     * Whether [threadId] is a side conversation.
+     *
+     * A side conversation forks its parent and inherits the parent's persisted dynamic tool specs
+     * (`thread/fork` has no `dynamicTools` field), so delegation is refused at call time rather
+     * than filtered out of the advertised spec.
+     */
+    var isSideThread: (String) -> Boolean = { false }
 
     /** Per-thread counts of approvals waiting in threads that are not open. */
     val otherThreadApprovals: List<ForeignApproval>
@@ -397,19 +420,33 @@ class ChatWidget(
         turnDiff.reset()
         patchChanges.clear()
         streamOvertookLoad = false
-        itemsBackwardsCursor = null
+        nextTurnCursor = null
         loadingEarlier = false
+        recap.resetForNewThread()
         loadJob = scope.launch {
-            val resumed = client.resumeThread(threadId)
+            val resumed = client.resumeThread(
+                ThreadResumeParams(
+                    threadId = threadId,
+                    // The metadata-only resume plus one bounded page is what keeps a long thread
+                    // from replaying its whole rollout on open.
+                    excludeTurns = true,
+                    initialTurnsPage = ThreadResumeInitialTurnsPageParams(
+                        limit = FirstScreenTurnLimit,
+                        sortDirection = SortDirection.Desc,
+                        itemsView = TurnItemsView.Full,
+                    ),
+                ),
+            )
             if (version != loadVersion) return@launch
+            var streamedStatus: ThreadStatus? = null
             resumed.onSuccess { session ->
-                val streamedStatus = state.status.takeIf { streamOvertookLoad && it != ThreadStatus.NotLoaded }
+                streamedStatus = state.status.takeIf { streamOvertookLoad && it != ThreadStatus.NotLoaded }
                 state.bindThread(threadId, session)
                 if (streamedStatus != null) state.applyStatus(streamedStatus)
                 // Read after `bindThread` so a stale resume from a cancelled load cannot plant a
                 // cursor for the thread that replaced it; the version check above already guards
                 // the common race, and this keeps the invariant local to the success branch.
-                if (version == loadVersion) itemsBackwardsCursor = session.itemsBackwardsCursor
+                if (version == loadVersion) nextTurnCursor = session.initialTurnsPage?.nextCursor
             }
                 .onFailure { error ->
                     state.failLoad(error.message)
@@ -425,37 +462,43 @@ class ChatWidget(
                 onLoaded(Result.failure(error))
                 return@launch
             }
-            val history = client.readThread(com.cy.codex.protocol.protocol.v2.ThreadReadParams(threadId))
-            if (version != loadVersion) return@launch
-            history.onSuccess { response ->
-                if (version != loadVersion) return@onSuccess
-                // Separators after finished turns are rebuilt from the snapshot's turns: the server
+            val session = resumed.getOrNull()
+            val row = session?.thread
+            val page = session?.initialTurnsPage
+            var loadedTurns = emptyList<com.cy.codex.protocol.protocol.v2.Turn>()
+            if (version == loadVersion && row != null && page != null) {
+                // Separators after finished turns are rebuilt from the page's turns: the server
                 // does not store the divider this client draws.
-                val transcript = if (response.turns.isNotEmpty()) {
-                    com.cy.codex.history_cell.transcriptWithSeparators(response.turns)
-                } else {
-                    response.items
-                }
-                if (streamOvertookLoad) {
-                    // The stream got there first, so this snapshot describes a thread that has
-                    // already moved on: it may only fill the gaps it left. Applying it wholesale
-                    // replaced freshly streamed bodies with the older copies the snapshot was taken
-                    // from — a plan whose deltas had arrived collapsed back to an empty card.
-                    transcript.forEach(state::addIfAbsent)
-                } else {
-                    transcript.forEach(state::upsert)
+                val transcript = com.cy.codex.history_cell.transcriptWithSeparators(page.turns)
+                applyLoadedTranscript(transcript)
+                if (streamedStatus == null) state.applyStatus(row.status)
+                loadedTurns = page.turns
+                onLoaded(Result.success(ThreadReadResponse(row, transcript, page.turns)))
+            } else {
+                // A server without `initialTurnsPage` still gets the full read it always got.
+                val history = client.readThread(com.cy.codex.protocol.protocol.v2.ThreadReadParams(threadId))
+                if (version != loadVersion) return@launch
+                history.onSuccess { response ->
+                    if (version != loadVersion) return@onSuccess
+                    val transcript = if (response.turns.isNotEmpty()) {
+                        com.cy.codex.history_cell.transcriptWithSeparators(response.turns)
+                    } else {
+                        response.items
+                    }
+                    applyLoadedTranscript(transcript)
                     response.turns.lastOrNull()?.usage?.let(state::applyUsage)
                     state.applyStatus(response.thread.status)
+                    loadedTurns = response.turns
+                }.onFailure { error ->
+                    if (version != loadVersion) return@onFailure
+                    state.addDiagnostic(SessionDiagnostic(
+                        severity = DiagnosticSeverity.Error,
+                        code = DiagnosticCode.ThreadLoadFailed,
+                        detail = error.message,
+                    ))
                 }
-            }.onFailure { error ->
-                if (version != loadVersion) return@onFailure
-                state.addDiagnostic(SessionDiagnostic(
-                    severity = DiagnosticSeverity.Error,
-                    code = DiagnosticCode.ThreadLoadFailed,
-                    detail = error.message,
-                ))
+                onLoaded(history)
             }
-            onLoaded(history)
             if (version != loadVersion) return@launch
             // Events that arrived while another thread was open are applied after the snapshot, so
             // content comes from the server exactly once and only the snapshot-less facts — a turn
@@ -464,6 +507,10 @@ class ChatWidget(
                 if (version != loadVersion) return@launch
                 apply(buffered)
             }
+            // Seeded after the replay so a buffered `TurnCompleted` is not counted twice; the recap
+            // schedule then reflects the loaded transcript.
+            recap.seedFromTurns(loadedTurns, monotonicMs())
+            scheduleRecapCheck()
             refreshQueue(threadId)
             client.getGoal(threadId).onSuccess {
                 if (version == loadVersion) state.applyGoal(it)
@@ -473,31 +520,49 @@ class ChatWidget(
     }
 
     /**
-     * Fetch one page of items older than the transcript's first row.
+     * Apply a history snapshot, live-stream-aware.
      *
-     * `thread/items/list` pages backwards: the request's cursor names the oldest loaded item, the
+     * If the stream got there first, the snapshot describes a thread that has already moved on and
+     * may only fill the gaps it left. Applying it wholesale replaced freshly streamed bodies with
+     * the older copies the snapshot was taken from — a plan whose deltas had arrived collapsed back
+     * to an empty card.
+     */
+    private fun applyLoadedTranscript(transcript: List<ThreadItem>) {
+        if (streamOvertookLoad) {
+            transcript.forEach(state::addIfAbsent)
+        } else {
+            transcript.forEach(state::upsert)
+        }
+    }
+
+    /**
+     * Fetch one page of turns older than the transcript's first row.
+     *
+     * `thread/turns/list` pages backwards: the request's cursor names the oldest loaded turn, the
      * page comes back newest-first, and its `nextCursor` names the next-older page. The page is
-     * therefore reversed before it is prepended, and a failure leaves the cursor in place so the
-     * button retries rather than disappearing.
+     * therefore reversed before it is prepended (with separators rebuilt, exactly like the first
+     * screen), and a failure leaves the cursor in place so the button retries rather than
+     * disappearing.
      */
     fun loadEarlier() {
-        val cursor = itemsBackwardsCursor ?: return
+        val cursor = nextTurnCursor ?: return
         if (loadingEarlier) return
         val threadId = state.threadId
         if (threadId.isBlank()) return
         loadingEarlier = true
         scope.launch {
-            client.listThreadItems(
-                ThreadItemsListParams(
+            client.listThreadTurns(
+                ThreadTurnsListParams(
                     threadId = threadId,
                     cursor = cursor,
                     limit = EarlierPageSize,
                     sortDirection = SortDirection.Desc,
+                    itemsView = TurnItemsView.Full,
                 ),
             ).onSuccess { page ->
                 if (state.threadId != threadId) return@onSuccess
-                state.prepend(page.items.asReversed())
-                itemsBackwardsCursor = page.nextCursor
+                state.prepend(com.cy.codex.history_cell.transcriptWithSeparators(page.turns.asReversed()))
+                nextTurnCursor = page.nextCursor
             }.onFailure { error ->
                 if (state.threadId != threadId) return@onFailure
                 state.addDiagnostic(
@@ -527,6 +592,7 @@ class ChatWidget(
                     state.beginLoad(session.threadId)
                     turnDiff.reset()
                     patchChanges.clear()
+                    recap.resetForNewThread()
                     state.bindThread(session.threadId, session)
                     // A brand-new thread starts with one tip, the way the TUI shows one in its
                     // startup session cell.
@@ -606,7 +672,7 @@ class ChatWidget(
             is AppEvent.ResolveApproval -> resolve(event.requestId, event.response)
             is AppEvent.DismissApproval -> dismiss(event.requestId)
 
-            AppEvent.GenerateRecap -> generateRecap()
+            AppEvent.GenerateRecap -> generateRecap(com.cy.codex.app.RecapTrigger.Manual)
             AppEvent.ContinueMisalignment -> continueMisalignment()
 
             is AppEvent.SetGoal -> request({
@@ -870,6 +936,7 @@ class ChatWidget(
         state.beginLoad(session.threadId)
         turnDiff.reset()
         patchChanges.clear()
+        recap.resetForNewThread()
         state.bindThread(session.threadId, session)
     }
 
@@ -897,6 +964,7 @@ class ChatWidget(
         markdownFlushJob = null
         pendingMarkdown.clear()
         turnDiff.reset()
+        recap.resetForNewThread()
         state.clear()
     }
 
@@ -1074,6 +1142,7 @@ class ChatWidget(
                         cwd = cwd,
                         model = model,
                         params = request.params,
+                        isSideThread = isSideThread(calling),
                     )
                     runCatching {
                         client.respond(
@@ -1510,21 +1579,31 @@ class ChatWidget(
     }
 
     /**
-     * Run `/recap` as a hidden structured turn and replace its loading cell with the answer.
+     * Generate a recap and replace its cell with the answer.
      *
      * Mirrors `app/recap.rs`: the prompt carries only user/assistant exchange, and the result is a
-     * client-local transcript cell rather than anything the server persists.
+     * client-local transcript cell rather than anything the server persists. Manual requests show a
+     * loading cell and report failures; automatic ones are silent and retry once per turn revision.
      */
-    private fun generateRecap() {
+    private fun generateRecap(trigger: com.cy.codex.app.RecapTrigger) {
         if (recapJob?.isActive == true) return
+        if (trigger == com.cy.codex.app.RecapTrigger.Automatic && !com.cy.codex.app.RecapSettings.autoRecap) return
+        if (!recap.beginInFlight(trigger)) return
         val threadId = state.threadId
         val history = com.cy.codex.app.recapHistory(state.items)
         if (history == null) {
-            state.addDiagnostic(SessionDiagnostic(severity = DiagnosticSeverity.Info, code = DiagnosticCode.RecapNoHistory))
+            recap.finishInFlight()
+            if (trigger == com.cy.codex.app.RecapTrigger.Manual) {
+                state.addDiagnostic(SessionDiagnostic(severity = DiagnosticSeverity.Info, code = DiagnosticCode.RecapNoHistory))
+            }
             return
         }
+        val capturedCompletedTurns = recap.completedTurns
+        val capturedRevision = recap.turnRevision
         val itemId = "recap-$threadId-${System.currentTimeMillis()}"
-        state.upsert(com.cy.codex.protocol.protocol.item.RecapItem(itemId, text = null))
+        if (trigger == com.cy.codex.app.RecapTrigger.Manual) {
+            state.upsert(com.cy.codex.protocol.protocol.item.RecapItem(itemId, text = null))
+        }
         recapJob = scope.launch {
             try {
                 val result = com.cy.codex.app.structuredTurn(
@@ -1535,19 +1614,78 @@ class ChatWidget(
                     prompt = com.cy.codex.app.RecapPromptPrefix + history,
                     outputSchema = com.cy.codex.app.recapOutputSchema(),
                 )
-                val recap = com.cy.codex.app.parseRecap(result.getOrNull())
-                if (state.threadId != threadId) return@launch
-                state.upsert(
-                    com.cy.codex.protocol.protocol.item.RecapItem(
-                        id = itemId,
-                        text = recap?.summary,
-                        nextAction = recap?.nextAction,
-                        failed = recap == null,
-                    ),
-                )
+                val parsed = com.cy.codex.app.parseRecap(result.getOrNull())
+                // Freshness mirrors `handle_generated_recap`: a result computed from a transcript
+                // that has since moved on (thread switched, a turn started, focus regained, the
+                // setting turned off) is dropped.
+                val stale = state.threadId != threadId ||
+                    state.running ||
+                    recap.completedTurns != capturedCompletedTurns ||
+                    recap.turnRevision != capturedRevision ||
+                    (
+                        trigger == com.cy.codex.app.RecapTrigger.Automatic &&
+                            !(com.cy.codex.app.RecapSettings.autoRecap && recap.shouldGenerate(monotonicMs()))
+                        )
+                if (stale) {
+                    if (trigger == com.cy.codex.app.RecapTrigger.Manual) state.remove(itemId)
+                    return@launch
+                }
+                when {
+                    parsed != null -> {
+                        recap.markRecapped(capturedCompletedTurns)
+                        state.upsert(
+                            com.cy.codex.protocol.protocol.item.RecapItem(
+                                id = itemId,
+                                text = parsed.summary,
+                                nextAction = parsed.nextAction,
+                                failed = false,
+                            ),
+                        )
+                    }
+
+                    trigger == com.cy.codex.app.RecapTrigger.Manual ->
+                        state.upsert(
+                            com.cy.codex.protocol.protocol.item.RecapItem(id = itemId, text = null, failed = true),
+                        )
+
+                    else -> recap.scheduleRetry(scope, threadId, capturedRevision) { onRecapCheck(it) }
+                }
             } finally {
+                recap.finishInFlight()
                 recapJob = null
             }
+        }
+    }
+
+    /** The deferred automatic check; the widget's state may have moved while the timer was armed. */
+    private fun onRecapCheck(threadId: String) {
+        if (!com.cy.codex.app.RecapSettings.autoRecap) return
+        if (!state.open || state.threadId != threadId || state.running) return
+        if (!recap.shouldGenerate(monotonicMs())) return
+        generateRecap(com.cy.codex.app.RecapTrigger.Automatic)
+    }
+
+    private fun scheduleRecapCheck() {
+        recap.scheduleCheck(
+            scope = scope,
+            threadId = state.threadId,
+            nowMs = monotonicMs(),
+            enabled = com.cy.codex.app.RecapSettings.autoRecap,
+        ) { onRecapCheck(it) }
+    }
+
+    /**
+     * The Android equivalent of terminal focus, for the auto-recap idle clock.
+     *
+     * Focus gained cancels the timer and abandons an in-flight automatic recap; focus lost starts
+     * the idle window and re-arms the scheduler.
+     */
+    fun noteForegroundChanged(inForeground: Boolean) {
+        if (inForeground) {
+            recap.noteFocusGained()
+        } else {
+            recap.noteFocusLost(monotonicMs())
+            scheduleRecapCheck()
         }
     }
 
@@ -1628,6 +1766,10 @@ class ChatWidget(
     private fun onTurnCompleted(event: AppServerEvent.TurnCompleted) {
         flushMarkdown()
         state.applyStatus(ThreadStatus.Idle)
+        // Recap bookkeeping sees the turn's final status before any deferred check runs; the timer
+        // is re-armed from the new completion count and idle deadline.
+        recap.noteTurnFinished(event.status, monotonicMs())
+        scheduleRecapCheck()
         // A safety stop is not an ordinary failure: it holds input until the user reviews or
         // confirms continuing, and the server dropped whatever was queued.
         state.applyMisalignment(event.misalignment)
@@ -1726,6 +1868,9 @@ class ChatWidget(
                 if (version != loadVersion || state.threadId != threadId) return@launch
                 if (revision == eventRevision) {
                     state.items.clear()
+                    // This snapshot follows a compact or revert, so the old page cursor names a
+                    // turn that may no longer exist; the transcript is whole again after this read.
+                    nextTurnCursor = null
                     val transcript = if (response.turns.isNotEmpty()) {
                         com.cy.codex.history_cell.transcriptWithSeparators(response.turns)
                     } else {

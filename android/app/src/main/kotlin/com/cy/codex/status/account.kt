@@ -520,7 +520,7 @@ private fun AccountUsageSection(usage: AccountUsage) {
     SectionCard(
         title = stringResource(R.string.account_screen_usage),
         icon = MiuixIcons.Store,
-        trailing = formatTokens(usage.totalTokens.toLong()),
+        trailing = formatTokens(usage.totalTokens),
     ) {
         if (usage.dailyBuckets.isEmpty()) AccountNote(stringResource(R.string.account_screen_usage_empty))
         if (usage.dailyBuckets.isNotEmpty()) {
@@ -545,13 +545,47 @@ private fun AccountUsageSection(usage: AccountUsage) {
             AccountText(
                 text = stringResource(
                     R.string.account_screen_usage_peak,
-                    formatTokens(usage.dailyBuckets.maxOf { it.tokens }.toLong()),
+                    // The server's own peak, when this build answered with the full summary; the
+                    // charted buckets are the fallback for a response that only carries the series.
+                    formatTokens(usage.peakDailyTokens.takeIf { it > 0 } ?: usage.dailyBuckets.maxOf { it.tokens }.toLong()),
                     usage.dailyBuckets.size,
                 ),
                 size = UiType.Footnote,
                 color = colors.disabledOnSurface,
             )
+            if (usage.currentStreakDays > 0 || usage.longestStreakDays > 0) {
+                AccountText(
+                    text = stringResource(
+                        R.string.account_screen_usage_streak,
+                        usage.currentStreakDays,
+                        usage.longestStreakDays,
+                    ),
+                    size = UiType.Footnote,
+                    color = colors.disabledOnSurface,
+                )
+            }
+            if (usage.longestRunningTurnSec > 0) {
+                AccountText(
+                    text = stringResource(
+                        R.string.account_screen_usage_longest_turn,
+                        accountTurnDuration(usage.longestRunningTurnSec),
+                    ),
+                    size = UiType.Footnote,
+                    color = colors.disabledOnSurface,
+                )
+            }
         }
+    }
+}
+
+/** `12345` seconds as the TUI status card spells a long turn: hours, then minutes. */
+private fun accountTurnDuration(seconds: Long): String {
+    val hours = seconds / 3600
+    val minutes = (seconds % 3600) / 60
+    return when {
+        hours > 0 -> "${hours}h ${minutes}m"
+        minutes > 0 -> "${minutes}m"
+        else -> "${seconds}s"
     }
 }
 

@@ -115,13 +115,21 @@ internal object WireCodec {
 
     fun turn(value: JsonElement): Turn {
         val o = value.objectValue()
-        return Turn(o.required("id"), o.array("items").map { item(it) }, TurnStatus.fromWire(o.required("status")),
+        return Turn(o.required("id"), o.array("items").map { item(it) },
+            TurnItemsView.entries.firstOrNull { it.wire == o.text("itemsView") } ?: TurnItemsView.Full,
+            TurnStatus.fromWire(o.required("status")),
             (o.long("startedAt") ?: 0) * 1000, o.long("completedAt")?.times(1000),
             durationMs = o.long("durationMs"))
     }
 
+    /** One `TurnsPage`: `thread/turns/list` and `thread/resume.initialTurnsPage` share the shape. */
+    fun turnsPage(value: JsonElement): TurnsPage {
+        val o = value.objectValue()
+        return TurnsPage(o.array("data").map(::turn), o.text("nextCursor"), o.text("backwardsCursor"))
+    }
+
     fun session(value: JsonObject): ThreadSessionState {
-        val t = value["thread"]!!.objectValue()
+        val row = thread(value["thread"]!!)
         val sandbox = value.objectOrNull("sandbox")
         val mode = when (sandbox?.text("type")) {
             "dangerFullAccess", "externalSandbox" -> SandboxMode.DangerFullAccess
@@ -129,9 +137,9 @@ internal object WireCodec {
             else -> SandboxMode.WorkspaceWrite
         }
         val model = value.required("model")
-        val cwd = value.text("cwd") ?: t.required("cwd")
+        val cwd = value.text("cwd") ?: row.cwd
         return ThreadSessionState(
-            threadId = t.required("id"), forkedFromId = t.text("forkedFromId"), threadName = t.text("name"),
+            threadId = row.id, forkedFromId = row.forkedFromId, threadName = row.name,
             model = model, modelDisplayName = model, modelProviderId = value.required("modelProvider"),
             reasoningEffort = value.text("reasoningEffort")?.let(ReasoningEffort::fromWire) ?: ReasoningEffort.Medium,
             approvalPolicy = AskForApproval.fromWire(value.text("approvalPolicy").orEmpty()),
@@ -141,9 +149,11 @@ internal object WireCodec {
                 ?: CollaborationMode.Default,
             serviceTier = value.text("serviceTier"),
             cwd = cwd, workspaceRoots = listOf(cwd), instructionSourcePaths = value.strings("instructionSources"),
-            gitBranch = t.objectOrNull("gitInfo")?.text("branch"), rolloutPath = t.text("path"),
-            parentThreadId = t.text("parentThreadId"), canAcceptDirectInput = t.bool("canAcceptDirectInput"),
-            itemsBackwardsCursor = value.text("itemsBackwardsCursor"),
+            gitBranch = row.gitInfo?.branch, rolloutPath = row.path,
+            parentThreadId = row.parentThreadId, canAcceptDirectInput = row.canAcceptDirectInput,
+            turnsBackwardsCursor = value.text("turnsBackwardsCursor"),
+            initialTurnsPage = value.objectOrNull("initialTurnsPage")?.let(::turnsPage),
+            thread = row,
         )
     }
 
