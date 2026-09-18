@@ -15,6 +15,9 @@
 流式 delta 统一按 `Motion.StreamCommitIntervalMs` 提交，`Lagged` 会触发重同步，无响应的
 worker 由 `JsonRpcAppServerClient` 的看门狗摘掉；`pack-jnilibs.sh` 对进 jniLibs 的每个 ELF
 做 16 KB 页对齐门禁（`native/build.sh` 同样校验自己的两个 `.so`）。
+`AgentMessageItem.questions` 按 TUI 的内联问题编辑器处理（选项、自由文本、`> 问题` 框定、
+32 条/512 字节选项上限），答案本身是普通用户消息，不需要独立的 `request_user_input`
+结果 cell，见 `history_cell/async_questions.kt`。
 下面的顺序是「先上真机验证，最后是功能与可选的架构扩展」。
 
 ## 1. 真机与真实账户验证（P0，需要账户 + 网络）
@@ -27,6 +30,8 @@ worker 由 `JsonRpcAppServerClient` 的看门狗摘掉；`pack-jnilibs.sh` 对�
       才会发的路径。
 - [ ] 审批 UX 新路径：输入中延后（`ChatWidget.ApprovalTypingIdleDelayMs`）、跨线程审批提示与
       切换、自动审查聚合与「允许一次」覆盖——目前只有 JVM 测试，真机与真实服务端未验证。
+- [ ] 内联异步问题（`AgentMessageItem.questions`）的选项/自由文本应答与 `> 问题` 框定只在
+      JVM 测试里验证过；真实服务端的 `request_user_input_async` 是否走同一形状未验证。
 - [ ] 新增的自动 recap（后台 30 分钟触发）、Ctrl+T 只读 transcript、首屏分页
       （`thread/resume.initialTurnsPage` + `thread/turns/list`）与 `wait_threads` 动态工具目前
       只有 JVM 测试，真机行为未验证。
@@ -54,8 +59,6 @@ worker 由 `JsonRpcAppServerClient` 的看门狗摘掉；`pack-jnilibs.sh` 对�
       在普通 App 上是 no-op；运行期是否被触达未验证（App 侧靠注入
       `SSL_CERT_FILE` / `CURL_CA_BUNDLE` 兜底）。
 - [ ] 真机上 diff "显示更多" 分页的滚动位置与长文件 jank 未验证；无截图测试做像素对比。
-- [ ] `AgentMessageItem.questions` 是否被服务端用于回传答案（决定是否需要独立的
-      `request_user_input` 结果 cell）。
 
 ## 4. 不做
 

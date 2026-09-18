@@ -2,6 +2,8 @@ package com.cy.codex.history_cell
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -23,6 +25,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
@@ -44,9 +47,11 @@ import com.cy.codex.pressableRow
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Copy
 import top.yukonga.miuix.kmp.icon.extended.Ok
+import top.yukonga.miuix.kmp.icon.extended.Send
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
@@ -157,13 +162,19 @@ fun AgentMessageCell(
                 }
             }
         }
-        Spacer(Modifier.height(labelSpacing))
-        // While deltas are being buffered the parsed blocks are the body; once the item completes
-        // the stream is dropped and the authoritative text renders instead.
-        if (stream != null && stream.hasContent) {
-            MarkdownStreamText(stream = stream, streaming = streaming, cwd = cwd)
-        } else {
-            MarkdownText(markdown = item.text, cwd = cwd)
+        // A question message's text is the server's own rendering of the same questions — each
+        // title followed by its options as a markdown list — so drawing it here would show every
+        // question twice: once as inert markdown and once as the answerable list below. The list
+        // carries the titles and options, so nothing is lost.
+        if (questions.isEmpty()) {
+            Spacer(Modifier.height(labelSpacing))
+            // While deltas are being buffered the parsed blocks are the body; once the item
+            // completes the stream is dropped and the authoritative text renders instead.
+            if (stream != null && stream.hasContent) {
+                MarkdownStreamText(stream = stream, streaming = streaming, cwd = cwd)
+            } else {
+                MarkdownText(markdown = item.text, cwd = cwd)
+            }
         }
         if (questions.isNotEmpty()) {
             Spacer(Modifier.height(questionSpacing))
@@ -214,10 +225,12 @@ private fun AttachmentChip(
  * Questions the agent asked inside its message, shown as a bordered list so a request that is
  * waiting on the user never reads as plain prose.
  *
- * Tapping an option answers it: the answer goes back as an ordinary user message, which is how
- * `chatwidget/questions.rs` resolves an inline question upstream. Picking one locks the question
- * locally; the list itself is a snapshot of the message, so the only way to answer twice is a
- * replayed item, and the widget drops those.
+ * Mirrors `codex-rs/tui/src/bottom_pane/async_questions/`: an option is one tap, a free-text answer
+ * is always reachable — the "None of the above" row on a question that has options, the only row
+ * on one that does not — and the submitted answer goes back as an ordinary user message framed with
+ * the question it answers ([AsyncQuestions.answeredText]), which is what `go_next_or_submit` does
+ * upstream. Answering locks the question locally; the list itself is a snapshot of the message, so
+ * only a replayed item can show it again.
  */
 @Composable
 private fun QuestionList(
@@ -240,8 +253,21 @@ private fun QuestionList(
     val colors = MiuixTheme.colorScheme
     val shape = remember(corner) { RoundedCornerShape(corner) }
     val optionShape = remember(corner) { RoundedCornerShape(corner) }
-    // question index -> option already answered with; empty for free-text-only questions.
-    val answered = remember(questions) { mutableStateMapOf<Int, String>() }
+    // The editor applies the TUI's option bounds before anything is shown.
+    val bounded = remember(questions) { AsyncQuestions.normalize(questions) }
+    // question index -> the answer already submitted; an entry locks its question.
+    val answered = remember(bounded) { mutableStateMapOf<Int, String>() }
+    // question index -> the in-progress free-text draft.
+    val drafts = remember(bounded) { mutableStateMapOf<Int, String>() }
+    // question index -> the free-text row of an option question was tapped open.
+    val otherOpen = remember(bounded) { mutableStateMapOf<Int, Boolean>() }
+
+    fun submit(questionIndex: Int, title: String, answer: String) {
+        if (answered.containsKey(questionIndex) || answer.isBlank()) return
+        answered[questionIndex] = answer.trim()
+        onAnswer(AsyncQuestions.answeredText(title, answer))
+    }
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -250,7 +276,10 @@ private fun QuestionList(
             .padding(horizontal = horizontalPadding, vertical = verticalPadding),
         verticalArrangement = Arrangement.spacedBy(questionSpacing),
     ) {
-        questions.forEachIndexed { questionIndex, question ->
+        bounded.forEachIndexed { questionIndex, question ->
+            val options = question.options.orEmpty()
+            val chosen = answered[questionIndex]
+            val freeTextOpen = options.isEmpty() || otherOpen[questionIndex] == true
             Column(verticalArrangement = Arrangement.spacedBy(optionSpacing)) {
                 Text(
                     text = question.title,
@@ -258,53 +287,147 @@ private fun QuestionList(
                     lineHeight = titleLineHeight,
                     color = colors.onSurface,
                 )
-                val chosen = answered[questionIndex]
-                question.options.orEmpty().forEach { option ->
-                    val selected = chosen == option
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .pressableRow(
-                                shape = optionShape,
-                                container = if (selected) colors.primary.copy(alpha = 0.1f) else Color.Transparent,
-                                onClick = {
-                                    if (answered.containsKey(questionIndex)) return@pressableRow
-                                    answered[questionIndex] = option
-                                    onAnswer(option)
-                                },
-                            )
-                            .padding(
-                                horizontal = optionHorizontalPadding,
-                                vertical = optionVerticalPadding,
-                            ),
-                        verticalAlignment = Alignment.Top,
-                    ) {
-                        Text(
-                            text = stringResource(R.string.messages_cell_option_bullet),
-                            modifier = Modifier.width(bulletWidth),
-                            fontSize = optionFontSize,
-                            lineHeight = optionLineHeight,
-                            color = if (selected) colors.primary else colors.onSurfaceVariantSummary,
-                        )
-                        Text(
-                            text = option,
-                            modifier = Modifier.weight(1f),
-                            fontSize = optionFontSize,
-                            lineHeight = optionLineHeight,
-                            color = if (selected) colors.primary else colors.onSurfaceVariantSummary,
-                        )
-                        if (selected) {
-                            Spacer(Modifier.width(UiConsts.Space6))
-                            Icon(
-                                imageVector = MiuixIcons.Ok,
-                                contentDescription = stringResource(R.string.request_user_input_view_selected),
-                                modifier = Modifier.size(UiConsts.IconInline),
-                                tint = colors.primary,
-                            )
-                        }
-                    }
+                options.forEach { option ->
+                    QuestionOptionRow(
+                        text = option,
+                        selected = chosen == option,
+                        optionShape = optionShape,
+                        bulletWidth = bulletWidth,
+                        fontSize = optionFontSize,
+                        lineHeight = optionLineHeight,
+                        horizontalPadding = optionHorizontalPadding,
+                        verticalPadding = optionVerticalPadding,
+                        onClick = { submit(questionIndex, question.title, option) },
+                    )
+                }
+                if (chosen != null && options.none { it == chosen }) {
+                    // A free-text answer has no option row to mark, so it gets one of its own.
+                    QuestionOptionRow(
+                        text = chosen,
+                        selected = true,
+                        optionShape = optionShape,
+                        bulletWidth = bulletWidth,
+                        fontSize = optionFontSize,
+                        lineHeight = optionLineHeight,
+                        horizontalPadding = optionHorizontalPadding,
+                        verticalPadding = optionVerticalPadding,
+                        onClick = {},
+                    )
+                } else if (chosen == null && !freeTextOpen) {
+                    QuestionOptionRow(
+                        text = stringResource(R.string.request_user_input_view_other),
+                        selected = false,
+                        optionShape = optionShape,
+                        bulletWidth = bulletWidth,
+                        fontSize = optionFontSize,
+                        lineHeight = optionLineHeight,
+                        horizontalPadding = optionHorizontalPadding,
+                        verticalPadding = optionVerticalPadding,
+                        onClick = { otherOpen[questionIndex] = true },
+                    )
+                } else if (chosen == null) {
+                    QuestionAnswerField(
+                        value = drafts[questionIndex].orEmpty(),
+                        onValueChange = { drafts[questionIndex] = it },
+                        onSubmit = { submit(questionIndex, question.title, drafts[questionIndex].orEmpty()) },
+                    )
                 }
             }
+        }
+    }
+}
+
+/** One tappable row of a question: a model-authored option, the free-text row, or an answer. */
+@Composable
+private fun QuestionOptionRow(
+    text: String,
+    selected: Boolean,
+    optionShape: RoundedCornerShape,
+    bulletWidth: Dp,
+    fontSize: TextUnit,
+    lineHeight: TextUnit,
+    horizontalPadding: Dp,
+    verticalPadding: Dp,
+    onClick: () -> Unit,
+) {
+    val colors = MiuixTheme.colorScheme
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .pressableRow(
+                shape = optionShape,
+                container = if (selected) colors.primary.copy(alpha = 0.1f) else Color.Transparent,
+                onClick = onClick,
+            )
+            .padding(
+                horizontal = horizontalPadding,
+                vertical = verticalPadding,
+            ),
+        verticalAlignment = Alignment.Top,
+    ) {
+        Text(
+            text = stringResource(R.string.messages_cell_option_bullet),
+            modifier = Modifier.width(bulletWidth),
+            fontSize = fontSize,
+            lineHeight = lineHeight,
+            color = if (selected) colors.primary else colors.onSurfaceVariantSummary,
+        )
+        Text(
+            text = text,
+            modifier = Modifier.weight(1f),
+            fontSize = fontSize,
+            lineHeight = lineHeight,
+            color = if (selected) colors.primary else colors.onSurfaceVariantSummary,
+        )
+        if (selected) {
+            Spacer(Modifier.width(UiConsts.Space6))
+            Icon(
+                imageVector = MiuixIcons.Ok,
+                contentDescription = stringResource(R.string.request_user_input_view_selected),
+                modifier = Modifier.size(UiConsts.IconInline),
+                tint = colors.primary,
+            )
+        }
+    }
+}
+
+/** The free-text row: a field and the one button that sends what it holds. */
+@Composable
+private fun QuestionAnswerField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    onSubmit: () -> Unit,
+) {
+    val colors = MiuixTheme.colorScheme
+    val enabled = value.isNotBlank()
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = UiConsts.Space2),
+        verticalAlignment = Alignment.Bottom,
+    ) {
+        TextField(
+            value = value,
+            onValueChange = onValueChange,
+            modifier = Modifier.weight(1f),
+            label = stringResource(R.string.request_user_input_view_your_answer),
+            singleLine = false,
+            minLines = 1,
+            maxLines = 4,
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+            keyboardActions = KeyboardActions(onSend = { if (enabled) onSubmit() }),
+            textStyle = MiuixTheme.textStyles.main,
+        )
+        Spacer(Modifier.width(UiConsts.Space6))
+        IconButton(
+            onClick = { if (enabled) onSubmit() },
+            minWidth = UiConsts.IconButtonSize,
+            minHeight = UiConsts.IconButtonSize,
+        ) {
+            Icon(
+                imageVector = MiuixIcons.Send,
+                contentDescription = stringResource(R.string.composer_send),
+                modifier = Modifier.size(UiConsts.IconInline),
+                tint = if (enabled) colors.primary else colors.disabledOnSurface,
+            )
         }
     }
 }

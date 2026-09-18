@@ -90,11 +90,12 @@ sealed interface AppEvent {
     data object InterruptTurn : AppEvent
 
     /**
-     * Answer one inline question tapping an option in the transcript.
+     * Answer one inline question tapping an option or typing into its field in the transcript.
      *
      * The answer is an ordinary user message (upstream `chatwidget/questions.rs` does the same), but
      * it must bypass the composer: slash classification would eat an option that begins with `/`,
-     * and submitting it must not clear a draft the user is still writing.
+     * and submitting it must not clear a draft the user is still writing. [text] is already framed
+     * with the question it answers — the cell builds it through `AsyncQuestions.answeredText`.
      */
     data class AnswerAsyncQuestion(val text: String) : AppEvent
     /**
