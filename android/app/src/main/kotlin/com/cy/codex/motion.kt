@@ -37,46 +37,31 @@ object Motion {
 
     /** Panels and drawers: critically damped, medium-low stiffness, no overshoot. */
     val Panel: androidx.compose.animation.core.FiniteAnimationSpec<Float>
-        get() = motion(spring<Float>(dampingRatio = 1f, stiffness = Spring.StiffnessMediumLow))
+        get() = motion(spring(dampingRatio = 1f, stiffness = Spring.StiffnessMediumLow))
 
     /** Same spring for `Dp` targets (widths, heights, corner radii). */
     val PanelDp: androidx.compose.animation.core.FiniteAnimationSpec<Dp>
-        get() = motion(spring<Dp>(dampingRatio = 1f, stiffness = Spring.StiffnessMediumLow))
-
-    /**
-     * A panel that is being dragged or snapped into place: a touch of damping so the settle keeps
-     * the momentum of the gesture instead of stopping dead.
-     */
-    val PanelSettle: androidx.compose.animation.core.FiniteAnimationSpec<Float>
-        get() = motion(spring<Float>(dampingRatio = 0.9f, stiffness = Spring.StiffnessMedium))
+        get() = motion(spring(dampingRatio = 1f, stiffness = Spring.StiffnessMediumLow))
 
     /** Selection and press feedback: fast, no bounce. */
     val Press: androidx.compose.animation.core.FiniteAnimationSpec<Float>
-        get() = motion(tween<Float>(durationMillis = PressMs))
+        get() = motion(tween(durationMillis = PressMs))
 
-    /** Same curve for a `Dp` target that moves with a press. */
-    val PressDp: androidx.compose.animation.core.FiniteAnimationSpec<Dp>
-        get() = motion(tween<Dp>(durationMillis = PressMs))
-
-    /** Colour changes on chips, buttons and status pills. */
+    /** Color changes on chips, buttons and status pills. */
     val Tint: androidx.compose.animation.core.FiniteAnimationSpec<androidx.compose.ui.graphics.Color>
-        get() = motion(tween<androidx.compose.ui.graphics.Color>(durationMillis = TintMs))
-
-    /** Opacity changes that are not a colour: dimming an answered request, fading a scrim. */
-    val Fade: androidx.compose.animation.core.FiniteAnimationSpec<Float>
-        get() = motion(tween<Float>(durationMillis = TintMs))
+        get() = motion(tween(durationMillis = TintMs))
 
     /** Chevrons and disclosure arrows. */
     val Disclosure: androidx.compose.animation.core.FiniteAnimationSpec<Float>
-        get() = motion(tween<Float>(durationMillis = DisclosureMs))
+        get() = motion(tween(durationMillis = DisclosureMs))
 
     /** List content that fades in behind a growing panel. */
     val ListFadeIn: androidx.compose.animation.core.FiniteAnimationSpec<Float>
-        get() = motion(tween<Float>(durationMillis = ContentEnterMs, delayMillis = 140))
+        get() = motion(tween(durationMillis = ContentEnterMs, delayMillis = 140))
 
     /** List content on the way out; no delay, the panel is already shrinking. */
     val ListFadeOut: androidx.compose.animation.core.FiniteAnimationSpec<Float>
-        get() = motion(tween<Float>(durationMillis = ExitMs))
+        get() = motion(tween(durationMillis = ExitMs))
 
     /** Anything entering the screen: a sheet, a card, a row that expands. */
     val EnterEasing: Easing = LinearOutSlowInEasing
@@ -86,11 +71,11 @@ object Motion {
 
     /** A `tween` that enters, so no call site has to spell out the pair. */
     val Enter: androidx.compose.animation.core.FiniteAnimationSpec<Float>
-        get() = motion(tween<Float>(durationMillis = EnterMs, easing = EnterEasing))
+        get() = motion(tween(durationMillis = EnterMs, easing = EnterEasing))
 
     /** A `tween` that leaves. */
     val Exit: androidx.compose.animation.core.FiniteAnimationSpec<Float>
-        get() = motion(tween<Float>(durationMillis = ExitMs, easing = ExitEasing))
+        get() = motion(tween(durationMillis = ExitMs, easing = ExitEasing))
 
     /** Streaming text: the cadence the transcript commits buffered deltas at. */
     const val StreamCommitIntervalMs = 33L
@@ -101,7 +86,7 @@ object Motion {
     /** Press and selection feedback. */
     const val PressMs = 120
 
-    /** Colour and opacity transitions. */
+    /** Color and opacity transitions. */
     const val TintMs = 160
 
     /** Disclosure arrows and expanding rows. */
@@ -122,8 +107,6 @@ object Motion {
     /** Everything leaving: an exit that is not shorter than its entrance reads as a hang. */
     const val ExitMs = 120
 
-    /** The same content on the way out. */
-    const val ContentExitMs = ExitMs
 }
 
 /**
@@ -374,8 +357,6 @@ object UiConsts {
     val SheetCorner = CornerChrome
     val SheetElevation = 24.dp
     val PanelElevation = 18.dp
-    val SheetHandleWidth = 36.dp
-    val SheetHandleHeight = 4.dp
 
     /** The fraction of the window a sheet may cover before it has to scroll internally. */
     const val SheetHeightFraction = 0.72f
@@ -394,9 +375,6 @@ object UiConsts {
     val ButtonHeightCompact = 34.dp
     val ButtonPaddingHorizontal = 20.dp
     val ButtonPaddingHorizontalCompact = 14.dp
-
-    /** Corner radius of the pill action button the sheets share. */
-    val ButtonCorner = CornerControl
 
     /** Fully rounded pill corner, as a percentage of the shorter side. */
     const val PillCorner = 50
@@ -439,7 +417,6 @@ object UiConsts {
 
     /** Height of the thin usage meters inside an overlay row. */
     val ProgressHeightRow = 4.dp
-    val ProgressHeightThin = 3.dp
 
     /** Width of the compact progress bar beside the plan chip. */
     val ProgressWidthCompact = 44.dp
@@ -447,19 +424,12 @@ object UiConsts {
     /** Node of the plan timeline: the circle drawn on the rail. */
     val PlanNodeSize = 14.dp
     val PlanNodeStroke = 1.6.dp
-    val PlanNodeIcon = 9.dp
 
     /** Tick that marks the selected row of a sheet. */
     val IconCheck = 14.dp
 
-    /** Leading and trailing icon of an inline panel's header row. */
-    val IconPanelHeader = 14.dp
-
     /** Square button that collapses an inline panel. */
     val IconButtonCompact = 26.dp
-
-    /** Status dot inside a roster card; a step larger than [DotSize]. */
-    val DotSizeCard = 9.dp
 
     /** Width reserved for the token count at the end of a usage bar. */
     val TokenValueWidth = 52.dp
@@ -469,10 +439,7 @@ object UiConsts {
 
     /** Spacing steps the sheets need on top of the 1dp scale. */
     val Space0 = 0.dp
-    val Space13 = 13.dp
     val Space14 = 14.dp
-    val Space17 = 17.dp
-    val Space18 = 18.dp
 }
 
 /**
@@ -561,10 +528,6 @@ object UiType {
     /** Objective body shown in the goal sheet. */
     val SheetBody = 14.sp
     val SheetBodyLine = 20.sp
-
-    /** Label of a pill button inside a sheet. */
-    val ButtonLabel = 14.sp
-    val ButtonLabelLine = 19.sp
 
     /**
      * The conversation itself.

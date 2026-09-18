@@ -395,14 +395,14 @@ class MarkdownStream {
         tail = if (text.isEmpty()) null else MarkdownBlock.Paragraph(text)
     }
 
-    /** Join the lines of `[from, to)` with single spaces, honouring hard line breaks. */
+    /** Join the lines of `[from, to)` with single spaces, honoring hard line breaks. */
     private fun joinParagraph(from: Int, to: Int): String {
         val builder = StringBuilder()
         var cursor = from
         var hardPrevious = false
         while (cursor < to) {
             var end = source.indexOf('\n', cursor)
-            if (end < 0 || end > to) end = to
+            if (end !in 0..to) end = to
             val raw = source.substring(cursor, end)
             // Two trailing spaces or a trailing backslash are CommonMark's line-break markers; the
             // marker itself is not part of the text.
@@ -434,7 +434,7 @@ private val ThematicBreak = Regex("^ {0,3}((\\*[ \\t]*){3,}|(-[ \\t]*){3,}|(_[ \
 
 /** `| --- | :---: |`; the leading/trailing pipes are optional, as in CommonMark. */
 private val TableDelimiter =
-    Regex("^\\s*\\|?\\s*:?-{1,}:?\\s*(\\|\\s*:?-{1,}:?\\s*)*\\|?\\s*$")
+    Regex("^\\s*\\|?\\s*:?-+:?\\s*(\\|\\s*:?-+:?\\s*)*\\|?\\s*$")
 
 /** The long fence form (` ``` ` inside a ` ```` ` fence) is legal content, not a closer. */
 private fun isClosingFence(line: String, fence: Fence): Boolean {
@@ -491,19 +491,16 @@ private fun tableCells(line: String): List<String>? {
     val cell = StringBuilder()
     var index = 0
     while (index < text.length) {
-        val char = text[index]
-        when {
-            char == '\\' && index + 1 < text.length && text[index + 1] == '|' -> {
+        when (val char = text[index]) {
+            '\\' if index + 1 < text.length && text[index + 1] == '|' -> {
                 cell.append('|')
                 index += 2
             }
-
-            char == '|' -> {
+            '|' -> {
                 cells.add(cell.toString().trim())
                 cell.clear()
                 index++
             }
-
             else -> {
                 cell.append(char)
                 index++

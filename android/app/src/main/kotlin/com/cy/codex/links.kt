@@ -50,7 +50,7 @@ fun isLocalPathLike(dest: String): Boolean =
 
 private val HashLocation = Regex("^L\\d+(?:C\\d+)?(?:-L\\d+(?:C\\d+)?)?$")
 private val ColonLocation = Regex(":\\d+(?::\\d+)?(?:[-–]\\d+(?::\\d+)?)?$")
-private val CitationOpen = ":codex-file-citation{"
+private const val CitationOpen = ":codex-file-citation{"
 private val CitationPath = Regex("path\\s*=\\s*\"([^\"]*)\"")
 
 /** The path of a `:codex-file-citation{path="…"}` directive starting at [from], if any. */

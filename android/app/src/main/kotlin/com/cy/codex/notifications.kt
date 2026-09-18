@@ -1,12 +1,13 @@
 package com.cy.codex
 
+import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.os.Build
+import androidx.annotation.RequiresPermission
 import androidx.annotation.StringRes
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -14,6 +15,7 @@ import androidx.compose.runtime.setValue
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
+import androidx.core.content.edit
 
 /**
  * Notifications: the Android half of `codex-rs/tui/src/chatwidget/notifications.rs`.
@@ -71,14 +73,14 @@ object NotificationSettings {
 
     fun setEnabled(context: Context, value: Boolean) {
         enabled = value
-        preferences(context).edit().putBoolean(KeyEnabled, value).apply()
+        preferences(context).edit { putBoolean(KeyEnabled, value) }
     }
 
     fun setType(context: Context, type: AgentNotification, value: Boolean) {
         types = if (value) types + type else types - type
-        preferences(context).edit()
-            .putStringSet(KeyTypes, types.mapTo(mutableSetOf()) { it.wire })
-            .apply()
+        preferences(context).edit {
+            putStringSet(KeyTypes, types.mapTo(mutableSetOf()) { it.wire })
+        }
     }
 
     /** Whether OS delivery is on for [type]: the master switch and the type's own row. */
@@ -109,11 +111,10 @@ fun ensureAgentNotificationChannel(context: Context) {
 
 /** Whether the app may post right now: runtime permission, and the user's app-level toggle. */
 fun agentNotificationsAllowed(context: Context): Boolean {
-    val granted = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
-        ContextCompat.checkSelfPermission(
-            context,
-            android.Manifest.permission.POST_NOTIFICATIONS,
-        ) == PackageManager.PERMISSION_GRANTED
+    val granted = ContextCompat.checkSelfPermission(
+        context,
+        Manifest.permission.POST_NOTIFICATIONS,
+    ) == PackageManager.PERMISSION_GRANTED
     return granted && NotificationManagerCompat.from(context).areNotificationsEnabled()
 }
 
@@ -123,6 +124,7 @@ fun agentNotificationsAllowed(context: Context): Boolean {
  * The app opens on tap; no per-thread deep link exists yet, so the pending intent carries no
  * extras.
  */
+@RequiresPermission(Manifest.permission.POST_NOTIFICATIONS)
 fun postAgentNotification(context: Context, type: AgentNotification, body: String) {
     if (!NotificationSettings.allows(type)) return
     if (!agentNotificationsAllowed(context)) return

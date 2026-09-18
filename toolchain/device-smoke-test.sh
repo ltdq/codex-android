@@ -2,8 +2,9 @@
 # Pack the toolchain for Android, push it to a connected device and rebuild the
 # exact runtime layout the APK will use (native libs + symlink farm + assets
 # copied into the private dir), then smoke-test the tools the way codex-core
-# will invoke them (bash/git/rg/curl/python/bun plus the analysis/edit tools:
-# clang-format, diff/patch, zstd, yq, shfmt, gofmt, ruff, ast-grep, fd).
+# will invoke them (bash + GNU userland (coreutils/grep/find/procps), git, rg,
+# curl, python, bun plus the analysis/edit tools: clang-format, diff/patch,
+# zstd, yq, shfmt, gofmt, ruff, ast-grep, fd).
 #
 # Usage: ./device-smoke-test.sh [abi]
 set -euo pipefail
@@ -108,14 +109,25 @@ if command -v rg >/dev/null 2>&1; then
     echo "[rg] match: \$(rg -n hello c.txt)"
 fi
 
-echo "[busybox] \$(busybox 2>&1 | head -1)"
+echo "[coreutils] \$(ls --version | head -1 | cut -d' ' -f1,4) / \$(date +%s) / \$(stat -c %s c.txt) bytes"
+echo "[coreutils] \$(echo abc | tr a-z A-Z) \$(printf 'a\nb\n' | sort -r | tr '\n' ' ')"
 echo "[sed] \$(echo abc | sed 's/a/A/') / \$(sed --version 2>/dev/null | head -1 | cut -d' ' -f1,4)"
 echo "[awk] \$(echo '1 2' | awk '{print \$2 \$1}') / \$(awk --version 2>/dev/null | head -1)"
-echo "[find] \$(find . -name c.txt)"
+echo "[grep] \$(grep --version | head -1 | cut -d' ' -f1,4) / \$(echo hello | grep -E '^h.*o$')"
+echo "[find] \$(find --version | head -1 | cut -d' ' -f1,4) / \$(find . -name c.txt) / \$(printf 'x\0y' | xargs -0 -n1 echo | tr '\n' ' ')"
+echo "[tree] \$(tree -a . | head -1)"
+echo "[which] \$(which rg)"
+echo "[ps] \$(ps --version | head -1) / \$(ps -o pid,comm | wc -l) lines"
+echo "[bc] \$(echo '2^10' | bc)"
+echo "[xxd] \$(printf hi | xxd -p)"
 echo "[tar] \$(tar --version | head -1)"
 echo "[gzip] \$(echo hi | gzip -c | gzip -dc)"
+echo "[bzip2] \$(echo hi | bzip2 -c | bzip2 -dc)"
 echo "[xz] \$(echo hi | xz -c | xz -d -c)"
-echo "[unzip] \$(busybox unzip -v 2>&1 | head -1 | cut -c1-30)"
+echo "[unzip] \$(unzip -v 2>&1 | head -1 | cut -c1-30)"
+printf 'zipped' > "\$TMPDIR/z.txt"
+(cd "\$TMPDIR" && zip -q -FS z.zip z.txt)
+echo "[zip] \$(unzip -p "\$TMPDIR/z.zip" z.txt)"
 echo "[7zz] \$(7zz 2>&1 | sed -n 2p)"
 printf '{"a":1}\n' > "\$TMPDIR/x.json"
 echo "[jq] \$(jq -r .a "\$TMPDIR/x.json")"

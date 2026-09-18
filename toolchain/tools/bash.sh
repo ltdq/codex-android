@@ -44,5 +44,9 @@ make DESTDIR="$TOOL_OUT" install >>"$TOOL_BUILD/bash-build.log" 2>&1
 
 rm -rf "$TOOL_OUT/share/man" "$TOOL_OUT/share/info" "$TOOL_OUT/share/doc" \
     "$TOOL_OUT/share/locale" "$TOOL_OUT/bin/bashbug" "$TOOL_OUT/include"
+
+# `sh` invokes bash in POSIX mode via argv[0].
+ln -sf bash "$TOOL_OUT/bin/sh"
+
 strip_binaries "$TOOL_OUT"
 log "bash: $(file -b "$TOOL_OUT/bin/bash")"

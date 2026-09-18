@@ -19,7 +19,7 @@ cd toolchain
 ./build.sh --abi arm64-v8a,x86_64 git bash
 ./build.sh --list               # 查看工具列表
 ./pack-jnilibs.sh arm64-v8a     # 打包成 APK 用的 jniLibs + assets + manifest
-./device-smoke-test.sh          # adb 真机冒烟测试（bash/git/rg/curl/openssl/python/bun）
+./device-smoke-test.sh          # adb 真机冒烟测试（GNU userland/git/rg/curl/openssl/python/bun）
 ```
 
 产物在 `toolchain/out/android/<abi>/`：
@@ -38,17 +38,17 @@ native-manifest.txt      # 运行时重建目录树的清单
 
 | 类别 | 工具 |
 | --- | --- |
-| shell | `bash` 5.3、busybox(ash/…) |
+| shell | `bash` 5.3（`sh` 是 bash 的 POSIX 模式） |
 | VCS | `git` 2.55（https/ssh remote，builtins + libexec 脚本） |
-| 搜索/文本 | `rg` 15.2、GNU `sed` 4.10、`gawk` 5.4、GNU `diffutils` 3.12、GNU `patch` 2.8、busybox grep/find/vi/less/tree/nc/ps/top/…（280 applets） |
-| 网络 | `curl` 8.22（HTTPS）、`ssh`/`scp`/`sftp`/`ssh-keygen`（OpenSSH 10.5）、`openssl` 3.5；busybox `wget`（仅 HTTP）兜底 |
+| 文件/文本 | GNU `coreutils` 9.12（`ls` `cp` `mv` `rm` `cat` `sort` `head` `tail` `stat` `md5sum` `base64` `timeout` …，单二进制多命令）、GNU `grep` 3.12、GNU `findutils` 4.11（`find` `xargs`）、`rg` 15.2、GNU `sed` 4.10、`gawk` 5.4、GNU `diffutils` 3.12、GNU `patch` 2.8、`tree` 2.3、`xxd`、`which` 2.25、`bc`/`dc` 1.08 |
+| 网络 | `curl` 8.22（HTTPS）、`ssh`/`scp`/`sftp`/`ssh-keygen`（OpenSSH 10.5）、`openssl` 3.5 |
 | 语言 | `python` 3.14.7（ssl/zlib/ctypes/hashlib/sqlite3）、`uv` 0.12（venv/纯 Python 包）、`bun` 1.4 + `bunx`（上游官方 Android 预编译） |
 | 代码分析/修改 | `clang-format` 23（C/C++/Java/JS/JSON 格式化）、`ruff` 0.16（Python lint/format）、`ast-grep` 0.45（结构化搜索/替换，别名 `sg`）、`fd` 10.5、`shfmt` 3.14、`gofmt`、`yq` 4.53（YAML/JSON） |
-| 归档 | GNU `tar` 1.35、`gzip` 1.14、GNU `xz` 5.8、`zstd` 1.5、busybox bzip2/unzip、`7zz` 26.03 |
-| 构建/数据 | `make` 4.4、`sqlite3` 3.53、`jq` 1.8、`file` 5.46 |
+| 归档 | GNU `tar` 1.35、`gzip` 1.14、`bzip2` 1.0.8、GNU `xz` 5.8、`zstd` 1.5、Info-ZIP `zip`/`unzip`/`zipinfo` 6.0、`7zz` 26.03 |
+| 进程/数据 | `procps-ng` 4.0（`ps` `kill` `pgrep` `pkill` `pidof` `free` `uptime` `pmap` `vmstat`）、`make` 4.4、`sqlite3` 3.53、`jq` 1.8、`file` 5.46 |
 | 二进制工具 | binutils 2.47：`readelf` `objdump` `nm` `strings` `objcopy` `strip` `ar` `as` `ld` `addr2line` `size` `c++filt` |
 
-arm64-v8a 的 jniLibs 目前约 361MB（bun 83、ast-grep 46、uv 42、ruff 19、yq 14 占大头）；
+arm64-v8a 的 jniLibs 目前约 363MB（bun 83、ast-grep 46、uv 42、ruff 19、yq 14 占大头）；
 不需要的工具把 `tools/<tool>.sh` 删掉再跑 `pack-jnilibs.sh` 即可（out/ 里的产物也可手动删）。
 
 ### 重复工具的取舍
@@ -63,14 +63,25 @@ arm64-v8a 的 jniLibs 目前约 361MB（bun 83、ast-grep 46、uv 42、ruff 19�
   ~110MB，收益与 bun 重叠，遂移除。
   上游 Android 包只发 `bun` 一个二进制，`bunx` 由 `tools/bun.sh` 包装成 `bun x`；
   不提供 `npx` 别名，MCP 配置直接写 `bunx <pkg>` 或 `bun x <pkg>`。
-- **下载工具：只留 `curl`。** `wget` 需要 Android patch、与 curl 功能重叠，移除；
-  busybox 的 `wget` applet 仍在，纯 HTTP 场合可兜底（busybox 未开 HTTPS）。
-- **GNU 小工具 vs busybox applet：** `sed`/`gawk`/`tar`/`gzip`/`xz`/`diff`/`patch` 保留
-  GNU 版（都只有几百 KB、无额外依赖、兼容性最好；`diff`/`patch`/`xz` 会覆盖 busybox 的
-  同名 applet——busybox 的 `xz` 只能解压，`tar -cJf` 会失败）；busybox 里同名 applet 仍随
-  busybox 提供，`gawk` 比 busybox awk 完整得多。
+- **下载工具：只留 `curl`。** `wget` 需要 Android patch、与 curl 功能重叠，未加入；
+  纯 HTTP 场合用 `curl`，只要 TCP 连通性时用 bash 的 `/dev/tcp`。
+- **不用 busybox：** POSIX/GNU 命令全部用上游实现，applet 的裁剪实现与选项/输出差异
+  正是要避免的：
+  - `coreutils` 以 `--enable-single-binary=symlinks` 编成单个 `coreutils` + 每命令一个
+    symlink（`ls`/`cp`/`mv`/`rm`/`cat`/`sort`/…），GNU 语义、只占一份体积；`hostid`
+    用 `patches/coreutils/` 补上 bionic 缺失的 `gethostid`。
+  - `grep`/`find`/`xargs` 用 GNU 版（完整的 BRE/ERE、`--include`/`--exclude`、
+    `find -printf`/`-newerXY`、`xargs -0/-P`；PCRE 用 `rg`）。
+  - `ps`/`kill`/`pgrep`/`pkill` 用 procps-ng；`patches/procps/` 补 bionic 缺失的
+    `strverscmp`/`fopencookie` 与 Android 不开放的 `/proc/uptime`、`/proc/loadavg`。
+  - `unzip`/`zip` 用 Info-ZIP，并带上 `patches/unzip/` 里的 Debian 安全与移植补丁
+    （上游 6.0 停更于 2009 年）；解压 `.zip` 也可以用 `7zz x`。
+  - busybox 的 `xz` 只能解压（`tar -cJf` 直接失败）这类裁剪实现随之移除。
+- **不再提供交互/连接类工具：** `less`/`more`/`vi`/`ed`/`top`/`watch` 这类终端 UI 在无
+  PTY 的 `command/exec` 下没有使用场景；`nc`/`ping`/`traceroute`/`netstat` 需要额外权限
+  或与 `curl`/`/dev/tcp` 重叠，都未加入。
 - 其余无重叠：`rg`、`git`、`python`/`uv`、`openssl`、`openssh`、`7zz`、`make`、`sqlite3`、
-  `jq`、`file`、`binutils` 各司其职。
+  `jq`、`file`、`binutils`、`tree`、`xxd`、`which`、`bc`、`bzip2` 各司其职。
 - kit 之外的目标（编译器/JDK/Android 构建工具）见文末「刻意不加」。
 
 注意：设备上装不了带 native addon 的 JS/包（没有 clang/node-gyp），bun/npm 类工具链

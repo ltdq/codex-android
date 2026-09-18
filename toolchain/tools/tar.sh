@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# GNU tar for Android (more featureful than the busybox applet).
+# GNU tar for Android: standard tar semantics plus compression filters
+# (gzip/bzip2/xz/zstd are separate tools on PATH).
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/../env.sh"
 toolchain_env "${ABI:?ABI is required}"

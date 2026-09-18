@@ -55,7 +55,7 @@ fun shortenedParent(path: String): String {
 }
 
 /**
- * Colours for one diff, resolved per theme so added and removed lines stay readable in both modes.
+ * Colors for one diff, resolved per theme so added and removed lines stay readable in both modes.
  *
  * Lives next to the model rather than in the theme layer because both the transcript cells and the
  * status card's diff pane draw from the same instance.
@@ -65,7 +65,6 @@ class DiffPalette(
     val addSurface: androidx.compose.ui.graphics.Color,
     val removeText: androidx.compose.ui.graphics.Color,
     val removeSurface: androidx.compose.ui.graphics.Color,
-    val hunkText: androidx.compose.ui.graphics.Color,
     val hunkSurface: androidx.compose.ui.graphics.Color,
     val gutter: androidx.compose.ui.graphics.Color,
     val context: androidx.compose.ui.graphics.Color,
@@ -81,9 +80,6 @@ private val NewPath = Regex("^\\+\\+\\+ (?:b/)?(.*)$")
 /** Byte offsets where each `diff --git` line starts in [diff], in payload order. */
 internal fun gitFileHeaderOffsets(diff: String): List<Int> =
     FileHeader.findAll(diff).map { it.range.first }.toList()
-
-/** Path named by one `diff --git` line, or `null` when [line] is not one. */
-internal fun gitFileHeaderPath(line: String): String? = gitFileHeaderPaths(line)?.second
 
 /** The `a/…` and `b/…` paths of one `diff --git` line; they differ for a rename. */
 internal fun gitFileHeaderPaths(line: String): Pair<String, String>? =

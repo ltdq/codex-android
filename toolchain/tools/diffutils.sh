@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
-# GNU diffutils for Android (diff/diff3/sdiff/cmp): better unified diffs and
-# directory diffs than the busybox applets, used when reviewing/creating
-# patches.
+# GNU diffutils for Android (diff/diff3/sdiff/cmp), used when reviewing and
+# creating patches and directory diffs.
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/../env.sh"
 toolchain_env "${ABI:?ABI is required}"

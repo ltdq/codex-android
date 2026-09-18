@@ -18,7 +18,6 @@ class DiffRowModelTest {
         addSurface = Color(0x1100FF00),
         removeText = Color(0xFFFF0000),
         removeSurface = Color(0x11FF0000),
-        hunkText = Color(0xFF0000FF),
         hunkSurface = Color(0x110000FF),
         gutter = Color(0x66000000),
         context = Color(0xFF222222),

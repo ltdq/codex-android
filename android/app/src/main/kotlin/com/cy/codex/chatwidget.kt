@@ -21,14 +21,12 @@ import com.cy.codex.protocol.protocol.item.ThreadItem
 import com.cy.codex.protocol.protocol.v2.DiagnosticSeverity
 import com.cy.codex.protocol.protocol.v2.FileUpdateChange
 import com.cy.codex.protocol.protocol.v2.QueuedSubmission
-import com.cy.codex.protocol.protocol.v2.ReviewTarget
 import com.cy.codex.protocol.protocol.v2.SortDirection
 import com.cy.codex.protocol.protocol.v2.ThreadResumeInitialTurnsPageParams
 import com.cy.codex.protocol.protocol.v2.ThreadResumeParams
 import com.cy.codex.protocol.protocol.v2.ThreadSettingsUpdateParams
 import com.cy.codex.protocol.protocol.v2.ThreadReadResponse
 import com.cy.codex.protocol.protocol.v2.ThreadStatus
-import com.cy.codex.protocol.protocol.v2.ThreadTokenUsage
 import com.cy.codex.protocol.protocol.v2.ThreadTurnsListParams
 import com.cy.codex.protocol.protocol.v2.TurnItemsView
 import com.cy.codex.protocol.protocol.v2.TurnStatus

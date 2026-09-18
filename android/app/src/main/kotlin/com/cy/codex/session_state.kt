@@ -2,6 +2,7 @@ package com.cy.codex
 
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
@@ -43,7 +44,6 @@ import com.cy.codex.protocol.protocol.v2.McpServerStatusEntry
 import com.cy.codex.protocol.protocol.v2.MemoryStatusResponse
 import com.cy.codex.protocol.protocol.v2.ModelPreset
 import com.cy.codex.protocol.protocol.v2.AppSummary
-import com.cy.codex.protocol.protocol.v2.PermissionProfileEntry
 import com.cy.codex.protocol.protocol.v2.PlanStep
 import com.cy.codex.protocol.protocol.v2.PluginAuthPolicy
 import com.cy.codex.protocol.protocol.v2.PluginEntry
@@ -62,7 +62,6 @@ import com.cy.codex.protocol.protocol.v2.ThreadSection
 import com.cy.codex.protocol.protocol.v2.ThreadSessionState
 import com.cy.codex.protocol.protocol.v2.ThreadStatus
 import com.cy.codex.protocol.protocol.v2.ThreadTokenUsage
-import com.cy.codex.protocol.protocol.v2.TurnStatus
 import com.cy.codex.protocol.protocol.v2.UserInput
 import com.cy.codex.protocol.protocol.v2.UserVerificationEnrollResponse
 import com.cy.codex.protocol.protocol.v2.UserVerificationStatusResponse
@@ -515,8 +514,7 @@ class SessionState {
     fun failInProgressItems() {
         var changed = false
         for (index in items.indices) {
-            val item = items[index]
-            val failed = when (item) {
+            val failed = when (val item = items[index]) {
                 is CommandExecutionItem ->
                     if (item.status == CommandExecutionStatus.InProgress) item.copy(status = CommandExecutionStatus.Failed) else null
 
@@ -668,9 +666,6 @@ data class SessionDiagnostic(
     val args: List<String> = emptyList(),
 )
 
-/** Last status a turn finished with, used to colour the notice cell. */
-data class TurnOutcome(val turnId: String, val status: TurnStatus, val error: String? = null)
-
 /** Another thread blocked on a decision the open transcript cannot answer. */
 data class ForeignApproval(val threadId: String, val count: Int)
 
@@ -716,7 +711,6 @@ data class PluginInstallAuthFlow(
 
 class CatalogState {
     var models by mutableStateOf<List<ModelPreset>>(emptyList())
-    var permissionProfiles by mutableStateOf<List<PermissionProfileEntry>>(emptyList())
     var experimentalFeatures by mutableStateOf<List<ExperimentalFeatureEntry>>(emptyList())
     var mcpServers by mutableStateOf<List<McpServerStatusEntry>>(emptyList())
 
@@ -765,7 +759,7 @@ class CatalogState {
      * Rate-limit windows come from the server with a reset time but no fetch stamp, so without this
      * a card left open overnight shows yesterday's percentages as if they were current.
      */
-    var rateLimitsUpdatedAtMs by mutableStateOf(0L)
+    var rateLimitsUpdatedAtMs by mutableLongStateOf(0L)
     var usage by mutableStateOf(AccountUsage())
     var usageLoaded by mutableStateOf(false)
 
@@ -817,9 +811,6 @@ class CatalogState {
     val autoReviewAvailable: Boolean
         get() = guardianApprovalEnabled &&
             (allowedApprovalsReviewers?.contains(ApprovalsReviewer.AutoReview) ?: true)
-
-    /** `modelProvider/capabilities/read`; empty means "not asked yet". */
-    var modelProviderCapabilities by mutableStateOf<Map<String, Boolean>>(emptyMap())
 
     // ---- projects and environments ---------------------------------------------
     //

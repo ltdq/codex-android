@@ -5,6 +5,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import kotlinx.serialization.json.Json
+import androidx.core.content.edit
 
 /**
  * The submitted-draft history behind the composer's reverse search.
@@ -38,7 +39,7 @@ object ComposerHistory {
         val trimmed = text.trim()
         if (trimmed.isEmpty()) return
         entries = (listOf(trimmed) + entries.filterNot { it == trimmed }).take(Cap)
-        preferences(context).edit().putString(Key, json.encodeToString(entries)).apply()
+        preferences(context).edit { putString(Key, json.encodeToString(entries)) }
     }
 
     private fun preferences(context: Context) =

@@ -10,7 +10,6 @@ import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
-import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
  * Syntax highlighting for transcript code.
@@ -79,10 +78,6 @@ fun syntaxPalette(): SyntaxPalette {
         }
     }
 }
-
-/** Fallback colour for code the theme has no syntax ramp for. */
-@Composable
-fun syntaxPlainColor(): Color = MiuixTheme.colorScheme.onSurface
 
 /**
  * Highlight a whole code block, one [AnnotatedString] per line.

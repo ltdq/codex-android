@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
-# GNU xz-utils for Android.  The busybox xz applet is decompress-only, so this
-# is what makes `xz -z` / `tar -cJf` / .tar.xz creation work; it replaces the
-# busybox symlink via the install below.
+# GNU xz-utils for Android: full xz/lzma tooling so that `xz -z` and
+# `tar -cJf` work, not just decompression.
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/../env.sh"
 toolchain_env "${ABI:?ABI is required}"

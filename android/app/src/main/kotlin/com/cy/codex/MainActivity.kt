@@ -1,7 +1,6 @@
 package com.cy.codex
 
 import android.graphics.Color
-import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
@@ -24,15 +23,13 @@ class MainActivity : ComponentActivity() {
             navigationBarStyle = SystemBarStyle.auto(Color.TRANSPARENT, Color.TRANSPARENT),
         )
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            window.isNavigationBarContrastEnforced = false
-        }
+        window.isNavigationBarContrastEnforced = false
 
         // The app is its own window chrome: the transcript starts at the top edge and the floating
         // controls sit under the camera cutout, so a system status bar on top of them is just a
         // second, less useful header. There is no permission for this — hiding a system bar is a
         // window-level request (`WindowInsetsController`), granted to any app that asks; the bars
-        // come back on a swipe and stay away afterwards.
+        // come back on a swipe and stay away afterward.
         WindowCompat.setDecorFitsSystemWindows(window, false)
         WindowInsetsControllerCompat(window, window.decorView).apply {
             hide(WindowInsetsCompat.Type.statusBars())

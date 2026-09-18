@@ -3,7 +3,6 @@ package com.cy.codex
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.ui.res.stringResource
-import com.cy.codex.R
 import com.cy.codex.protocol.ElicitationAction
 import com.cy.codex.protocol.protocol.v2.ApprovalsReviewer
 import com.cy.codex.protocol.protocol.v2.AskForApproval

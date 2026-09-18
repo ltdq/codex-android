@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# zstd for Android: .zst files and "tar --zstd" (GNU tar shells out to the
-# zstd binary; busybox has no zstd applet).
+# zstd for Android: .zst files and "tar --zstd" (GNU tar shells out to
+# the zstd binary).
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/../env.sh"
 toolchain_env "${ABI:?ABI is required}"

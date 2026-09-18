@@ -171,7 +171,7 @@ private fun AccountSignIn(catalog: CatalogState, onEvent: (AppEvent) -> Unit) {
         else -> null
     }
     fun openBrowser() {
-        url?.let {
+        url?.let { it ->
             runCatching { uriHandler.openUri(it) }
                 .onSuccess { catalog.openedLoginId = loginId }
                 .onFailure { browserError = it.message }

@@ -31,7 +31,7 @@ class NativeManifestTest {
     @Test fun rejectsWrongAbiAndDuplicatePaths() {
         assertFailsWith<IllegalArgumentException> { parseNativeManifest("abi|x86_64") }
         assertFailsWith<IllegalArgumentException> {
-            parseNativeManifest("abi|arm64-v8a\ndata|bin/tool|\nlink|bin/tool|busybox")
+            parseNativeManifest("abi|arm64-v8a\ndata|bin/tool|\nlink|bin/tool|coreutils")
         }
     }
 }

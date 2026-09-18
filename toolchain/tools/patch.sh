@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# GNU patch for Android: applies git/unified diffs with the usual options
-# (-p, -R, --dry-run, ...), which the busybox applet only partially supports.
+# GNU patch for Android: applies git/unified diffs with the standard options
+# (-p, -R, --dry-run, ...).
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/../env.sh"
 toolchain_env "${ABI:?ABI is required}"

@@ -12,6 +12,7 @@ import com.cy.codex.Motion
 import top.yukonga.miuix.kmp.theme.ColorSchemeMode
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.theme.ThemeController
+import androidx.core.content.edit
 
 /**
  * Client-side appearance preferences, independent of the app-server.
@@ -63,18 +64,18 @@ object Appearance {
 
     fun setThemeMode(context: Context, mode: ColorSchemeMode) {
         themeMode = mode
-        preferences(context).edit().putString(KeyThemeMode, mode.wire).apply()
+        preferences(context).edit { putString(KeyThemeMode, mode.wire) }
     }
 
     fun setReduceMotion(context: Context, enabled: Boolean) {
         reduceMotion = enabled
         syncSystemAnimators()
-        preferences(context).edit().putBoolean(KeyReduceMotion, enabled).apply()
+        preferences(context).edit { putBoolean(KeyReduceMotion, enabled) }
     }
 
     fun setShowTooltips(context: Context, enabled: Boolean) {
         showTooltips = enabled
-        preferences(context).edit().putBoolean(KeyShowTooltips, enabled).apply()
+        preferences(context).edit { putBoolean(KeyShowTooltips, enabled) }
     }
 
     private fun preferences(context: Context) =

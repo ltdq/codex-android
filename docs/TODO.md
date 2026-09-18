@@ -71,7 +71,8 @@ worker 由 `JsonRpcAppServerClient` 的看门狗摘掉；`pack-jnilibs.sh` 对�
   的非交互流。
 - 设备端编译工具链：clang/rustc/cmake/ninja/perl；JDK 与 Android 构建工具（aapt2/d8/
   apksigner/Gradle，glibc 程序，bionic 上跑不起来）。见 [toolchain.md](toolchain.md)。
-- node/npm（由 bun 取代）、wget（由 curl 取代）。
+- node/npm（由 bun 取代）；wget（由 curl 取代）、vi/less/top/watch（无 PTY）、
+  nc/ping/traceroute（用 curl 或 bash `/dev/tcp`，或需要额外权限）。
 
 ## 5. 暂缓
 

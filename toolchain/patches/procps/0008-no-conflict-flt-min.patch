@@ -1,0 +1,22 @@
+FLT_MIN from float.h collides with procps identifiers.
+
+--- a/src/ps/common.h
++++ b/src/ps/common.h
+@@ -98,6 +98,7 @@
+ makEXT(FLAGS)
+ makEXT(FLT_MAJ)
+ makEXT(FLT_MAJ_C)
++#undef FLT_MIN
+ makEXT(FLT_MIN)
+ makEXT(FLT_MIN_C)
+ makEXT(ID_EGID)
+--- a/library/pids.c
++++ b/library/pids.c
+@@ -200,6 +200,7 @@
+ REG_set(FLT_MAJ,          ul_int,  maj_flt)
+ setDECL(FLT_MAJ_C)      { (void)I; R->result.ul_int = P->maj_flt + P->cmaj_flt; }
+ REG_set(FLT_MAJ_DELTA,    s_int,   maj_delta)
++#undef FLT_MIN
+ REG_set(FLT_MIN,          ul_int,  min_flt)
+ setDECL(FLT_MIN_C)      { (void)I; R->result.ul_int = P->min_flt + P->cmin_flt; }
+ REG_set(FLT_MIN_DELTA,    s_int,   min_delta)

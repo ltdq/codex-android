@@ -39,19 +39,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import com.cy.codex.R
-import com.cy.codex.DiffFileKind
-import com.cy.codex.DiffLine
-import com.cy.codex.DiffLineKind
-import com.cy.codex.DiffPalette
-import com.cy.codex.FileDiff
-import com.cy.codex.codeSurface
-import com.cy.codex.pressableRow
-import com.cy.codex.successColor
-import com.cy.codex.warningColor
-import com.cy.codex.UiType
-import com.cy.codex.UiConsts
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.icon.MiuixIcons
@@ -251,7 +238,7 @@ internal fun highlightDiffLines(
 
 internal const val DiffHunkSeparator = "⋮"
 
-/** One diff line. Every value is precomputed in [DiffRowModel]; only colour is resolved here. */
+/** One diff line. Every value is precomputed in [DiffRowModel]; only color is resolved here. */
 @Composable
 internal fun DiffRow(
     model: DiffRowModel,
@@ -353,10 +340,10 @@ fun DiffLineNumber(
 }
 
 /**
- * Diff colours for the current theme.
+ * Diff colors for the current theme.
  *
  * The dark and light values have no tonal equivalent in the miuix palette, so they are fixed here
- * the way `codex-rs/tui/src/color.rs` fixes the terminal's diff colours.
+ * the way `codex-rs/tui/src/color.rs` fixes the terminal's diff colors.
  */
 @Composable
 fun diffPalette(): DiffPalette {
@@ -369,7 +356,6 @@ fun diffPalette(): DiffPalette {
                 addSurface = Color(0x1F7EE787),
                 removeText = Color(0xFFFF9A9A),
                 removeSurface = Color(0x1FFF9A9A),
-                hunkText = Color(0xFF8AB4F8),
                 hunkSurface = Color(0x1F8AB4F8),
                 gutter = Color(0x66FFFFFF),
                 context = context,
@@ -380,7 +366,6 @@ fun diffPalette(): DiffPalette {
                 addSurface = Color(0x1F1A7F37),
                 removeText = Color(0xFFB3261E),
                 removeSurface = Color(0x1FB3261E),
-                hunkText = Color(0xFF1A5FB4),
                 hunkSurface = Color(0x1F1A5FB4),
                 gutter = Color(0x66000000),
                 context = context,
