@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    悬浮面板（ui/overlays）的文案。中文值与改造前的 Kotlin 字面量逐字一致，不做重新翻译。
+-->
+<resources>
+    <!-- AgentPickerSheet.kt：共用面板外壳与代理选择器。 -->
+    <string name="agent_picker_sheet_close">关闭</string>
+    <string name="agent_picker_title">切换代理</string>
+    <string name="agent_picker_subtitle">%1$d 个代理 · 子代理来自协作工具调用</string>
+    <string name="agent_picker_filter_hint">按名称或任务过滤</string>
+    <string name="agent_picker_filter_clear">清除过滤</string>
+    <string name="agent_picker_empty">没有匹配的代理</string>
+    <string name="agent_picker_current">当前代理</string>
+
+    <!-- AgentsOverview.kt：代理总览与名册展示辅助。 -->
+    <string name="agents_overview_title">代理总览</string>
+    <string name="agents_overview_subtitle">%1$d 个代理 · 共 %2$s tokens</string>
+    <string name="agents_overview_empty">当前线程还没有代理</string>
+    <string name="agents_overview_current">当前</string>
+    <string name="agents_overview_no_task">未记录任务描述</string>
+    <string name="agents_overview_effort">思考 %1$s</string>
+    <string name="agents_overview_source">来源 %1$s</string>
+    <string name="agents_overview_tokens_none">—</string>
+    <string name="agents_overview_role_main">主</string>
+    <string name="agents_overview_role_sub">子</string>
+    <string name="agents_overview_status_pending_init">启动中</string>
+    <string name="agents_overview_status_running">运行中</string>
+    <string name="agents_overview_status_interrupted">已中断</string>
+    <string name="agents_overview_status_completed">已完成</string>
+    <string name="agents_overview_status_errored">失败</string>
+    <string name="agents_overview_status_shutdown">已关闭</string>
+    <string name="agents_overview_status_not_found">未找到</string>
+    <string name="agents_overview_status_main_thread">主线程</string>
+    <string name="agents_overview_status_idle">空闲</string>
+    <string name="agents_overview_activity_started">运行中</string>
+    <string name="agents_overview_activity_interacted">交互中</string>
+    <string name="agents_overview_activity_interrupted">已中断</string>
+    <string name="agents_overview_activity_completed">已完成</string>
+
+    <!-- AgentsPage.kt: /agents 与 /subagents 的完整页面及操作。 -->
+    <string name="agents_screen_subtitle">%1$d 个代理 · 共 %2$s tokens</string>
+    <string name="agents_screen_filter">过滤代理</string>
+    <string name="agents_screen_back">返回</string>
+    <string name="agents_action_stop">停止</string>
+    <string name="agents_action_rename">重命名</string>
+    <string name="agents_action_archive">归档</string>
+    <string name="agents_rename_title">重命名代理</string>
+    <string name="agents_rename_label">名称</string>
+    <string name="agents_rename_confirm">重命名</string>
+    <string name="agents_archive_title">归档代理</string>
+    <string name="agents_archive_message">归档会停止正在运行的工作，并从会话列表隐藏该线程；之后可以取消归档。</string>
+    <string name="agents_archive_confirm">归档</string>
+    <string name="agents_cancel">取消</string>
+
+    <!-- GoalSheet.kt：目标面板、状态标签与共用胶囊按钮。 -->
+    <string name="goal_sheet_title">目标</string>
+    <string name="goal_sheet_subtitle_idle">Goal 模式会围绕目标持续推进</string>
+    <string name="goal_sheet_objective_hint">目标描述</string>
+    <string name="goal_sheet_objective_example">例：把状态卡片拆成可复用组件，改完跑通编译验证。目标未完成前代理会一直推进。</string>
+    <string name="goal_sheet_start">启动目标</string>
+    <string name="goal_sheet_usage">已用 %1$s tokens · %2$s</string>
+    <string name="goal_sheet_progress_hint">代理会在每一轮结束时汇报进展，完成后状态变为“已完成”。</string>
+    <string name="goal_sheet_clear">清除目标</string>
+    <string name="goal_sheet_save">保存目标描述</string>
+    <string name="goal_sheet_pause">暂停目标</string>
+    <string name="goal_sheet_resume">继续目标</string>
+    <string name="goal_sheet_budget">Token 预算：%1$s</string>
+    <string name="goal_sheet_duration_hours_minutes">%1$d 小时 %2$d 分</string>
+    <string name="goal_sheet_duration_hours">%1$d 小时</string>
+    <string name="goal_sheet_duration_minutes_seconds">%1$d 分 %2$d 秒</string>
+    <string name="goal_sheet_duration_minutes">%1$d 分</string>
+    <string name="goal_sheet_duration_seconds">%1$d 秒</string>
+
+    <!-- PlanTimeline.kt：计划时间线与顶部胶囊。 -->
+    <string name="plan_timeline_summary">%1$d 步 · 已完成 %2$d 步</string>
+    <string name="plan_timeline_chip">%1$d/%2$d 步</string>
+    <string name="plan_timeline_pending">待开始</string>
+    <string name="plan_timeline_in_progress">进行中</string>
+    <string name="plan_timeline_completed">已完成</string>
+
+    <!-- QueuedMessages.kt：排在当前回合之后的消息。 -->
+    <string name="queued_messages_header">排队中 · %1$d 条</string>
+    <string name="queued_messages_collapse">收起排队消息</string>
+    <string name="queued_messages_empty">（空消息）</string>
+    <string name="queued_messages_steer">引导</string>
+    <string name="queued_messages_start">立即执行</string>
+    <string name="queued_messages_move_up">上移</string>
+    <string name="queued_messages_move_down">下移</string>
+    <string name="queued_messages_remove">移除</string>
+    <string name="queued_messages_clear">清空</string>
+    <!-- Agent roster naming: the fold takes these as parameters, so they live here. -->
+    <string name="agent_roster_main_label">主代理</string>
+    <string name="agent_roster_sub_agent_name">子代理 · %1$s</string>
+    <string name="queued_messages_edit">编辑</string>
+    <string name="queued_messages_edit_detail">改写这条排队消息，它携带的其他输入会保留</string>
+    <string name="queued_messages_edit_label">内容</string>
+    <string name="queued_messages_edit_save">保存</string>
+</resources>

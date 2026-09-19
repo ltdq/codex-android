@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- bottom_pane/exec_command_view.kt: the one-shot exec and long-lived process page. -->
+    <string name="exec_command_title">命令</string>
+    <string name="exec_command_subtitle">跑一次 argv，或者让 pty 保持存活</string>
+    <string name="exec_command_back">返回</string>
+
+    <string name="exec_command_form_title">命令</string>
+    <string name="exec_command_form_note">每个参数一个输入框。协议收的是 argv，从来不是一整行 shell，所以带引号的写法必须在这里重新拆分。</string>
+    <string name="exec_command_arg_label">参数 %1$d</string>
+    <string name="exec_command_arg_placeholder">--flag</string>
+    <string name="exec_command_arg_add">增加参数</string>
+    <string name="exec_command_arg_remove">删除</string>
+    <string name="exec_command_cwd_label">工作目录</string>
+    <string name="exec_command_cwd_placeholder">留空则用会话目录</string>
+    <string name="exec_command_timeout_label">超时（毫秒）</string>
+    <string name="exec_command_timeout_placeholder">不限时</string>
+    <string name="exec_command_process_label">进程 id</string>
+    <string name="exec_command_process_placeholder">留空则新起一个</string>
+    <string name="exec_command_run">运行</string>
+
+    <string name="exec_command_output_title">输出</string>
+    <string name="exec_command_state_label">状态</string>
+    <string name="exec_command_state_idle">还没有运行过</string>
+    <string name="exec_command_state_running">运行中</string>
+    <string name="exec_command_state_finished">已退出 · %1$d</string>
+    <string name="exec_command_state_failed">被拒绝</string>
+    <string name="exec_command_exit_label">退出码</string>
+    <string name="exec_command_duration_label">耗时</string>
+    <string name="exec_command_duration_running">%1$d 毫秒</string>
+    <string name="exec_command_duration_value">%1$d 毫秒</string>
+    <string name="exec_command_process_row_label">进程</string>
+    <string name="exec_command_process_attached">由服务器启动</string>
+    <string name="exec_command_process_done">已结束</string>
+    <string name="exec_command_cap_reached">服务器已停止缓冲：这段输出是截断的。</string>
+
+    <string name="exec_command_stdin_label">标准输入</string>
+    <string name="exec_command_stdin_placeholder">发送一行，末尾自动补换行</string>
+    <string name="exec_command_stdin_send">发送</string>
+    <string name="exec_command_stdin_close">关闭 stdin</string>
+    <string name="exec_command_rows_label">行数</string>
+    <string name="exec_command_cols_label">列数</string>
+    <string name="exec_command_resize">调整大小</string>
+    <string name="exec_command_terminate">终止</string>
+
+    <string name="exec_command_terminal_title">长驻终端</string>
+    <string name="exec_command_terminal_note">pty 会跨多轮对话存活，并保留自己的回滚缓冲。会话会把它留下的终端列出来，在这里开的终端也会出现在那里。</string>
+    <string name="exec_command_terminal_start_label">启动命令</string>
+    <string name="exec_command_terminal_start_placeholder">bash -l</string>
+    <string name="exec_command_terminal_cwd_label">工作目录</string>
+    <string name="exec_command_terminal_spawn">打开终端</string>
+    <string name="exec_command_terminal_process_label">进程</string>
+    <string name="exec_command_terminal_live">存活中</string>
+    <string name="exec_command_terminal_exited">已退出</string>
+    <string name="exec_command_terminal_kill">杀掉</string>
+    <string name="exec_command_terminal_hint">它还是当前存活进程时，上面的标准输入和调整大小作用于这个终端。</string>
+
+    <!-- bottom_pane/unified_exec_footer.kt: the background terminals of one thread. -->
+    <string name="exec_terminals_title">后台终端</string>
+    <string name="exec_terminals_subtitle">%1$d 个在运行</string>
+    <string name="exec_terminals_back">返回</string>
+    <string name="exec_terminals_terminate_all">全部终止</string>
+    <string name="exec_terminals_section">仍在运行</string>
+    <string name="exec_terminals_empty">没有终端在运行</string>
+    <string name="exec_terminals_empty_detail">当会话启动一个长时间运行的命令——开发服务器、文件监视、日志跟踪——并在启动它的那一轮结束后继续让它跑着，这个终端就会留在这里。</string>
+    <string name="exec_terminals_command_unknown">服务器没有报告命令</string>
+    <string name="exec_terminals_cwd_unknown">目录未知</string>
+    <string name="exec_terminals_row_meta">%1$s · %2$s</string>
+    <string name="exec_terminals_os_pid">系统 PID %d</string>
+    <string name="exec_terminals_os_pid_unknown">系统 PID 未知</string>
+    <string name="exec_terminals_terminate">终止</string>
+    <string name="exec_terminals_read_failed">服务器没有响应</string>
+    <string name="exec_terminals_retry">重新读取</string>
+    <string name="exec_terminals_reading">读取中…</string>
+
+    <!-- bottom_pane/unified_exec_footer.kt: how long ago a terminal was started. -->
+    <string name="exec_command_terminal_stdin_label">发送给进程</string>
+    <string name="exec_command_terminal_stdin_placeholder">一行内容，发送时会补一个换行</string>
+    <string name="exec_command_terminal_stdin_send">发送</string>
+    <string name="exec_command_terminal_stdin_eof">关闭 stdin</string>
+    <string name="exec_command_terminal_rows">行数</string>
+    <string name="exec_command_terminal_cols">列数</string>
+    <string name="exec_command_terminal_resize">调整尺寸</string>
+</resources>

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- resume_picker.kt -->
+    <string name="resume_picker_search_hint">搜索会话</string>
+    <string name="resume_picker_expand">展开</string>
+    <string name="resume_picker_collapse">收起</string>
+    <string name="resume_picker_preview_loading">正在加载最近记录…</string>
+    <string name="resume_picker_preview_failed">无法加载记录预览</string>
+    <string name="resume_picker_preview_empty">暂无记录预览</string>
+    <string name="resume_picker_preview_user">用户：%1$s</string>
+    <string name="resume_picker_preview_assistant">助手：%1$s</string>
+</resources>

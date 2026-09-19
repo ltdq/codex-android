@@ -1,0 +1,144 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- CollabCell.kt -->
+    <string name="collab_cell_agent_count">%1$d 个代理</string>
+    <string name="collab_cell_reasoning_effort">思考 %1$s</string>
+    <string name="collab_cell_no_agents">没有代理参与</string>
+    <string name="collab_cell_sub_agent_prefix">"子代理 "</string>
+    <string name="collab_cell_open_sub_agent">进入该子代理</string>
+    <string name="collab_cell_call_status_running">运行中</string>
+    <string name="collab_cell_call_status_completed">完成</string>
+    <string name="collab_cell_call_status_failed">失败</string>
+    <string name="collab_cell_call_status_interrupted">已中断</string>
+    <string name="collab_cell_agent_status_pending_init">待启动</string>
+    <string name="collab_cell_agent_status_running">运行中</string>
+    <string name="collab_cell_agent_status_interrupted">已中断</string>
+    <string name="collab_cell_agent_status_completed">已完成</string>
+    <string name="collab_cell_agent_status_errored">出错</string>
+    <string name="collab_cell_agent_status_shutdown">已关闭</string>
+    <string name="collab_cell_agent_status_not_found">未找到</string>
+    <string name="collab_cell_activity_started">已开始</string>
+    <string name="collab_cell_activity_interacted">已交互</string>
+    <string name="collab_cell_activity_interrupted">已中断</string>
+    <string name="collab_cell_activity_completed">已完成</string>
+
+    <!-- ExecCell.kt -->
+    <string name="exec_cell_exit_code">退出码 %1$d</string>
+    <string name="exec_cell_meta_separator">" · "</string>
+    <string name="exec_cell_command_title">命令</string>
+    <string name="exec_cell_waiting_for_output">等待输出…</string>
+    <string name="exec_cell_command_not_approved">该命令未获批准，未执行</string>
+    <string name="exec_cell_action_read">读取 %1$s</string>
+    <string name="exec_cell_action_list">列出 %1$s</string>
+    <string name="exec_cell_action_search">搜索 %1$s</string>
+    <string name="exec_cell_action_search_in">在 %1$s 搜索 %2$s</string>
+    <string name="exec_cell_action_run">运行 %1$s</string>
+    <string name="exec_cell_status_running">运行中</string>
+    <string name="exec_cell_status_completed">完成</string>
+    <string name="exec_cell_status_failed">失败</string>
+    <string name="exec_cell_status_declined">已拒绝</string>
+    <string name="exec_cell_more_lines">展开全部 %1$d 行</string>
+    <string name="exec_cell_omitted_lines">… 另有 %1$d 行</string>
+    <string name="exec_cell_collapse">收起</string>
+    <string name="exec_cell_explored">已探索</string>
+    <string name="exec_cell_exploring">探索中</string>
+    <string name="exec_cell_duration_ms">%1$dms</string>
+    <string name="exec_cell_duration_seconds">%1$.1fs</string>
+    <string name="exec_cell_duration_minutes">%1$dm%2$ds</string>
+
+    <!-- McpCell.kt -->
+    <string name="mcp_cell_namespaced_title">%1$s / %2$s</string>
+    <string name="mcp_cell_duration">耗时 %1$s</string>
+    <string name="mcp_cell_waiting_for_result">等待结果…</string>
+    <string name="mcp_cell_tool_call_failed">工具调用失败</string>
+    <string name="mcp_cell_no_output">没有输出</string>
+    <string name="mcp_cell_status_calling">调用中</string>
+    <string name="mcp_cell_status_called">完成</string>
+    <string name="mcp_cell_status_failed">失败</string>
+    <string name="mcp_cell_dynamic_status_calling">调用中</string>
+    <string name="mcp_cell_dynamic_status_completed">完成</string>
+    <string name="mcp_cell_dynamic_status_failed">失败</string>
+
+    <!-- NoticesCell.kt -->
+    <string name="notices_cell_context_compacted">上下文已压缩</string>
+    <string name="notices_cell_context_compacted_detail">较早的对话已摘要，会话可以继续</string>
+    <string name="notices_cell_entered_review_mode">已进入审查模式</string>
+    <string name="notices_cell_exited_review_mode">已退出审查模式</string>
+    <string name="notices_cell_hook">Hook</string>
+
+    <!-- PatchesCell.kt -->
+    <string name="patches_cell_title">文件改动</string>
+    <string name="patches_cell_summary">%1$d 个文件 · %2$s</string>
+    <string name="patches_cell_declined">补丁未应用：已被拒绝</string>
+    <string name="patches_cell_failed">补丁应用失败</string>
+    <string name="patches_cell_status_applying">应用中</string>
+    <string name="patches_cell_status_applied">已应用</string>
+    <string name="patches_cell_status_failed">失败</string>
+    <string name="patches_cell_status_declined">已拒绝</string>
+
+    <!-- PlansCell.kt -->
+    <string name="plans_cell_title">计划</string>
+    <string name="plans_cell_empty">（计划为空）</string>
+    <string name="plans_cell_no_steps">（暂无步骤）</string>
+    <string name="plans_cell_step_pending">○</string>
+    <string name="plans_cell_step_in_progress">◐</string>
+    <string name="plans_cell_step_completed">●</string>
+
+    <!-- ReasoningCell.kt -->
+    <string name="reasoning_cell_collapse">收起思考</string>
+    <string name="reasoning_cell_expand">展开思考</string>
+    <string name="reasoning_cell_label">"思考 · "</string>
+    <string name="reasoning_cell_streaming">正在思考…</string>
+    <string name="reasoning_cell_title">推理过程</string>
+    <string name="reasoning_cell_no_details">（没有更多细节）</string>
+
+    <!-- SearchCell.kt -->
+    <string name="search_cell_title">搜索：%1$s</string>
+    <string name="search_cell_opened">已打开 %1$s</string>
+    <string name="search_cell_opened_page">已打开网页</string>
+    <string name="search_cell_find_in_page">在 %2$s 中搜索 \'%1$s\'</string>
+    <string name="search_cell_searched_for">搜索 \'%1$s\'</string>
+    <string name="search_cell_searched_page">已搜索网页 %1$s</string>
+    <string name="search_cell_searched_page_no_url">已搜索网页</string>
+    <string name="search_cell_searched_web">已搜索网络</string>
+    <string name="search_cell_searched_web_for">已搜索网络：%1$s</string>
+    <string name="search_cell_result_count">%1$d 条结果</string>
+    <string name="search_cell_no_results">没有返回结果</string>
+    <string name="search_cell_view_image">查看图片</string>
+    <string name="search_cell_image_generation">生成图片</string>
+    <string name="search_cell_image_generation_failed">图片生成失败</string>
+    <string name="search_cell_image_saved_to">已保存到</string>
+    <string name="search_cell_sleep">等待</string>
+
+    <!-- MessagesCell.kt -->
+    <string name="messages_cell_assistant_name">Codex</string>
+    <string name="messages_cell_attachment_image">图片</string>
+    <string name="messages_cell_attachment_local_image">本地图片</string>
+    <string name="messages_cell_attachment_audio">音频</string>
+    <string name="messages_cell_attachment_local_audio">本地音频</string>
+
+    <!-- RecapCell.kt -->
+    <string name="recap_cell_title">会话回顾</string>
+    <string name="tooltip_cell_label">提示</string>
+    <string name="recap_cell_loading">正在生成会话回顾…</string>
+    <string name="recap_cell_failed">无法生成回顾，请重试。</string>
+    <string name="recap_cell_next_action">↳ 回顾：%1$s</string>
+    <string name="messages_cell_attachment_skill">Skill: %1$s</string>
+    <string name="messages_cell_attachment_mention">@%1$s</string>
+    <string name="messages_cell_option_bullet">·</string>
+
+    <!-- TranscriptCell.kt -->
+    <string name="transcript_cell_assistant_name">Codex</string>
+
+    <!-- Clipboard.kt / CopySheet.kt -->
+    <string name="clipboard_copied">已复制%1$s</string>
+    <string name="clipboard_copy_code">复制代码</string>
+    <string name="clipboard_copy_message">复制消息</string>
+    <string name="clipboard_copy_status">复制状态</string>
+    <string name="copy_sheet_title">复制</string>
+    <string name="copy_sheet_whole_response">整段回复</string>
+    <string name="copy_sheet_code_block">代码块 %1$d</string>
+    <string name="copy_sheet_code_block_language">代码块 %1$d（%2$s）</string>
+    <string name="copy_sheet_status">会话状态</string>
+    <string name="copy_sheet_nothing">暂无可复制的内容</string>
+</resources>

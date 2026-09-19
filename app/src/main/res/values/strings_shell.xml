@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- CodexScreen.kt -->
+    <!-- A filesystem path, not copy: it is the workspace picker's starting directory. -->
+
+    <!-- SessionListScreen.kt -->
+    <string name="session_list_title">Sessions</string>
+    <string name="session_list_subtitle">%1$d sessions</string>
+    <string name="session_list_back">Back to conversation</string>
+    <string name="session_list_filter_archived">Archived</string>
+    <string name="session_list_filter_active">Active</string>
+    <string name="session_list_no_preview">No preview</string>
+    <string name="session_list_current">Current</string>
+    <string name="session_list_archived">Archived</string>
+    <string name="session_list_branch">Branch %1$s</string>
+    <string name="session_list_meta_separator">"  ·  "</string>
+    <string name="session_list_save">Save</string>
+    <string name="session_list_rename">Rename</string>
+    <string name="session_list_fork">Fork</string>
+    <string name="session_list_unarchive">Restore</string>
+    <string name="session_list_archive">Archive</string>
+    <string name="session_list_delete">Delete</string>
+
+    <!-- components.kt -->
+    <string name="components_collapse">Collapse %1$s</string>
+    <string name="components_expand">Expand %1$s</string>
+    <string name="components_sheet_close">Close</string>
+
+    <!-- blocks.kt -->
+    <string name="blocks_show_more_lines">Show %1$d more lines</string>
+    <string name="blocks_collapse_diff">Collapse changes</string>
+    <string name="blocks_view_diff">View changes</string>
+    <string name="blocks_collapse">Collapse %1$s</string>
+    <string name="blocks_expand">Expand %1$s</string>
+    <string name="blocks_stat_added">+%1$d</string>
+    <string name="blocks_stat_removed">−%1$d</string>
+    <string name="blocks_sign_added">+</string>
+    <string name="blocks_sign_removed">−</string>
+
+    <!-- markdown_render.kt -->
+    <string name="markdown_render_code">Code</string>
+    <string name="markdown_render_generating">Generating…</string>
+    <string name="markdown_render_bullet">•</string>
+    <string name="markdown_render_numbered">%1$d.</string>
+
+    <!-- links.kt: a local file link has no editor to open, so the path is copied instead. -->
+    <string name="markdown_link_path_copied">Copied %1$s</string>
+
+    <!-- chatwidget.kt: the notices DiagnosticCell renders from SessionDiagnostic.code -->
+    <string name="chatwidget_diagnostic_thread_load_failed">Failed to resume session</string>
+    <string name="chatwidget_diagnostic_new_thread_failed">Failed to start a fresh session</string>
+    <string name="chatwidget_diagnostic_send_failed">Failed to start turn</string>
+    <string name="chatwidget_diagnostic_interrupt_failed">Failed to interrupt turn</string>
+    <string name="chatwidget_diagnostic_turn_interrupted">Conversation interrupted - tell the model what to do differently.</string>
+    <string name="chatwidget_diagnostic_turn_failed">Turn failed</string>
+    <string name="chatwidget_diagnostic_turn_finished">Turn finished: %1$s</string>
+    <string name="chatwidget_diagnostic_model_switched">Automatically switched to %1$s</string>
+    <string name="chatwidget_diagnostic_world_writable">%1$s is writable by every user on this machine (%2$d more like it)</string>
+    <string name="chatwidget_diagnostic_strict_review">This turn needs a strict review before it can continue.</string>
+    <string name="chatwidget_diagnostic_hook_failed">Hook %1$s failed</string>
+    <string name="chatwidget_diagnostic_mcp_login_failed">Sign-in for MCP server %1$s failed</string>
+    <string name="chatwidget_diagnostic_safety_buffering">Giving this request a little extra thought. No action is required.</string>
+    <string name="chatwidget_diagnostic_rate_limit_warning">Heads up: less than %1$d%% of the %2$s is left. Open the account page for a breakdown.</string>
+    <string name="chatwidget_diagnostic_rate_limit_reached">The %1$s is used up. Requests wait until it resets.</string>
+    <string name="chatwidget_diagnostic_image_too_large">%1$s is larger than the 32 MiB limit for attached images.</string>
+    <string name="chatwidget_diagnostic_recap_no_history">There is no conversation history to recap.</string>
+    <string name="shell_request_failed">The server rejected that request</string>
+    <string name="transcript_export_saved">Saved conversation to %1$s</string>
+    <string name="transcript_export_empty">No conversation content to export.</string>
+    <string name="transcript_export_exists">%1$s already exists; pick another path</string>
+    <string name="transcript_export_failed">Could not export the conversation</string>
+
+    <!-- keymap/shortcuts_overlay.kt -->
+    <string name="shortcuts_overlay_title">Keyboard shortcuts</string>
+    <string name="shortcuts_overlay_group_global">Global</string>
+    <string name="shortcuts_overlay_group_composer">Composer</string>
+    <string name="shortcuts_overlay_group_suggestions">Suggestions</string>
+    <string name="shortcuts_overlay_global_escape">Interrupt the running turn, or leave the field</string>
+    <string name="shortcuts_overlay_global_interrupt">Interrupt the running turn</string>
+    <string name="shortcuts_overlay_global_transcript">Open transcript</string>
+    <string name="shortcuts_overlay_global_help">Show this list</string>
+    <string name="shortcuts_overlay_composer_submit">Send the message</string>
+    <string name="shortcuts_overlay_composer_newline">Insert a line break</string>
+    <string name="shortcuts_overlay_composer_help">Show this list while the composer is empty</string>
+    <string name="shortcuts_overlay_composer_history">Reverse search the input history</string>
+    <string name="shortcuts_overlay_composer_copy">Copy the last response</string>
+    <string name="shortcuts_overlay_composer_editor">Edit the draft in an external app</string>
+    <string name="shortcuts_overlay_popup_move">Move through the suggestions</string>
+    <string name="shortcuts_overlay_popup_accept">Insert the highlighted suggestion</string>
+    <string name="shortcuts_overlay_popup_dismiss">Dismiss the suggestions</string>
+    <string name="shortcuts_overlay_close_hint">Esc or a tap outside closes this list</string>
+</resources>

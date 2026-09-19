@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- ExternalAgentConfigMigrationItem, ExternalAgentConfigImportHistory, and the page that reads
+         them (external_agent_config_migration.kt). -->
+    <string name="migration_screen_title">Import configuration</string>
+    <string name="migration_screen_subtitle">%1$d items detected</string>
+    <string name="migration_screen_back">Back</string>
+
+    <string name="migration_detect_section">Detect another agent</string>
+    <string name="migration_detect_note">Detection only reads. It scans the other agent\'s configuration and reports what it found; nothing is written or changed until you press import.</string>
+    <string name="migration_detect_action">Detect</string>
+
+    <string name="migration_selection_section">What was found</string>
+    <string name="migration_selection_empty">Nothing detected yet</string>
+    <string name="migration_selection_empty_detail">Run a detection to see what another agent\'s configuration would contribute.</string>
+    <string name="migration_selection_select_all">Select all</string>
+    <string name="migration_selection_select_none">Select none</string>
+    <string name="migration_selection_count">%1$d selected</string>
+    <string name="migration_selection_import">Import selected</string>
+    <string name="migration_item_subtitle">%1$s · %2$s</string>
+
+    <string name="migration_progress_section">Importing</string>
+    <string name="migration_progress_count">%1$d / %2$d</string>
+
+    <string name="migration_history_section">Import history</string>
+    <string name="migration_history_empty">No imports yet</string>
+    <string name="migration_history_empty_detail">Every import leaves a row here once it finishes, whether this client or the server ran it.</string>
+    <string name="migration_history_time_format">MMM d, yyyy HH:mm</string>
+    <string name="migration_kind_agents_md">AGENTS.md</string>
+    <string name="migration_kind_config">Config</string>
+    <string name="migration_kind_skills">Skills</string>
+    <string name="migration_kind_plugins">Plugins</string>
+    <string name="migration_kind_mcp_server_config">MCP servers</string>
+    <string name="migration_kind_subagents">Subagents</string>
+    <string name="migration_kind_hooks">Hooks</string>
+    <string name="migration_kind_commands">Commands</string>
+    <string name="migration_kind_memory">Memory</string>
+    <string name="migration_kind_sessions">Sessions</string>
+    <string name="migration_kind_unknown">Unrecognized</string>
+    <string name="migration_history_counts">%1$d imported · %2$d failed</string>
+</resources>

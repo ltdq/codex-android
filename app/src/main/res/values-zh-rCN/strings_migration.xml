@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- ExternalAgentConfigMigrationItem、ExternalAgentConfigImportHistory，以及读取它们的页面
+         （external_agent_config_migration.kt）。 -->
+    <string name="migration_screen_title">导入配置</string>
+    <string name="migration_screen_subtitle">已检测到 %1$d 项</string>
+    <string name="migration_screen_back">返回</string>
+
+    <string name="migration_detect_section">检测其他智能体</string>
+    <string name="migration_detect_note">检测只做读取：扫描另一个智能体的配置并报告发现了什么；在你按下导入之前，不会写入或改动任何内容。</string>
+    <string name="migration_detect_action">检测</string>
+
+    <string name="migration_selection_section">检测结果</string>
+    <string name="migration_selection_empty">还没有检测到任何内容</string>
+    <string name="migration_selection_empty_detail">运行一次检测，看看另一个智能体的配置能带来什么。</string>
+    <string name="migration_selection_select_all">全选</string>
+    <string name="migration_selection_select_none">全不选</string>
+    <string name="migration_selection_count">已选 %1$d 项</string>
+    <string name="migration_selection_import">导入所选项</string>
+    <string name="migration_item_subtitle">%1$s · %2$s</string>
+
+    <string name="migration_progress_section">正在导入</string>
+    <string name="migration_progress_count">%1$d / %2$d</string>
+
+    <string name="migration_history_section">导入记录</string>
+    <string name="migration_history_empty">还没有导入记录</string>
+    <string name="migration_history_empty_detail">无论导入由本客户端还是服务器执行，完成后都会在这里留下一行记录。</string>
+    <string name="migration_history_time_format">M月d日 HH:mm</string>
+    <string name="migration_kind_agents_md">AGENTS.md</string>
+    <string name="migration_kind_config">配置</string>
+    <string name="migration_kind_skills">技能</string>
+    <string name="migration_kind_plugins">插件</string>
+    <string name="migration_kind_mcp_server_config">MCP 服务器</string>
+    <string name="migration_kind_subagents">子代理</string>
+    <string name="migration_kind_hooks">钩子</string>
+    <string name="migration_kind_commands">命令</string>
+    <string name="migration_kind_memory">记忆</string>
+    <string name="migration_kind_sessions">会话</string>
+    <string name="migration_kind_unknown">未知类型</string>
+    <string name="migration_history_counts">%1$d 项成功 · %2$d 项失败</string>
+</resources>

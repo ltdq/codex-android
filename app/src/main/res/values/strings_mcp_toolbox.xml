@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- bottom_pane/mcp_toolbox.kt -->
+    <string name="mcp_toolbox_title">MCP toolbox</string>
+    <string name="mcp_toolbox_back">Back</string>
+
+    <string name="mcp_toolbox_resource_section">Resource</string>
+    <string name="mcp_toolbox_resource_uri">Resource URI</string>
+    <string name="mcp_toolbox_resource_uri_placeholder">file:///README.md</string>
+    <string name="mcp_toolbox_resource_read">Read resource</string>
+    <string name="mcp_toolbox_resource_uri_label">URI</string>
+    <string name="mcp_toolbox_resource_mime">Mime type</string>
+    <string name="mcp_toolbox_resource_no_text">The server answered without a text body.</string>
+    <string name="mcp_toolbox_resource_failed">The resource could not be read</string>
+
+    <string name="mcp_toolbox_tool_section">Tool</string>
+    <string name="mcp_toolbox_tool_name">Tool name</string>
+    <string name="mcp_toolbox_tool_name_placeholder">read_file</string>
+    <string name="mcp_toolbox_tool_arguments">Arguments (JSON)</string>
+    <string name="mcp_toolbox_tool_arguments_placeholder">{\"path\": \"README.md\"}</string>
+    <string name="mcp_toolbox_tool_call">Call tool</string>
+    <string name="mcp_toolbox_tool_ok">The server answered</string>
+    <string name="mcp_toolbox_tool_error">The tool reported an error</string>
+    <string name="mcp_toolbox_tool_failed">The tool could not be called</string>
+    <string name="mcp_toolbox_result_empty">The tool returned nothing</string>
+
+    <string name="mcp_toolbox_stream_section">Events</string>
+    <string name="mcp_toolbox_stream_switch">Stream this server\'s events</string>
+    <string name="mcp_toolbox_stream_switch_detail">The app opens the server\'s event stream; everything it pushes appears below, oldest first.</string>
+    <string name="mcp_toolbox_stream_empty">No event yet. Turn the stream on and the server\'s notifications appear here.</string>
+</resources>

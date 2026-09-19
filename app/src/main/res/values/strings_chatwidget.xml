@@ -1,0 +1,168 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- ChatScreen.kt -->
+    <string name="chat_empty_title">Codex</string>
+    <string name="chat_empty_hint">Pick a session on the left, or start a new conversation</string>
+    <string name="chat_empty_slash_hint">Type / to see slash commands</string>
+    <string name="chat_loading_history">Loading session history…</string>
+    <string name="chat_transcript_assistant_label">Codex</string>
+    <string name="transcript_load_earlier">Load earlier messages</string>
+    <string name="transcript_load_earlier_loading">Loading earlier messages…</string>
+    <string name="chat_composer_hint_open">Ask Codex to do anything</string>
+    <string name="chat_composer_hint_empty">Select a session to start</string>
+    <string name="chat_composer_hint_shell">Run a shell command in the session shell</string>
+    <string name="chat_composer_hint_parent_owned">Viewing sub-agent — direct input is disabled</string>
+
+    <!-- TurnActivityBar.kt -->
+    <string name="status_indicator_working">Working</string>
+
+    <!-- Misalignment -->
+    <string name="misalignment_title">Chat stopped as a precaution</string>
+    <string name="misalignment_description">We couldn’t confirm the agent was acting safely and following your instructions. To continue working, start or resume another chat.</string>
+    <string name="misalignment_review">What we detected</string>
+    <string name="misalignment_continue">Continue</string>
+    <string name="misalignment_review_title">What we detected</string>
+    <string name="misalignment_continuation_label">Continuation request (quoted)</string>
+
+    <!-- Side conversations -->
+    <string name="side_conversation_title">Start a side conversation</string>
+    <string name="side_conversation_unavailable">Start a conversation before opening a side chat</string>
+    <string name="side_conversation_start_failed">Failed to start the side conversation</string>
+    <string name="side_conversation_banner">Side conversation · from %1$s</string>
+    <string name="side_conversation_back">Back to main</string>
+
+    <!-- SidebarPanel.kt -->
+    <string name="sidebar_title">Codex</string>
+    <string name="sidebar_collapse">Collapse sidebar</string>
+    <string name="sidebar_expand">Expand sidebar</string>
+    <string name="sidebar_open_settings">Open settings</string>
+    <string name="sidebar_projects_header">Projects</string>
+    <string name="sidebar_session_tools_header">Current task</string>
+    <string name="sidebar_expand_section">Expand %1$s</string>
+    <string name="sidebar_collapse_section">Collapse %1$s</string>
+    <string name="sidebar_expand_project">Expand %1$s</string>
+    <string name="sidebar_collapse_project">Collapse %1$s</string>
+
+    <!-- SidebarModel.kt -->
+    <string name="sidebar_add_workspace">Add workspace</string>
+    <string name="sidebar_library_all_sessions">All sessions</string>
+    <string name="sidebar_library_mcp_servers">MCP servers</string>
+    <string name="sidebar_library_skills">Skills</string>
+    <string name="sidebar_library_plugins">Plugins</string>
+    <string name="sidebar_library_hooks">Hooks</string>
+    <string name="sidebar_library_apps">Apps</string>
+    <string name="sidebar_library_account">Account</string>
+    <string name="sidebar_library_archived">Archived sessions</string>
+    <string name="sidebar_time_now">now</string>
+    <string name="sidebar_time_minutes">%1$dm ago</string>
+    <string name="sidebar_time_hours">%1$dh ago</string>
+    <string name="sidebar_time_days">%1$dd ago</string>
+    <string name="sidebar_time_weeks">%1$dw ago</string>
+
+    <!-- StatusCard.kt -->
+    <string name="status_card_agents_files_summary">%1$d agents · %2$d files changed</string>
+    <string name="status_card_generating_title">Generating title…</string>
+    <string name="status_card_agents_overview">Agents overview</string>
+    <string name="status_card_context_title">Context</string>
+    <string name="status_card_usage_percent">%1$d%%</string>
+    <string name="status_card_tokens_millions">%1$sM</string>
+    <string name="status_card_tokens_thousands">%1$sK</string>
+    <string name="status_card_tokens_rounded">%1$dK</string>
+    <string name="status_card_usage_tokens">Input %1$s · Output %2$s · Cached %3$s</string>
+    <string name="status_card_usage_of_total">/ %1$s</string>
+    <string name="status_card_compacted_note">Context compacted</string>
+    <string name="status_card_compact_action">Compact</string>
+    <string name="status_card_compacted_action">Compacted</string>
+    <string name="status_card_model_title">Model and reasoning</string>
+    <string name="status_card_model_label">Model</string>
+    <string name="status_card_reasoning_label">Reasoning effort</string>
+    <string name="status_card_approval_label">Approval</string>
+    <string name="status_card_reviewer_label">Reviewer</string>
+    <string name="status_card_service_tier_label">Service tier</string>
+    <string name="status_card_service_tier_default">Default</string>
+    <string name="status_card_collaboration_label">Collaboration mode</string>
+    <string name="status_card_model_provider_label">Model provider</string>
+    <string name="status_card_access_label">Access</string>
+    <string name="status_card_access_network">network</string>
+    <string name="status_card_agents_md_label">AGENTS.md</string>
+    <string name="status_card_forked_from_label">Forked from</string>
+    <string name="status_card_none">None</string>
+    <string name="status_card_usage_tokens_more">reasoning %1$s · cache write %2$s</string>
+    <string name="status_card_rate_title">Rate limits</string>
+    <string name="status_card_rate_primary">Primary limit</string>
+    <string name="status_card_rate_secondary">Secondary limit</string>
+    <string name="status_card_rate_resets">Resets %1$s</string>
+    <string name="status_card_credits_label">Credits</string>
+    <string name="status_card_credits_unlimited">Unlimited</string>
+    <string name="status_card_credits_none">None</string>
+    <string name="status_card_credits_remaining">%1$s remaining</string>
+    <string name="status_card_reset_credits_label">Reset credits</string>
+    <string name="status_card_spend_control">Spend control</string>
+    <string name="status_card_add_credits">Email me about credits</string>
+    <string name="status_card_add_credits_sent">Request sent.</string>
+    <string name="status_card_add_credits_cooldown">A request was already sent recently.</string>
+    <string name="status_card_add_credits_failed">Could not send the request.</string>
+    <string name="status_card_spend_control_value">%1$s / %2$s · %3$d%% left</string>
+    <string name="status_card_spend_control_reached">Limit reached</string>
+    <string name="status_card_rate_updated">Updated %1$s ago</string>
+    <string name="status_card_rate_stale">Updated %1$s ago · may be stale</string>
+    <string name="status_card_plan_title">Plan</string>
+    <string name="status_card_agents_title">Agents</string>
+    <string name="status_card_agents_count">%1$d</string>
+    <string name="status_card_files_title">Files changed</string>
+    <string name="status_card_files_count">%1$d</string>
+    <string name="status_card_files_empty">No changes this turn</string>
+    <string name="status_card_option_selected">Selected</string>
+    <string name="status_card_open_agent_session">Open %1$s\'s session</string>
+    <string name="status_card_agent_details">Show details for %1$s</string>
+    <string name="status_card_open_agent">Open %1$s</string>
+    <string name="status_card_agent_main_badge">Main</string>
+    <string name="status_card_diff_expand">View diff</string>
+    <string name="status_card_diff_collapse">Hide diff</string>
+    <string name="status_card_diff_position">%1$d/%2$d</string>
+    <string name="status_card_expand_panel">Expand status panel</string>
+    <string name="status_card_collapse_panel">Collapse status panel</string>
+    <string name="status_card_back">Back</string>
+    <string name="sidebar_library_projects">Projects</string>
+    <string name="sidebar_library_history">History</string>
+    <string name="sidebar_library_files">Files</string>
+    <string name="sidebar_library_exec">Run a command</string>
+    <string name="sidebar_library_terminals">Background terminals</string>
+    <string name="sidebar_library_review">Review changes</string>
+    <string name="sidebar_library_realtime">Voice session</string>
+    <string name="sidebar_library_shares">Plugin shares</string>
+    <string name="sidebar_library_memories">Memory</string>
+    <string name="sidebar_library_remote">Remote control</string>
+    <string name="sidebar_library_verification">User verification</string>
+    <string name="sidebar_library_migration">Import another agent</string>
+    <string name="sidebar_library_bedrock">Amazon Bedrock</string>
+    <string name="sidebar_library_sandbox">Windows sandbox</string>
+    <string name="sidebar_library_diagnostics">Diagnostics</string>
+    <string name="plugins_screen_search">Search published plugins</string>
+    <string name="plugins_screen_installed_only">Installed only</string>
+    <string name="plugins_screen_installed_only_detail">Ask plugin/installed instead of plugin/list, which drops every plugin you have not installed</string>
+    <string name="plugins_detail_facts">Manifest</string>
+    <string name="plugins_detail_id">Id</string>
+    <string name="plugins_detail_marketplace">Marketplace</string>
+    <string name="plugins_detail_author">Author</string>
+    <string name="plugins_detail_homepage">Homepage</string>
+    <string name="plugins_detail_skills">Skills</string>
+    <string name="plugins_detail_mcp">MCP servers</string>
+    <string name="plugins_detail_apps">Apps</string>
+    <string name="plugins_detail_skill_loading">Reading…</string>
+    <string name="plugins_detail_skill_failed">The plugin did not return this skill.</string>
+
+    <!-- RateLimitNudgeSheet.kt -->
+    <string name="rate_limit_nudge_title">Approaching rate limits</string>
+    <string name="rate_limit_nudge_subtitle">Switch to %1$s for lower credit usage?</string>
+    <string name="rate_limit_nudge_body">The current model is close to the usage limit. The lower-cost model answers the same way for most turns.</string>
+    <string name="rate_limit_nudge_switch">Switch to %1$s</string>
+    <string name="rate_limit_nudge_keep">Keep current model</string>
+    <string name="rate_limit_nudge_never">Keep current model (never show again)</string>
+
+    <!-- TrustProjectSheet.kt -->
+    <string name="trust_project_title">Trust this folder?</string>
+    <string name="trust_project_body">Codex can read, edit, and run files here. Trust it only if this is your own workspace.</string>
+    <string name="trust_project_confirm">Trust and continue</string>
+    <string name="trust_project_cancel">Cancel</string>
+</resources>

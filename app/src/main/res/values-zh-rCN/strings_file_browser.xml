@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- fs/… 页面（bottom_pane/file_browser_view.kt）：目录浏览、文件预览，以及这一族提供的写操作。 -->
+    <string name="file_browser_back">返回</string>
+    <string name="file_browser_refresh">刷新</string>
+    <string name="file_browser_use_directory">使用此目录</string>
+    <string name="file_browser_reading">读取中…</string>
+    <string name="file_browser_contents">目录内容</string>
+    <string name="file_browser_folder">文件夹</string>
+    <string name="file_browser_read_failed">无法读取这个目录</string>
+    <string name="file_browser_empty">这个目录是空的</string>
+    <string name="file_browser_empty_detail">服务器答复了，答复是没有任何条目。没有权限列出的目录拿到的是同样的答复，所以这个状态也值得重试。</string>
+
+    <string name="file_browser_folder_actions">当前文件夹</string>
+    <string name="file_browser_new_folder">新建文件夹</string>
+    <string name="file_browser_new_folder_detail">在这个目录里新建一个目录</string>
+    <string name="file_browser_new_file">新建文件</string>
+    <string name="file_browser_new_file_detail">直接在手机上写一个文本文件</string>
+    <string name="file_browser_name">名称</string>
+    <string name="file_browser_name_placeholder">notes</string>
+    <string name="file_browser_content">内容</string>
+    <string name="file_browser_content_help">留空就是创建一个空文件。</string>
+    <string name="file_browser_create">创建</string>
+
+    <string name="file_browser_rename">重命名</string>
+    <string name="file_browser_rename_title">重命名 %1$s</string>
+    <string name="file_browser_rename_help">协议里没有 move：这一步是复制成同一个文件夹下的新名字，所以原文件会一直留着，直到你把它删掉。</string>
+    <string name="file_browser_copy">复制</string>
+    <string name="file_browser_copy_title">复制 %1$s</string>
+    <string name="file_browser_copy_destination">目标路径</string>
+    <string name="file_browser_copy_default_suffix">-副本</string>
+    <string name="file_browser_copy_help">绝对路径。源文件会留在原地。</string>
+    <string name="file_browser_delete">删除</string>
+    <string name="file_browser_delete_title">删除 %1$s？</string>
+    <string name="file_browser_delete_detail">这一步无法撤销，删除文件夹会连同里面的一切一起删掉。</string>
+    <string name="file_browser_cancel">取消</string>
+
+    <string name="file_browser_watch">监视变更</string>
+    <string name="file_browser_watch_stop">停止监视</string>
+
+    <string name="file_browser_preview_reading">正在读取文件…</string>
+    <string name="file_browser_preview_empty">文件是空的</string>
+    <string name="file_browser_preview_binary">不是文本文件 — %1$s</string>
+    <string name="file_browser_preview_clipped">只显示前 %1$d 个字符。</string>
+
+    <string name="file_browser_action_failed">服务器拒绝了这个请求</string>
+    <string name="file_browser_action_failed_title">上一个操作失败了</string>
+
+    <string name="file_browser_size_bytes">%1$d B</string>
+    <string name="file_browser_size_kb">%1$.1f KB</string>
+    <string name="file_browser_size_mb">%1$.1f MB</string>
+    <string name="file_browser_meta_kind">类型</string>
+    <string name="file_browser_meta_directory">目录</string>
+    <string name="file_browser_meta_file">文件</string>
+    <string name="file_browser_meta_size">大小</string>
+    <string name="file_browser_meta_modified">修改时间</string>
+</resources>

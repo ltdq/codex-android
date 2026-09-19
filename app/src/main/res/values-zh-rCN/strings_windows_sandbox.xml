@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- WindowsSandboxReadiness 与 WindowsSandboxSetupMode，由 chatwidget/windows_sandbox_prompts.kt 读取。 -->
+    <string name="windows_sandbox_title">Windows 沙箱</string>
+    <string name="windows_sandbox_subtitle">运行服务器的那台主机能否限制命令</string>
+    <string name="windows_sandbox_back">返回</string>
+    <string name="windows_sandbox_readiness_card">就绪状态</string>
+    <string name="windows_sandbox_fact_readiness">状态</string>
+    <string name="windows_sandbox_fact_meaning">含义</string>
+    <string name="windows_sandbox_fact_setup">上次设置</string>
+    <string name="windows_sandbox_reading">读取中…</string>
+    <string name="windows_sandbox_unknown">未知</string>
+    <string name="windows_sandbox_readiness_ready">已就绪</string>
+    <string name="windows_sandbox_readiness_not_configured">未配置</string>
+    <string name="windows_sandbox_readiness_update_required">需要更新</string>
+    <string name="windows_sandbox_detail_ready">沙箱可以启动，命令会在受限环境中运行。</string>
+    <string name="windows_sandbox_detail_not_configured">这台主机没有配置沙箱。只要主机不是 Windows，返回的就一定是这一条，这个页面上的任何操作都改变不了。</string>
+    <string name="windows_sandbox_detail_update_required">这台主机上的沙箱比服务器预期的版本旧，必须先更新才能运行。</string>
+    <string name="windows_sandbox_setup_card">配置沙箱</string>
+    <string name="windows_sandbox_setup_detail">提权路径会弹出 UAC 提示，因此可以安装沙箱需要的东西；不提权路径无法安装任何东西，只能启动机器上已有的部分。</string>
+    <string name="windows_sandbox_setup_elevated">提权运行</string>
+    <string name="windows_sandbox_setup_unelevated">不提权运行</string>
+    <string name="windows_sandbox_setup_host_note">两者都在运行服务器的机器上执行，不是在这台手机上。</string>
+    <string name="windows_sandbox_setup_starting">%1$s · 正在启动…</string>
+    <string name="windows_sandbox_setup_ok">%1$s · 已完成</string>
+    <string name="windows_sandbox_setup_failed">设置没有完成</string>
+    <string name="windows_sandbox_mode_elevated">提权</string>
+    <string name="windows_sandbox_mode_unelevated">不提权</string>
+    <string name="windows_sandbox_recheck">重新检测</string>
+</resources>

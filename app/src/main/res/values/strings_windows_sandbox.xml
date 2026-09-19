@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- WindowsSandboxReadiness and WindowsSandboxSetupMode, read by chatwidget/windows_sandbox_prompts.kt. -->
+    <string name="windows_sandbox_title">Windows sandbox</string>
+    <string name="windows_sandbox_subtitle">Whether the host running the server can confine commands</string>
+    <string name="windows_sandbox_back">Back</string>
+    <string name="windows_sandbox_readiness_card">Readiness</string>
+    <string name="windows_sandbox_fact_readiness">Status</string>
+    <string name="windows_sandbox_fact_meaning">What it means</string>
+    <string name="windows_sandbox_fact_setup">Last setup</string>
+    <string name="windows_sandbox_reading">Reading…</string>
+    <string name="windows_sandbox_unknown">Unknown</string>
+    <string name="windows_sandbox_readiness_ready">Ready</string>
+    <string name="windows_sandbox_readiness_not_configured">Not configured</string>
+    <string name="windows_sandbox_readiness_update_required">Update required</string>
+    <string name="windows_sandbox_detail_ready">The sandbox can start, so commands run confined.</string>
+    <string name="windows_sandbox_detail_not_configured">This host has no sandbox set up. Any host that is not Windows answers exactly this, and nothing on this page can change that.</string>
+    <string name="windows_sandbox_detail_update_required">The sandbox on this host is older than the server expects and has to be updated before it can run.</string>
+    <string name="windows_sandbox_setup_card">Set up the sandbox</string>
+    <string name="windows_sandbox_setup_detail">The elevated path raises a UAC prompt, which is what lets it install what the sandbox needs. The unelevated path cannot install anything, so it can only start what is already on the machine.</string>
+    <string name="windows_sandbox_setup_elevated">Run elevated</string>
+    <string name="windows_sandbox_setup_unelevated">Run unelevated</string>
+    <string name="windows_sandbox_setup_host_note">Both run on the machine hosting the server, not on this phone.</string>
+    <string name="windows_sandbox_setup_starting">%1$s · starting…</string>
+    <string name="windows_sandbox_setup_ok">%1$s · finished</string>
+    <string name="windows_sandbox_setup_failed">The setup did not finish</string>
+    <string name="windows_sandbox_mode_elevated">Elevated</string>
+    <string name="windows_sandbox_mode_unelevated">Unelevated</string>
+    <string name="windows_sandbox_recheck">Check again</string>
+</resources>

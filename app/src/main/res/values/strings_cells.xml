@@ -1,0 +1,146 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- CollabCell.kt -->
+    <string name="collab_cell_agent_count">%1$d agents</string>
+    <string name="collab_cell_reasoning_effort">Thinking %1$s</string>
+    <string name="collab_cell_no_agents">No agents involved</string>
+    <string name="collab_cell_sub_agent_prefix">"Sub-agent "</string>
+    <string name="collab_cell_open_sub_agent">Open sub-agent</string>
+    <string name="collab_cell_call_status_running">Running</string>
+    <string name="collab_cell_call_status_completed">Completed</string>
+    <string name="collab_cell_call_status_failed">Failed</string>
+    <string name="collab_cell_call_status_interrupted">Interrupted</string>
+    <string name="collab_cell_agent_status_pending_init">Pending init</string>
+    <string name="collab_cell_agent_status_running">Running</string>
+    <string name="collab_cell_agent_status_interrupted">Interrupted</string>
+    <string name="collab_cell_agent_status_completed">Completed</string>
+    <string name="collab_cell_agent_status_errored">Agent errored</string>
+    <string name="collab_cell_agent_status_shutdown">Shutdown</string>
+    <string name="collab_cell_agent_status_not_found">Not found</string>
+    <string name="collab_cell_activity_started">Started</string>
+    <string name="collab_cell_activity_interacted">Interacted</string>
+    <string name="collab_cell_activity_interrupted">Interrupted</string>
+    <string name="collab_cell_activity_completed">Completed</string>
+
+    <!-- ExecCell.kt -->
+    <string name="exec_cell_exit_code">Exit code %1$d</string>
+    <string name="exec_cell_meta_separator">" · "</string>
+    <string name="exec_cell_command_title">Command</string>
+    <string name="exec_cell_waiting_for_output">Waiting for output…</string>
+    <string name="exec_cell_command_not_approved">Command not approved; it was not run</string>
+    <string name="exec_cell_action_read">Read %1$s</string>
+    <string name="exec_cell_action_list">List %1$s</string>
+    <string name="exec_cell_action_search">Search %1$s</string>
+    <string name="exec_cell_action_search_in">Search %2$s in %1$s</string>
+    <string name="exec_cell_action_run">Run %1$s</string>
+    <string name="exec_cell_status_running">Running</string>
+    <string name="exec_cell_status_completed">Completed</string>
+    <string name="exec_cell_status_failed">Failed</string>
+    <string name="exec_cell_status_declined">Declined</string>
+    <string name="exec_cell_more_lines">… %1$d more lines</string>
+    <string name="exec_cell_omitted_lines">… +%1$d lines</string>
+    <string name="exec_cell_collapse">Collapse</string>
+    <string name="exec_cell_explored">Explored</string>
+    <string name="exec_cell_exploring">Exploring</string>
+    <string name="exec_cell_duration_ms">%1$dms</string>
+    <string name="exec_cell_duration_seconds">%1$.1fs</string>
+    <string name="exec_cell_duration_minutes">%1$dm%2$ds</string>
+
+    <!-- McpCell.kt -->
+    <string name="mcp_cell_namespaced_title">%1$s / %2$s</string>
+    <string name="mcp_cell_duration">Took %1$s</string>
+    <string name="mcp_cell_waiting_for_result">Waiting for result…</string>
+    <string name="mcp_cell_tool_call_failed">Tool call failed</string>
+    <string name="tool_cell_returned_image">Returned image</string>
+    <string name="tool_cell_audio_content">&lt;audio content&gt;</string>
+    <string name="mcp_cell_no_output">No output</string>
+    <string name="mcp_cell_status_calling">Calling</string>
+    <string name="mcp_cell_status_called">Called</string>
+    <string name="mcp_cell_status_failed">Failed</string>
+    <string name="mcp_cell_dynamic_status_calling">Calling</string>
+    <string name="mcp_cell_dynamic_status_completed">Completed</string>
+    <string name="mcp_cell_dynamic_status_failed">Failed</string>
+
+    <!-- NoticesCell.kt -->
+    <string name="notices_cell_context_compacted">Context compacted</string>
+    <string name="notices_cell_context_compacted_detail">Earlier turns were summarized, so the session can continue</string>
+    <string name="notices_cell_entered_review_mode">Entered review mode</string>
+    <string name="notices_cell_exited_review_mode">Exited review mode</string>
+    <string name="notices_cell_hook">Hook</string>
+
+    <!-- PatchesCell.kt -->
+    <string name="patches_cell_title">File changes</string>
+    <string name="patches_cell_summary">%1$d files · %2$s</string>
+    <string name="patches_cell_declined">Patch not applied: declined</string>
+    <string name="patches_cell_failed">Failed to apply patch</string>
+    <string name="patches_cell_status_applying">Applying</string>
+    <string name="patches_cell_status_applied">Applied</string>
+    <string name="patches_cell_status_failed">Failed</string>
+    <string name="patches_cell_status_declined">Declined</string>
+
+    <!-- PlansCell.kt -->
+    <string name="plans_cell_title">Proposed Plan</string>
+    <string name="plans_cell_empty">(empty)</string>
+    <string name="plans_cell_no_steps">(no steps provided)</string>
+    <string name="plans_cell_step_pending">○</string>
+    <string name="plans_cell_step_in_progress">◐</string>
+    <string name="plans_cell_step_completed">●</string>
+
+    <!-- ReasoningCell.kt -->
+    <string name="reasoning_cell_collapse">Collapse thinking</string>
+    <string name="reasoning_cell_expand">Expand thinking</string>
+    <string name="reasoning_cell_label">"Thinking · "</string>
+    <string name="reasoning_cell_streaming">Thinking…</string>
+    <string name="reasoning_cell_title">Reasoning</string>
+    <string name="reasoning_cell_no_details">(no further detail)</string>
+
+    <!-- SearchCell.kt -->
+    <string name="search_cell_title">Web search: %1$s</string>
+    <string name="search_cell_opened">Opened %1$s</string>
+    <string name="search_cell_opened_page">Opened page</string>
+    <string name="search_cell_find_in_page">Searched for \'%1$s\' in %2$s</string>
+    <string name="search_cell_searched_for">Searched for \'%1$s\'</string>
+    <string name="search_cell_searched_page">Searched page %1$s</string>
+    <string name="search_cell_searched_page_no_url">Searched page</string>
+    <string name="search_cell_searched_web">Searched the web</string>
+    <string name="search_cell_searched_web_for">Searched the web for %1$s</string>
+    <string name="search_cell_result_count">%1$d results</string>
+    <string name="search_cell_no_results">No results</string>
+    <string name="search_cell_view_image">Viewed Image</string>
+    <string name="search_cell_image_generation">Generated Image</string>
+    <string name="search_cell_image_generation_failed">Image generation failed</string>
+    <string name="search_cell_image_saved_to">Saved to</string>
+    <string name="search_cell_sleep">Waiting</string>
+
+    <!-- MessagesCell.kt -->
+    <string name="messages_cell_assistant_name">Codex</string>
+    <string name="messages_cell_attachment_image">Image</string>
+    <string name="messages_cell_attachment_local_image">Local image</string>
+    <string name="messages_cell_attachment_audio">Audio</string>
+    <string name="messages_cell_attachment_local_audio">Local audio</string>
+
+    <!-- RecapCell.kt -->
+    <string name="recap_cell_title">Conversation recap</string>
+    <string name="tooltip_cell_label">Tip</string>
+    <string name="recap_cell_loading">Generating conversation recap…</string>
+    <string name="recap_cell_failed">Could not generate a recap. Please try again.</string>
+    <string name="recap_cell_next_action">↳ Recap: %1$s</string>
+    <string name="messages_cell_attachment_skill">Skill: %1$s</string>
+    <string name="messages_cell_attachment_mention">@%1$s</string>
+    <string name="messages_cell_option_bullet">·</string>
+
+    <!-- TranscriptCell.kt -->
+    <string name="transcript_cell_assistant_name">Codex</string>
+
+    <!-- Clipboard.kt / CopySheet.kt -->
+    <string name="clipboard_copied">Copied %1$s</string>
+    <string name="clipboard_copy_code">Copy code</string>
+    <string name="clipboard_copy_message">Copy message</string>
+    <string name="clipboard_copy_status">Copy status</string>
+    <string name="copy_sheet_title">Copy</string>
+    <string name="copy_sheet_whole_response">Whole response</string>
+    <string name="copy_sheet_code_block">Code block %1$d</string>
+    <string name="copy_sheet_code_block_language">Code block %1$d (%2$s)</string>
+    <string name="copy_sheet_status">Session status</string>
+    <string name="copy_sheet_nothing">Nothing to copy yet</string>
+</resources>

@@ -1,0 +1,172 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- shared.kt: CollabAgentTool -->
+    <string name="collab_tool_spawn_agent">Spawn agent</string>
+    <string name="collab_tool_send_input">Send input</string>
+    <string name="collab_tool_resume_agent">Resume agent</string>
+    <string name="collab_tool_wait">Wait</string>
+    <string name="collab_tool_close_agent">Close agent</string>
+    <string name="collab_tool_send_message">Send message</string>
+    <string name="collab_tool_followup_task">Follow-up task</string>
+    <string name="collab_tool_interrupt_agent">Interrupt agent</string>
+    <string name="collab_tool_list_agents">List agents</string>
+
+    <!-- shared.kt: ReasoningEffort -->
+    <string name="reasoning_effort_minimal">Minimal</string>
+    <string name="reasoning_effort_low">Low</string>
+    <string name="reasoning_effort_medium">Medium</string>
+    <string name="reasoning_effort_high">High</string>
+    <string name="reasoning_effort_xhigh">Extra high</string>
+
+    <!-- thread_data.kt: ThreadStatus -->
+    <string name="thread_status_idle">Idle</string>
+    <string name="thread_status_not_loaded">Not loaded</string>
+    <string name="thread_status_active">Working</string>
+    <string name="thread_status_error">Error</string>
+
+    <!-- thread_data.kt: TurnStatus -->
+    <string name="turn_status_in_progress">In progress</string>
+    <string name="turn_status_completed">Completed</string>
+    <string name="turn_status_interrupted">Interrupted</string>
+    <string name="turn_status_failed">Failed</string>
+
+    <!-- thread_data.kt: McpServerConnectionStatus -->
+    <string name="mcp_connection_status_starting">Starting</string>
+    <string name="mcp_connection_status_not_started">Not started</string>
+    <string name="mcp_connection_status_connected">Connected</string>
+    <string name="mcp_connection_status_auth_required">Sign-in required</string>
+    <string name="mcp_connection_status_failed">Failed</string>
+    <string name="mcp_connection_status_cancelled">Cancelled</string>
+    <string name="mcp_connection_status_disabled">Disabled</string>
+
+    <!-- thread_data.kt: SkillScope -->
+    <string name="skill_scope_user">Personal</string>
+    <string name="skill_scope_project">Project</string>
+    <string name="skill_scope_admin">Admin</string>
+    <string name="skill_scope_system">Built-in</string>
+
+    <!-- server_messages.kt: CommandExecutionApprovalDecision -->
+    <string name="command_approval_decision_accept">Allow</string>
+    <string name="command_approval_decision_accept_for_session">Allow for this session</string>
+    <string name="command_approval_decision_decline">Deny</string>
+    <string name="command_approval_decision_cancel">Cancel turn</string>
+    <string name="command_approval_decision_accept_execpolicy">Allow and remember rule</string>
+    <string name="command_approval_decision_allow_host">Always allow this host</string>
+    <string name="command_approval_decision_deny_host">Always deny this host</string>
+
+    <!-- server_messages.kt: FileChangeApprovalDecision -->
+    <string name="file_change_approval_decision_accept">Allow</string>
+    <string name="file_change_approval_decision_accept_for_session">Allow for this session</string>
+    <string name="file_change_approval_decision_decline">Deny</string>
+    <string name="file_change_approval_decision_cancel">Cancel turn</string>
+
+    <!-- server_messages.kt: PermissionsApprovalDecision (no Cancel variant) -->
+    <string name="permissions_approval_decision_accept">Allow</string>
+    <string name="permissions_approval_decision_accept_for_session">Allow for this session</string>
+    <string name="permissions_approval_decision_decline">Deny</string>
+
+    <!-- notifications.kt: GoalStatus -->
+    <string name="goal_status_active">Active</string>
+    <string name="goal_status_paused">Paused</string>
+    <string name="goal_status_budget_limited">Limited by budget</string>
+    <string name="goal_status_complete">Complete</string>
+
+    <!-- config_types.kt: AskForApproval -->
+    <string name="approval_policy_untrusted">Untrusted</string>
+    <string name="approval_policy_untrusted_description">Commands need approval unless an explicit rule allows them.</string>
+    <string name="approval_policy_on_request">On request</string>
+    <string name="approval_policy_on_request_description">The model requests approval when needed. Commands remain subject to Android app permissions.</string>
+    <string name="approval_policy_granular">Granular</string>
+    <string name="approval_policy_granular_description">Fine-grained controls for individual approval flows: sandbox, rules, skills, permissions and MCP forms.</string>
+    <string name="approval_policy_never">Never</string>
+    <string name="approval_policy_never_description">Never request user approval. Commands remain subject to Android app permissions.</string>
+
+    <!-- config_types.kt: ApprovalsReviewer -->
+    <string name="approvals_reviewer_user">Ask me</string>
+    <string name="approvals_reviewer_user_description">Approval requests are shown to you.</string>
+    <string name="approvals_reviewer_auto">Approve for me</string>
+    <string name="approvals_reviewer_auto_description">A review subagent judges each request and only asks you when it cannot decide.</string>
+
+    <!-- config_types.kt: SandboxMode -->
+    <string name="sandbox_mode_read_only">Read only</string>
+    <string name="sandbox_mode_workspace_write">Workspace write</string>
+    <string name="sandbox_mode_full_access">Full access</string>
+
+    <!-- config_types.kt: CollaborationMode -->
+    <string name="collaboration_mode_default">Default</string>
+    <string name="collaboration_mode_default_description">Execute normally; tool calls follow the approval policy.</string>
+    <string name="collaboration_mode_plan">Plan</string>
+    <string name="collaboration_mode_plan_description">Produce a plan and todos only, without changing files.</string>
+    <string name="collaboration_mode_goal">Goal</string>
+    <string name="collaboration_mode_goal_description">Keep working toward one goal until it completes or reaches its budget.</string>
+
+    <!-- config_types.kt: Personality -->
+    <string name="personality_pragmatic">Pragmatic</string>
+    <string name="personality_friendly">Friendly</string>
+    <string name="personality_none">None</string>
+
+    <!-- app_server_client.kt: ElicitationAction -->
+    <string name="elicitation_action_accept">Submit</string>
+    <string name="elicitation_action_decline">Decline</string>
+    <string name="elicitation_action_cancel">Cancel</string>
+
+    <!-- config.kt: ConfigLayerSource -->
+    <string name="config_layer_packaged">Packaged defaults</string>
+    <string name="config_layer_packaged_description">Shipped with the installed Codex package; lowest precedence.</string>
+    <string name="config_layer_system">System</string>
+    <string name="config_layer_system_description">Managed by the machine; keys it pins cannot be overridden locally.</string>
+    <string name="config_layer_user">User</string>
+    <string name="config_layer_user_description">Your own config file; edits from this screen are written here.</string>
+    <string name="config_layer_project">Project</string>
+    <string name="config_layer_project_description">Contributed by the working directory, e.g. .codex/config.toml.</string>
+    <string name="config_layer_session">Session flags</string>
+    <string name="config_layer_session_description">Passed on the command line for this run only.</string>
+    <string name="config_layer_unknown">Other</string>
+    <string name="config_layer_unknown_description">A layer this client does not model.</string>
+
+    <!-- config.kt: WriteStatus -->
+    <string name="write_status_ok">Saved</string>
+    <string name="write_status_overridden">Saved, but overridden</string>
+
+    <!-- misc.kt: ThreadMemoryMode -->
+    <string name="memory_mode_enabled">On</string>
+    <string name="memory_mode_disabled">Off</string>
+
+    <!-- misc.kt: AttachmentType -->
+    <string name="attachment_type_image">Image</string>
+    <string name="attachment_type_file">File</string>
+
+    <!-- account.kt: LoginAppBrand -->
+    <string name="login_brand_codex">Codex</string>
+    <string name="login_brand_chatgpt">ChatGPT</string>
+
+    <!-- misc.kt: TimelineEntryKind -->
+    <string name="timeline_kind_turn">Turn</string>
+    <string name="timeline_kind_item">Item</string>
+    <string name="timeline_kind_compaction">Compaction</string>
+    <string name="timeline_kind_realtime">Realtime</string>
+    <string name="timeline_kind_goal">Goal</string>
+
+    <!-- misc.kt: UserVerificationState -->
+    <string name="user_verification_not_enrolled">Not enrolled</string>
+    <string name="user_verification_pending">Pending</string>
+    <string name="user_verification_verified">Verified</string>
+    <string name="user_verification_failed">Failed</string>
+
+    <!-- misc.kt: EnvironmentStatusKind -->
+    <string name="environment_status_ready">Ready</string>
+    <string name="environment_status_pending">Pending</string>
+    <string name="environment_status_disconnected">Disconnected</string>
+    <string name="environment_status_unknown">Unknown</string>
+
+    <!-- misc.kt: RemoteControlConnectionStatus -->
+    <string name="remote_control_status_disabled">Off</string>
+    <string name="remote_control_status_connecting">Connecting</string>
+    <string name="remote_control_status_connected">Connected</string>
+    <string name="remote_control_status_errored">Failed</string>
+
+    <!-- misc.kt: UserVerificationUnavailableReason -->
+    <string name="user_verification_unavailable_credential_missing">No credential on this device</string>
+    <string name="user_verification_unavailable_biometrics">Biometrics unavailable</string>
+    <string name="user_verification_unavailable_provider">Verification provider unavailable</string>
+</resources>

@@ -1,0 +1,30 @@
+<resources>
+    <string name="goal_status_blocked">Blocked</string>
+    <string name="goal_status_usage_limited">Usage limited</string>
+    <string name="runtime_project_count">%1$d projects</string>
+    <string name="runtime_disconnected">Codex disconnected</string>
+    <string name="connection_banner_title">Connection lost</string>
+    <string name="connection_banner_retry">Reconnect</string>
+    <string name="runtime_android_sandbox">Android app sandbox</string>
+    <string name="runtime_android_sandbox_detail">Commands run with this app\'s Android UID and file and network permissions. Access is not additionally restricted to the workspace.</string>
+    <string name="runtime_fixed">Fixed</string>
+    <string name="reasoning_effort_none">None</string>
+    <string name="reasoning_effort_max">Maximum</string>
+    <string name="reasoning_effort_ultra">Ultra</string>
+    <string name="runtime_starting">Starting Codex</string>
+    <string name="runtime_startup_failed">Codex could not start</string>
+    <string name="runtime_retry">Retry</string>
+    <string name="runtime_new_thread">New conversation</string>
+    <string name="runtime_sign_in">Sign in</string>
+    <string name="runtime_login_chatgpt">Sign in with ChatGPT</string>
+    <string name="runtime_login_device_code">Sign in with a device code</string>
+    <string name="runtime_api_key">OpenAI API key</string>
+    <string name="runtime_login_api_key">Sign in with API key</string>
+    <string name="runtime_login_waiting">Waiting for sign-in to complete</string>
+    <string name="runtime_open_browser">Open browser</string>
+    <string name="runtime_cancel_login">Cancel sign-in</string>
+    <string name="runtime_ready">Ready for a new conversation</string>
+    <string name="runtime_creating_thread">Creating conversation</string>
+    <string name="runtime_attachment_failed">Could not import attachment</string>
+    <string name="runtime_unknown_slash_command">Unrecognized command \'/%1$s\'. Type \"/\" for a list of supported commands.</string>
+</resources>

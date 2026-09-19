@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- BedrockDiscoverResponse 与 BedrockSetupParams，由 onboarding/bedrock.kt 读取。 -->
+    <string name="bedrock_screen_title">Amazon Bedrock</string>
+    <string name="bedrock_screen_subtitle">用 Bedrock 作为模型提供方，替代 ChatGPT</string>
+    <string name="bedrock_screen_back">返回</string>
+    <string name="bedrock_screen_refresh">重新获取区域列表</string>
+    <string name="bedrock_regions_title">区域</string>
+    <string name="bedrock_regions_loading">正在询问服务器可以提供哪些区域…</string>
+    <string name="bedrock_regions_empty">没有返回任何区域</string>
+    <string name="bedrock_regions_empty_detail">服务器有响应，但没有给出可以登录的区域。点刷新会再问一次。</string>
+    <string name="bedrock_region_selected">已选区域</string>
+    <string name="bedrock_failed_title">服务器没有响应</string>
+    <string name="bedrock_setup_title">配置 Bedrock</string>
+    <string name="bedrock_setup_detail">配置会把当前账号从 ChatGPT 切到上面选中的 Bedrock 区域。它和区域列表分成两步，是因为这一步会改动账号，而不只是读取。</string>
+    <string name="bedrock_setup_action">用该区域完成配置</string>
+    <string name="bedrock_methods_title">凭据</string>
+    <string name="bedrock_region_required">需要区域</string>
+    <string name="bedrock_kind_access_keys">访问密钥</string>
+    <string name="bedrock_kind_bedrock_api_key">Bedrock API 密钥</string>
+    <string name="bedrock_summary_profile">%1$s · %2$s</string>
+    <string name="bedrock_summary_environment">环境变量 · %1$s</string>
+    <string name="bedrock_region_form_title">区域</string>
+    <string name="bedrock_region_form_label">AWS 区域</string>
+    <string name="bedrock_region_form_placeholder">us-east-1</string>
+    <string name="bedrock_region_form_confirm">使用该区域</string>
+    <string name="bedrock_manual_title">手动配置</string>
+    <string name="bedrock_manual_profile">AWS 配置文件名称</string>
+    <string name="bedrock_manual_profile_detail">手动输入 AWS 配置文件里的 profile 名称</string>
+    <string name="bedrock_manual_access_keys">访问密钥</string>
+    <string name="bedrock_manual_access_keys_detail">用 Access Key ID 和 Secret Access Key 登录</string>
+    <string name="bedrock_manual_api_key">Bedrock API 密钥</string>
+    <string name="bedrock_manual_api_key_detail">用 Bedrock API 密钥登录，而不是 AWS 凭据</string>
+    <string name="bedrock_profile_form_title">AWS 配置文件</string>
+    <string name="bedrock_profile_form_name">Profile 名称</string>
+    <string name="bedrock_profile_form_name_placeholder">default</string>
+    <string name="bedrock_access_keys_form_title">访问密钥</string>
+    <string name="bedrock_access_key_id">Access Key ID</string>
+    <string name="bedrock_secret_access_key">Secret Access Key</string>
+    <string name="bedrock_session_token">Session Token</string>
+    <string name="bedrock_session_token_help">选填；只有 STS 签发的临时凭据才有。</string>
+    <string name="bedrock_api_key_form_title">Bedrock API 密钥</string>
+    <string name="bedrock_api_key">API 密钥</string>
+</resources>

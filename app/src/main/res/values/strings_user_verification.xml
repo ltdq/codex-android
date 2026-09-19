@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The userVerification family (app/user_verification.kt): status, enroll, verify, cancel,
+         delete. Written from the wire types in protocol/protocol/v2/misc.kt, which carry a
+         credential id and an unavailable reason rather than a state. -->
+    <string name="user_verification_page_title">User verification</string>
+    <string name="user_verification_page_back">Back</string>
+    <string name="user_verification_page_refresh">Re-read verification status</string>
+    <string name="user_verification_page_reading">Reading…</string>
+    <string name="user_verification_page_ellipsis">…</string>
+
+    <string name="user_verification_page_status">Status</string>
+    <string name="user_verification_page_state_label">State</string>
+    <string name="user_verification_page_reason">Reason</string>
+    <string name="user_verification_page_message">Server detail</string>
+    <string name="user_verification_page_credential_id">Credential id</string>
+
+    <!-- The three shapes. There is no state on the wire, so these are the only three the page can
+         be in: unavailable, not enrolled, enrolled. -->
+    <string name="user_verification_page_state_unavailable">Unavailable on this device</string>
+    <string name="user_verification_page_state_not_enrolled">No credential yet</string>
+    <string name="user_verification_page_state_enrolled">Credential on this device</string>
+
+    <string name="user_verification_page_unavailable">Verification is unavailable</string>
+    <string name="user_verification_page_unavailable_detail">Verification is a platform capability, not a server setting: it needs the device\'s biometrics and its keystore. The server has reported that this device cannot offer both, so neither enrolling nor signing can succeed until that changes. Re-reading the status is the only action left here.</string>
+
+    <string name="user_verification_page_enroll">Enroll a credential</string>
+    <string name="user_verification_page_enroll_note">Enrolling creates a credential in this device\'s keystore and answers with its public half. It registers nothing with the backend and signs nothing — the caller has to complete registration afterwards.</string>
+
+    <string name="user_verification_page_credential">Credential</string>
+    <string name="user_verification_page_algorithm">Algorithm</string>
+    <string name="user_verification_page_public_key">Public key</string>
+    <string name="user_verification_page_metadata_absent">The server returned no algorithm or public key for this credential. An older app-server omits them; this page shows only what it was sent.</string>
+
+    <string name="user_verification_page_sign">Sign a challenge</string>
+    <string name="user_verification_page_sign_detail">userVerification/verify</string>
+    <string name="user_verification_page_challenge">Challenge</string>
+    <string name="user_verification_page_challenge_placeholder">ZXhhbXBsZS1jaGFsbGVuZ2U</string>
+    <string name="user_verification_page_challenge_help">Unpadded base64url, 1 to 4096 bytes, exactly as the server sent it.</string>
+    <string name="user_verification_page_description">Description</string>
+    <string name="user_verification_page_description_placeholder">Sign-in description</string>
+    <string name="user_verification_page_description_help">Display context the real prompt would show. This client sends one string to userVerification/verify, so only the challenge reaches the server.</string>
+    <string name="user_verification_page_sign_confirm">Sign</string>
+
+    <string name="user_verification_page_cancel">Cancel the current verification</string>
+    <string name="user_verification_page_delete">Delete the credential</string>
+    <string name="user_verification_page_cancel_note">Cancel stops a verification that is still running. It is not an undo: a signature that already came back is not rolled back, and deleting the credential is what stops this device signing at all.</string>
+</resources>

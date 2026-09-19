@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- resume_picker.kt -->
+    <string name="resume_picker_search_hint">Search sessions</string>
+    <string name="resume_picker_expand">Expand</string>
+    <string name="resume_picker_collapse">Collapse</string>
+    <string name="resume_picker_preview_loading">Loading recent transcript…</string>
+    <string name="resume_picker_preview_failed">Could not load transcript preview</string>
+    <string name="resume_picker_preview_empty">No transcript preview available</string>
+    <string name="resume_picker_preview_user">User: %1$s</string>
+    <string name="resume_picker_preview_assistant">Assistant: %1$s</string>
+</resources>

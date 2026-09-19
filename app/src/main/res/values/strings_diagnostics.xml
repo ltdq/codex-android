@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- ServerDiagnosticsResponse, FeedbackUploadParams and the page that reads them
+         (app/diagnostics.kt). The uptime value is three numeric components in one resource so a
+         translation can order and punctuate them itself. -->
+    <string name="diagnostics_screen_title">Diagnostics</string>
+    <string name="diagnostics_screen_back">Back</string>
+    <string name="diagnostics_screen_refresh">Refresh diagnostics</string>
+    <string name="diagnostics_screen_subtitle">Server %1$s</string>
+    <string name="diagnostics_screen_subtitle_unknown">Not read yet</string>
+    <string name="diagnostics_screen_subtitle_unversioned">Version not reported</string>
+    <string name="diagnostics_screen_section_server">Server diagnostics</string>
+    <string name="diagnostics_screen_not_asked">No diagnostics yet</string>
+    <string name="diagnostics_screen_not_asked_detail">The server has not answered the probe yet, so this page has nothing to report — not even a process id.</string>
+    <string name="diagnostics_screen_check">Read diagnostics</string>
+    <string name="diagnostics_process_section">Server process</string>
+    <string name="diagnostics_process_pid">Process id</string>
+    <string name="diagnostics_process_resident">Resident memory</string>
+    <string name="diagnostics_process_footprint">Physical footprint</string>
+    <string name="diagnostics_gauges_section">Gauges</string>
+    <string name="diagnostics_gauges_empty">The server reported no gauges.</string>
+    <string name="diagnostics_gauges_note">Each bar is that gauge\'s share of the largest one here (%1$s), not a percentage of any capacity.</string>
+    <string name="diagnostics_feedback_section">Report a problem</string>
+    <string name="diagnostics_feedback_body">This page is for the moments when the server is not behaving. A report is filed against the process above, so it carries the id and version with it.</string>
+    <string name="diagnostics_feedback_action">Send feedback</string>
+    <string name="diagnostics_feedback_form_title">Send feedback</string>
+    <string name="diagnostics_feedback_form_subtitle">Filed with the server running this session</string>
+    <string name="diagnostics_feedback_classification">Classification</string>
+    <string name="diagnostics_feedback_classification_placeholder">bug</string>
+    <string name="diagnostics_feedback_classification_help">Required: the server files the report under this.</string>
+    <string name="diagnostics_feedback_reason">What happened</string>
+    <string name="diagnostics_feedback_reason_placeholder">The turn stopped while the tool was still running</string>
+    <string name="diagnostics_feedback_reason_help">Optional, but it is the part someone can act on.</string>
+    <string name="diagnostics_feedback_category_bad_result">Bad result</string>
+    <string name="diagnostics_feedback_category_good_result">Good result</string>
+    <string name="diagnostics_feedback_category_bug">Bug</string>
+    <string name="diagnostics_feedback_category_safety_check">Safety check</string>
+    <string name="diagnostics_feedback_category_other">Other</string>
+    <string name="diagnostics_feedback_include_logs">Session logs</string>
+    <string name="diagnostics_feedback_logs_no">Do not attach logs</string>
+    <string name="diagnostics_feedback_logs_yes">Attach session logs</string>
+    <string name="diagnostics_feedback_include_logs_help">The log can contain your prompts and the output of tools the agent ran.</string>
+    <string name="diagnostics_feedback_sent">Feedback sent · %1$s</string>
+    <string name="diagnostics_feedback_send">Send</string>
+</resources>

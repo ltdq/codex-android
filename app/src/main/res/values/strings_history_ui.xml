@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The Ctrl+T read-only transcript overlay (app/history_ui.kt). -->
+    <string name="history_ui_title">Transcript</string>
+    <string name="history_ui_back">Back</string>
+</resources>

@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- chatwidget/review_popups.kt -->
+    <string name="review_screen_title">发起审查</string>
+    <string name="review_screen_back">返回</string>
+    <string name="review_screen_section">审查范围</string>
+
+    <string name="review_target_uncommitted">未提交的改动</string>
+    <string name="review_target_uncommitted_detail">工作区里的全部改动，无论是否已暂存</string>
+    <string name="review_target_base_branch">与基线分支比较</string>
+    <string name="review_target_base_branch_detail">当前分支相对基线分支引入的改动</string>
+    <string name="review_target_commit">单个提交</string>
+    <string name="review_target_commit_detail">用 sha 指定一个提交</string>
+    <string name="review_target_custom">自定义指令</string>
+    <string name="review_target_custom_detail">不限定 diff 范围，直接给出指令</string>
+
+    <string name="review_field_branch">基线分支</string>
+    <string name="review_field_branch_placeholder">main</string>
+    <string name="review_field_sha">提交</string>
+    <string name="review_field_sha_placeholder">3f2a1c9</string>
+    <string name="review_field_commit_title">标题（可选）</string>
+    <string name="review_field_commit_title_placeholder">修复队列面板</string>
+    <string name="review_field_instructions">指令</string>
+    <string name="review_field_instructions_placeholder">检查队列面板周围是否缺少测试。</string>
+
+    <string name="review_start">开始审查</string>
+    <string name="review_footnote">审查就是一轮对话：指令会被注入线程，结果出现在对话记录里，而不是这个页面上。</string>
+    <string name="review_selected">已选中</string>
+</resources>

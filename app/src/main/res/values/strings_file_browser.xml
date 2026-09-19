@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The fs/… page (bottom_pane/file_browser_view.kt): the directory walk, the file preview and
+         the writes the family exposes. -->
+    <string name="file_browser_back">Back</string>
+    <string name="file_browser_refresh">Refresh</string>
+    <string name="file_browser_use_directory">Use this directory</string>
+    <string name="file_browser_reading">Reading…</string>
+    <string name="file_browser_contents">Contents</string>
+    <string name="file_browser_folder">Folder</string>
+    <string name="file_browser_read_failed">This directory could not be read</string>
+    <string name="file_browser_empty">This directory is empty</string>
+    <string name="file_browser_empty_detail">The server answered, and the answer was no entries at all. A folder you are not allowed to list gets the same reply, so this is also the state worth retrying.</string>
+
+    <string name="file_browser_folder_actions">This folder</string>
+    <string name="file_browser_new_folder">New folder</string>
+    <string name="file_browser_new_folder_detail">A directory inside this one</string>
+    <string name="file_browser_new_file">New file</string>
+    <string name="file_browser_new_file_detail">Write a text file without leaving the phone</string>
+    <string name="file_browser_name">Name</string>
+    <string name="file_browser_name_placeholder">notes</string>
+    <string name="file_browser_content">Content</string>
+    <string name="file_browser_content_help">Leave it empty to create an empty file.</string>
+    <string name="file_browser_create">Create</string>
+
+    <string name="file_browser_rename">Rename</string>
+    <string name="file_browser_rename_title">Rename %1$s</string>
+    <string name="file_browser_rename_help">The protocol has no move: this copies to the new name in the same folder, so the original stays until you delete it.</string>
+    <string name="file_browser_copy">Copy</string>
+    <string name="file_browser_copy_title">Copy %1$s</string>
+    <string name="file_browser_copy_destination">Destination</string>
+    <string name="file_browser_copy_default_suffix">.copy</string>
+    <string name="file_browser_copy_help">An absolute path. The source stays where it is.</string>
+    <string name="file_browser_delete">Delete</string>
+    <string name="file_browser_delete_title">Delete %1$s?</string>
+    <string name="file_browser_delete_detail">This cannot be undone, and a folder takes everything inside it with it.</string>
+    <string name="file_browser_cancel">Cancel</string>
+
+    <string name="file_browser_watch">Watch for changes</string>
+    <string name="file_browser_watch_stop">Stop watching</string>
+
+    <string name="file_browser_preview_reading">Reading the file…</string>
+    <string name="file_browser_preview_empty">The file is empty</string>
+    <string name="file_browser_preview_binary">Not a text file — %1$s</string>
+    <string name="file_browser_preview_clipped">Showing the first %1$d characters.</string>
+
+    <string name="file_browser_action_failed">The server refused the request</string>
+    <string name="file_browser_action_failed_title">The last action failed</string>
+
+    <string name="file_browser_size_bytes">%1$d B</string>
+    <string name="file_browser_size_kb">%1$.1f KB</string>
+    <string name="file_browser_size_mb">%1$.1f MB</string>
+    <string name="file_browser_meta_kind">Kind</string>
+    <string name="file_browser_meta_directory">Directory</string>
+    <string name="file_browser_meta_file">File</string>
+    <string name="file_browser_meta_size">Size</string>
+    <string name="file_browser_meta_modified">Modified</string>
+</resources>

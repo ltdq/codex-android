@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The realtime voice page: session control, captions, voices, text injection and the
+         microphone card (chatwidget/realtime.kt). -->
+    <string name="realtime_page_title">Voice session</string>
+    <string name="realtime_page_subtitle">Live audio, captions and text input</string>
+    <string name="realtime_page_back">Back</string>
+
+    <string name="realtime_session_title">Session</string>
+    <string name="realtime_session_thread">Thread</string>
+    <string name="realtime_session_state_idle">Not requested</string>
+    <string name="realtime_session_state_requested">Requested</string>
+    <string name="realtime_session_transport_note">Starting sends thread/realtime/start for this thread. A client that can do WebRTC attaches an SDP offer built from a peer connection that already carries the realtime events data channel; this build creates no peer connection, so it sends no offer and the server applies its own transport.</string>
+    <string name="realtime_session_idle_note">Nothing has been requested from this page. Whether a session is live is what thread/realtime/started, thread/realtime/closed and thread/realtime/error report, and those notifications are not read here — so this is the page\'s own state, not the server\'s.</string>
+    <string name="realtime_session_requested_note">This records only that the request was sent. thread/realtime/started would confirm the session came up and thread/realtime/error would refuse it; neither is folded into this page, so the button can be out of step with the server.</string>
+    <string name="realtime_session_start">Start session</string>
+    <string name="realtime_session_stop">Stop session</string>
+
+    <string name="realtime_transcript_title">Captions</string>
+    <string name="realtime_transcript_empty">No captions on this page</string>
+    <string name="realtime_transcript_empty_detail">Captions stream from thread/realtime/transcript/delta, thread/realtime/transcript/done and thread/realtime/item/transcript/delta onto the event flow the app-level reducer owns, which is where a transcript belongs: it has to outlive this page. This build folds none of them yet and the page is never handed the client, so live captions appear on the transcript surface and not here.</string>
+
+    <string name="realtime_voices_title">Voices</string>
+    <string name="realtime_voices_refresh">Reload voices</string>
+    <string name="realtime_voices_refresh_detail">thread/realtime/listVoices</string>
+    <string name="realtime_voices_empty">No voices listed</string>
+    <string name="realtime_voices_empty_detail">thread/realtime/listVoices has not answered for this server, or it offers none. Reload above asks again.</string>
+    <string name="realtime_voices_selected">Selected voice</string>
+    <string name="realtime_voices_selection_note">A voice is chosen when a session starts and no call sets one afterwards: thread/realtime/listVoices only enumerates them. Tapping a row moves the tick on this page and sends nothing.</string>
+
+    <string name="realtime_inject_title">Text into the session</string>
+    <string name="realtime_inject_text_label">Text as the user</string>
+    <string name="realtime_inject_text_placeholder">Type what you would otherwise say</string>
+    <string name="realtime_inject_text_send">Send</string>
+    <string name="realtime_inject_text_note">thread/realtime/appendText adds a conversation item to the live session. With the protocol\'s default role that is the user typing instead of speaking, so it is input the model answers.</string>
+    <string name="realtime_inject_speech_label">Text to speak</string>
+    <string name="realtime_inject_speech_placeholder">Text the server should voice</string>
+    <string name="realtime_inject_speech_send">Speak</string>
+    <string name="realtime_inject_speech_note">thread/realtime/appendSpeech hands the server text this client produced and asks for it to be voiced. It is not a user turn, the model does not answer it, and nothing about it is transcribed back.</string>
+
+    <string name="realtime_mic_title">Microphone</string>
+    <string name="realtime_mic_state_off">Off</string>
+    <string name="realtime_mic_state_on">Flag on</string>
+    <string name="realtime_mic_format_note">Audio reaches a session as one ThreadRealtimeAudioChunk per push through thread/realtime/appendAudio: PCM samples in base64 data, a channel count, a sample rate, and optionally the transcript item the audio belongs to.</string>
+    <string name="realtime_mic_sample_rate">Sample rate</string>
+    <string name="realtime_mic_sample_rate_value">%1$d Hz</string>
+    <string name="realtime_mic_channels">Channels</string>
+    <string name="realtime_mic_item_id">Item id</string>
+    <string name="realtime_mic_start">Start capture</string>
+    <string name="realtime_mic_stop">Stop capture</string>
+    <string name="realtime_mic_idle_note">No recorder is bound in this build: nothing constructs an AudioRecord, so no frame is read and no chunk is ever built. A working capture would read PCM frames and push them as chunks; here the button moves this page\'s own flag and nothing else.</string>
+    <string name="realtime_mic_capturing_note">The flag is on and nothing is being captured: with no AudioRecord behind it there are no frames, no chunks and no call to thread/realtime/appendAudio. That is what a capture indicator has to say when there is nothing to indicate.</string>
+</resources>

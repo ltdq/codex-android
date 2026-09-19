@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Ctrl+T 的只读 transcript 覆盖层（app/history_ui.kt）。 -->
+    <string name="history_ui_title">会话记录</string>
+    <string name="history_ui_back">返回</string>
+</resources>
