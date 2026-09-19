@@ -1,0 +1,194 @@
+diff --git a/codex-rs/core/src/shell.rs b/codex-rs/core/src/shell.rs
+index 37a35bfe3f..f8fd9178e7 100644
+--- a/codex-rs/core/src/shell.rs
++++ b/codex-rs/core/src/shell.rs
+@@ -20,6 +20,17 @@ impl Shell {
+     /// Takes a string of shell and returns the full list of command args to
+     /// use with `exec()` to run the shell command.
+     pub fn derive_exec_args(&self, command: &str, use_login_shell: bool) -> Vec<String> {
++        #[cfg(target_os = "android")]
++        if codex_shell_command::android::is_configured_shell(&self.shell_path) {
++            return vec![
++                self.shell_path.to_string_lossy().to_string(),
++                "--noprofile".to_string(),
++                "--norc".to_string(),
++                "-c".to_string(),
++                command.to_string(),
++            ];
++        }
++
+         match self.shell_type {
+             ShellType::Zsh | ShellType::Bash | ShellType::Sh => {
+                 let arg = if use_login_shell { "-lc" } else { "-c" };
+diff --git a/codex-rs/shell-command/src/lib.rs b/codex-rs/shell-command/src/lib.rs
+index 74b7572d83..026beef4d3 100644
+--- a/codex-rs/shell-command/src/lib.rs
++++ b/codex-rs/shell-command/src/lib.rs
+@@ -1,5 +1,8 @@
+ //! Command parsing and safety utilities shared across Codex crates.
+ 
++#[cfg(any(target_os = "android", all(test, unix)))]
++pub mod android;
++
+ pub mod shell_detect;
+ pub mod shell_snapshot;
+ mod startup;
+diff --git a/codex-rs/shell-command/src/shell_detect.rs b/codex-rs/shell-command/src/shell_detect.rs
+index c74532cee3..07b599d0b8 100644
+--- a/codex-rs/shell-command/src/shell_detect.rs
++++ b/codex-rs/shell-command/src/shell_detect.rs
+@@ -58,7 +58,7 @@ pub fn detect_shell_type(shell_path: impl AsRef<std::path::Path>) -> Option<Shel
+     }
+ }
+ 
+-#[cfg(unix)]
++#[cfg(all(unix, not(target_os = "android")))]
+ fn get_user_shell_path() -> Option<PathBuf> {
+     let uid = unsafe { libc::getuid() };
+     use std::ffi::CStr;
+@@ -119,7 +119,7 @@ fn get_user_shell_path() -> Option<PathBuf> {
+     }
+ }
+ 
+-#[cfg(not(unix))]
++#[cfg(any(not(unix), target_os = "android"))]
+ fn get_user_shell_path() -> Option<PathBuf> {
+     None
+ }
+@@ -312,6 +312,12 @@ fn get_cmd_shell() -> Option<DetectedShell> {
+     })
+ }
+ 
++#[cfg(target_os = "android")]
++pub fn ultimate_fallback_shell() -> DetectedShell {
++    crate::android::configured_shell()
++}
++
++#[cfg(not(target_os = "android"))]
+ pub fn ultimate_fallback_shell() -> DetectedShell {
+     if cfg!(windows) {
+         DetectedShell {
+@@ -333,6 +339,15 @@ pub fn get_shell_by_model_provided_path(shell_path: &PathBuf) -> DetectedShell {
+         .unwrap_or_else(ultimate_fallback_shell)
+ }
+ 
++#[cfg(target_os = "android")]
++pub fn get_shell(shell_type: ShellType) -> Option<DetectedShell> {
++    match shell_type {
++        ShellType::Bash | ShellType::Sh => Some(crate::android::configured_shell()),
++        ShellType::Zsh | ShellType::PowerShell | ShellType::Cmd => None,
++    }
++}
++
++#[cfg(not(target_os = "android"))]
+ pub fn get_shell(shell_type: ShellType) -> Option<DetectedShell> {
+     match shell_type {
+         ShellType::Zsh => get_zsh_shell(),
+@@ -347,6 +362,12 @@ pub fn default_user_shell() -> DetectedShell {
+     default_user_shell_from_path(get_user_shell_path())
+ }
+ 
++#[cfg(target_os = "android")]
++pub fn default_user_shell_from_path(_user_shell_path: Option<PathBuf>) -> DetectedShell {
++    crate::android::configured_shell()
++}
++
++#[cfg(not(target_os = "android"))]
+ pub fn default_user_shell_from_path(user_shell_path: Option<PathBuf>) -> DetectedShell {
+     if cfg!(windows) {
+         get_shell(ShellType::PowerShell).unwrap_or_else(ultimate_fallback_shell)
+diff --git a/codex-rs/shell-command/src/android.rs b/codex-rs/shell-command/src/android.rs
+new file mode 100644
+index 0000000000..84cbffacb7
+--- /dev/null
++++ b/codex-rs/shell-command/src/android.rs
+@@ -0,0 +1,56 @@
++//! Explicit shell configuration for Android embedders with a packaged toolchain.
++
++use crate::shell_detect::DetectedShell;
++use crate::shell_detect::ShellType;
++use std::io;
++use std::os::unix::fs::PermissionsExt;
++use std::path::Path;
++use std::path::PathBuf;
++use std::sync::OnceLock;
++
++static BASH: OnceLock<DetectedShell> = OnceLock::new();
++
++/// Installs the packaged Bash path before any Codex runtime workers are started.
++/// A running process cannot switch toolchains; callers must restart the host.
++pub fn configure(bash_path: PathBuf) -> io::Result<()> {
++    if !bash_path.is_absolute() {
++        return Err(io::Error::new(
++            io::ErrorKind::InvalidInput,
++            "Android Bash path must be absolute",
++        ));
++    }
++    let metadata = std::fs::metadata(&bash_path)?;
++    if !metadata.is_file() || metadata.permissions().mode() & 0o111 == 0 {
++        return Err(io::Error::new(
++            io::ErrorKind::PermissionDenied,
++            "packaged Android Bash is not executable",
++        ));
++    }
++    let shell = DetectedShell {
++        shell_type: ShellType::Bash,
++        shell_path: bash_path,
++    };
++    let configured = BASH.get_or_init(|| shell.clone());
++    if configured != &shell {
++        return Err(io::Error::new(
++            io::ErrorKind::AlreadyExists,
++            "Android toolchain already configured with a different Bash",
++        ));
++    }
++    Ok(())
++}
++
++pub(crate) fn configured_shell() -> DetectedShell {
++    BASH.get()
++        .expect("configure the Android toolchain before starting Codex")
++        .clone()
++}
++
++/// Identifies the local packaged shell, leaving foreign executor shells unchanged.
++pub fn is_configured_shell(path: &Path) -> bool {
++    BASH.get().is_some_and(|shell| shell.shell_path == path)
++}
++
++#[cfg(test)]
++#[path = "android_tests.rs"]
++mod tests;
+diff --git a/codex-rs/shell-command/src/android_tests.rs b/codex-rs/shell-command/src/android_tests.rs
+new file mode 100644
+index 0000000000..389d7a529c
+--- /dev/null
++++ b/codex-rs/shell-command/src/android_tests.rs
+@@ -0,0 +1,27 @@
++use super::*;
++use pretty_assertions::assert_eq;
++
++#[test]
++fn packaged_shell_requires_an_executable_and_cannot_change_after_startup() {
++    let root = tempfile::tempdir().unwrap();
++    let bash = root.path().join("bash");
++    std::fs::write(&bash, b"test executable").unwrap();
++    assert!(configure(bash.clone()).is_err());
++    std::fs::set_permissions(&bash, std::fs::Permissions::from_mode(0o700)).unwrap();
++    configure(bash.clone()).unwrap();
++    configure(bash.clone()).unwrap();
++    assert_eq!(
++        configured_shell(),
++        DetectedShell {
++            shell_type: ShellType::Bash,
++            shell_path: bash.clone()
++        }
++    );
++    assert!(is_configured_shell(&bash));
++    let other = root.path().join("other-bash");
++    std::fs::copy(&bash, &other).unwrap();
++    assert_eq!(
++        configure(other).unwrap_err().kind(),
++        io::ErrorKind::AlreadyExists
++    );
++}
