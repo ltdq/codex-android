@@ -57,6 +57,23 @@ the helper path must be absolute; Android requires `toolchainRoot/bin/bash`
 and a `PATH` starting with that toolchain's `bin` directory. Changing an installed
 runtime environment requires restarting the app process.
 
+The environment is built around the toolchain installed from
+`assets/toolchain/native-manifest.txt`: `kind|path|target` rows copy data files out of
+the assets, point `lib*.so` entries at `nativeLibraryDir`, or create relative links, and
+`bin/apply_patch` is the helper. Installation is stamp-gated on the manifest, the APK
+update time and the library directory, and activates by renaming a staging directory over
+the previous one, so `HOME`, configuration and workspaces survive a toolchain update.
+Links end at read-only files in `nativeLibraryDir`, the only location Android executes
+from or `dlopen`s; a writable copy is refused.
+
+`ToolchainInstaller.kt` is the authority for the variables themselves: `PATH` into the
+installed `bin`, `SHELL`/`CODEX_SHELL` to the packaged `bash`, `HOME`, `CODEX_HOME` and
+`CODEX_SQLITE_HOME` under `files/`, `TMPDIR` to a writable directory (bash heredocs and
+git need one), `GIT_EXEC_PATH`/`GIT_TEMPLATE_DIR`, `PYTHONHOME`, the caches under
+`cacheDir/toolchain`, and the shipped `cacert.pem` as `CURL_CA_BUNDLE`, `GIT_SSL_CAINFO`
+and `SSL_CERT_FILE`. Git's https remote reads only `GIT_SSL_CAINFO`, the libcurl behind
+it only `CURL_CA_BUNDLE`, so both are set.
+
 The in-process server performs its own initialize/initialized handshake. Kotlin
 must start its normal RPC requests after `nativeStart` returns. Shutdown stops
 pending work and rejects subsequent sends.
