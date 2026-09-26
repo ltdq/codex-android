@@ -29,11 +29,8 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.window.WindowBottomSheet
 
 /**
- * The "approaching rate limits" model-switch prompt.
- *
- * Mirrors `chatwidget/rate_limits.rs::open_rate_limit_switch_prompt`: switch, keep, or keep and
- * never be asked again (which writes `notices.hide_rate_limit_model_nudge`). The read happens once
- * per process; the persistent opt-out is what survives.
+ * The "approaching rate limits" model-switch prompt; mirrors chatwidget/rate_limits.rs
+ * open_rate_limit_switch_prompt.
  */
 @Composable
 fun RateLimitNudgeSheet(

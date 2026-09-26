@@ -73,12 +73,7 @@ import top.yukonga.miuix.kmp.icon.extended.Settings
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.window.WindowBottomSheet
 
-/**
- * Approval requests stay visible in a non-dismissible miuix sheet until a decision is submitted.
- *
- * Mirrors `codex-rs/tui/src/bottom_pane/approval_overlay.rs`: command, patch, permission and form
- * requests share the decision flow. Back and scrim taps must never answer a pending request.
- */
+/** Non-dismissible sheet until a decision is submitted (codex-rs/tui/src/bottom_pane/approval_overlay.rs). */
 @Composable
 fun ApprovalDialog(
     request: ApprovalRequest?,
@@ -89,18 +84,15 @@ fun ApprovalDialog(
     /** Resolves the patch behind a file-change request, which names its item but not its diff. */
     patchChanges: (ApprovalRequest) -> List<FileUpdateChange> = { emptyList() },
 ) {
-    // The dialog outlives the request by one exit animation, so the last one is kept mounted:
-    // clearing it would blank the card out from under the transition.
+    // The dialog outlives the request by one exit animation; keep the last one mounted.
     var lastRequest by remember { mutableStateOf<ApprovalRequest?>(null) }
     if (request != null) lastRequest = request
     val shown = request ?: lastRequest
-    // The same rule for the file-change diff, which lives on the item rather than on the request:
-    // it is resolved while the request is live and kept through the exit animation.
+    // Same rule for the diff: resolved while live, kept through the exit animation.
     var lastChanges by remember { mutableStateOf<List<FileUpdateChange>>(emptyList()) }
     if (request != null) lastChanges = patchChanges(request)
 
-    // One decision per request. Without this the exit animation is a window in which a second tap
-    // answers a request the server has already resolved.
+    // One decision per request: a second tap during the exit animation would answer a resolved one.
 
     WindowBottomSheet(
         show = request != null,
@@ -154,20 +146,7 @@ fun ApprovalDialog(
     }
 }
 
-/**
- * The scrolling part of a dialog body.
- *
- * The dialog lays its content out with wrap-content height, so a plain `weight` here is measured
- * against an unbounded maximum: the body grew to its full height, the dialog clipped it, and a
- * two-question form simply lost its second question with no way to scroll to it. Bounding the
- * height against the window is what makes the scroll modifier do something.
- *
- * The bound is the dialog's own budget. A modal is a header, this body and a footer, and the footer
- * has to stay visible whatever is in the body: it carries the button that unblocks the turn. So the
- * body takes a fixed share of the window — [UiConsts.DialogBodyMaxHeightFraction] — and everything
- * else is left for the two fixed parts, which is why that share is well under half even though the
- * dialog is allowed two thirds.
- */
+/** Bounds the body against window height: wrap-content measures unbounded, and the footer must stay visible. */
 @Composable
 internal fun ApprovalScrollBody(
     maxHeightFraction: Float = UiConsts.DialogBodyMaxHeightFraction,
@@ -184,8 +163,6 @@ internal fun ApprovalScrollBody(
                         )
                 )
                 .verticalScroll(rememberScrollState())
-                // A hair of room under the last line, so a body that is exactly at the cap does not
-                // end with a half-drawn glyph against the clip edge.
                 .padding(bottom = UiConsts.Space2),
         content = content,
     )
@@ -199,10 +176,8 @@ private fun ApprovalBody(
     busy: Boolean,
     patchChanges: List<FileUpdateChange>,
 ) {
-    // Every family keeps its answer pinned under the scrolling body: on a two-question form or a
-    // sixty-line patch the button that unblocks the turn must not be the thing that scrolled away.
-    // The two form families bring their own footer, because their primary action also has a
-    // not-yet-valid state that has to stay visible while it is disabled.
+    // Decision buttons stay pinned under the scrolling body; the two form families bring their own
+    // footer because their primary action has a not-yet-valid state that must stay visible.
     Column(modifier = Modifier.fillMaxWidth()) {
         when (request) {
             is ApprovalRequest.UserInput ->
@@ -243,13 +218,7 @@ private fun ApprovalBody(
     }
 }
 
-/**
- * Identity of the request: what kind of decision this is, in one line, plus why it is being asked.
- *
- * The icon is the only place a request family is colour-coded, and it is colour-coded by *kind*
- * rather than by severity: reading a command, writing files, changing permissions and calling a
- * tool are four different things, and a warning triangle on all four would say nothing.
- */
+/** One-line identity of the request and why it is asked; the icon is color-coded by kind, not severity. */
 @Composable
 private fun ApprovalHeader(request: ApprovalRequest, patchChanges: List<FileUpdateChange>) {
     val colors = MiuixTheme.colorScheme
@@ -297,7 +266,6 @@ private fun ApprovalHeader(request: ApprovalRequest, patchChanges: List<FileUpda
     }
 }
 
-/** Headline of the dialog: what is being asked, in the protocol's own terms. */
 @Composable
 @ReadOnlyComposable
 private fun approvalTitle(request: ApprovalRequest): String =
@@ -320,11 +288,7 @@ private fun approvalTitle(request: ApprovalRequest): String =
         is ApprovalRequest.DynamicTool ->
             stringResource(R.string.approval_overlay_dynamic_tool_title)
 
-        // These three are answered by the reducer before they can reach this dialog — they are
-        // host-to-server handshakes, not decisions. They still need a rendering so the `when` stays
-        // exhaustive: a card appearing for one of them is the visible symptom of the auto-answer
-        // path
-        // breaking, which is exactly when someone needs to see it.
+        // Host handshakes answered by the reducer before reaching here; rendering keeps the `when` exhaustive so a broken auto-answer path is visible.
         is ApprovalRequest.ChatgptAuthTokensRefresh ->
             stringResource(R.string.approval_overlay_tokens_title)
         is ApprovalRequest.AttestationGenerate ->
@@ -332,7 +296,6 @@ private fun approvalTitle(request: ApprovalRequest): String =
         is ApprovalRequest.CurrentTimeRead -> stringResource(R.string.approval_overlay_clock_title)
     }
 
-/** Second line: why, when the server said why, and what it is otherwise. */
 @Composable
 @ReadOnlyComposable
 private fun approvalSummary(
@@ -386,7 +349,6 @@ private fun approvalSummary(
             stringResource(R.string.approval_overlay_clock_summary)
     }
 
-/** The glyph of a request family. */
 private fun approvalIcon(request: ApprovalRequest): ImageVector =
     when (request) {
         is ApprovalRequest.Exec -> MiuixIcons.Play
@@ -400,12 +362,7 @@ private fun approvalIcon(request: ApprovalRequest): ImageVector =
         is ApprovalRequest.CurrentTimeRead -> MiuixIcons.Lock
     }
 
-/**
- * Accent of a request family.
- *
- * A file change and a permission change are the two that leave something behind, so they take the
- * error colour; running a command and calling a tool are recoverable and take the accent.
- */
+/** Error colour for changes that persist (patch, permissions); primary for recoverable actions. */
 @Composable
 private fun approvalAccent(request: ApprovalRequest): Color =
     when (request) {
@@ -414,7 +371,6 @@ private fun approvalAccent(request: ApprovalRequest): Color =
         else -> MiuixTheme.colorScheme.primary
     }
 
-/** The pills each decision family ends with, in the order the TUI lists them. */
 @Composable
 private fun decisionsFor(
     request: ApprovalRequest,
@@ -495,11 +451,7 @@ private fun decisionsFor(
 
         is ApprovalRequest.DynamicTool ->
             listOf(
-                // A dynamic tool call carries no decision enum of its own, so it borrows the two
-                // labels that
-                // mean "run it" and "do not": the command-execution decisions. The elicitation
-                // actions would
-                // be wrong here — their accept label is the form's *submit*, not an allow.
+                // Dynamic tool calls carry no decision enum; borrow command-execution labels — elicitation's accept is the form's submit, not an allow.
                 DecisionAction(
                     CommandExecutionApprovalDecision.Accept.label(),
                     role = DecisionRole.Primary,
@@ -517,20 +469,12 @@ private fun decisionsFor(
         is ApprovalRequest.UserInput,
         is ApprovalRequest.Elicitation -> emptyList()
 
-        // Host handshakes have no user-facing decision; see `approvalTitle`.
         is ApprovalRequest.ChatgptAuthTokensRefresh,
         is ApprovalRequest.AttestationGenerate,
         is ApprovalRequest.CurrentTimeRead -> emptyList()
     }
 
-/**
- * One `label: value` pair, stacked.
- *
- * Two lines rather than two columns: a fixed label column has to be sized for the longest label
- * (`Permission rule`), which costs a fifth of a phone-width dialog, and a value that wraps inside
- * the remainder reads as a paragraph that happens to start halfway across. Above the value, the
- * label is an eyebrow and the value owns the full width.
- */
+/** `label: value` stacked, not beside: a fixed label column would cost a fifth of a phone-width dialog and force the value to wrap mid-paragraph. */
 @Composable
 internal fun FieldBlock(
     label: String,
@@ -551,7 +495,6 @@ internal fun FieldBlock(
     }
 }
 
-/** The eyebrow above a block: small, tracked out, and never the thing being read. */
 @Composable
 private fun FieldLabel(text: String) {
     Text(
@@ -565,7 +508,6 @@ private fun FieldLabel(text: String) {
     )
 }
 
-/** A labelled block whose value is a monospace command line. */
 @Composable
 private fun CommandBlock(command: String?) {
     FieldLabel(stringResource(R.string.approval_overlay_field_command))
@@ -577,13 +519,11 @@ private fun CommandBlock(command: String?) {
     }
 }
 
-/** A labelled block whose value is a paragraph. */
 @Composable
 private fun TextBlock(label: String, value: String, accent: Boolean = false) {
     FieldBlock(label = label, value = value, accent = accent)
 }
 
-/** Body of a command-execution request: the command, then where and why it runs. */
 @Composable
 private fun ExecBody(params: CommandExecutionApprovalParams) {
     Column(
@@ -608,8 +548,7 @@ private fun ExecBody(params: CommandExecutionApprovalParams) {
                 )
             }
         if (params.commandActions.isNotEmpty()) {
-            // One at a time: `joinToString` is not inline, so a composable cannot be called from
-            // inside its transform.
+            // `joinToString` is not inline, so a composable cannot run inside its transform.
             val actions = params.commandActions.map { commandActionLabel(it) }
             TextBlock(
                 label = stringResource(R.string.approval_overlay_field_actions),
@@ -673,13 +612,7 @@ private fun commandActionLabel(action: CommandAction): String =
         is CommandAction.Unknown -> action.command
     }
 
-/**
- * Body of a file-change request.
- *
- * One ledger line states the shape of the whole patch — how many files, how many lines either way —
- * and the cards under it carry the detail. The old header said only `3 files` and left the reader
- * to open each card to find out whether the change was a rename or a rewrite.
- */
+/** File-change body: a ledger line for the whole patch, then per-file cards. */
 @Composable
 private fun PatchBody(params: FileChangeApprovalParams, changes: List<FileUpdateChange>) {
     val colors = MiuixTheme.colorScheme
@@ -689,7 +622,7 @@ private fun PatchBody(params: FileChangeApprovalParams, changes: List<FileUpdate
                 change.path to fileDiffOf(change.path, parseUnifiedDiff(change.diff))
             }
         }
-    // Each file owns its disclosure state; the first file opens so the dialog leads with its diff.
+    // Each file owns its disclosure state; the first opens so the dialog leads with its diff.
     var showAll by remember(changes) { mutableStateOf(false) }
     val expanded =
         remember(changes) {
@@ -762,7 +695,6 @@ private fun PatchBody(params: FileChangeApprovalParams, changes: List<FileUpdate
     }
 }
 
-/** Body of a permissions request: where it applies, then the checklist of what it grants. */
 @Composable
 private fun PermissionsBody(params: PermissionsApprovalParams) {
     val permissions = params.permissions
@@ -816,7 +748,6 @@ private fun PermissionsBody(params: PermissionsApprovalParams) {
     }
 }
 
-/** One granted item of the permission checklist. */
 @Composable
 private fun CheckRow(text: String) {
     val colors = MiuixTheme.colorScheme
@@ -841,7 +772,6 @@ private fun CheckRow(text: String) {
     }
 }
 
-/** Body of a dynamic tool call: which tool, and with what arguments. */
 @Composable
 private fun DynamicToolBody(params: DynamicToolCallParams) {
     Column(
@@ -862,7 +792,6 @@ private fun DynamicToolBody(params: DynamicToolCallParams) {
     }
 }
 
-/** The line an empty block shows where its value would have been. */
 @Composable
 private fun MutedLine(text: String) {
     Text(
@@ -874,7 +803,6 @@ private fun MutedLine(text: String) {
     )
 }
 
-/** A flat text affordance, used where a third button would crowd the footer out. */
 @Composable
 private fun FlatDisclosure(label: String, onClick: () -> Unit) {
     Text(
@@ -888,12 +816,7 @@ private fun FlatDisclosure(label: String, onClick: () -> Unit) {
     )
 }
 
-/**
- * Monospace block for a command line or a tool argument blob.
- *
- * The `$` sits outside the block's own text so it can take the accent colour, and the block itself
- * is the same one [CodeRow] paints for a tool argument.
- */
+/** Monospace block for a command line or tool argument; `$` is separate so it can take the accent colour. */
 @Composable
 internal fun CodeRow(
     text: String,

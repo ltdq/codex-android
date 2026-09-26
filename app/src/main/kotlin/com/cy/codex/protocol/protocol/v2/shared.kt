@@ -1,10 +1,9 @@
 package com.cy.codex.protocol.protocol.v2
 
 /**
- * Value types shared by many v2 requests and notifications.
- *
- * Mirrors `schema/typescript/v2/` for the subset the Android client renders. Field names follow the
- * camelCase wire spellings so a generated decoder can drop in later without touching call sites.
+ * Value types shared by many v2 requests and notifications (schema/typescript/v2/ subset).
+ * Field names follow the camelCase wire spellings so a generated decoder can drop in later
+ * without touching call sites.
  */
 
 enum class CommandExecutionStatus(val wire: String) {
@@ -171,11 +170,9 @@ sealed interface UserInput {
 
     /**
      * An image the server already holds, referenced either by an inline URL or by an uploaded
-     * file id.
-     *
-     * The two are a flattened union upstream (`ImageReference` in
-     * `app-server-protocol/src/protocol/v2/turn.rs`), so exactly one of [Image.url] and
-     * [Image.fileId] is present in any real payload; a file-backed image has no URL to fall back on,
+     * file id. The two are a flattened union upstream (`ImageReference` in
+     * codex-rs/app-server-protocol/src/protocol/v2/turn.rs), so exactly one of [url] and
+     * [fileId] is present in any real payload; a file-backed image has no URL to fall back on,
      * which is why both are nullable instead of defaulting the missing one to "".
      */
     data class Image(

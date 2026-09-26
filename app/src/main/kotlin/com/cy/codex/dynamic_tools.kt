@@ -44,17 +44,14 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 /**
- * The client-side `codex_tui` dynamic tools, ported from `tui/src/dynamic_tools.rs`.
- *
- * The model uses these to orchestrate other tasks through the app server; the executor answers
- * them, so they never surface as approval dialogs. `wait_threads` is client-side polling over
- * `thread/read` + `thread/turns/list` + `thread/items/list`, exactly like upstream — the app-server
- * protocol has no wait method.
+ * Client-side `codex_tui` dynamic tools, ported from `tui/src/dynamic_tools.rs`; the executor
+ * answers them, so they never surface as approval dialogs. `wait_threads` polls the thread
+ * endpoints — the app-server protocol has no wait method.
  */
 internal object DynamicTools {
     const val Namespace = "codex_tui"
 
-    /** Tools that start or steer work in another thread; disabled inside side conversations. */
+    /** Start/steer work in another thread; disabled inside side conversations. */
     val DelegationTools = setOf("create_thread", "send_message_to_thread", "fork_thread")
 
     private const val MaxOutputChars = 20_000
@@ -184,21 +181,19 @@ internal object DynamicTools {
     }
 }
 
-/** Run one dynamic tool call and shape its answer for `item/tool/call`. */
 internal suspend fun executeDynamicTool(
     client: AppServerClient,
     callingThreadId: String,
     cwd: String,
     model: String,
     params: DynamicToolCallParams,
-    /** Whether the calling thread is a side conversation; see [DynamicTools.DelegationTools]. */
     isSideThread: Boolean = false,
 ): DynamicToolCallResponse {
     if (params.namespace != null && params.namespace != DynamicTools.Namespace) {
         return failure("Unknown dynamic tool namespace: ${params.namespace}")
     }
-    // `thread/fork` has no `dynamicTools` field, so a side conversation inherits the parent's
-    // persisted specs; delegation is refused at call time instead of filtered from the spec.
+    // `thread/fork` has no `dynamicTools` field, so a side thread inherits the parent's specs;
+    // delegation is refused at call time.
     if (isSideThread && params.tool in DynamicTools.DelegationTools) {
         return failure("${params.tool} is not available in a side conversation")
     }
@@ -362,10 +357,6 @@ private suspend fun sendMessage(client: AppServerClient, arguments: JsonObject):
     )
 }
 
-// ---------------------------------------------------------------------------------------------
-// wait_threads
-// ---------------------------------------------------------------------------------------------
-
 /** Read budget for a `timeoutMs: 0` snapshot; upstream `snapshot_deadline`. */
 private const val WaitSnapshotBudgetMs = 5_000L
 
@@ -379,14 +370,8 @@ private class WaitTarget(val threadId: String, val afterCursor: String?)
 
 private fun monotonicMs(): Long = System.nanoTime() / 1_000_000
 
-/**
- * Poll `targets` until one wakes or [timeoutMs] runs out.
- *
- * Ported from `tui/src/dynamic_tools.rs` `wait_threads`: there is no wait method on the app-server
- * protocol, so a wake-up is detected by comparing each target's compact cursor between passes. A
- * target wakes when it went idle on a newly finished turn, became inactive, or is active with a
- * flag that needs the user (approval or input).
- */
+/** Ported from `tui/src/dynamic_tools.rs` `wait_threads`: a wake-up is a cursor change — idle on
+ * a finished turn, inactive, or active needing the user. */
 private suspend fun waitThreads(
     client: AppServerClient,
     callingThreadId: String,
@@ -500,7 +485,6 @@ private suspend fun latestTurn(client: AppServerClient, threadId: String, deadli
     return full?.getOrNull()?.turns?.lastOrNull()
 }
 
-/** The newest items of [turn], newest first, falling back to the turn payload. */
 private suspend fun latestItems(
     client: AppServerClient,
     threadId: String,
@@ -529,7 +513,6 @@ private fun waitCursor(thread: Thread, turn: Turn?, latestItemId: String?): Stri
     put("latestItemId", latestItemId?.let(::JsonPrimitive) ?: JsonNull)
 }.toString()
 
-/** Why a target should wake the model, or `null` while it is still working. */
 private fun wakeReason(thread: Thread, turn: Turn?, changed: Boolean): JsonElement? = when (val status = thread.status) {
     is ThreadStatus.Idle -> when {
         turn == null -> wake("inactiveStatus", thread.id)
@@ -594,7 +577,6 @@ private fun toolMarker(item: ThreadItem, turnId: String?): JsonObject? {
     }
 }
 
-/** Build the `{timedOut, wake, polls, errors?}` answer, shedding message bodies if too long. */
 private fun waitResult(
     timedOut: Boolean,
     wake: JsonElement?,
@@ -616,7 +598,6 @@ private fun waitResult(
     return success(render(emptyList()))
 }
 
-/** Drop the payload fields the model can re-read; upstream sheds the same names under budget. */
 private fun stripPollBody(poll: JsonElement): JsonElement {
     val fields = poll as? JsonObject ?: return poll
     return JsonObject(
@@ -630,7 +611,6 @@ private fun stripPollBody(poll: JsonElement): JsonElement {
     )
 }
 
-/** `truncate` upstream: `…`-suffixed when over [limit] characters. */
 private fun truncate(text: String, limit: Int): String {
     if (text.length <= limit) return text
     if (limit == 0) return ""

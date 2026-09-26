@@ -74,42 +74,21 @@ internal enum class ResumePreviewSpeaker {
     Assistant,
 }
 
-/**
- * A thread's ordering timestamp.
- *
- * `recencyAt` is what the upstream picker's default sort reads when the server sent it, and
- * [Thread.updatedAt] is the fallback for rows from servers that did not.
- */
+/** `recencyAt` when the server sent it, else [Thread.updatedAt]. */
 internal fun threadRecency(thread: Thread): Long = thread.recencyAt ?: thread.updatedAt
 
-/**
- * Whether [thread] mentions [query] in any field the picker searches.
- *
- * Mirrors `Row::matches_query` in `codex-rs/tui/src/resume_picker.rs`: name, preview, id, branch
- * and cwd, case-insensitively, so the filter stays local to the rows already loaded.
- */
+/** Case-insensitive match over name, preview, id, branch and cwd, per `Row::matches_query` (codex-rs/tui/src/resume_picker.rs). */
 internal fun threadMatchesQuery(thread: Thread, query: String): Boolean {
     if (query.isEmpty()) return true
     return listOfNotNull(thread.name, thread.preview, thread.id, thread.gitInfo?.branch, thread.cwd)
         .any { it.contains(query, ignoreCase = true) }
 }
 
-/**
- * The rows the picker shows: [query] matched locally, newest activity first.
- *
- * Sorting is local as well. The upstream default is `ThreadSortKey::UpdatedAt`, and the sort is
- * stable, so rows sharing a timestamp keep the order the server sent them in.
- */
+/** Rows the picker shows: query matched locally, newest activity first; stable sort keeps the server's order for ties (ThreadSortKey::UpdatedAt). */
 internal fun resumeThreads(threads: List<Thread>, query: String): List<Thread> =
     threads.filter { threadMatchesQuery(it, query) }.sortedByDescending { threadRecency(it) }
 
-/**
- * The newest user/assistant messages of one thread, one line each, oldest first.
- *
- * Mirrors the expanded preview of `codex-rs/tui/src/resume_picker_transcript_preview.rs`: only user
- * and assistant text counts, the newest messages win, and the result is capped at [limit]. Each
- * message is reduced to its first non-blank line, the same shape the history browser uses.
- */
+/** Newest user/assistant messages, first line each, capped at [limit], per `resume_picker_transcript_preview.rs`. */
 internal fun transcriptPreviewLines(
     items: List<ThreadItem>,
     limit: Int = ResumePreviewLineLimit,
@@ -131,7 +110,6 @@ internal fun transcriptPreviewLines(
         .takeLast(limit)
 }
 
-/** The first non-blank line of one message, or null when the message carries no visible text. */
 private fun previewLine(speaker: ResumePreviewSpeaker, text: String): ResumePreviewLine? =
     text
         .lineSequence()
@@ -148,13 +126,7 @@ private sealed interface ResumePreviewState {
     data class Loaded(val lines: List<ResumePreviewLine>) : ResumePreviewState
 }
 
-/**
- * Session picker and lifecycle actions.
- *
- * Mirrors `codex-rs/tui/src/resume_picker.rs` and `app/session_picker.rs`: the list of threads the
- * server knows about, with the per-session actions the protocol exposes (`thread/fork`,
- * `thread/archive`, `thread/unarchive`, `thread/name/set`, `thread/delete`).
- */
+/** Session picker and lifecycle actions, mirroring `codex-rs/tui/src/resume_picker.rs` and `app/session_picker.rs`. */
 @Composable
 fun SessionListScreen(
     app: CodexApp,
@@ -170,17 +142,13 @@ fun SessionListScreen(
     val scope = rememberCoroutineScope()
     var renamed by remember { mutableStateOf<String?>(null) }
     var renameDraft by remember { mutableStateOf("") }
-    // Which section row is being renamed, and what a new section should be called. Both are page
-    // state rather than catalog state: they describe an edit in progress, not the server's answer.
     var renamingSection by remember { mutableStateOf<String?>(null) }
     var creatingSection by remember { mutableStateOf(false) }
 
-    // The search filters the rows already loaded: the listing carries name, preview, branch and
-    // cwd, so a keystroke never repeats `thread/list`.
+    // The search filters rows already loaded; a keystroke never repeats `thread/list`.
     var query by remember { mutableStateOf("") }
 
-    // Which card is expanded, and what its `thread/read` answered. The cache outlives the
-    // expansion: collapsing and reopening a card must not read the same thread twice.
+    // The preview cache outlives the expansion: reopening a card must not read the same thread twice.
     var expandedThreadId by remember { mutableStateOf<String?>(null) }
     val previews = remember { mutableStateMapOf<String, ResumePreviewState>() }
 
@@ -222,8 +190,7 @@ fun SessionListScreen(
                 )
             },
             endActions = {
-                // The chip is a toggle, not a tone: it says which half of the list is on screen, so
-                // it takes the button roles instead of a status colour and its dot.
+                // The chip is a toggle, not a status tone: it names which half of the list is on screen.
                 Button(
                     onClick = { app.onAppEvent(AppEvent.SetThreadListScope(!showArchived)) },
                     modifier = Modifier,
@@ -537,12 +504,6 @@ private fun SessionCard(
     }
 }
 
-/**
- * An expanded card's recent transcript, or the state of reading it.
- *
- * One line per message, speaker included: the expanded card is a glance at how the conversation
- * ended, and the thread's own screen remains the place that shows the transcript in full.
- */
 @Composable
 private fun TranscriptPreview(state: ResumePreviewState?) {
     when (state) {
@@ -584,7 +545,6 @@ private fun TranscriptPreview(state: ResumePreviewState?) {
     }
 }
 
-/** One line of the expanded preview, quiet enough to stay under the card's own preview. */
 @Composable
 private fun PreviewLine(text: String, error: Boolean = false) {
     val colors = MiuixTheme.colorScheme
@@ -598,13 +558,7 @@ private fun PreviewLine(text: String, error: Boolean = false) {
     )
 }
 
-/**
- * The sidebar's sections, as a card above the session list.
- *
- * `threadSection/…` is the protocol's own grouping, separate from the directory grouping the
- * sidebar derives from `cwd`: a section is something the *user* filed a thread into, and the two
- * coexist because neither can be computed from the other.
- */
+/** `threadSection/…` grouping, distinct from the sidebar's cwd-derived directory grouping. */
 @Composable
 private fun SectionsCard(
     sections: List<ThreadSection>,
@@ -726,12 +680,7 @@ private fun SectionsCard(
     }
 }
 
-/**
- * One lifecycle action of a session card.
- *
- * The label is the whole pill: the button has no icon slot, so the four actions say what they do in
- * words instead of carrying a glyph each.
- */
+/** The label is the whole pill: the button has no icon slot. */
 @Composable
 private fun SessionAction(
     label: String,

@@ -11,11 +11,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-/**
- * Pins the automatic recap schedule against `tui/src/app/recap.rs`: three completed turns, two
- * turns between recaps, and a 30 minute idle window measured from the later of focus loss and the
- * last finished turn.
- */
+/** Schedule mirrors tui/src/app/recap.rs. */
 @OptIn(ExperimentalCoroutinesApi::class)
 class RecapSchedulerTest {
     private fun completed(id: String) = Turn(id, status = TurnStatus.Completed)
@@ -131,8 +127,6 @@ class RecapSchedulerTest {
         scheduler.seedFromTurns(listOf(completed("a"), completed("b"), completed("c")), 500)
 
         assertEquals(3, scheduler.completedTurns)
-        // `lastRecappedTurnCount` starts null after seeding, so the three seeded turns are eligible
-        // once the idle window measured from the seed time passes.
         assertEquals(500 + RecapScheduler.RecapDelayMs, scheduler.nextCheckDeadlineMs())
     }
 

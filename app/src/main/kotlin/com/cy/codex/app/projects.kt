@@ -63,16 +63,8 @@ import top.yukonga.miuix.kmp.squircle.squircleBackground
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
- * Saved projects, and the environments a thread can be run on.
- *
- * The TUI has no page for either: it works in whatever directory it was started in and reaches a
- * remote host through `--remote`, so `project/…` and `environment/…` exist in the protocol without
- * a terminal surface. On a phone both are worth a list — a project is a checkout you come back to,
- * and an environment is a machine the thread runs on — so this page is the protocol's own surface
- * rather than a port of anything.
- *
- * One page for both because they answer the same question, and because they are the two halves of
- * the same picker: a new thread needs a directory, and a directory may live on another machine.
+ * Saved projects and environments; neither has a TUI surface, so this page is the
+ * protocol's own surface for both.
  */
 @Composable
 fun ProjectsScreen(
@@ -86,8 +78,7 @@ fun ProjectsScreen(
 ) {
     val colors = MiuixTheme.colorScheme
     val scope = rememberCoroutineScope()
-    // One project, re-read by id. `project/list` answers with the whole list, so a row that only
-    // wants its own thread count would otherwise have to reload every other row to find out.
+    // Re-read by id: project/list answers whole-list, too heavy for one row's count.
     var rechecked by remember { mutableStateOf<ProjectEntry?>(null) }
     var editing by remember { mutableStateOf<ProjectEntry?>(null) }
     var creating by remember { mutableStateOf(false) }
@@ -149,8 +140,7 @@ fun ProjectsScreen(
                 },
             )
             rechecked?.let { fresh ->
-                // Only the *count* can move while the page is open — threads get filed under a
-                // project from the session list — so the card reports that and nothing else.
+                // Only the count can move while the page is open, so the card reports that and nothing else.
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     cornerRadius = UiConsts.SectionCorner,
@@ -234,13 +224,6 @@ fun ProjectsScreen(
     }
 }
 
-/**
- * The project list, with its own inline actions.
- *
- * Tapping a row selects it and reveals the actions rather than opening a sheet: the actions are
- * five, they are all one tap deep from here, and a sheet would hide the list the user is deciding
- * between while they decide.
- */
 @Composable
 private fun ProjectsCard(
     projects: List<ProjectEntry>,
@@ -449,14 +432,7 @@ private fun ProjectRow(
     if (!expanded) Spacer(Modifier.height(0.dp))
 }
 
-/**
- * The environment list.
- *
- * Only the ids this client has been told about, because `environment/info` and `environment/status`
- * are addressed by id and there is no call that enumerates them. An id arrives from
- * `thread/environment/connected` or from an `environment/add` made here, and both are folded into
- * [CatalogState.environments] by the app.
- */
+// `environment/info` and `environment/status` are addressed by id; no call enumerates them.
 @Composable
 private fun EnvironmentsCard(
     environments: List<String>,
@@ -560,13 +536,7 @@ private fun EnvironmentsCard(
     }
 }
 
-/**
- * One environment, read by id.
- *
- * The two reads are separate calls with very different costs — `environment/info` starts nothing
- * and `environment/status` refuses to recover a connection — so the page runs both and reports them
- * side by side rather than presenting one merged "state".
- */
+// Two reads with different costs; both run and report side by side.
 @Composable
 fun EnvironmentDetailScreen(
     environmentId: String,
@@ -783,7 +753,6 @@ fun EnvironmentDetailScreen(
     }
 }
 
-/** Colour the status dot the way every other status in the app is coloured. */
 private fun EnvironmentStatusKind.tone(): ThreadStatusTone =
     when (this) {
         EnvironmentStatusKind.Ready -> ThreadStatusTone.Done

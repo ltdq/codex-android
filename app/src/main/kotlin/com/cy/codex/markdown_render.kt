@@ -71,18 +71,9 @@ private val TranscriptFontSize = UiType.Message
 private val TranscriptLineHeight = UiType.MessageLine
 
 /**
- * Markdown-lite renderer for agent output.
- *
- * The TUI renders through `codex-rs/tui/src/markdown_render.rs` with a streaming variant that
- * tolerates half-finished fences (`markdown_render/streaming.rs`). The phone keeps the same
- * contract but a smaller surface: paragraphs with hard breaks, headings up to level six (ATX and
- * setext), nested lists, block quotes, thematic breaks, indented and fenced code with syntax
- * highlighting, pipe tables, display math, and inline `code` / **bold** / *italic* / ~~strike~~ /
- * `$math$` / links are styled.
- *
- * A partially streamed document is legal input — an unterminated fence simply renders as code to
- * the end of the buffer. Streaming callers hand over a [MarkdownStream] so a delta rebuilds only
- * the tail block, links [MarkdownStreamText]; non-streaming callers pass the whole buffer.
+ * Markdown-lite renderer for agent output, mirroring `codex-rs/tui/src/markdown_render.rs`
+ * plus its streaming variant for half-finished fences. Streaming callers hand over a
+ * [MarkdownStream]; non-streaming callers pass the whole buffer.
  */
 @Composable
 fun MarkdownText(
@@ -105,19 +96,10 @@ fun MarkdownText(
         textColor, fontSize, lineHeight, blockSpacing, headingSizeStep, headingLineHeightStep,
         quoteBarWidth, quoteBarHeight, quoteBarCorner, quoteSpacing, cwd,
     )
-    // The stream is immutable once filled: the buffer arrives whole here, and a caller that has a
-    // growing buffer uses [MarkdownStreamText] instead so the parse stays incremental.
     val stream = remember(markdown) { MarkdownStream().apply { append(markdown) } }
     MarkdownStreamText(stream, modifier, style, streaming)
 }
 
-/**
- * Render a streaming buffer.
- *
- * [stream.tail] is the only state a delta rewrites, so the blocks in [MarkdownStream.frozen] keep
- * their composition and Skia keeps its text layouts; the caret, when [streaming], is drawn by the
- * tail block's own composable so its blink invalidates that one leaf.
- */
 @Composable
 fun MarkdownStreamText(
     stream: MarkdownStream,
@@ -150,8 +132,6 @@ private fun MarkdownStreamText(
     streaming: Boolean,
 ) {
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(style.blockSpacing)) {
-        // Each list read belongs to its own composable: appending a frozen block recomposes this
-        // loop only, and a tail rewrite does not touch it at all.
         FrozenBlocks(stream.frozen, style)
         val tail = stream.tail
         if (tail != null) MarkdownBlockView(tail, style, caret = streaming)
@@ -161,8 +141,6 @@ private fun MarkdownStreamText(
 @Composable
 private fun FrozenBlocks(blocks: List<MarkdownBlock>, style: MarkdownStyle) {
     for (index in blocks.indices) {
-        // Frozen blocks are append-only, so positional identity is stable. Unchanged blocks
-        // compare equal by content and skip.
         MarkdownBlockView(blocks[index], style, caret = false)
     }
 }
@@ -286,11 +264,7 @@ private fun markdownStyle(
     quoteBarWidth, quoteBarHeight, quoteBarCorner, quoteSpacing, cwd,
 )
 
-/**
- * A body of text plus the streaming caret.
- *
- * The caret is appended here, in the leaf, so a blink recomposes this Text and nothing above it.
- */
+/** A body of text plus the streaming caret, appended here so a blink recomposes nothing above it. */
 @Composable
 private fun StyledText(
     text: AnnotatedString,
@@ -370,7 +344,6 @@ private fun QuoteRow(text: AnnotatedString, style: MarkdownStyle, caret: Boolean
     }
 }
 
-/** The horizontal rule `---` / `***` / `___` renders. */
 @Composable
 private fun ThematicBreakView() {
     Box(
@@ -382,7 +355,7 @@ private fun ThematicBreakView() {
     )
 }
 
-/** A display equation: mono-italic so `\alpha` and friends stay distinguishable. */
+/** Display equation: mono-italic so `\alpha` and friends stay distinguishable. */
 @Composable
 private fun MathBlock(text: String, modifier: Modifier = Modifier) {
     if (text.isBlank()) return
@@ -400,10 +373,6 @@ private fun MathBlock(text: String, modifier: Modifier = Modifier) {
         color = MiuixTheme.colorScheme.onSurface,
     )
 }
-
-// ---------------------------------------------------------------------------------------------
-// Tables
-// ---------------------------------------------------------------------------------------------
 
 @Composable
 private fun TableView(
@@ -508,11 +477,8 @@ private fun TableRowView(
 }
 
 /**
- * A fenced code block. Wraps the whole block in a horizontally scrollable surface with a language
- * chip, which is what the TUI's `code_fence.rs` does with its own fence detection.
- *
- * The body is one Text per line rather than one Text for the block: a streaming fence then lays out
- * only the line that changed, and every earlier line keeps its cached layout.
+ * A fenced code block: a horizontally scrollable surface with a language chip (code_fence.rs),
+ * one Text per line so a streaming fence relayouts only the changed line.
  */
 @Composable
 fun CodeBlock(
@@ -567,8 +533,7 @@ private fun StreamingCodeBlock(block: MarkdownBlock.OpenCode, caret: Boolean) {
     val palette = syntaxPalette()
     val spec = remember(block.language) { languageSpec(block.language) }
     val lexer = remember(spec, palette) { spec?.let { SyntaxLexer(it, palette) } }
-    // Highlighted lines are cached per completed line: a streaming fence then pays for the line it
-    // just finished instead of re-lexing every line on each delta.
+    // Highlighted lines are cached per completed line, so a delta re-lexes only the finished line.
     val styled = remember(lexer, palette) { mutableListOf<AnnotatedString>() }
     CodeSurface(
         language = block.language,
@@ -609,9 +574,8 @@ private fun StreamingCodeBlock(block: MarkdownBlock.OpenCode, caret: Boolean) {
                 )
             }
         }
-        // The partial line is where the stream is writing; only this scope re-reads when it grows.
-        // Its highlight starts from the state the previous complete line left behind, which is what
-        // keeps a block comment or raw string open across the boundary.
+        // Highlight the partial line from the previous line's lexer state, so a block comment or raw
+        // string stays open across the boundary.
         val partial = block.partial
         if (partial.isNotEmpty() || caret) {
             val partialStyled = if (lexer == null || partial.isEmpty()) {
@@ -687,8 +651,7 @@ private fun CodeSurface(
                         color = colors.primary,
                     )
                 }
-                // The copy target is the fence source, not the highlighted spans, so pasting it
-                // anywhere lands as plain code.
+                // The copy target is the fence source, so pasting lands as plain code.
                 if (copyText != null) {
                     val copyLabel = stringResource(R.string.clipboard_copy_code)
                     IconButton(
@@ -739,7 +702,6 @@ private fun CodeLine(
     )
 }
 
-/** One-line shell command with the same monospace treatment the TUI's exec cells use. */
 @Composable
 fun InlineCode(
     text: String,
@@ -767,17 +729,10 @@ fun InlineCode(
     )
 }
 
-// ---------------------------------------------------------------------------------------------
-// Inline spans
-// ---------------------------------------------------------------------------------------------
-
 /**
- * Style inline spans.
- *
- * Recognised spans are the ones agent output actually uses: `code`, **bold**, *italic*,
- * ~~strikethrough~~, `$inline math$`, `[label](url)` links and `:codex-file-citation{…}` directives.
- * A link keeps its destination: web links are annotated so a tap opens them, and local file links
- * render their cwd-relative target so the path is readable without a tap.
+ * Style inline spans: code, bold, italic, strikethrough, inline math, links and
+ * `:codex-file-citation{…}` directives. Web links open on tap; local links show their
+ * cwd-relative target.
  */
 internal fun inline(
     text: String,
@@ -938,12 +893,7 @@ private fun linkSpan(text: String, from: Int, cwd: String?): Span? {
     return null
 }
 
-/**
- * A `:codex-file-citation{path="…"}` directive.
- *
- * The directive is control data, not prose: it is replaced by the path it points at, exactly as
- * `markdown_render/file_citations.rs` turns it into a local link.
- */
+/** A `:codex-file-citation{path="…"}` directive; replaced by the path, like `markdown_render/file_citations.rs`. */
 private fun citationSpan(text: String, from: Int, cwd: String?): Span? {
     var start = text.indexOf(":codex-file-citation{", from)
     while (start >= 0) {
@@ -968,15 +918,9 @@ private fun citationSpan(text: String, from: Int, cwd: String?): Span? {
     return null
 }
 
-// ---------------------------------------------------------------------------------------------
-// Caret
-// ---------------------------------------------------------------------------------------------
-
 /**
- * The TUI's block caret: `▍` at the end of a streaming block, blinking on a 600ms period.
- *
- * The animation is created by the composable that draws the caret, so its 60fps invalidation never
- * reaches a parent: a page of frozen blocks does not repaint because the caret blinked.
+ * The TUI's block caret `▍`, blinking on a 600 ms period; the animation lives in the caret's own
+ * composable so a blink never repaints a parent.
  */
 @Composable
 private fun rememberBlinkingCaret(periodMs: Int = StreamingCaretPeriodMs): String {

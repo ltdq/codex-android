@@ -64,13 +64,8 @@ internal val SUB_AGENT_SOURCE_KINDS =
     )
 
 /**
- * `/agents` and `/subagents` as a page.
- *
- * Mirrors `app/agents_overview.rs` with the parts that make sense on a phone: a filter box, one row
- * per roster entry, and the dashboard actions the terminal binds to keys — stop a running turn,
- * rename and archive. Usage comes from `thread/tokenUsage/updated`, which the app keeps per thread,
- * and liveness from a `thread/list` scoped by `ancestorThreadId`; that is what fills subagent
- * meters and status labels the transcript fold alone cannot know.
+ * `/agents` as a page, mirroring `codex-rs/.../app/agents_overview.rs`; subagent liveness
+ * and meters come from `thread/list` and `thread/tokenUsage/updated`.
  */
 @Composable
 fun AgentsScreen(
@@ -112,8 +107,7 @@ fun AgentsScreen(
         }
     }
 
-    // `thread/list` is the only source of subagent liveness and cli metadata, and it is a read the
-    // page can need at any moment, so it is refreshed once per open rather than streamed.
+    // Refreshed once per open: `thread/list` is the only source of subagent liveness and cli metadata.
     LaunchedEffect(session.threadId) {
         app.onAppEvent(AppEvent.ReloadAgentThreads(session.threadId))
     }
@@ -301,19 +295,12 @@ fun AgentsScreen(
     }
 }
 
-/** Stop is offered only while the server calls the thread active; the rest are always available. */
 private fun AgentRosterEntry.canStop(): Boolean =
     when {
         threadStatus != null -> threadStatus is ThreadStatus.Active
         else -> status == AgentRunStatus.Running || status == AgentRunStatus.PendingInit
     }
 
-/**
- * The dashboard's per-row actions.
- *
- * The row itself opens the agent, because that is the one thing every tap should do; the less
- * frequent and more destructive actions sit under it, so nothing fires by accident.
- */
 @Composable
 private fun AgentActions(
     agent: AgentRosterEntry,

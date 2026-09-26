@@ -93,24 +93,9 @@ import top.yukonga.miuix.kmp.theme.ColorSchemeMode
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
- * Full-screen settings page.
- *
- * Mirrors the TUI's mutually exclusive bottom-pane pickers (`bottom_pane/model_popups.rs`,
- * `permission_popups.rs`, `experimental_features_view.rs`): on the phone they become one page
- * instead of a stack of overlays, so every choice is visible and every row still sends the same
- * event the popup used to send.
- *
- * The rows are `miuix-preference` components ([SwitchPreference], [RadioButtonPreference],
- * [ArrowPreference], [OverlaySpinnerPreference]) inside `miuix-ui` [Card]s. They were hand-rolled
- * card rows before, which meant every one of them re-implemented the same four things — the press
- * feedback, the title/summary type ramp, the end-slot alignment and the switch — slightly
- * differently from the library, and the settings page was the only place in the app where a miuix
- * control was *not* the real thing.
- *
- * The page is a two-level settings surface: a small home of categories, then one focused detail
- * page per question. The old rail plus one long list mixed navigation with editing and forced every
- * choice into the first viewport. Rows are `miuix-preference` controls, so touch, mouse and hardware
- * focus all use the same click target and the same state change.
+ * Full-screen settings page: the TUI's bottom-pane pickers (bottom_pane/model_popups.rs,
+ * permission_popups.rs, experimental_features_view.rs) become one two-level page of
+ * miuix-preference rows sending the same events.
  */
 @Composable
 fun SettingsScreen(
@@ -138,9 +123,6 @@ fun SettingsScreen(
         onBack = {
             if (backStack.size > 1) backStack.removeLastOrNull() else onBack()
         },
-        // The settings sheet is a horizontal hierarchy inside a modal sheet. Keep the sheet's
-        // outer modal transition in the app shell and give these inner pages the standard miuix
-        // push/pop motion with no second scrim or corner clip.
         transition = NavTransitions.MiuixDefault,
         effects = NavDisplayEffects(enableCornerClip = false, dimAmount = 0f),
     ) {
@@ -211,7 +193,6 @@ private sealed interface SettingsRoute : NavKey {
     data class Detail(val section: SettingsSection) : SettingsRoute
 }
 
-/** One settings page's chrome and scrolling body; the navigation host animates this whole frame. */
 @Composable
 private fun SettingsPage(
     title: String,
@@ -265,7 +246,6 @@ private fun SettingsPage(
     }
 }
 
-/** Settings categories. Each category owns one question and opens one focused detail page. */
 private enum class SettingsSection(
     @StringRes val titleRes: Int,
     @StringRes val descriptionRes: Int,
@@ -339,13 +319,6 @@ private fun SettingsHome(
     }
 }
 
-/**
- * A titled group of preference rows, which is the shape every section on this page has.
- *
- * No dividers between the rows: the miuix example lets a [Card]'s preferences separate themselves
- * with their own 16dp inside margin, and a hairline between two 56dp rows would be a second
- * separator where one already exists.
- */
 @Composable
 private fun SettingsGroup(
     title: String,
@@ -362,7 +335,6 @@ private fun SettingsGroup(
     }
 }
 
-/** The current `cwd`, the writable roots, and the way to the picker. */
 @Composable
 private fun SettingsWorkspaceSection(
     cwd: String,
@@ -440,8 +412,7 @@ private fun SettingsConfigSourcesSection(catalog: CatalogState, configPath: Stri
             return@SettingsGroup
         }
 
-        // Highest precedence first: that is the order the answer to "why is this value what it is"
-        // is read in, and it matches the merge order in reverse.
+        // Highest precedence first — the order the "why is this value what it is" answer is read in.
         layers.asReversed().forEach { layer ->
             BasicComponent(
                 title = layer.name.label(),
@@ -473,8 +444,7 @@ private fun SettingsConfigSourcesSection(catalog: CatalogState, configPath: Stri
             )
         }
 
-        // One row per key the page actually renders, naming the layer that wins it. Without this
-        // the layers above say what *could* contribute but not what did.
+        // One row per rendered key, naming the layer that wins it.
         val origins = response.origins
         CatalogState.RenderedConfigKeys.forEach { key ->
             val value = response.displayValue(key) ?: return@forEach
@@ -503,12 +473,7 @@ private fun SettingsConfigSourcesSection(catalog: CatalogState, configPath: Stri
     }
 }
 
-/**
- * Theme mode and motion, the two client-side choices the app-server has no opinion on.
- *
- * The TUI reads these from `[tui]` config and the terminal; on Android they are app preferences, so
- * they are written straight into [Appearance] instead of through an [AppEvent].
- */
+/** Theme and motion — client-side choices the app-server has no opinion on; written straight into [Appearance]. */
 @Composable
 private fun SettingsAppearanceSection() {
     val context = LocalContext.current
@@ -535,13 +500,7 @@ private fun SettingsAppearanceSection() {
     }
 }
 
-/**
- * The Android counterpart of `tui.notifications`.
- *
- * The master switch gates the runtime permission: turning it on with no grant asks for one, and a
- * denial leaves the switch off rather than pretending notifications will arrive. The per-type rows
- * are the whitelist itself, keyed by the same wire names upstream stores in `tui.notifications`.
- */
+/** Android counterpart of tui.notifications: master switch gates the runtime permission, rows are the wire-keyed whitelist. */
 @Composable
 private fun SettingsNotificationSection() {
     val context = LocalContext.current
@@ -582,12 +541,7 @@ private fun SettingsNotificationSection() {
     }
 }
 
-/**
- * The Android value of `tui.auto_recap`.
- *
- * A client-side toggle rather than a `config/value/write`, because the automatic recap is
- * orchestrated entirely in the widget and the server has no recap method.
- */
+/** Android value of tui.auto_recap; a client-side toggle — the server has no recap method. */
 @Composable
 private fun SettingsRecapSection() {
     val context = LocalContext.current
@@ -601,12 +555,7 @@ private fun SettingsRecapSection() {
     }
 }
 
-/**
- * The packaged app version.
- *
- * Read from [BuildConfig] rather than a hand-written string: the same value initializes the
- * app-server client, so the version the user sees here is the version the server was told.
- */
+/** Version from [BuildConfig]; the same value initializes the app-server client. */
 @Composable
 private fun SettingsAboutSection() {
     SettingsGroup(stringResource(R.string.settings_group_about)) {
@@ -641,7 +590,6 @@ private fun SettingsMemorySection(catalog: CatalogState, onEvent: (AppEvent) -> 
     }
 }
 
-/** A discoverable route to the keymap overlay instead of duplicating key rows in settings. */
 @Composable
 private fun SettingsShortcutsSection(onOpenShortcuts: () -> Unit) {
     SettingsGroup(stringResource(R.string.settings_group_shortcuts)) {
@@ -661,7 +609,6 @@ private fun SettingsShortcutsSection(onOpenShortcuts: () -> Unit) {
     }
 }
 
-/** Session identity is read-only status. The status surface owns it; settings only links there. */
 @Composable
 private fun SettingsSessionLink(config: ThreadSessionState, onOpenEntry: (String) -> Unit) {
     SettingsGroup(stringResource(R.string.settings_group_session)) {
@@ -689,7 +636,6 @@ private fun SettingsSessionLink(config: ThreadSessionState, onOpenEntry: (String
 
 private data class SettingsLinkSpec(val id: String, val titleRes: Int, val icon: ImageVector)
 
-/** Integrations configure the agent; content and account data stay in [SettingsDataSection]. */
 @Composable
 private fun SettingsExtensionsSection(onOpenEntry: (String) -> Unit) {
     val links =
@@ -704,7 +650,6 @@ private fun SettingsExtensionsSection(onOpenEntry: (String) -> Unit) {
     SettingsLinksGroup(stringResource(R.string.settings_group_extensions), links, onOpenEntry)
 }
 
-/** Account, memory contents and maintenance are data operations, not editor preferences. */
 @Composable
 private fun SettingsDataSection(onOpenEntry: (String) -> Unit) {
     val links =
@@ -781,7 +726,6 @@ private fun SettingsExperimentalSection(catalog: CatalogState, onEvent: (AppEven
     }
 }
 
-/** Defaults for new threads: `model/list` presets and the effort of the selected one. */
 @Composable
 private fun SettingsModelSection(
     catalog: CatalogState,
@@ -817,8 +761,7 @@ private fun SettingsModelSection(
         }
     }
 
-    // The local provider choice, shown only when the config says the provider is `oss` — the same
-    // place `oss_selection.rs` offers it, because the value means nothing for a hosted provider.
+    // The oss provider choice, shown only for provider `oss` — where oss_selection.rs offers it.
     if (catalog.config.snapshot.modelProvider == "oss") {
         val providers =
             listOf(
@@ -843,8 +786,6 @@ private fun SettingsModelSection(
         }
     }
 
-    // Effort is a short, ordered list — a dropdown keeps it to one row instead of three, and it is
-    // the same control the HyperOS settings pages use for exactly this kind of choice.
     val efforts = preset?.supportedReasoningEfforts.orEmpty()
     if (efforts.isNotEmpty()) {
         val selectedIndex = efforts.indexOf(effort).coerceAtLeast(0)
@@ -867,7 +808,6 @@ private fun SettingsModelSection(
     }
 }
 
-/** Default policy for new threads, the effective sandbox, and the granular switches. */
 @Composable
 private fun SettingsApprovalSection(
     config: ThreadSessionState,
@@ -898,12 +838,8 @@ private fun SettingsApprovalSection(
         )
     }
 
-    // A reviewer, not a policy: the policy decides *whether* a request is raised, and the reviewer
-    // decides who answers it. Upstream pairs the two in the permissions popup; a separate group
-    // here
-    // keeps each choice a single question. AutoReview is offered only when `guardian_approval` is
-    // on
-    // and `configRequirements/read` allows it; a value selected under a looser policy stays shown.
+    // A reviewer decides *who* answers a request, not *whether* it is raised. AutoReview is
+    // offered only when guardian_approval is on and configRequirements/read allows it.
     SettingsGroup(stringResource(R.string.settings_group_reviewer)) {
         ApprovalsReviewer.entries
             .filter { it != ApprovalsReviewer.AutoReview || autoReviewAvailable }
@@ -927,9 +863,8 @@ private fun SettingsApprovalSection(
     if (config.approvalPolicy == AskForApproval.Granular) {
         val granular = config.granularApproval
         SettingsGroup(stringResource(R.string.settings_group_granular)) {
-            // Shown, not switched: the server reports the per-class policy but this shell has no
-            // write path for the individual classes, and a switch that silently does nothing is
-            // worse than one that says it cannot be moved here.
+            // Shown, not switched: there is no write path for the per-class policy, and a switch that
+            // silently does nothing is worse than one that says it cannot move.
             listOf(
                     stringResource(R.string.settings_screen_granular_sandbox) to
                         granular.sandboxApproval,
@@ -951,8 +886,7 @@ private fun SettingsApprovalSection(
                                 stringResource(R.string.settings_screen_granular_auto)
                             },
                         checked = asks,
-                        // `enabled = false` already stops the row; the no-op keeps the switch's own
-                        // toggle from reporting a change it is not allowed to make.
+                        // The no-op keeps the switch's toggle from reporting a change it is not allowed to make.
                         onCheckedChange = {},
                         enabled = false,
                     )
@@ -961,9 +895,7 @@ private fun SettingsApprovalSection(
     }
 }
 
-// ---- row vocabulary, private to this page ------------------------------------------------------
-
-/** A right-aligned monospace value: ids, paths and counts line up when they share a font. */
+/** Monospace by convention so ids, paths and counts line up. */
 @Composable
 private fun MonoValue(text: String) {
     Text(

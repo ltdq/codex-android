@@ -40,24 +40,16 @@ import top.yukonga.miuix.kmp.preference.RadioButtonPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
- * `request_user_input`: the agent blocks on a question it cannot answer itself.
- *
- * Mirrors `codex-rs/tui/src/bottom_pane/request_user_input/`: one block per question, a tappable
- * option list, and an extra free-text row when `isOther` is set. Selection is single-choice; a
- * selected option and the free-text row are both submitted, the note as a second `user_note:`
- * entry, matching `submit_answers` in the upstream bottom pane.
- *
- * The numbered badge is the only decoration: it is what makes "2 of 3 answered" countable at a
- * glance without reading the footer.
+ * `request_user_input`: the agent blocks on a question (codex-rs/tui/src/bottom_pane/request_user_input/);
+ * a selected option and the free-text note are both submitted, as `submit_answers` does.
  */
 
-/** Sentinel selection for the free-text ("其他") row of a question. */
+/** Sentinel selection for the free-text row of a question. */
 private const val OtherChoice = -1
 
 /** Prefix marking notes that ride along with a selected option. */
 private const val UserNotePrefix = "user_note: "
 
-/** The numbered badge in front of a question header. */
 private val BadgeShape = RoundedCornerShape(UiConsts.CornerChip)
 private val BadgeSize = 22.dp
 private val BadgeTopPadding = 1.dp
@@ -70,9 +62,7 @@ internal fun RequestUserInputForm(
     busy: Boolean = false,
 ) {
     val questions = request.params.questions
-    // questionId -> selected option index, or [OtherChoice] for the free-text row.
     val selections = remember(questions) { mutableStateMapOf<String, Int>() }
-    // questionId -> free-text content; appended as a `user_note:` answer when non-blank.
     val notes = remember(questions) { mutableStateMapOf<String, String>() }
     var submitted by remember(questions) { mutableStateOf(false) }
 
@@ -103,8 +93,6 @@ internal fun RequestUserInputForm(
                 )
             }
         }
-        // The scrolling body stops here and the footer starts: without the gap the last question
-        // reads as if it ran into the buttons, which are a different thing entirely.
         Spacer(Modifier.height(UiConsts.DialogFooterGap))
         FormButtons(
             confirmLabel = stringResource(R.string.request_user_input_view_submit),
@@ -131,12 +119,7 @@ internal fun RequestUserInputForm(
     }
 }
 
-/**
- * The answers a question currently holds, or `null` while it is still unanswered.
- *
- * The selected label comes first and a non-blank note follows as `user_note: <text>`, so choosing
- * an option and adding detail preserves both instead of the note replacing the choice.
- */
+/** Current answers, or `null` while unanswered; the note follows the selected label as `user_note: <text>`. */
 private fun answersFor(
     question: ToolRequestUserInputQuestion,
     selections: Map<String, Int>,

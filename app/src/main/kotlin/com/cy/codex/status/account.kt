@@ -91,13 +91,8 @@ import top.yukonga.miuix.kmp.icon.extended.Store
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.window.WindowBottomSheet
 
-/**
- * Account page: login state, rate-limit windows and the daily token chart.
- *
- * Mirrors the account block of `codex-rs/tui/src/status/card.rs` plus `status/account.rs` and
- * `status/rate_limits.rs`: the TUI prints these as one `/status` card, the phone splits the same
- * fields into meters and a bar chart.
- */
+/** Account page: login state, rate-limit windows, daily token chart; mirrors
+ * `codex-rs/tui/src/status/card.rs`, `status/account.rs`, `status/rate_limits.rs`. */
 @Composable
 fun AccountScreen(
     catalog: CatalogState,
@@ -124,9 +119,7 @@ fun AccountScreen(
             endActions = {
                 IconButton(
                     onClick = {
-                        // Three reloads rather than one "refresh the page": the three answers come
-                        // from three endpoints and any one of them can fail on its own, which is
-                        // why the app re-reads them independently.
+                        // Three separate reloads: three endpoints, each able to fail on its own.
                         onEvent(AppEvent.ReloadAccount)
                         if (account.signedIn) {
                             onEvent(AppEvent.ReloadRateLimits)
@@ -232,9 +225,8 @@ private fun AccountSignIn(catalog: CatalogState, onEvent: (AppEvent) -> Unit) {
                 }
             }
         } else {
-            // The browser flow's callback is served by the in-process app-server on
-            // `http://localhost:<port>`, which the device's own browser can reach, so Android needs
-            // no custom scheme or `onNewIntent` handoff. The same parameters the TUI sends.
+            // The in-process app-server serves the callback on localhost, reachable by the device's
+            // browser, so no custom scheme or onNewIntent handoff is needed.
             Button(
                 onClick = {
                     onEvent(
@@ -287,11 +279,9 @@ private fun AccountSignIn(catalog: CatalogState, onEvent: (AppEvent) -> Unit) {
     }
 }
 
-/** The address of a ChatGPT account; the other variants have no identity to show. */
 private val AccountReadResponse.email: String?
     get() = (account as? Account.Chatgpt)?.email
 
-/** The first line of the account card: a ChatGPT address, or the variant's own name. */
 @Composable
 @ReadOnlyComposable
 private fun accountIdentity(response: AccountReadResponse): String =
@@ -302,14 +292,12 @@ private fun accountIdentity(response: AccountReadResponse): String =
         null -> stringResource(R.string.account_screen_email_unbound)
     }
 
-/** The plan slug of a ChatGPT account; API-key and Bedrock accounts do not carry one. */
 private val AccountReadResponse.planType: String?
     get() = (account as? Account.Chatgpt)?.planType
 
 private val AccountReadResponse.signedIn: Boolean
     get() = account != null
 
-/** 登录状态: mirrors the status card's `Account:` row (`{email} ({plan})`). */
 @Composable
 private fun AccountLoginSection(account: AccountReadResponse) {
     val colors = MiuixTheme.colorScheme
@@ -389,7 +377,6 @@ private fun AccountLoginSection(account: AccountReadResponse) {
     }
 }
 
-/** 用量限额: the primary/secondary windows, drawn as meters instead of the TUI's 20-cell bar. */
 @Composable
 private fun AccountLimitSection(limits: AccountRateLimits) {
     val colors = MiuixTheme.colorScheme
@@ -462,11 +449,8 @@ private fun accountCreditsText(credits: CreditsSnapshot): String =
     }
 
 /**
- * The reset credits the account holds, and the one action that spends one.
- *
- * Mirrors the TUI's `/usage` reset picker (`chatwidget/usage.rs`): the list is sorted by expiry, an
- * already-consumed credit is not actionable, and redeeming is confirmed first because a consumed
- * credit cannot be returned. The card stays hidden when the account reported none.
+ * Mirrors the `/usage` reset picker (`chatwidget/usage.rs`): sorted by expiry, consumed
+ * credits not actionable, redemption confirmed because a consumed credit cannot be returned.
  */
 @Composable
 private fun AccountResetCreditsSection(limits: AccountRateLimits, onEvent: (AppEvent) -> Unit) {
@@ -709,7 +693,7 @@ private fun AccountRateMeter(label: String, window: RateLimitWindow) {
     }
 }
 
-/** 用量趋势: one rounded bar per day, drawn by hand because it is a single series. */
+// One rounded bar per day, drawn by hand because it is a single series.
 @Composable
 private fun AccountUsageSection(usage: AccountUsage) {
     val colors = MiuixTheme.colorScheme
@@ -767,10 +751,7 @@ private fun AccountUsageSection(usage: AccountUsage) {
                 text =
                     stringResource(
                         R.string.account_screen_usage_peak,
-                        // The server's own peak, when this build answered with the full summary;
-                        // the
-                        // charted buckets are the fallback for a response that only carries the
-                        // series.
+                        // Server's own peak; the charted buckets are the fallback for a series-only response.
                         formatTokens(
                             usage.peakDailyTokens.takeIf { it > 0 }
                                 ?: usage.dailyBuckets.maxOf { it.tokens }.toLong()
@@ -807,7 +788,6 @@ private fun AccountUsageSection(usage: AccountUsage) {
     }
 }
 
-/** `12345` seconds as the TUI status card spells a long turn: hours, then minutes. */
 private fun accountTurnDuration(seconds: Long): String {
     val hours = seconds / 3600
     val minutes = (seconds % 3600) / 60
@@ -841,7 +821,6 @@ private fun AccountUsageChart(buckets: List<Int>, modifier: Modifier = Modifier)
     }
 }
 
-/** 退出登录: disabled while the account is not logged in. */
 @Composable
 private fun AccountLogoutSection(loggedIn: Boolean, onLogout: () -> Unit) {
     val colors = MiuixTheme.colorScheme
@@ -901,11 +880,8 @@ private fun AccountLogoutSection(loggedIn: Boolean, onLogout: () -> Unit) {
     }
 }
 
-// ---- row vocabulary, private to this screen --------------------------------------------------
-
 private val AccountRowShape = RoundedCornerShape(UiConsts.RowCorner)
 
-/** One place for this page's type ramp. */
 @Composable
 private fun AccountText(
     text: String,
@@ -1004,7 +980,7 @@ private fun accountFormatReset(millis: Long): String =
             )
         )
 
-/** `9月15日` is too wide for a chart tick; the day number alone is enough. */
+/** A localized month-day label is too wide for a chart tick; the day number alone is enough. */
 private fun accountShortDay(day: String): String {
     val tail = day.substringAfter('月', day)
     return tail.removeSuffix("日").ifEmpty { day }

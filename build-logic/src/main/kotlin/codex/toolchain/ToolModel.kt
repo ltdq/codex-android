@@ -1,26 +1,20 @@
 package codex.toolchain
 
 /**
- * Where a tool's source comes from. Repositories that need to be compiled are
- * pinned as git submodules; projects that only publish release tarballs are
- * downloaded; prebuilt Android releases and host-provided tools have no source.
+ * Source policy: repos that need compiling are pinned as submodules; tarball-only projects are
+ * downloaded; prebuilt releases and host tools have no source.
  */
 data class SourceSpec(
     val kind: Kind,
     /** Submodule path under `third_party/`, or the tarball URL. */
     val value: String = "",
-    /** Extract with this many leading path components stripped. */
     val stripComponents: Int = 1,
     /** Also initialise the repo's own submodules (jq vendors oniguruma). */
     val recursive: Boolean = false,
     /** Build inside the submodule checkout instead of a disposable worktree. */
     val inPlace: Boolean = false,
-    /** Second URL tried when the (mirror) download fails. */
     val fallback: String = "",
-    /**
-     * Release tag to clone with `--depth 1` for very large repositories
-     * (llvm/binutils/cpython); empty means a full-history clone.
-     */
+    /** Clone with `--depth 1` for very large repositories; empty means full history. */
     val tag: String = "",
 ) : java.io.Serializable {
     enum class Kind { SUBMODULE, TARBALL, HOST }
@@ -53,15 +47,11 @@ sealed interface Step : java.io.Serializable {
         val argv: List<String>,
         val env: Map<String, String> = emptyMap(),
         val workdir: String = "\$SRC",
-        /** Skip when this path (relative to the workdir) already exists. */
         val skipIfExists: String? = null,
-        /** Run without the NDK cross environment (host tools, cmake, go, cargo). */
         val hostEnv: Boolean = false,
-        /** Split expanded arguments on whitespace (compiler flag variables). */
         val splitArgs: Boolean = false,
     ) : Step
 
-    /** Run only when [checkFile] (relative to the workdir) is missing. */
     data class RunFirstTime(
         val argv: List<String>,
         val checkFile: String,
@@ -78,7 +68,6 @@ sealed interface Step : java.io.Serializable {
         val file: String,
         val regex: String,
         val replacement: String,
-        /** Allow `$1` group references in [replacement]. */
         val groupRefs: Boolean = false,
     ) : Step
     data class WriteFile(val path: String, val content: String, val executable: Boolean = false) : Step
@@ -92,7 +81,6 @@ class ToolSpec(val name: String) {
     var patchDir: String? = null
     /** Include this tool's prefix in the APK toolchain package. */
     var pack: Boolean = true
-    /** Tool names whose build tasks must run first. */
     val dependsOn = mutableListOf<String>()
     val steps = mutableListOf<Step>()
 
@@ -101,11 +89,7 @@ class ToolSpec(val name: String) {
     }
 }
 
-/**
- * Declarative helpers for the tool recipes. Everything ends up as [Step] data,
- * so the recipes stay configuration-cache safe: closures only run while the
- * build is configured.
- */
+/** Declarative recipe helpers; everything becomes [Step] data so recipes stay configuration-cache safe. */
 class RecipeBuilder(private val sink: MutableList<Step>) {
     fun run(
         vararg argv: String,
@@ -128,7 +112,6 @@ class RecipeBuilder(private val sink: MutableList<Step>) {
         sink += Step.RunFirstTime(argv.toList(), checkFile, env, workdir, hostEnv)
     }
 
-    /** `./configure` with the usual `config.status` guard. */
     fun configure(
         vararg args: String,
         env: Map<String, String> = emptyMap(),
@@ -152,7 +135,6 @@ class RecipeBuilder(private val sink: MutableList<Step>) {
         )
     }
 
-    /** `make DESTDIR=<destDir> install` (autotools install staged into a prefix). */
     fun makeInstall(
         destDir: String,
         vararg args: String,
@@ -185,11 +167,7 @@ class RecipeBuilder(private val sink: MutableList<Step>) {
         run("cmake", "--build", build, "--parallel", "\$JOBS", *targetArgs.toTypedArray(), hostEnv = true)
     }
 
-    /**
-     * `cargo build --release` with the NDK linker, the `libgcc` shim some
-     * crates need and an explicit toolchain (uv/ruff need a newer rustc than
-     * the JNI core's 1.95).
-     */
+    /** `cargo build --release` with the NDK linker; explicit toolchain for tools needing a newer rustc. */
     fun cargo(
         vararg args: String,
         manifest: String = "\$SRC/Cargo.toml",
@@ -218,7 +196,6 @@ class RecipeBuilder(private val sink: MutableList<Step>) {
         )
     }
 
-    /** `go build` with `GOOS=android` (pure-Go tools need no NDK). */
     fun go(args: List<String>, env: Map<String, String> = emptyMap()) {
         run(
             "go", *args.toTypedArray(),

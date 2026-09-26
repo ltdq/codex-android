@@ -59,13 +59,8 @@ import top.yukonga.miuix.kmp.icon.extended.Tasks
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
- * One subagent, as a page.
- *
- * A subagent never gets a thread of its own on the server, so there is nothing to `thread/read` and
- * nothing for the session list to show. Everything on this page is therefore folded back out of the
- * *parent* transcript: the roster entry (task, model, effort, last reported state) and the ordered
- * list of items that mention this agent's thread id. That is the same evidence the roster itself is
- * derived from, so the page can never contradict the row that opened it.
+ * A subagent as a page: the server keeps no thread for it, so everything is folded out of
+ * the parent transcript.
  */
 @Composable
 fun SubAgentScreen(
@@ -112,7 +107,6 @@ fun SubAgentScreen(
     }
 }
 
-/** The prompt the parent handed this agent. */
 @Composable
 private fun SubAgentTaskCard(entry: AgentRosterEntry?) {
     val colors = MiuixTheme.colorScheme
@@ -168,7 +162,6 @@ private fun SubAgentTaskCard(entry: AgentRosterEntry?) {
     }
 }
 
-/** Identity and the last thing the server said about this agent. */
 @Composable
 private fun SubAgentRunCard(entry: AgentRosterEntry?, threadId: String, mainThreadId: String) {
     val colors = MiuixTheme.colorScheme
@@ -254,7 +247,6 @@ private fun SubAgentRunCard(entry: AgentRosterEntry?, threadId: String, mainThre
     }
 }
 
-/** Everything the parent transcript ever said about this agent, in stream order. */
 @Composable
 private fun SubAgentTimelineCard(events: List<SubAgentEvent>) {
     val colors = MiuixTheme.colorScheme
@@ -397,12 +389,7 @@ private fun SubAgentBackButton(onBack: () -> Unit) {
     }
 }
 
-/**
- * One line of a subagent's history, folded out of the parent transcript.
- *
- * The row title is not stored here: a collab call and an activity item each name the enum they came
- * from, and [title] resolves the text where resources are available.
- */
+/** One line of subagent history; the title is resolved via [title], not stored. */
 data class SubAgentEvent(
     val id: String,
     val tool: CollabAgentTool?,
@@ -411,29 +398,16 @@ data class SubAgentEvent(
     val tone: ThreadStatusTone,
 )
 
-/** The row's title: the collab tool that was called, or the activity kind that was reported. */
 @Composable
 @ReadOnlyComposable
 private fun SubAgentEvent.title(): String =
     when {
         tool != null -> stringResource(R.string.sub_agent_screen_collab_call, tool.label())
         activity != null -> activity.timelineLabel()
-        // A fold that names neither is a bug, not a state; the id keeps the row readable either
-        // way.
+        // A fold naming neither is a bug; the id keeps the row readable either way.
         else -> id
     }
 
-/**
- * Fold the parent transcript down to everything that names [threadId].
- *
- * Two item kinds can: a `CollabAgentToolCallItem` that lists the agent as a receiver (the request,
- * the prompt and the last state the server reported for it), and a `SubAgentActivityItem` addressed
- * to it (started / interacted / interrupted / completed). Order is stream order, which is the order
- * the parent saw them in; the id is the item id, so the list is stable across recompositions.
- *
- * Pure and total: an unknown agent simply yields an empty list, which is what the page shows when
- * the roster no longer mentions it.
- */
 fun deriveSubAgentTimeline(items: List<ThreadItem>, threadId: String): List<SubAgentEvent> =
     items.mapNotNull { item ->
         when (item) {

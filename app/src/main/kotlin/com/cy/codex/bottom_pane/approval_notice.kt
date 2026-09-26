@@ -34,20 +34,7 @@ import top.yukonga.miuix.kmp.basic.Surface
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
-/**
- * The composer's approval notice bar.
- *
- * Three things the modal cannot say, because the modal is busy with the request in front of it:
- *
- * - a decision is waiting in another thread ([foreign]), which needs a thread switch rather than an
- *   answer here;
- * - auto review is still deciding one or more requests ([reviews]), aggregated with the same `+N
- *   more` rule upstream uses for parallel reviews;
- * - auto review denied something ([denials]), which the user can override once.
- *
- * Nothing renders while all three are empty. The bar sits above the queued-message tray, which is
- * where every "something happened outside the transcript" notice lives.
- */
+/** Composer notice bar for what the modal cannot say: foreign-thread decisions, pending auto review, denials the user can override once. */
 @Composable
 fun ApprovalNoticeBar(
     foreign: List<ForeignApproval>,

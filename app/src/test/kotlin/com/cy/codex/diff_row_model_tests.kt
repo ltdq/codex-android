@@ -4,13 +4,6 @@ import androidx.compose.ui.graphics.Color
 import org.junit.Test
 import kotlin.test.assertEquals
 
-/**
- * Pins the row precompute the diff body relies on.
- *
- * The renderer folds colours, gutters and signs into [DiffRowModel] once per body so a
- * recomposition only lays a row out. Equality is the other half of that contract: Compose can skip
- * a row only when two folds of unchanged lines compare equal.
- */
 class DiffRowModelTest {
 
     private val palette = DiffPalette(
@@ -36,7 +29,6 @@ class DiffRowModelTest {
     @Test
     fun foldsGuttersSignsAndColorsPerKind() {
         val rows = rowsFor("@@ -1,2 +1,2 @@\n-old\n+new\n context")
-        // The first hunk header is metadata; only content becomes rows.
         assertEquals(3, rows.size)
 
         assertEquals("1", rows[0].oldLine)
@@ -75,7 +67,6 @@ class DiffRowModelTest {
                 "\\ No newline at end of file",
             ).joinToString("\n"),
         )
-        // Metadata lines produce nothing; the second hunk header becomes the separator.
         assertEquals(4, rows.size)
         assertEquals("old", rows[0].text)
         assertEquals("new", rows[1].text)

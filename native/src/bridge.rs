@@ -42,10 +42,7 @@ struct StartConfig {
     env: BTreeMap<String, String>,
 }
 
-/// One client message after exactly one serde parse.
-///
-/// The JNI caller tags the envelope kind, so a request becomes a typed [`ClientRequest`] without
-/// the JSON-RPC envelope ever being materialized as an intermediate `serde_json::Value`.
+/// One client message after exactly one serde parse; no intermediate `serde_json::Value`.
 enum Command {
     Request(Box<ClientRequest>),
     Notification(Box<ClientNotification>),
@@ -68,8 +65,7 @@ struct ClientServerError {
     error: JSONRPCErrorError,
 }
 
-/// Outgoing `{"id": …, "result": …}`. `result` is borrowed so the tree the app-server produced is
-/// streamed into the string rather than copied into a new one.
+/// Outgoing `{"id": …, "result": …}`; `result` is borrowed to avoid copying the app-server's tree.
 #[derive(Serialize)]
 struct ServerResponseEnvelope<'a> {
     id: &'a RequestId,
@@ -116,7 +112,6 @@ pub struct Bridge {
 }
 
 impl Bridge {
-    /// Initializes Codex, including its initialize/initialized handshake.
     pub fn start(config: &[u8]) -> Result<Self> {
         let _guard = START_LOCK
             .lock()
@@ -204,21 +199,18 @@ impl Bridge {
         })
     }
 
-    /// Sends one JSON-RPC request; serde deserializes it straight into [`ClientRequest`].
     pub fn send_request(&self, message: &[u8]) -> Result<()> {
         check_message_size(message)?;
         let request = serde_json::from_slice(message).context("invalid JSON-RPC request")?;
         self.enqueue(Command::Request(Box::new(request)))
     }
 
-    /// Sends one JSON-RPC notification; serde deserializes it straight into [`ClientNotification`].
     pub fn send_notification(&self, message: &[u8]) -> Result<()> {
         check_message_size(message)?;
         let notification = serde_json::from_slice(message).context("invalid JSON-RPC notification")?;
         self.enqueue(Command::Notification(Box::new(notification)))
     }
 
-    /// Sends the client's answer to an app-server request.
     pub fn send_response(&self, message: &[u8]) -> Result<()> {
         check_message_size(message)?;
         let ClientServerResponse { id, result } =
@@ -226,7 +218,6 @@ impl Bridge {
         self.enqueue(Command::ServerResponse { id, result })
     }
 
-    /// Sends the client's rejection of an app-server request.
     pub fn send_error(&self, message: &[u8]) -> Result<()> {
         check_message_size(message)?;
         let ClientServerError { id, error } =
@@ -322,8 +313,8 @@ async fn start_client(settings: StartConfig) -> Result<InProcessClientHandle> {
         codex_self_exe: Some(settings.codex_self_exe.clone()),
         ..Default::default()
     };
-    // The Android application UID is the execution boundary. Linux namespace
-    // sandbox helpers cannot run under Android's application SELinux domain.
+    // The app UID is the execution boundary: Linux namespace sandbox helpers cannot run under
+    // Android's application SELinux domain.
     let cli_overrides = vec![
         (
             "shell_environment_policy.set".into(),

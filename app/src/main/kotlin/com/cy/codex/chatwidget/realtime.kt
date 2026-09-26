@@ -65,42 +65,9 @@ import top.yukonga.miuix.kmp.squircle.squircleSurface
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
- * The realtime voice session of one thread.
- *
- * Mirrors `codex-rs/tui/src/chatwidget/realtime.rs` and its `realtime/recording_controls.rs`. The
- * TUI owns the session inside the chat widget — captions, voice, microphone state and speaker
- * activity all live in widget state, because a terminal has exactly one surface. A phone has no
- * terminal to share, so the same session gets a pushed page; what that page can *be* is narrower
- * than the TUI's, and every card below says which half is missing rather than implying it works.
- *
- * Four protocol facts decide the page's shape, and all four are stated on the card they belong to:
- *
- * - **No peer connection.** `thread/realtime/start` takes a transport, and the WebRTC one wants an
- *   SDP offer produced by an `RTCPeerConnection` that already has audio and the realtime events
- *   data channel configured. Nothing in this client creates one, so [AppEvent.StartRealtime] is
- *   emitted with a null offer and the server applies its own transport instead of negotiating
- *   against one.
- * - **No transcript in the page.** The caption notifications — `RealtimeTranscriptDelta`,
- *   `RealtimeTranscriptDone`, `RealtimeItemTranscriptDelta`, `RealtimeOutputAudioDelta` and
- *   `RealtimeError` — arrive on the client's event flow, and a transcript is *app* state, not page
- *   state: it has to survive the user leaving this page while the session keeps talking. That is
- *   why a transcript belongs to the app-level reducer in `CodexApp`, which is also where the shell
- *   hands this page its catalog from. The page is given a [CatalogState] and a callback and never
- *   the client, so it cannot collect the flow itself; its own list is a fold target that this build
- *   fills from nothing, and the captions card renders an empty state pointing at the transcript
- *   instead of captions nobody sent.
- * - **No voice control.** `thread/realtime/listVoices` enumerates voices and there is no call that
- *   sets one; a voice is part of starting a session, which [AppEvent.StartRealtime] does not carry.
- *   The picker is therefore display-only, and its note says so.
- * - **No recorder.** [ThreadRealtimeAudioChunk] is how captured PCM would travel, but no
- *   `AudioRecord` is bound in this build: no frame is read, no chunk carrying audio is built and
- *   [AppEvent.AppendRealtimeAudio] is never emitted from this file.
- *
- * @param threadId the thread the session belongs to; every request on this page is addressed by it.
- * @param catalog read for the voice list — the one part of this page the server can answer.
- * @param onEvent receives the start/stop, text, speech and voice-reload events; see each card.
- * @param onBack pops the page. The session, if one is running, is not stopped by it: the page is a
- *   view of a session that belongs to the thread, and leaving a view must not end a call.
+ * The realtime voice session of one thread, mirroring codex-rs/tui/src/chatwidget/realtime.rs.
+ * Every card states which half of the TUI surface is missing: no peer connection, no transcript,
+ * no voice control, no recorder.
  */
 @Composable
 fun RealtimeScreen(
@@ -111,23 +78,17 @@ fun RealtimeScreen(
     modifier: Modifier = Modifier,
 ) {
     val colors = MiuixTheme.colorScheme
-    // The page's own memory of which session it asked for. It is not evidence that one is running —
-    // only `thread/realtime/started`, `thread/realtime/closed` and `thread/realtime/error` say
-    // that, and this page is not handed them, so the session card states it under its own button.
+    // The page's memory of what it asked for, not evidence a session is running — started/closed/
+    // error never reach this page.
     var requested by remember(threadId) { mutableStateOf(false) }
-    // The voice picker's selection. Local by design: the protocol has no call that sets a voice, so
-    // a tap moves this and sends nothing.
+    // Local by design: the protocol has no call that sets a voice.
     var voice by remember(threadId) { mutableStateOf<String?>(null) }
-    // The microphone card's capture flag, held here so it resets with the thread. Nothing behind it
-    // reads audio; the card's note changes while it is on to say exactly that.
+    // Capture flag, held here so it resets with the thread; no audio is read behind it.
     var capturing by remember(threadId) { mutableStateOf(false) }
-    // The fold target for live captions, fed by nothing in this build: the deltas arrive on the
-    // client's event flow, which the page is not given. See the captions card for where they live.
+    // Fold target for captions; deltas arrive on the client's event flow, which the page is not given.
     val transcript = remember(threadId) { mutableStateListOf<String>() }
 
-    // `CatalogState.realtimeVoices` is only ever filled by the answer to
-    // `thread/realtime/listVoices`, so the page asks once per thread rather than showing whatever
-    // the previous visit left in the catalog.
+    // realtimeVoices is only filled by thread/realtime/listVoices, so ask once per thread.
     LaunchedEffect(threadId) { onEvent(AppEvent.ReloadRealtimeVoices) }
 
     Column(modifier = modifier.fillMaxSize().background(colors.background)) {
@@ -168,8 +129,7 @@ fun RealtimeScreen(
                     } else {
                         onEvent(AppEvent.StopRealtime(threadId))
                     }
-                    // Moved on the tap, not on an answer: the answer is a notification this page
-                    // does not receive, and a button that waited for one would never move again.
+                    // Moved on the tap, not on the answer: the page does not receive the notification.
                     requested = start
                 },
             )
@@ -187,22 +147,9 @@ fun RealtimeScreen(
 }
 
 /**
- * Starting and stopping the session, and the transport fact the button cannot hide.
- *
- * `thread/realtime/start` carries a transport, and a client that can do WebRTC sends
- * `ThreadRealtimeStartTransport.Webrtc` holding an SDP offer built from a peer connection with
- * audio and the realtime events data channel already attached. This client builds no peer
- * connection, so the offer is `null` and the server falls back to its own transport. A button
- * labelled "start session" that did not say which of the two it is would claim the stronger one.
- *
- * [requested] is the page's own record of the tap, never session state: `thread/realtime/started`
- * confirms a session came up, `thread/realtime/closed` ends it and `thread/realtime/error` refuses
- * it, and none of the three is folded into this page. So the card shows what it knows — that it
- * asked — and says underneath that the server may disagree.
- *
- * @param threadId the thread the request is addressed by.
- * @param requested whether this page has already asked for a session.
- * @param onToggle asked for `true` to start and `false` to stop.
+ * Start / stop the session. No peer connection is built here, so the offer is `null` and the
+ * server falls back to its own transport; [requested] is the page's record of the tap, never
+ * session state.
  */
 @Composable
 private fun RealtimeSessionCard(
@@ -298,21 +245,9 @@ private fun RealtimeSessionCard(
 }
 
 /**
- * Where the captions would be, and why they are not here.
- *
- * The realtime transcript is a stream, not a snapshot: `thread/realtime/transcript/delta` and
- * `thread/realtime/item/transcript/delta` append to it while the session talks, and the page can be
- * popped at any point in that stream. That is what puts the transcript in the app-level reducer
- * rather than in a page's `remember` — a list held here would die on back and take the captions
- * with it — and it is the same reasoning that makes the TUI keep them in the chat widget instead of
- * a pane.
- *
- * This page is not handed the client, so it cannot collect that flow, and `CodexApp` currently
- * folds none of the five notifications into the catalog it does hand over. [lines] is the fold
- * target that will render them the day it does; today nothing appends to it, and the card shows the
- * empty state that sends the user to the transcript rather than a blank list that reads as a bug.
- *
- * @param lines caption lines, in arrival order; empty in this build.
+ * Where captions would be: the transcript is a stream, so it lives in the app-level reducer —
+ * a list here would die on back — and [lines] is a fold target nothing appends to yet, since the
+ * page is not handed the client.
  */
 @Composable
 private fun RealtimeCaptionsCard(lines: List<String>) {
@@ -401,24 +336,7 @@ private fun RealtimeCaptionsCard(lines: List<String>) {
     }
 }
 
-/**
- * The voices the server offers, with a selection that goes nowhere.
- *
- * `thread/realtime/listVoices` enumerates the voices; there is no `setVoice` to go with it. A voice
- * is chosen as part of *starting* a session, and [AppEvent.StartRealtime] carries the thread and an
- * SDP offer and nothing else — so a tap on a row moves the tick on this page and is not sent. The
- * card is still worth its space: it is the only place the user can see what the server supports,
- * and the tick is the selection the start request would carry once it can. A card that let the tap
- * look like a saved setting would be worse than one that says it is local.
- *
- * The reload stays inside the card alongside the voice choices, so it reads as an action that
- * relists something.
- *
- * @param voices [CatalogState.realtimeVoices]; empty until `thread/realtime/listVoices` answers.
- * @param selected the voice whose row carries the tick, or `null` before any tap.
- * @param onSelect moves the tick. Display-only; nothing is sent.
- * @param onEvent receives [AppEvent.ReloadRealtimeVoices] from the reload row.
- */
+/** Server voices with a local-only selection: no setVoice exists, so a tap moves the tick, nothing is sent. */
 @Composable
 private fun RealtimeVoicesCard(
     voices: List<String>,
@@ -522,17 +440,7 @@ private fun RealtimeVoicesCard(
     }
 }
 
-/**
- * One selectable voice.
- *
- * A filled row with a tick, matching every other single-choice list in the app: a radio button
- * would promise a commit that this page cannot make, and the tick reads as "this is the one you
- * picked" without implying it was saved anywhere.
- *
- * @param name the voice id as the server spells it; never translated.
- * @param selected whether this row is the page's current pick.
- * @param onClick moves the pick to this row.
- */
+/** A tick, not a radio: a radio would promise a commit the page cannot make. */
 @Composable
 private fun VoiceRow(name: String, selected: Boolean, onClick: () -> Unit) {
     val colors = MiuixTheme.colorScheme
@@ -569,21 +477,8 @@ private fun VoiceRow(name: String, selected: Boolean, onClick: () -> Unit) {
 }
 
 /**
- * The two ways to put text into a live session, which are not interchangeable.
- *
- * `thread/realtime/appendText` adds a conversation item to the session — with the protocol's
- * default role that is the *user*, typing what they would otherwise have said — so it is input the
- * model answers. `thread/realtime/appendSpeech` hands the server text the *client* produced and
- * asks for it to be voiced; it is output the server reads aloud, the model does not answer it, and
- * it is not transcribed back. One box and one button for both would hide the only decision this
- * card exists to make, so each has its own field, its own action and a note saying which side of
- * the conversation it lands on.
- *
- * Both [AppEvent]s carry one string, so an `appendText` item always takes the protocol's default
- * role: this card cannot send a developer or assistant item even though the wire allows one.
- *
- * @param threadId the thread every append is addressed by.
- * @param onEvent receives [AppEvent.AppendRealtimeText] or [AppEvent.AppendRealtimeSpeech].
+ * appendText adds a user conversation item the model answers; appendSpeech voices client text the
+ * model does not answer. Both events carry one string, so appendText always takes the default role.
  */
 @Composable
 private fun RealtimeTextCard(threadId: String, onEvent: (AppEvent) -> Unit) {
@@ -728,22 +623,8 @@ private fun RealtimeTextCard(threadId: String, onEvent: (AppEvent) -> Unit) {
 }
 
 /**
- * The microphone, and the recorder that is not behind it.
- *
- * `thread/realtime/appendAudio` is how audio reaches a live session: one [ThreadRealtimeAudioChunk]
- * per push, carrying base64 PCM in `data` plus the channel count and sample rate it was captured
- * at, and optionally the id of the transcript item it belongs to. The card shows that format and a
- * capture control, and it has to be read with this sentence: **no recorder is bound in this
- * build**. Nothing constructs an `AudioRecord`, so no frame is ever read, no chunk is ever built,
- * and [AppEvent.AppendRealtimeAudio] — which exists and works — is never emitted from this page.
- *
- * The start/stop button therefore toggles a page-local flag and nothing else. That is why the note
- * under it changes while the flag is on, in the warning colour: a capture indicator that stayed
- * quiet would be the one lie on the page, and the two sentences the user sees instead are exactly
- * what is happening.
- *
- * @param capturing the page's own capture flag; no audio is captured while it is true.
- * @param onToggle asked for the new value of that flag.
+ * No recorder is bound: no AudioRecord, no chunk, and [AppEvent.AppendRealtimeAudio] is never
+ * emitted; the button toggles a page-local flag.
  */
 @Composable
 private fun RealtimeMicrophoneCard(capturing: Boolean, onToggle: (Boolean) -> Unit) {
@@ -812,9 +693,7 @@ private fun RealtimeMicrophoneCard(capturing: Boolean, onToggle: (Boolean) -> Un
             insideMargin = PaddingValues(horizontal = UiConsts.Space4, vertical = UiConsts.Space7),
         )
         HorizontalDivider(modifier = Modifier.padding(vertical = UiConsts.Space1))
-        // A dash is the exact answer for an empty capture: the
-        // chunk's optional item id is unset because this client never builds the chunk it would go
-        // on. The row is here so the format the note describes is complete.
+        // Dash: the chunk's item id is unset because this client never builds a chunk.
         BasicComponent(
             title = stringResource(R.string.realtime_mic_item_id),
             endActions = {
@@ -868,20 +747,7 @@ private fun RealtimeMicrophoneCard(capturing: Boolean, onToggle: (Boolean) -> Un
     }
 }
 
-/**
- * The explanatory paragraph shared by the cards on this page.
- *
- * One composable so the notes on this page agree on leading, colour and padding: a page that
- * explains several different protocol limits in several hand-styled paragraphs reads as if the
- * explanations were decoration, and the reader stops believing them.
- *
- * [tint] is for the one note that must not be skimmed as body text — the microphone card's "the
- * flag is on and nothing is being captured" — and for nothing else.
- *
- * @param text the sentence; always a string resource, because each one is a claim about the
- *   protocol.
- * @param tint colour override, or `null` for the standard summary colour.
- */
+/** Shared note paragraph; [tint] marks the one note not to be skimmed as body text. */
 @Composable
 private fun CardNote(text: String, tint: Color? = null) {
     Text(
@@ -896,12 +762,8 @@ private fun CardNote(text: String, tint: Color? = null) {
 }
 
 /**
- * The capture format a chunk would carry, read off the protocol type instead of copied.
- *
- * A literal 24000 written here would be a second source of truth for
- * [ThreadRealtimeAudioChunk.sampleRate] and would drift the day the server's default changes; the
- * readout exists to be trusted, so it reads the type. Kotlin has no way to read a data class's
- * defaults without an instance, so this is one — empty, holding no audio, never sent, and never
- * joined by a second chunk anywhere in this file. Only the microphone card's readout touches it.
+ * Capture format read off the protocol type — a literal would be a second source of truth for
+ * [ThreadRealtimeAudioChunk.sampleRate]. This empty chunk is the instance Kotlin needs to read
+ * the data class defaults.
  */
 private val CaptureFormat = ThreadRealtimeAudioChunk(data = "")

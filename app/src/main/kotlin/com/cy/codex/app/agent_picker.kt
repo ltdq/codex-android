@@ -52,23 +52,15 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.window.WindowBottomSheet
 
 /**
- * The agent roster and the agent picker.
- *
- * Subagents have no transcript of their own: they only appear as `CollabAgentToolCallItem` /
- * `SubAgentActivityItem` entries in the parent thread's item stream, so the roster is *derived* by
- * [deriveAgentRoster] instead of being read from a per-agent fixture.
+ * The agent roster and the agent picker; the roster is derived from the parent transcript,
+ * as subagents have no thread of their own.
  */
 
-/** Whether an entry is the thread the user is looking at, or an agent it fanned work out to. */
 enum class AgentRole {
     Main,
     Sub;
 
-    /**
-     * Short tag that marks which side of the collab relation the entry sits on.
-     *
-     * Composable because it is text: the tag is read from the roster's rows, which are composables.
-     */
+    /** Collab-side tag; composable because the roster rows that read it are composables. */
     val tag: String
         @Composable
         @ReadOnlyComposable
@@ -79,7 +71,6 @@ enum class AgentRole {
             }
 }
 
-/** One agent observed in the thread's item stream. */
 data class AgentRosterEntry(
     val threadId: String,
     val name: String,
@@ -91,34 +82,10 @@ data class AgentRosterEntry(
     val effort: ReasoningEffort?,
     val tokens: Int = 0,
     val itemId: String?,
-    /**
-     * Server-reported thread status from `thread/list` / `thread/status/changed`.
-     *
-     * Separate from [status]: that one is the collab tool's view of the agent's run, this one is
-     * the thread's own liveness. A subagent that finished its collab run can still have a live
-     * thread, and the dashboard prefers the thread's answer when the two disagree.
-     */
     val threadStatus: ThreadStatus? = null,
 )
 
-/**
- * Fold the transcript into the roster: the main agent plus every agent the collab items mention.
- *
- * The main agent is always first and always present. Subagents follow in first-appearance order,
- * one entry per thread id seen in [CollabAgentToolCallItem.receiverThreadIds] or
- * [SubAgentActivityItem.agentThreadId]; a thread id equal to [mainThreadId] is never added twice.
- * Per agent, later items win: `status` from the newest collab `agentsStates` entry, `activity` from
- * the newest activity item, and `task` / `model` / `effort` from the newest collab item that
- * carries a non-null value for them. The main entry stays a placeholder: the item stream only
- * describes subagents, and session state owns the main thread's own status.
- *
- * Pure and total: any list, including malformed or partial items, yields a well-formed roster.
- *
- * The names it invents are passed in rather than looked up: the fold is a pure function with no
- * composable context, so the two callers resolve [mainLabel] and [subAgentNameFormat] from
- * resources and hand them over. [subAgentNameFormat] is a `%s`-style template, which keeps the
- * naming rule ("Subagent · <leaf>") in one place instead of in a second literal.
- */
+/** Roster fold: main first, subagents in first-appearance order, later items winning per field. */
 fun deriveAgentRoster(
     items: List<ThreadItem>,
     mainThreadId: String,
@@ -191,25 +158,16 @@ fun deriveAgentRoster(
     return listOf(main) + subagents.values
 }
 
-/** `Subagent · <leaf>` for a known agent path, `null` when the path carries no leaf segment. */
 private fun subAgentName(agentPath: String, format: String): String? {
     val leaf = agentPath.trim().trimEnd('/').substringAfterLast('/').trim()
     return leaf.takeIf { it.isNotEmpty() }?.let { format.format(it) }
 }
 
-/** Fallback label for an agent the activity stream has not named yet. */
 private fun defaultSubAgentName(threadId: String, format: String): String =
     threadId.takeLast(4).takeIf { it.isNotEmpty() }?.let { format.format(it) }
         ?: format.substringBefore('%').trim()
 
-/**
- * Modal agent picker: the roster with a filter box on top, mirroring `bottom_pane/agent_picker.rs`.
- * Selecting a row reports the thread id; the caller decides which transcript to render.
- *
- * The picker and the dashboard ([AgentsOverview]) are the same sheet over the same roster. They
- * differ in what they are for — this one is a filter box and a list to choose from, that one is a
- * usage report — and in nothing else: both mount WindowBottomSheet and both draw [AgentRosterRow].
- */
+/** Modal picker with filter box, mirroring `codex-rs/.../bottom_pane/agent_picker.rs`. */
 @Composable
 fun AgentPickerSheet(
     show: Boolean,
@@ -228,8 +186,7 @@ fun AgentPickerSheet(
         }
     WindowBottomSheet(
         show = show,
-        // Closing the picker is a decision, not an exit: the chosen thread is opening behind it, so
-        // waiting for the sheet's own exit would hold the transcript back for a third of a second.
+        // Both called: the chosen thread opens behind the sheet, so don't wait for its exit.
         onDismissRequest = {
             onDismiss()
             onDismissFinished()
@@ -330,15 +287,7 @@ internal fun AgentRosterEntry.matches(needle: String): Boolean =
         task?.contains(needle, true) == true ||
         threadId.contains(needle, true)
 
-/**
- * The agent roster folded out of the transcript, at most once per [SessionState.itemsRevision].
- *
- * The point of the dedicated type is what is *not* observed: the fold reads the revision and
- * nothing else, so an item write only schedules a recalculation, and the screen that reads the
- * roster is invalidated only when the folded value actually differs. During a turn the transcript
- * is written on every delta and the roster normally does not change at all, so none of those writes
- * recompose the caller.
- */
+/** Folded roster, recalculated at most once per [SessionState.itemsRevision]. */
 @Composable
 internal fun rememberAgentRoster(
     session: SessionState,
@@ -363,8 +312,7 @@ private class AgentRosterMemo(
         val current = session.itemsRevision
         if (current != revision) {
             revision = current
-            // The list itself is read without a read observer: the revision above is the memo's
-            // only dependency, and the fold runs once per revision rather than once per reader.
+            // Read without observation: the revision is the only dependency, so the fold runs once per revision.
             cached = Snapshot.withoutReadObservation {
                 deriveAgentRoster(
                     session.items,

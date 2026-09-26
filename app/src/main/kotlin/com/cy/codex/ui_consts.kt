@@ -30,15 +30,7 @@ import com.cy.codex.protocol.protocol.v2.TurnStatus
 import com.cy.codex.protocol.protocol.v2.UserVerificationUnavailableReason
 import com.cy.codex.protocol.protocol.v2.WriteStatus
 
-/**
- * Display text for the protocol enums, resolved against the active locale.
- *
- * The protocol layer only carries `wire` values; every human-readable label and description lives
- * here as a `@ReadOnlyComposable` extension so call sites read like a property access
- * (`status.label()`) without the protocol package depending on Android resources.
- */
-
-// ---- shared.kt -------------------------------------------------------------------------------
+/** The protocol layer carries only `wire` values; labels resolve here against the locale. */
 
 @Composable
 @ReadOnlyComposable
@@ -70,8 +62,6 @@ fun ReasoningEffort.label(): String = stringResource(
         ReasoningEffort.Ultra -> R.string.reasoning_effort_ultra
     },
 )
-
-// ---- thread_data.kt --------------------------------------------------------------------------
 
 @Composable
 @ReadOnlyComposable
@@ -120,8 +110,6 @@ fun SkillScope.label(): String = stringResource(
     },
 )
 
-// ---- server_messages.kt ----------------------------------------------------------------------
-
 @Composable
 @ReadOnlyComposable
 fun CommandExecutionApprovalDecision.label(): String = stringResource(
@@ -165,8 +153,6 @@ fun PermissionsApprovalDecision.label(): String = stringResource(
     },
 )
 
-// ---- notifications.kt ------------------------------------------------------------------------
-
 @Composable
 @ReadOnlyComposable
 fun GoalStatus.label(): String = stringResource(
@@ -179,8 +165,6 @@ fun GoalStatus.label(): String = stringResource(
         GoalStatus.Complete -> R.string.goal_status_complete
     },
 )
-
-// ---- config_types.kt -------------------------------------------------------------------------
 
 @Composable
 @ReadOnlyComposable
@@ -262,8 +246,6 @@ fun Personality.label(): String = stringResource(
     },
 )
 
-// ---- app_server_client.kt --------------------------------------------------------------------
-
 @Composable
 @ReadOnlyComposable
 fun ElicitationAction.label(): String = stringResource(
@@ -273,8 +255,6 @@ fun ElicitationAction.label(): String = stringResource(
         ElicitationAction.Cancel -> R.string.elicitation_action_cancel
     },
 )
-
-// ---- config.kt -------------------------------------------------------------------------------
 
 @Composable
 @ReadOnlyComposable
@@ -310,8 +290,6 @@ fun WriteStatus.label(): String = stringResource(
         WriteStatus.OkOverridden -> R.string.write_status_overridden
     },
 )
-
-// ---- misc.kt ---------------------------------------------------------------------------------
 
 @Composable
 @ReadOnlyComposable

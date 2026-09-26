@@ -13,29 +13,22 @@ import androidx.compose.ui.unit.sp
 /**
  * Motion constants.
  *
- * Mirrors `codex-rs/tui/src/motion.rs` and `system_motion.rs`: the TUI keeps every animated
- * transition in one place so panels, drawers and streaming text accelerate the same way. The
- * Android surfaces read the same set instead of each picking its own curve.
- *
- * The durations are a short ladder — 120 / 160 / 200 / 240 / 300 — and every animated property in
- * the app has to pick a rung. A one-off `tween(180)` next to a `tween(160)` is how two panels that
- * are supposed to move together end up 20ms apart, which reads as one of them lagging.
+ * Mirrors `codex-rs/tui/src/motion.rs`: one place for every animated transition so panels,
+ * drawers and streaming text accelerate the same way.
  */
 object Motion {
     /**
      * Client "reduce motion" preference, set from [com.cy.codex.theme.Appearance].
      *
      * A global rather than a parameter because every call site reads a spec from this object during
-     * composition: when the preference flips, the theme recomposes the tree and each new spec is
-     * built without motion. `snap` is a completed animation, not a short one, so nothing lags by a
-     * frame when the toggle is on.
+     * composition; `snap` is a completed animation, so nothing lags by a frame when the toggle is on.
      */
     var reduced: Boolean = false
 
     private fun <T> motion(spec: androidx.compose.animation.core.FiniteAnimationSpec<T>) =
         if (reduced) androidx.compose.animation.core.snap() else spec
 
-    /** Panels and drawers: critically damped, medium-low stiffness, no overshoot. */
+    /** Panels and drawers: critically damped, no overshoot. */
     val Panel: androidx.compose.animation.core.FiniteAnimationSpec<Float>
         get() = motion(spring(dampingRatio = 1f, stiffness = Spring.StiffnessMediumLow))
 
@@ -93,11 +86,11 @@ object Motion {
     const val DisclosureMs = 200
 
     /**
-     * Anything entering the screen that is not a sheet: a card, a chip row, a popup.
+     * Anything entering the screen that is not a sheet.
      *
-     * One value for all of them. The panel, the diff card and the queued banner used to enter at
-     * 160, 170 and 180ms — three durations nobody can tell apart on purpose, which means they were
-     * three accidents.
+     * Every animated property in the app picks a rung of the 120/160/200/240/300 ladder rather than
+     * its own duration — a one-off `tween(180)` next to a `tween(160)` is how two panels that are
+     * supposed to move together end up 20ms apart.
      */
     const val EnterMs = 160
 
@@ -165,9 +158,8 @@ object UiConsts {
     /**
      * How far a pushed page stops short of the top edge.
      *
-     * Two reasons it is not zero: a page that reaches the top edge stops reading as a page over the
-     * transcript and starts reading as a screen swap, and the top band is where the system's own
-     * edge gestures live — a page flush against it fights the notification shade for the same swipe.
+     * A page that reaches the top edge stops reading as a page over the transcript and starts
+     * reading as a screen swap; the top band is also where the system's edge gestures live.
      */
     val SheetTopGap = 58.dp
 
@@ -218,11 +210,9 @@ object UiConsts {
      * Side margin of every surface that slides up over the content: a modal sheet and a pushed page.
      *
      * A sheet is the only thing in the app that covers the screen edge to edge with content of its
-     * own, so its gutter is the one the eye reads as a frame rather than as padding — and a frame
-     * that is a fixed number of dp stops working across screen sizes. Held at 20dp it was a fifth of
-     * a phone's width on a tablet and nothing at all on the phone; the panel simply looked wide
-     * rather than inset. So the margin is a share of the window, clamped so it stays sane at both
-     * ends: about 43dp on a 776dp phone and 64dp on a 1152dp tablet.
+     * own, so its gutter is the one the eye reads as a frame — and a frame that is a fixed number of
+     * dp stops working across screen sizes. So the margin is a share of the window, clamped so it
+     * stays sane at both ends: about 43dp on a 776dp phone and 64dp on a 1152dp tablet.
      */
     const val SheetSideMarginFraction = 0.055f
     val SheetSideMarginMin = 40.dp
@@ -232,11 +222,9 @@ object UiConsts {
      * Ceiling on the width of a surface that slides up over the content — a pushed page and a modal
      * sheet alike.
      *
-     * Deliberately far above any phone and above the widest tablet column this app is read at: past
+     * Its job is only to stop a 2000dp desktop window stretching a paragraph across the room; past
      * the point where [SheetSideMarginFraction] has already produced a generous gutter, a second
-     * ceiling would take over the framing on a large window and make the margin a function of the
-     * screen rather than a decision. Its job is only to stop a 2000dp desktop window stretching a
-     * paragraph across the room.
+     * ceiling would make the margin a function of the screen rather than a decision.
      */
     val SheetMaxWidth = 1600.dp
 
@@ -254,9 +242,9 @@ object UiConsts {
     /**
      * Preferred width of the status card body.
      *
-     * Deliberately narrow. The card is a status *glance*, not a dashboard: at 540dp it covered half
-     * the transcript, and the two things it exists to answer — is the turn running, and how full is
-     * the context — are readable at this width without the transcript disappearing behind it.
+     * Deliberately narrow: the card is a status *glance*, not a dashboard, and the two things it
+     * exists to answer — is the turn running, and how full is the context — are readable at this
+     * width without the transcript disappearing behind it.
      */
     val StatusPanelWidth = 372.dp
 
@@ -445,10 +433,9 @@ object UiConsts {
 /**
  * Type ramp.
  *
- * The pages used to spell font sizes and line heights out at every call site, which is how the same
- * row title ended up 13.5sp in one file and 13sp in another. Naming the steps by the job they do
- * keeps them together; the line height is always the second half of a step, except where a page
- * sets no leading at all and lets [UiType.LineRatio] derive it.
+ * Naming the steps by the job they do keeps font sizes and line heights together; the line height
+ * is always the second half of a step, except where a page sets no leading at all and lets
+ * [UiType.LineRatio] derive it.
  *
  * Nine sizes, 10sp to 20sp: every text in the app is one of them. If a new piece of text seems to
  * need a tenth, it is almost always one of the existing nine being used at the wrong job.

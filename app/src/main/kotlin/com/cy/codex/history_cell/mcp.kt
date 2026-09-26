@@ -32,14 +32,8 @@ import top.yukonga.miuix.kmp.icon.extended.Notes
 import top.yukonga.miuix.kmp.icon.extended.Tune
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
-/**
- * Tool calls that are not shell commands: MCP servers, dynamically registered tools and the raw
- * output of a function call.
- *
- * Mirrors `codex-rs/tui/src/history_cell/mcp.rs` (`Called <server>.<tool>` plus an indented result)
- * and the plain output cells the app-server renders for everything else.
- */
-
+/** Tool calls that are not shell commands: MCP servers, dynamic tools, raw function output;
+ * mirrors `codex-rs/tui/src/history_cell/mcp.rs`. */
 @Composable
 fun McpToolCallCell(item: McpToolCallItem, modifier: Modifier = Modifier) {
     val colors = MiuixTheme.colorScheme
@@ -107,12 +101,6 @@ fun DynamicToolCallCell(item: DynamicToolCallItem, modifier: Modifier = Modifier
     }
 }
 
-/**
- * Renders the projected result blocks in order.
- *
- * Text and summaries are shown as prose rather than a code block — that is what
- * `history_cell/mcp_result.rs` keeps them for — while unrecognised blocks keep their JSON shape.
- */
 @Composable
 internal fun ToolResultBlocks(blocks: List<ToolContentBlock>, spacing: Dp = 8.dp) {
     val colors = MiuixTheme.colorScheme
@@ -157,7 +145,6 @@ fun FunctionCallOutputCell(item: FunctionCallOutputItem, modifier: Modifier = Mo
     }
 }
 
-/** Raw JSON arguments, shown exactly as the server sent them. */
 @Composable
 private fun Arguments(arguments: String, blockSpacing: Dp = 8.dp) {
     val trimmed = arguments.trim()

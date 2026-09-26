@@ -4,10 +4,6 @@ import org.junit.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
-/**
- * Link destinations keep their meaning: a web URL stays a URL, a local path keeps its optional
- * `:line:col` suffix and is displayed relative to the session's working directory.
- */
 class LinkTargetTest {
 
     @Test

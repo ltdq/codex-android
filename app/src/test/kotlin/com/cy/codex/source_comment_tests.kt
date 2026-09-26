@@ -4,19 +4,6 @@ import java.io.File
 import org.junit.Test
 import kotlin.test.assertTrue
 
-/**
- * Guards against the one Kotlin mistake that fails *silently*.
- *
- * Kotlin nests block comments. A KDoc line like `The last config/…/write result` — written with the
- * two-character comment opener instead of the ellipsis — therefore opens a second comment level that
- * nothing ever closes, and the rest of the file, including every declaration in it, is swallowed.
- * The compiler then blames the *call sites*: one stray opener in a protocol file produced about
- * fifty "Unresolved reference" errors in a different file, and the real cause was nowhere in the
- * error list.
- *
- * Prose keeps reaching for that opener because it is how the protocol names its families
- * (`account`, `process`, `thread/queue`). This test is cheaper than debugging it again.
- */
 class SourceCommentTest {
 
     @Test
@@ -39,15 +26,7 @@ class SourceCommentTest {
         )
     }
 
-    /**
-     * Return one message per nested comment opener in [file].
-     *
-     * The scan has two modes, and conflating them is the bug this whole test exists to catch: inside
-     * a block comment nothing but the two delimiters and a newline is meaningful, while outside one
-     * the string, character and line-comment forms have to be skipped or an apostrophe in prose
-     * ("the item's own") is read as the start of a character literal and swallows the closing
-     * delimiter.
-     */
+    /** One message per nested opener in [file]. */
     private fun scan(file: File): List<String> {
         val text = file.readText()
         val found = mutableListOf<String>()
@@ -58,7 +37,6 @@ class SourceCommentTest {
         while (i < text.length) {
             val c = text[i]
 
-            // ---- inside a block comment: only the delimiters and newlines matter ----
             if (depth > 0) {
                 when {
                     text.startsWith("/*", i) -> {
@@ -82,7 +60,6 @@ class SourceCommentTest {
                 continue
             }
 
-            // ---- outside a comment ----
             when {
                 c == '\n' -> {
                     line++
@@ -109,8 +86,7 @@ class SourceCommentTest {
                     i++
                 }
 
-                // A character literal is at most a few characters; anything further away is an
-                // apostrophe in prose that a caller has already mishandled.
+                // A character literal is short; anything further is an apostrophe in prose.
                 c == '\'' -> {
                     val close = text.indexOf('\'', i + 1)
                     if (close in (i + 1)..(i + 3) && !text.substring(i + 1, close).contains('\n')) {
@@ -133,7 +109,6 @@ class SourceCommentTest {
             }
         }
 
-        // An unbalanced file is the same bug seen from the other end.
         if (depth != 0) found += "${file.path} ends with $depth block comment(s) still open"
         return found
     }

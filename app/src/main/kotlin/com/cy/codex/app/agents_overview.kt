@@ -45,15 +45,8 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.window.WindowBottomSheet
 
 /**
- * Full-screen agent dashboard, plus the roster presentation helpers the picker shares with it.
- *
- * Mirrors `app/agents_overview.rs`: one card per entry of the derived roster, so the screen shows
- * exactly the agents the thread's collab items mention — never a fixture list. Tapping a card
- * selects that agent and closes the dashboard.
- *
- * Token bars are relative: the widest bar is the busiest agent, and the main agent's own usage is
- * the thread total the caller passes in. Per-agent usage is unknown to the item stream, so an agent
- * without usage renders an empty track instead of an invented number.
+ * Agent dashboard, one card per roster entry, mirroring
+ * `codex-rs/.../app/agents_overview.rs`; token bars are relative to the busiest agent.
  */
 @Composable
 fun AgentsOverview(
@@ -138,7 +131,6 @@ fun AgentsOverview(
     }
 }
 
-/** Label for a server agent state, in the wording the TUI dashboard uses. */
 @Composable
 @ReadOnlyComposable
 internal fun AgentRunStatus.label(): String =
@@ -152,7 +144,6 @@ internal fun AgentRunStatus.label(): String =
         AgentRunStatus.NotFound -> stringResource(R.string.agents_overview_status_not_found)
     }
 
-/** Label for a subagent activity event. */
 @Composable
 @ReadOnlyComposable
 internal fun SubAgentActivityKind.label(): String =
@@ -166,12 +157,7 @@ internal fun SubAgentActivityKind.label(): String =
             stringResource(R.string.agents_overview_activity_completed)
     }
 
-/**
- * What the row should say. The collab `agentsStates` map is the server's own last word on an agent,
- * so it wins over the coarser activity event; activity only fills the gap before the first collab
- * update arrives. A thread status from `thread/list` is preferred over activity too: it is the
- * thread's own liveness, not a one-off progress event.
- */
+// Precedence: collab agentsStates, then thread/list liveness, then activity.
 @Composable
 @ReadOnlyComposable
 internal fun AgentRosterEntry.statusLabel(): String =
@@ -183,7 +169,6 @@ internal fun AgentRosterEntry.statusLabel(): String =
         else -> stringResource(R.string.agents_overview_status_idle)
     }
 
-/** Colour tone of an agent, used for its status dot and label. */
 internal fun AgentRosterEntry.tone(): ThreadStatusTone =
     when {
         activity == SubAgentActivityKind.Interrupted -> ThreadStatusTone.Failed
@@ -200,13 +185,7 @@ internal fun AgentRosterEntry.tone(): ThreadStatusTone =
         else -> ThreadStatusTone.Idle
     }
 
-/**
- * Fold server-side per-thread facts into one roster row.
- *
- * The transcript fold only sees collab items; `thread/list` (scoped by `ancestorThreadId`) and
- * `thread/tokenUsage/updated` are the only sources for an agent's liveness and lifetime usage, so
- * every overview surface applies them here rather than inventing numbers in the fold itself.
- */
+// Liveness and usage come from thread/list and thread/tokenUsage/updated, not the transcript.
 internal fun AgentRosterEntry.withThreadMetadata(
     thread: Thread?,
     usage: ThreadTokenUsage?,
@@ -216,13 +195,11 @@ internal fun AgentRosterEntry.withThreadMetadata(
         tokens = (usage?.total?.totalTokens ?: 0L).coerceIn(0L, Int.MAX_VALUE.toLong()).toInt(),
     )
 
-/** Small round agent/environment status dot shared by the overview and the picker. */
 @Composable
 internal fun StatusDot(tone: ThreadStatusTone, size: Dp = UiConsts.DotSize) {
     Box(modifier = Modifier.size(size).clip(CircleShape).background(statusDotColor(tone)))
 }
 
-/** "主" / "子" tag that marks which side of the collab relation an entry sits on. */
 @Composable
 internal fun RoleTag(role: AgentRole) {
     val colors = MiuixTheme.colorScheme

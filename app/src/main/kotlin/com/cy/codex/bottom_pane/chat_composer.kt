@@ -90,84 +90,58 @@ import top.yukonga.miuix.kmp.squircle.squircleSurface
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
- * The bottom composer.
- *
- * A direct port of the prompt bar this file replaced — same stacked layout, same spring corner,
- * same glass surface — plus the three things the port of `bottom_pane/chat_composer.rs` needs on
- * top: a running turn turns the trailing button into an interrupt, queued messages are announced
- * above the field, and a leading `/` opens the slash-command popup.
- *
- * Hardware keys are read here rather than at the chat root because the popups and the caret are
- * this widget's own state: the host only hears about [KeyAction.Submit], [KeyAction.InterruptTurn]
- * and the global chords, while Enter/Shift+Enter and the popup cursor are resolved against the live
- * draft.
+ * The bottom composer: a direct port of the prompt bar it replaced, plus interrupt, queued
+ * messages and the slash popup. Hardware keys are read here, not at the chat root, because the
+ * popups and the caret are this widget's own state.
  */
 private val ButtonSize = 42.dp
 
-/** Glyph of the leading button and of the idle send button. */
 private val IdleGlyphSize = 21.dp
 
-/** Glyph of the interrupt button and of the send button over a non-empty field. */
 private val ActiveGlyphSize = 20.dp
 
-/** Corner of the composer while the text sits inline, and once it has wrapped to a second row. */
 private val InlineCornerRadius = 29.dp
 private val StackedCornerRadius = 26.dp
 
-/** How long the composer takes to change corner as the text stacks or unstack. */
 private val CornerAnimationMs = Motion.ContentEnterMs
 
-/** How long the trailing button takes to change colour as the turn starts or the field fills. */
 private val TintAnimationMs = Motion.TintMs
 
-/** Fade of a popup sliding in above the field, and of the rows that appear beside it. */
 private val PopupFadeInMs = Motion.EnterMs
 private val PopupFadeOutMs = Motion.ExitMs
 private val RowFadeInMs = Motion.EnterMs
 
-/** Vertical room the composer keeps around its button row, and inside its text column. */
 private val ComposerPaddingHorizontal = 7.dp
 private val ComposerPaddingVertical = 8.dp
 private val FieldPaddingHorizontal = 7.dp
 
-/** Gap between the button row and a popup above it, and above the stacked button row. */
 private val PopupBottomGap = 6.dp
 private val StackedRowGap = 6.dp
 
-/** Room the queued-message line keeps inside the composer. */
 private val QueuedPaddingHorizontal = 12.dp
 private val QueuedPaddingBottom = 6.dp
 private val QueuedFontSize = UiType.Meta
 private val QueuedLineHeight = UiType.FootnoteLine
 
-/** Type of the prompt and of its hint. */
 private val PromptFontSize = UiType.Composer
 private val PromptLineHeight = UiType.ComposerLine
 
-/** Height of the input row: a button plus the two pixels that keep its ring inside the composer. */
+// A button plus the two pixels that keep its ring inside the composer.
 private val InputRowMinHeight = ButtonSize + 2.dp
 
-/**
- * Glass of the composer: its blur, and the elevation its shadow is cast from.
- *
- * Paired with `saturation = 1f` at the call site: the boost did nothing the tint was not already
- * doing, and it amplified whatever low-frequency colour the blur left behind.
- */
+/** Glass blur and shadow elevation; saturation stays at 1f — the boost only amplified low-frequency colour. */
 private val ComposerBlurRadius = 14.dp
 private val ComposerElevation = 12.dp
 
-/** Room the two buttons and their paddings take out of the inline width of the field. */
 private val InlineChromeWidth = 26.dp
 
 /** Rows the slash popup shows before it scrolls; one page, like the TUI popup. */
 private const val MaxPopupRows = 5
 
-/** Room one suggestion row keeps inside itself, matching the tap-only popup cards. */
 private val SuggestionRowPaddingHorizontal = 11.dp
 private val SuggestionRowPaddingVertical = 8.dp
 private val SuggestionRowGap = 4.dp
 
-/** Width reserved for the command column, and the gap before its description. */
 private val SuggestionCommandWidth = 104.dp
 private val SuggestionCommandGap = 10.dp
 
@@ -191,14 +165,9 @@ fun Composer(
     queuedCount: Int = 0,
     slashSuggestions: List<SlashCommand> = emptyList(),
     onSuggestionPicked: (SlashCommand) -> Unit = {},
-    /** `@` rows: plugins, tasks and fuzzy-searched files, already filtered by the host. */
     mentionSuggestions: List<MentionSuggestion> = emptyList(),
     onMentionPicked: (String) -> Unit = {},
-    /** Called with the trailing `@` token, or `null` when it is gone; drives the search session. */
     onMentionQueryChange: (String?) -> Unit = {},
-    /**
-     * Enabled skill names, offered behind the `$` trigger the way the TUI's mentions popup does.
-     */
     skillCandidates: List<String> = emptyList(),
     onSkillPicked: (String) -> Unit = {},
     /** Called on every text edit, so the host can defer an approval dialog while the user types. */
@@ -220,8 +189,7 @@ fun Composer(
     val colors = MiuixTheme.colorScheme
     val density = LocalDensity.current
     val focusManager = LocalFocusManager.current
-    // Where the chat root lives, so Esc can leave this field without leaving the window with no
-    // key target at all. Null when the composer is hosted without a chat root (previews, tests).
+    // Where the chat root lives so Esc can leave the field; null in previews and tests.
     val chatKeyFocus = LocalChatKeyFocus.current
     val shortcutsHelp = LocalShortcutsHelp.current
     val focusRequester = remember { FocusRequester() }
@@ -229,24 +197,18 @@ fun Composer(
     var focused by remember { mutableStateOf(false) }
     var inlineWidthPx by remember { mutableFloatStateOf(0f) }
     val measurer = rememberTextMeasurer()
-    // The caret-carrying mirror of [value]. The host owns the draft as plain text, but a newline
-    // has
-    // to land where the caret is and a String cannot say where that is.
+    // Caret-carrying mirror of [value]: a String cannot say where a newline lands.
     var field by remember { mutableStateOf(TextFieldValue(value, TextRange(value.length))) }
     LaunchedEffect(value) {
         if (field.text != value) {
-            // The host rewrote the draft (a picked command, an inserted attachment path): follow it
-            // and put the caret at the end, which is where typing would have left it.
+            // Host rewrote the draft (picked command, inserted path); follow it and put the caret at the end.
             field = TextFieldValue(value, TextRange(value.length))
         }
     }
-    // Esc hides a popup until the draft changes again; otherwise every keystroke that keeps the
-    // trigger alive (a longer `/query`) would reopen what the user just closed.
+    // Esc dismisses a popup until the draft changes; a live trigger must not reopen it.
     var popupDismissed by remember { mutableStateOf(false) }
     var popupIndex by remember { mutableIntStateOf(0) }
-    // Reverse history search. [searchIndex] points into [history]; the matched entry is pushed into
-    // the field while search is active so the user sees exactly what Enter would use, and the
-    // original draft is restored on cancel.
+    // Search shows the matched entry in the field so Enter's result is visible; the original draft returns on cancel.
     var searchActive by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
     var searchIndex by remember { mutableIntStateOf(-1) }
@@ -257,8 +219,7 @@ fun Composer(
             if (searchActive) historySearchMatches(history, searchQuery) else emptyList()
         }
     LaunchedEffect(searchActive) {
-        // The bar owns typing while it is up; without focus a hardware keyboard would keep editing
-        // the matched entry.
+        // The bar owns typing while it is up; focus keeps the hardware keyboard out of the matched entry.
         if (searchActive) runCatching { searchFocusRequester.requestFocus() }
     }
     val stacked =
@@ -282,8 +243,7 @@ fun Composer(
         }
     val showSuggestions =
         !searchActive && !popupDismissed && slashSuggestions.isNotEmpty() && value.startsWith("/")
-    // A mention is the trailing `@token`: everything after the last `@` counts as the query, and a
-    // whitespace ends it. Mirrors the trigger rule in `bottom_pane/mentions_v2/filter.rs`.
+    // Trailing `@token`; a whitespace ends it, mirroring bottom_pane/mentions_v2/filter.rs.
     val mentionQuery =
         remember(value) {
             val at = value.lastIndexOf('@')
@@ -293,15 +253,13 @@ fun Composer(
                 else -> value.substring(at + 1)
             }
         }
-    // The host already narrowed the list: files come scored from the search session, plugins and
-    // tasks from a local match. Re-filtering here would drop matches the server weighted highly.
+    // The host already narrowed the list; re-filtering here would drop server-weighted matches.
     val mentionRows =
         remember(mentionQuery, mentionSuggestions) {
             if (mentionQuery == null) emptyList() else mentionSuggestions.take(MaxPopupRows)
         }
     val commandRows = remember(slashSuggestions) { slashSuggestions.take(MaxPopupRows) }
-    // A skill is the trailing `$token`, same trigger rule as `@`: `$` is not part of the query when
-    // a whitespace follows it, so an ordinary dollar amount never opens the popup.
+    // Trailing `$token` with the same trigger rule as `@`, so a plain dollar amount never opens the popup.
     val skillQuery =
         remember(value) {
             val dollar = value.lastIndexOf('$')
@@ -336,13 +294,11 @@ fun Composer(
         }
     val popupSelection = if (popupCount == 0) 0 else popupIndex.coerceIn(0, popupCount - 1)
 
-    // `command_popup.rs` re-selects the first match when the filtered list changes, so a keystroke
-    // never leaves the cursor on a row that no longer exists.
+    // Re-select the first match when the filtered list changes, as `command_popup.rs` does.
     LaunchedEffect(showSuggestions, commandRows, showMentions, mentionRows, showSkills, skillRows) {
         popupIndex = 0
     }
-    // The host owns the search session: it is told which `@` token is live, and told `null` when
-    // the token or the whole composer goes away.
+    // The host owns the session; tell it which `@` token is live, or `null` when gone.
     LaunchedEffect(mentionQuery, showSuggestions) {
         onMentionQueryChange(if (showSuggestions) null else mentionQuery)
     }
@@ -375,7 +331,6 @@ fun Composer(
     }
 
     fun pickMention(path: String) {
-        // Replace the trailing token with the picked path, keeping what came before.
         val at = value.lastIndexOf('@')
         if (at < 0) return
         applyDraft(value.substring(0, at) + "@" + path + " ")
@@ -383,7 +338,6 @@ fun Composer(
     }
 
     fun pickSkill(name: String) {
-        // Same splice as a mention: the `$token` being typed is replaced by the full `$name`.
         val dollar = value.lastIndexOf('$')
         if (dollar < 0) return
         applyDraft(value.substring(0, dollar) + "$" + name + " ")
@@ -472,14 +426,12 @@ fun Composer(
                 popupCount > 0
             }
 
-            // `?` is the composer binding for `toggle_shortcuts`; it must never eat a printable
-            // character the user is typing, so it only acts on an empty field.
+            // `?` toggles shortcuts and must never eat a typed character, so it only acts on an empty field.
             KeyAction.ShowShortcuts -> {
                 val help = shortcutsHelp
                 if (value.isEmpty() && help != null) {
                     help.toggle()
-                    // The overlay is modal: leaving the caret here would let a soft keyboard keep
-                    // typing into the field behind it.
+                    // The overlay is modal; leaving the caret would let the soft keyboard type behind it.
                     leaveField()
                     true
                 } else {
@@ -492,10 +444,7 @@ fun Composer(
                 true
             }
 
-            // `history_search_previous` / `history_search_next`: Ctrl+R begins the search on the
-            // newest
-            // entry, Ctrl+S only moves while a search is already up (it is not a "newest entry"
-            // key).
+            // Ctrl+R begins the search on the newest entry; Ctrl+S only moves while one is up.
             KeyAction.HistoryOlder -> {
                 if (!enabled) {
                     false
@@ -547,10 +496,7 @@ fun Composer(
     val shape = remember(cornerRadius) { RoundedCornerShape(cornerRadius) }
 
     val leading: @Composable () -> Unit = {
-        // The attachment button opens the system picker. `rememberLauncherForActivityResult` is
-        // registered by the screen rather than here, because the contract it launches has to
-        // outlive this composable: a picker that is re-registered on every recomposition loses the
-        // result of a selection made while the sheet was open.
+        // The launcher is registered by the screen, not here: re-registering on every recomposition would lose the selection result.
         IconButton(
             onClick = { if (enabled) onAttach() },
             minWidth = buttonSize,
@@ -635,8 +581,7 @@ fun Composer(
     Column(
         modifier =
             modifier
-                // Preview, not bubble: while a suggestion list is open the same arrow keys move its
-                // cursor, and otherwise the field below keeps them for caret movement.
+                // While a popup is open the arrow keys move its cursor; otherwise they move the caret below.
                 .codexHardwareKeys(
                     if (popupCount > 0 && !searchActive) KeyContext.Popup else KeyContext.Composer,
                     ::handle,
@@ -756,13 +701,11 @@ fun Composer(
                 }
                 BasicTextField(
                     enabled = enabled,
-                    // While searching the field is a preview of the match: typing belongs to the
-                    // search bar, not to this text.
+                    // While searching, the field is a preview; typing belongs to the search bar.
                     readOnly = searchActive,
                     value = field,
                     onValueChange = { next ->
-                        // Typing is what un-dismisses a popup: Esc closed it, the next character
-                        // reopens it if the trigger is still there.
+                        // Typing reopens a popup that Esc dismissed, if the trigger is still there.
                         popupDismissed = false
                         field = next
                         onActivity()
@@ -837,22 +780,14 @@ fun Composer(
     }
 }
 
-/** Corner radius of the popup card; it is a card of rows, so it takes the shared row corner. */
 private val PopupCorner = RoundedCornerShape(UiConsts.RowCorner)
 
-/** Corner radius of one popup row, shared by the slash and `@`-mention lists. */
 private val PopupRowCorner = 11.dp
 
-/** Gap between two popup rows, and the padding inside the popup shell. */
 private val PopupRowGap = 4.dp
 private val PopupPadding = 6.dp
 
-/**
- * The raised card both suggestion lists draw into.
- *
- * Each list already narrows itself to `MaxPopupRows` items, so the shell only has to wrap them: a
- * clipped scroll region would cut a row in half and hide the fact that more matches exist.
- */
+/** Raised card both suggestion lists draw into; the lists self-limit, so the shell just wraps them. */
 @Composable
 private fun PopupShell(
     modifier: Modifier = Modifier,
@@ -866,14 +801,6 @@ private fun PopupShell(
     )
 }
 
-/**
- * The slash popup with a keyboard cursor.
- *
- * The first row is only highlighted when the cursor points at it; a hardware keyboard needs the
- * highlight to move, so this draws rows with the cursor on whichever row Enter would take. Row
- * style is shared through [PopupShell], [PopupRowCorner] and miuix [Surface], so a tap still picks
- * exactly the row it lands on.
- */
 @Composable
 private fun CommandSuggestionList(
     commands: List<SlashCommand>,
@@ -931,7 +858,6 @@ private fun CommandSuggestionList(
     }
 }
 
-/** The `@`-mention popup, with the same keyboard cursor as [CommandSuggestionList]. */
 @Composable
 private fun MentionSuggestionList(
     candidates: List<MentionSuggestion>,
@@ -970,8 +896,6 @@ private fun MentionSuggestionList(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
-                    // A file shows the directory it lives in; a plugin or task brings its own
-                    // detail.
                     val detail =
                         candidate.detail ?: parentPath(candidate.insert).takeIf { it.isNotEmpty() }
                     if (detail != null) {
@@ -994,10 +918,7 @@ private fun MentionSuggestionList(
     }
 }
 
-/**
- * The `$`-skill popup. Rows are the bare skill names; the `$` is the trigger the user is typing and
- * is not repeated in the list, so two names that differ only by scope stay tellable apart.
- */
+/** `$`-skill popup with bare names, so two names differing only by scope stay tellable apart. */
 @Composable
 private fun SkillSuggestionList(
     candidates: List<String>,
@@ -1044,11 +965,6 @@ private fun SkillSuggestionList(
     }
 }
 
-/**
- * Case-insensitive subsequence match, the same shape of filter the TUI's file search uses: `cpu`
- * matches `com/cy/codex/ui/...`. Falls back to a plain `contains` in the caller, so a short query
- * still finds exact substrings.
- */
 private fun isSubsequence(query: String, candidate: String): Boolean {
     if (query.isEmpty()) return true
     var index = 0
@@ -1061,13 +977,7 @@ private fun isSubsequence(query: String, candidate: String): Boolean {
     return false
 }
 
-/**
- * Narrow [candidates] by [query].
- *
- * A subsequence hit (`cs` matches `CodexScreen.kt`) is what the TUI's fuzzy matcher rewards, so
- * those come first; a plain case-insensitive `contains` pass follows so a query whose characters
- * are not in order still finds something instead of showing an empty popup.
- */
+/** Narrow [candidates] by [query]; subsequence hits come first, then plain contains. */
 private fun filterPaths(query: String, candidates: List<String>): List<String> {
     val needle = query.trim().lowercase()
     if (needle.isEmpty()) return candidates

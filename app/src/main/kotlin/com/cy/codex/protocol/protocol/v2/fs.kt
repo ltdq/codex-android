@@ -1,14 +1,9 @@
 package com.cy.codex.protocol.protocol.v2
 
 /**
- * `fs/…` — the sandboxed filesystem the server exposes to the client.
- *
- * Mirrors `schema/typescript/v2/Fs*.ts`. These are the *client's* file operations (the workspace
- * picker walking a tree, the composer attaching a file); the agent's own file access never appears
- * here, it arrives as a `ThreadItem`.
- *
- * Every path is absolute: the protocol's `AbsolutePathBuf` rejects anything else, so a relative path
- * is a client bug rather than something the server resolves.
+ * `fs/…` — the sandboxed filesystem the server exposes to the client (schema/typescript/v2/Fs*.ts).
+ * These are the *client's* file operations; the agent's own file access arrives as a `ThreadItem`.
+ * Every path is absolute: `AbsolutePathBuf` rejects anything else, so a relative path is a client bug.
  */
 
 data class FsReadFileParams(val path: String)

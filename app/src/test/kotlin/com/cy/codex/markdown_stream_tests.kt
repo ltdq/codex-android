@@ -4,11 +4,6 @@ import org.junit.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
-/**
- * The incremental parser has to be indistinguishable from a full parse of the same bytes, and it
- * has to keep earlier blocks untouched. Both properties are what makes the streaming renderer
- * linear: anything that re-writes a frozen block would recompose a transcript row.
- */
 class MarkdownStreamTest {
 
     private fun parse(text: String): List<MarkdownBlock> =
@@ -238,7 +233,6 @@ class MarkdownStreamTest {
         val stream = MarkdownStream()
         stream.append("| h |\n| --- |\n| one |")
         assertTrue(stream.tail is MarkdownBlock.OpenTable)
-        // The unfinished row is not a row yet: a row is only parsed once its newline arrives.
         assertEquals(emptyList(), (stream.tail as MarkdownBlock.OpenTable).rows.toList())
 
         stream.append("\n| two |\n")

@@ -28,12 +28,9 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.window.WindowBottomSheet
 
 /**
- * The folder-trust prompt.
- *
- * Mirrors `codex-rs/tui/src/onboarding/trust_directory.rs`: starting or resuming a thread in a
- * folder that is not under a trusted project asks first, and trusting writes
- * `projects."<path>".trust_level`. The TUI can quit as the alternative; on Android the honest
- * alternative is to cancel, which abandons the action and leaves the config untouched.
+ * The folder-trust prompt, mirroring `codex-rs/tui/src/onboarding/trust_directory.rs`: trusting
+ * writes `projects."<path>".trust_level`; cancel replaces the TUI's quit, leaving the config
+ * untouched.
  */
 @Composable
 fun TrustProjectSheet(

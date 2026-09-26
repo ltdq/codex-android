@@ -48,18 +48,10 @@ import top.yukonga.miuix.kmp.icon.extended.Notes
 import top.yukonga.miuix.kmp.icon.extended.Ok
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
-/**
- * Everything the transcript has to say that is not a message or a tool call: warnings, errors,
- * context compaction, review mode and hook prompts.
- *
- * Mirrors `codex-rs/tui/src/history_cell/notices.rs` and `hook_cell.rs`: a notice is one row with a
- * severity, an optional detail line, and a tint of the severity colour instead of a border, so a
- * run of notices never reads as loudly as the conversation itself.
- */
-
+/** Transcript entries that are neither messages nor tool calls; mirrors
+ * `codex-rs/tui/src/history_cell/notices.rs` and `hook_cell.rs`. */
 enum class NoticeTone { Info, Warning, Error, Success }
 
-/** Shared notice row; `DiagnosticCell` and the review-mode cells are built on it. */
 @Composable
 fun NoticeCell(
     message: String,
@@ -172,7 +164,6 @@ fun ExitedReviewModeCell(item: ExitedReviewModeItem, modifier: Modifier = Modifi
     )
 }
 
-/** Hook output, credited to the hook that produced it. */
 @Composable
 fun HookPromptCell(
     item: HookPromptItem,
@@ -217,9 +208,7 @@ fun HookPromptCell(
         }
         item.fragments.forEach { fragment ->
             Column(verticalArrangement = Arrangement.spacedBy(fragmentSpacing)) {
-                // The wire only carries the hook's opaque run id — `hookRunId` — and no name, and
-                // the header above already says the block came from a hook, so there is nothing
-                // worth a second line here.
+                // The wire carries only the opaque `hookRunId` and no name; the header already credits the hook.
                 Text(
                     text = fragment.text,
                     fontSize = fragmentFontSize,

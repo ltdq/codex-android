@@ -62,20 +62,11 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.window.WindowBottomSheet
 
 /**
- * The memory store: whether it is ready, how much has been consolidated, and the one action that
- * changes it.
+ * The memory store: ready flag and consolidated count, the whole of `memory/…`
+ * (codex-rs/tui/src/bottom_pane/memories_settings_view.rs); never rendered as an empty list,
+ * which would claim the store holds nothing.
  *
- * Mirrors `codex-rs/tui/src/bottom_pane/memories_settings_view.rs`. `memory/…` is a status call and
- * nothing else: it reports a ready flag and a count of consolidated threads, and there is no
- * companion call that returns the memories themselves. So the page shows those two facts and says
- * in as many words that a count is all there is — it must never render an empty list in their
- * place, because an empty list reads as "the store holds nothing", which is a different claim.
- *
- * @param catalog read for [CatalogState.memories]; `null` means this page has not asked yet, which
- *   is deliberately distinct from a store that answered with zero consolidated threads.
- * @param onEvent receives [AppEvent.ReloadMemories] and [AppEvent.ResetMemory].
- * @param onBack closes the page; the caller owns navigation.
- * @param modifier layout modifier for the page surface.
+ * @param catalog read for [CatalogState.memories]; `null` is distinct from a zero count.
  */
 @Composable
 fun MemoriesScreen(
@@ -147,15 +138,6 @@ fun MemoriesScreen(
     }
 }
 
-/**
- * The one line under the header: which of the three states this page is in.
- *
- * It sits in the header rather than in the card because the header is the only part of the page
- * that is legible without scrolling, and "not read yet" is exactly what a user has to know before
- * they read anything below it.
- *
- * @param memories the last status answer, or `null` when there has never been one.
- */
 @Composable
 private fun memoriesSubtitle(memories: MemoryStatusResponse?): String =
     when {
@@ -169,19 +151,7 @@ private fun memoriesSubtitle(memories: MemoryStatusResponse?): String =
         else -> stringResource(R.string.memories_screen_subtitle_not_ready)
     }
 
-/**
- * What the store itself reported.
- *
- * The ready flag and the consolidated-thread count are the whole of `memory/…`. The card keeps the
- * two "nothing here" states apart on purpose: before the first answer it says it has not looked and
- * offers the read, and after an answer of zero it says the store is ready but nothing has been
- * consolidated — a user who cannot tell those apart would read a store that has never been queried
- * as a store that is empty.
- *
- * @param memories the last status answer, or `null` when there has never been one.
- * @param onRead asks for an answer; the header's refresh and this card's button emit the same
- *   request.
- */
+/** What the store reported; "not asked yet" stays apart from "store is empty". */
 @Composable
 private fun MemoriesStatusCard(
     memories: MemoryStatusResponse?,
@@ -333,19 +303,7 @@ private fun MemoriesStatusCard(
     }
 }
 
-/**
- * The destructive action, and the reason it is not the button that acts.
- *
- * A reset has no undo — nothing on the server and nothing in this client can put the store back —
- * so the page's own button only opens the confirmation and [ResetMemorySheet] is the single path
- * that emits [AppEvent.ResetMemory].
- *
- * The button is deliberately not gated on a successful read. Resetting a store whose status could
- * not be read is still a request the server can answer, and hiding the action behind a read that
- * just failed would remove the only way out of a store that is wedged.
- *
- * @param onReset opens the confirmation; it does not emit anything itself.
- */
+/** Reset opens a confirmation sheet and is not gated on a successful read — it is the way out of a wedged store. */
 @Composable
 private fun MemoriesResetCard(onReset: () -> Unit) {
     Card(
@@ -405,14 +363,7 @@ private fun MemoriesResetCard(onReset: () -> Unit) {
     }
 }
 
-/**
- * A footnote under a card's rows.
- *
- * Always the page's own wording, never a value that came off the wire: `memory/…` has no free-text
- * field, so every sentence rendered through this helper is a string resource.
- *
- * @param text the copy to render, already resolved against the page's own resources.
- */
+/** Footnote; always the page's own copy, never a value off the wire. */
 @Composable
 private fun MemoriesNote(text: String) {
     Text(
@@ -424,15 +375,7 @@ private fun MemoriesNote(text: String) {
     )
 }
 
-/**
- * The confirmation that stands in front of [AppEvent.ResetMemory].
- *
- * Dismissal is the caller's, like every other sheet here: the sheet is composed only while it
- * should be visible, so [onDismiss] serves as both the refusal and the end of the exit animation.
- *
- * @param onDismiss a refusal, or the sheet being dragged or tapped away.
- * @param onConfirm the one path that emits the reset.
- */
+/** Confirmation in front of [AppEvent.ResetMemory]; [onDismiss] is both refusal and the end of the exit animation. */
 @Composable
 private fun ResetMemorySheet(onDismiss: () -> Unit, onConfirm: () -> Unit) {
     val colors = MiuixTheme.colorScheme

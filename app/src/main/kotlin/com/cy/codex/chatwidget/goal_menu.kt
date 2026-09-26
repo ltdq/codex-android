@@ -48,11 +48,8 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.window.WindowBottomSheet
 
 /**
- * Goal mode sheet.
- *
- * Mirrors `chatwidget/goal_menu.rs` and `chatwidget/goal_status.rs`: with no goal the sheet is a
- * single objective field that starts one, with a goal it reports progress — the same `tokensUsed` /
- * `timeUsedSeconds` numbers the status line shows — and offers to clear it.
+ * Goal mode sheet: one objective field starts a goal; with a goal, progress and clear. Mirrors
+ * chatwidget/goal_menu.rs and chatwidget/goal_status.rs.
  */
 @Composable
 fun GoalSheet(
@@ -185,8 +182,7 @@ fun GoalSheet(
                         color = colors.onSurfaceVariantSummary,
                     )
                 }
-                // Editing keeps the status and the budget: `UpdateExisting` upstream carries both
-                // through `goal_menu.rs`, so a paused goal stays paused when its objective changes.
+                // Editing keeps status and budget: UpdateExisting carries both upstream (chatwidget/goal_menu.rs).
                 TextField(
                     value = objective,
                     onValueChange = { objective = it },
@@ -290,9 +286,7 @@ fun GoalSheet(
                             )
                         }
 
-                    // A budget-limited or finished goal has nothing left to run; upstream offers
-                    // only
-                    // edit and clear for these two, so no pause/resume button is drawn.
+                    // Budget-limited / complete goals have nothing left to run; upstream offers only edit and clear.
                     GoalStatus.BudgetLimited,
                     GoalStatus.Complete -> Unit
                 }
@@ -326,12 +320,6 @@ fun GoalSheet(
     }
 }
 
-/**
- * Status an edit should carry over, mirroring `goal_menu.rs:edited_goal_status`.
- *
- * A goal that stopped for a terminal reason (budget limited, complete) restarts active when its
- * objective is edited; paused / blocked / usage-limited goals stay in that state.
- */
 internal fun editedGoalStatus(status: GoalStatus): GoalStatus =
     when (status) {
         GoalStatus.Active -> GoalStatus.Active
@@ -343,7 +331,6 @@ internal fun editedGoalStatus(status: GoalStatus): GoalStatus =
         GoalStatus.Complete -> GoalStatus.Active
     }
 
-/** Status pill of a running goal, coloured by how the run ended or whether it is still going. */
 @Composable
 internal fun GoalStatusChip(status: GoalStatus) {
     val accent = goalStatusColor(status)
@@ -361,9 +348,6 @@ internal fun GoalStatusChip(status: GoalStatus) {
     )
 }
 
-/**
- * Active goals run, paused ones wait, budget-limited ones need a decision, complete ones are done.
- */
 @Composable
 internal fun goalStatusColor(status: GoalStatus): Color =
     when (status) {
@@ -375,13 +359,7 @@ internal fun goalStatusColor(status: GoalStatus): Color =
         GoalStatus.Complete -> successColor()
     }
 
-/**
- * Elapsed goal time in *seconds*: `200` becomes `3 分 20 秒`, `3900` becomes `1 小时 5 分`.
- *
- * Named for its unit because `chatwidget/cell/ExecCell.kt` has a formatter for the same shape of
- * value measured in milliseconds. Both used to be called `formatDuration`, which is a 1000x error
- * waiting for whoever imports the wrong one.
- */
+/** Seconds; named for its unit — chatwidget/cell/ExecCell.kt formats the same shape in ms, a 1000x-error trap. */
 @Composable
 @ReadOnlyComposable
 internal fun formatGoalDuration(seconds: Long): String {

@@ -39,20 +39,10 @@ import com.cy.codex.glassTint
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
-/**
- * The `?` / Ctrl+/ help overlay: the bindings this client actually implements.
- *
- * Mirrors `composer.toggle_shortcuts` in keymap.rs — the same two chords — but renders a page
- * instead of a terminal footer, because a phone cannot show a hint line under a software keyboard.
- */
+/** Mirrors `composer.toggle_shortcuts` in keymap.rs, rendered as a page: a phone cannot show a
+ * hint line under a software keyboard. */
 
-/**
- * Visibility of the help overlay.
- *
- * A tiny holder rather than state inside `CodexScreen`: the composer toggles the same overlay with
- * `?`, and the composer is mounted by the read-only chat rendering, so the two ends have to share
- * one instance. [LocalShortcutsHelp] is how it reaches the composer.
- */
+/** Visibility holder shared with the composer, through [LocalShortcutsHelp]. */
 class ShortcutsHelpState {
     var visible by mutableStateOf(false)
         private set
@@ -68,7 +58,6 @@ class ShortcutsHelpState {
 
 val LocalShortcutsHelp = staticCompositionLocalOf<ShortcutsHelpState?> { null }
 
-/** Width the key column reserves, so every key hint lines up with the one above it. */
 private val KeyColumnWidth = 116.dp
 
 private val CardMaxWidth = 440.dp
@@ -156,9 +145,6 @@ fun ShortcutsOverlay(state: ShortcutsHelpState, modifier: Modifier = Modifier) {
     }
 }
 
-/**
- * One titled section of the overlay; the rows come in as content so the group owns only the title.
- */
 @Composable
 private fun ShortcutGroup(title: String, rows: @Composable () -> Unit) {
     Spacer(Modifier.height(10.dp))
@@ -172,7 +158,6 @@ private fun ShortcutGroup(title: String, rows: @Composable () -> Unit) {
     rows()
 }
 
-/** One binding: the keys in a fixed column, the meaning beside them. */
 @Composable
 private fun ShortcutRow(keys: String, label: String) {
     Row(

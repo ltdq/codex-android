@@ -11,27 +11,14 @@ import androidx.compose.ui.platform.UriHandler
 import com.cy.codex.R
 import java.io.File
 
-/**
- * What a markdown link points at, after the transcript has decided it is not prose.
- *
- * Mirrors `codex-rs/tui/src/markdown_render/local_links.rs`: a destination is either a web URL or a
- * local file path with an optional `:line:col` / `#L12C3` location, and a local path is displayed
- * relative to the session's working directory.
- */
+/** What a markdown link points at; mirrors `codex-rs/tui/src/markdown_render/local_links.rs`: a web
+ * URL or a local path with an optional `:line:col` / `#L12C3` location. */
 sealed interface LinkTarget {
-    /** Anything with a scheme the system can open. */
     data class Web(val url: String) : LinkTarget
 
-    /**
-     * A path inside the session's workspace.
-     *
-     * [path] is the destination as written (normalized to forward slashes) and [location] the
-     * `:12:4` / `#L12C4` suffix when the link carried one.
-     */
     data class Local(val path: String, val location: String?, val display: String) : LinkTarget
 }
 
-/** Split a markdown destination into a [LinkTarget]; [cwd] only affects the display path. */
 fun parseLinkTarget(destination: String, cwd: String? = null): LinkTarget {
     val dest = destination.trim()
     if (!isLocalPathLike(dest)) return LinkTarget.Web(dest)
@@ -39,7 +26,7 @@ fun parseLinkTarget(destination: String, cwd: String? = null): LinkTarget {
     return LinkTarget.Local(path, location, displayLocalPath(path, cwd) + location.orEmpty())
 }
 
-/** True for the shapes `local_links.rs` treats as a path rather than a URL. */
+/** The shapes `local_links.rs` treats as a path rather than a URL. */
 fun isLocalPathLike(dest: String): Boolean =
     dest.startsWith("file://") ||
         dest.startsWith("/") ||
@@ -64,7 +51,6 @@ internal fun citationAt(text: String, from: Int): Pair<Int, String>? {
     return if (path.isNullOrEmpty()) null else (close + 1) to path
 }
 
-/** Strip a `file://` prefix and URL-decoding, then split off the location suffix. */
 private fun splitLocation(dest: String): Pair<String, String?> {
     val decoded = decodeFileUrl(dest)
     val hash = decoded.substringAfter('#', "")
@@ -104,7 +90,6 @@ private fun decodePercent(text: String): String {
     return String(bytes.toByteArray(), Charsets.UTF_8)
 }
 
-/** A local path as the transcript shows it: cwd-relative when the file is under the workspace. */
 fun displayLocalPath(path: String, cwd: String?): String {
     val normalized = path.replace('\\', '/')
     if (!normalized.startsWith("/") || cwd.isNullOrBlank()) return normalized
@@ -114,12 +99,8 @@ fun displayLocalPath(path: String, cwd: String?): String {
 }
 
 /**
- * A path as a diff row shows it.
- *
- * Mirrors `diff_render.rs::display_path_for`: a relative path stays as written, one under the
- * working directory is stripped, one that shares an ancestor with the working directory is
- * expressed relative to it (the git-root case, approximated without touching the filesystem), and
- * one under the runtime home is shown with `~`. Anything else stays absolute.
+ * A path as a diff row shows it, mirroring `diff_render.rs::display_path_for`: relative as
+ * written, cwd-relative, `..`-relative when sharing an ancestor, `~` under the runtime home.
  */
 fun displayDiffPath(path: String, cwd: String?, home: String?): String {
     val normalized = path.replace('\\', '/')
@@ -137,7 +118,6 @@ fun displayDiffPath(path: String, cwd: String?, home: String?): String {
     return normalized
 }
 
-/** `path` relative to `base` using `..` segments, or `null` when they share no ancestor. */
 private fun relativeTo(path: String, base: String): String? {    val pathParts = path.split('/')
     val baseParts = base.split('/')
     var shared = 0
@@ -151,11 +131,8 @@ private fun relativeTo(path: String, base: String): String? {    val pathParts =
 }
 
 /**
- * Act on a tapped link.
- *
- * A web link is handed to the platform. A local path cannot be opened by a browser and the app has
- * no editor, so the honest action is to put the exact target on the clipboard where it can be
- * pasted into the file browser or a terminal.
+ * Act on a tapped link: web goes to the platform; a local path has no editor, so the exact target
+ * is copied to the clipboard instead.
  */
 fun openLink(context: Context, uriHandler: UriHandler, target: LinkTarget) {
     when (target) {
@@ -175,7 +152,6 @@ fun openLink(context: Context, uriHandler: UriHandler, target: LinkTarget) {
     }
 }
 
-/** The directory the runtime sets as `HOME`, used to shorten absolute paths for display. */
 @Composable
 fun runtimeHome(): String {
     val context = LocalContext.current

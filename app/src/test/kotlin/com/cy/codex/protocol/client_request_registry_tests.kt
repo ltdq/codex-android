@@ -5,36 +5,10 @@ import org.junit.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
-/**
- * Keeps [ClientRequestMethod] and [AppServerClient] from drifting apart.
- *
- * The registry is the only place the protocol's method list is written down, but nothing about it is
- * enforced by the compiler: it is an enum of strings, and an interface of functions. A method can
- * therefore exist upstream with no way to call it, or a function can be added that calls nothing —
- * and both mistakes are invisible until a real backend is wired in, at which point they surface as
- * a feature that silently does nothing.
- *
- * This is the check that was missing. It failed to exist while `thread/realtime/appendAudio` and the
- * two elicitation counters were absent from the client, and while `listMarketplaces` called a method
- * (`marketplace/list`) that the protocol does not define.
- *
- * The mapping below is deliberately written out rather than derived. A wire name and a Kotlin
- * function name are allowed to differ — `thread/list` is `listThreads`, `thread/queue/update` is
- * `updateQueued` — so any automatic derivation would need a convention the protocol does not have.
- * Writing it down means renaming a function without updating this table fails the reflection check,
- * and adding a registry entry without a client method fails the completeness check.
- */
+// Only this registry connects wire names to client functions; written out because the names differ.
 class ClientRequestRegistryTest {
 
-    /**
-     * Every client request the protocol defines, and the [AppServerClient] function that issues it.
-     *
-     * The set is the experimental-inclusive one: `InitializeCapabilities.experimentalApi` defaults
-     * to `true` here exactly as it does in the TUI, so the methods tagged experimental upstream are
-     * part of the surface, not an appendix to it. The one method deliberately left out is
-     * `mock/experimentalMethod`, an upstream test scaffold no product client should call;
-     * `UpstreamSchemaTest` pins that the difference is exactly that method.
-     */
+    // Experimental-inclusive like the TUI; `mock/experimentalMethod` is upstream's test scaffold.
     private val wireToClientMethod: Map<String, String> = mapOf(
         "account/bedrock/discover" to "bedrockDiscover",
         "account/bedrock/setup" to "bedrockSetup",
@@ -201,30 +175,7 @@ class ClientRequestRegistryTest {
         "windowsSandbox/setupStart" to "windowsSandboxSetupStart",
     )
 
-    /**
-     * Functions on [AppServerClient] that are not requests of their own.
-     *
-     * `respond` answers a server-initiated request, which is a JSON-RPC *response* carrying the
-     * request's own id rather than a method call; `close` is local teardown. Both are part of the
-     * transport contract and neither appears in the registry.
-     */
-    /**
-     * Members of [AppServerClient] that are not registry requests.
-     *
-     * Listed rather than inferred, so adding a member forces a deliberate classification. There are
-     * three kinds:
-     *
-     *  - The transport contract. `respond` answers a server-initiated request, which is a JSON-RPC
-     *    *response* carrying the request's own id rather than a method call, and `close` is local
-     *    teardown. Neither is a `ClientRequest`.
-     *  - Stream accessors. `events`, `requests` and `connection` are flows the transport pushes on,
-     *    not calls the client makes.
-      *  - Two client-side projections. `updateThreadSettingsFull` is the typed overload of
-      *    `thread/settings/update`, and `readConfigLayers` reads the layer list out of a
-      *    `config/read` response that already carried it — the protocol has no `config/layers/read`.
-      *  - `readThreadUsage` is the thread-scoped overload of `account/usage/read`: the same request
-      *    with a `threadId`, answered with `threadUsage` instead of the daily buckets.
-      */
+    // Listed deliberately: `respond`/`close` are the transport contract, flows are stream accessors, the rest are projections.
     private val nonRequestMembers = setOf(
         "respond",
         "close",
@@ -236,18 +187,7 @@ class ClientRequestRegistryTest {
         "readThreadUsage",
     )
 
-    /**
-     * The JVM name of every non-synthetic function on [AppServerClient], demangled.
-     *
-     * Kotlin appends a hash suffix to a function's JVM name when its signature mentions a value
-     * class, and `Result<T>` is one — so `listThreads` is declared as `listThreads-gIAlu-s`. That
-     * suffix is a hash of the signature rather than part of the name a caller writes, so it is
-     * stripped before comparing against the registry. Plain Java reflection is enough here; adding
-     * `kotlin-reflect` for one name lookup would be a heavier dependency than the check deserves.
-     *
-     * Properties (`events`, `requests`, `connection`) never appear, because a Kotlin interface
-     * property is an accessor rather than a method.
-     */
+    // Demangled: Kotlin appends a signature-hash suffix for value-class signatures (`Result<T>`).
     private fun declaredClientMethods(): Set<String> =
         AppServerClient::class.java.declaredMethods
             .filterNot { it.isSynthetic }

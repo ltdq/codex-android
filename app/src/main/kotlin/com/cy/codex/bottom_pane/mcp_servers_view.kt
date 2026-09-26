@@ -56,12 +56,7 @@ import top.yukonga.miuix.kmp.icon.extended.ChevronBackward
 import top.yukonga.miuix.kmp.icon.extended.Community
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
-/**
- * `/mcp` output as a page: one row per configured server with its connection state.
- *
- * Mirrors `mcpServerStatus/list` and the startup banner the TUI prints (`mcp_startup`): the dot is
- * the same status tone the transcript uses, so a failed server looks the same in both places.
- */
+/** `/mcp` as a page (mcpServerStatus/list, `mcp_startup`): the dot matches the transcript's status tone. */
 @Composable
 fun McpScreen(
     catalog: CatalogState,
@@ -73,8 +68,7 @@ fun McpScreen(
     val colors = MiuixTheme.colorScheme
     val servers = catalog.mcpServers
     val ready = servers.count { it.status == McpServerConnectionStatus.Connected }
-    // Failed first, then still-starting, so a server that needs attention is above one that is
-    // merely slow.
+    // Failed first, then still-starting: a server that needs attention sits above one that is merely slow.
     val startup = catalog.mcpStartup.values.sortedBy { it.status != McpServerStartupState.Failed }
 
     Column(modifier = modifier.fillMaxSize().background(colors.background)) {
@@ -295,8 +289,7 @@ private fun McpServerRow(server: McpServerStatusEntry, onClick: () -> Unit, onLo
                 color = colors.error,
             )
         }
-        // The action `authStatus` exists for: without it the server stays disconnected and the
-        // reason is only visible as a status word.
+        // The login row exists for `authStatus`: without it the server stays disconnected, the reason only a status word.
         if (needsLogin) {
             Spacer(Modifier.height(UiConsts.Space8))
             Row(verticalAlignment = Alignment.CenterVertically) {

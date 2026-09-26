@@ -65,19 +65,8 @@ import top.yukonga.miuix.kmp.squircle.squircleBorder
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
- * Plugin sharing and marketplaces.
- *
- * Mirrors `codex-rs/tui/src/chatwidget/plugins.rs`: this is the surface behind the `plugin/share/…`
- * family, `marketplace/add`, `marketplace/remove`, `marketplace/upgrade` and `plugin/reconcile`.
- *
- * One page for all five because they answer one question — where this account's plugins come from,
- * and where they go — and because each of the five is otherwise a lone button with nowhere to live.
- * The catalog of *installed* plugins is the sibling page `PluginsScreen`: this page never lists
- * what is installed, only what has been published and which marketplaces exist to install from.
- *
- * Every write leaves through [AppEvent] rather than through the client: publishing changes the
- * account's shares and adding or removing a marketplace invalidates the plugin catalog, and both
- * outlive whichever instance of this page asked for them.
+ * Plugin sharing and marketplaces, mirroring codex-rs/tui/src/chatwidget/plugins.rs. Writes leave
+ * via [AppEvent]: publishing and marketplace changes outlive this page instance.
  */
 @Composable
 fun PluginSharesScreen(
@@ -119,9 +108,7 @@ fun PluginSharesScreen(
                 }
             },
             endActions = {
-                // Refresh reads both catalogs the page draws: the shares and the marketplaces the
-                // plugin catalog was folded from. One button, because a user who suspects either is
-                // stale has no way to tell which one is.
+                // One refresh for both catalogs: a user who suspects one is stale cannot tell which.
                 IconButton(
                     onClick = { onEvent(AppEvent.ReloadPluginShares) },
                     minWidth = UiConsts.IconButtonSize,
@@ -158,9 +145,6 @@ fun PluginSharesScreen(
                 onAdd = { addingMarketplace = true },
             )
             ReconcileButton(onEvent = onEvent)
-            // The two results sit under the buttons that produce them rather than at the top of the
-            // page: nothing scrolls the page for the user, so a card above the fold would report an
-            // outcome they would have to scroll back up to find.
             if (reconciled.isNotEmpty() || upgraded.isNotEmpty()) {
                 LastRunCard(
                     reconciledPlugins = reconciled,
@@ -194,9 +178,7 @@ fun PluginSharesScreen(
             help = stringResource(R.string.plugin_shares_publish_help),
             onDismiss = { publishing = false },
             onSubmit = { path ->
-                // A null remote id is the protocol's "create": the server mints the id and answers
-                // with it. Updating an existing share does not go through this sheet, so this page
-                // can never silently republish over a share the user did not pick.
+                // Null remote id is the protocol's "create": the server mints the id; this sheet never updates.
                 onEvent(AppEvent.SavePluginShare(path, null))
                 publishing = false
             },
@@ -213,13 +195,7 @@ fun PluginSharesScreen(
     }
 }
 
-/**
- * The account's published shares.
- *
- * Deleting a share belongs on *this* card and nowhere else: a share and the plugin it was copied
- * from are two different objects, so putting the delete on the plugin catalog page would aim a
- * destructive action at the row that is not the thing being destroyed.
- */
+/** The account's published shares; delete lives here — a share is not the plugin it was copied from. */
 @Composable
 private fun SharesCard(
     shares: List<PluginShareEntry>,
@@ -317,12 +293,7 @@ private fun SharesCard(
     }
 }
 
-/**
- * A share's remote id, or `null` for one the server has not published under an id of its own.
- *
- * The wire attaches the sharing context to the plugin summary rather than to the list entry, so the
- * three projections below are how this page reads what the server sent without inventing fields.
- */
+/** Remote id, null until published; the wire carries the sharing context on the plugin summary. */
 private val PluginShareEntry.remotePluginId: String?
     get() = plugin.remotePluginId
 
@@ -333,10 +304,8 @@ private val PluginShareEntry.principals: List<PluginSharePrincipal>
     get() = plugin.shareContext?.sharePrincipals.orEmpty()
 
 /**
- * Parse one target token.
- *
- * `type:id` is the protocol's own addressing; a bare id is read as a user, which is what a row of
- * plain account names has always meant, and `type:id:role` carries an explicit role.
+ * Parse one target token: `type:id` is the protocol's own addressing; a bare id means a user;
+ * `type:id:role` carries an explicit role.
  */
 private fun parseShareTarget(token: String): PluginShareTarget? {
     if (token.isEmpty()) return null
@@ -348,20 +317,7 @@ private fun parseShareTarget(token: String): PluginShareTarget? {
     }
 }
 
-/**
- * One published share, expanding into the three actions a share has.
- *
- * **A share is the published copy, not the plugin.** Saving a share uploads a copy of a local
- * plugin under a remote id, and from that moment the two are separate objects: deleting the share
- * takes the account's copy away and leaves the local plugin, its checkout and its files exactly
- * where they were. That is why the delete is labelled "delete share" rather than "delete plugin",
- * and why it sits on its own line below the two safe actions — the one action here that destroys
- * something the user cannot get back from this page must not be the neighbour of the two they tap
- * all day.
- *
- * Tapping the row expands rather than opens a sheet, following `ProjectRow`: three actions, all one
- * tap deep, and a sheet would hide the list the user is choosing between while they choose.
- */
+/** One published share; a share is the published copy, not the plugin — delete removes only the copy. */
 @Composable
 private fun PluginShareRow(
     share: PluginShareEntry,
@@ -480,15 +436,7 @@ private fun PluginShareRow(
     }
 }
 
-/**
- * Editing one share's targets.
- *
- * One comma-separated field rather than a row per target: `plugin/share/updateTargets` takes the
- * whole list in a single call, so a form whose fields could be added and removed would send the
- * same list with more taps and a half-edited state in between. The list is trimmed and blank
- * entries are dropped on submit because a trailing comma is what a comma-separated field always
- * ends up with.
- */
+/** One comma-separated field: updateTargets takes the whole list in a single call. */
 @Composable
 private fun ShareTargetsSheet(
     share: PluginShareEntry,
@@ -508,9 +456,7 @@ private fun ShareTargetsSheet(
                         share.principals.joinToString(", ") {
                             "${it.principalType}:${it.principalId}"
                         },
-                    // An empty target list is a legal share — it is what a private one has — so the
-                    // field is not required, and clearing it is how a share is narrowed back to
-                    // nobody.
+                    // An empty target list is a legal (private) share; clearing the field narrows back to nobody.
                     required = false,
                     help = stringResource(R.string.plugin_shares_targets_help),
                 )
@@ -526,14 +472,7 @@ private fun ShareTargetsSheet(
     )
 }
 
-/**
- * Publishing a local plugin.
- *
- * The sheet asks for a path and nothing else. `PluginShareSaveParams` also carries targets and
- * discoverability, but a share created without them is a private one, which is the safer default:
- * publishing is the step that copies something off the machine, and widening who can see it should
- * be a second, deliberate edit from the new row.
- */
+/** Path-only form: no targets/discoverability means private — the safe default for copying off the machine. */
 @Composable
 private fun PublishCard(onPublish: () -> Unit) {
     Card(
@@ -568,13 +507,6 @@ private fun PublishCard(onPublish: () -> Unit) {
     }
 }
 
-/**
- * Every marketplace the account can install from.
- *
- * The card carries the two marketplace actions the protocol addresses globally — add by source, and
- * upgrade every marketplace — while a single marketplace's own action hides behind its row.
- * Splitting them that way keeps the destructive and the broad actions off rows the user scans.
- */
 @Composable
 internal fun MarketplacesCard(
     marketplaces: List<MarketplaceEntry>,
@@ -609,9 +541,6 @@ internal fun MarketplacesCard(
             },
         )
 
-        // Keep adding a marketplace alongside the other marketplace actions, as the card's
-        // first body row: still the thing the eye lands on first, and a row can name what it adds —
-        // a bare plus in a header could not.
         ArrowPreference(
             title = stringResource(R.string.plugin_shares_marketplace_add),
             summary = stringResource(R.string.plugin_shares_marketplace_add_detail),
@@ -686,13 +615,6 @@ internal fun MarketplacesCard(
     }
 }
 
-/**
- * One marketplace, expanding into the one action it has.
- *
- * Removing is destructive and takes the marketplace's plugin records with it, so it stays behind an
- * expansion instead of being printed on every row the list draws — a list of marketplaces is read
- * far more often than it is edited.
- */
 @Composable
 private fun MarketplaceRow(
     marketplace: MarketplaceEntry,
@@ -700,8 +622,6 @@ private fun MarketplaceRow(
     onToggle: () -> Unit,
     onRemove: () -> Unit,
 ) {
-    // The source is what a marketplace *is*; a description is a courtesy some catalogs fill in and
-    // others do not, so it is only ever the fallback.
     val source = marketplace.path.ifBlank { marketplace.description }.takeIf { it.isNotBlank() }
     Column(modifier = Modifier.fillMaxWidth()) {
         ArrowPreference(
@@ -756,15 +676,7 @@ private fun MarketplaceRow(
     }
 }
 
-/**
- * Adding a marketplace by source.
- *
- * `MarketplaceAddParams` calls the two values `source` and `refName`: the source is anything the
- * server can clone from, and the ref is the branch, tag or commit to check out. Only the source is
- * required — a marketplace added without a ref follows the source's own default, and every source
- * has one — and a blank ref becomes `null` rather than an empty string, because that is the
- * protocol's spelling of "not specified".
- */
+/** Adding a marketplace by source; a blank ref becomes `null` — the protocol's "not specified". */
 @Composable
 internal fun MarketplaceFormSheet(
     onDismiss: () -> Unit,
@@ -779,9 +691,6 @@ internal fun MarketplaceFormSheet(
                     label = stringResource(R.string.plugin_shares_marketplace_source),
                     placeholder =
                         stringResource(R.string.plugin_shares_marketplace_source_placeholder),
-                    // A source is usually a git url but may be a path, and the uri keyboard is the
-                    // one
-                    // that puts a slash and a colon within reach of the thumb for both.
                     keyboardType = KeyboardType.Uri,
                 ),
                 FormField(
@@ -804,14 +713,7 @@ internal fun MarketplaceFormSheet(
     )
 }
 
-/**
- * Upgrading every marketplace at once.
- *
- * The button emits a `null` name on purpose: `marketplace/upgrade` takes an optional marketplace
- * name and `null` means *every* marketplace, which is the protocol's own spelling of "all" rather
- * than a shortcut invented here. It is secondary because an upgrade re-reads what the marketplaces
- * already track — it adds nothing the user did not already ask for.
- */
+/** `null` means *all* marketplaces — the protocol's spelling of "upgrade everything". */
 @Composable
 private fun UpgradeAllButton(onEvent: (AppEvent) -> Unit) {
     Button(
@@ -835,17 +737,7 @@ private fun UpgradeAllButton(onEvent: (AppEvent) -> Unit) {
     }
 }
 
-/**
- * Rewriting the catalog from what is on disk.
- *
- * `plugin/reconcile` re-resolves every installed plugin against its marketplace, so its result can
- * name entries the user never deleted by hand: a marketplace that failed to load, a checkout that
- * moved, or a plugin whose manifest no longer parses all drop out of the catalog when this runs.
- * That is exactly why the button states what it does and why the run is reported back — a catalog
- * that quietly loses rows is indistinguishable from one that was always that size. It is not styled
- * as destructive, because the state it removes is already gone on disk; this run is how the app
- * finds out.
- */
+/** plugin/reconcile re-resolves every installed plugin; the run is reported back so a shrinking catalog is not read as a small one. */
 @Composable
 private fun ReconcileButton(onEvent: (AppEvent) -> Unit) {
     Button(
@@ -869,17 +761,7 @@ private fun ReconcileButton(onEvent: (AppEvent) -> Unit) {
     }
 }
 
-/**
- * What the last reconcile or upgrade changed.
- *
- * `plugin/reconcile` and `marketplace/upgrade` answer with a list of changed entries and nothing
- * else: no notification follows either one, and the catalog reload they trigger looks identical
- * whether they changed twenty entries or none. Without this card a run whose result the user wanted
- * to read is indistinguishable from a button that did nothing.
- *
- * It is composed only while there is something to report, so it has no empty state of its own — an
- * empty result card would claim the last run changed nothing when no run may have happened at all.
- */
+/** The only proof a reconcile/upgrade did anything; no notification follows either call. */
 @Composable
 private fun LastRunCard(
     reconciledPlugins: List<String>,
@@ -947,13 +829,6 @@ private fun LastRunCard(
     }
 }
 
-/**
- * What one discoverability value reads as.
- *
- * `ui_consts.kt` owns the `label()` extensions for the protocol enums, but this type is rendered by
- * this page alone, so its wording lives beside its only caller — a shared mapping would be a second
- * place to keep in step with a screen that file knows nothing about.
- */
 @Composable
 private fun discoverabilityLabel(discoverability: PluginShareDiscoverability): String =
     stringResource(

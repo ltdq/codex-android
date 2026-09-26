@@ -11,7 +11,6 @@ import java.io.File
 import java.nio.file.Files
 import javax.inject.Inject
 
-/** Cross-compiles `native/probes/file-lock` for the device lock smoke test. */
 abstract class NativeProbeTask : DefaultTask() {
     @get:Internal abstract val nativeDirPath: Property<String>
     @get:Internal abstract val patchDirPath: Property<String>
@@ -59,7 +58,6 @@ abstract class NativeProbeTask : DefaultTask() {
     }
 }
 
-/** Builds the host helper/smoke binaries and runs the real app-server smoke test. */
 abstract class HostSmokeTask : DefaultTask() {
     @get:Internal abstract val nativeDirPath: Property<String>
     @get:Internal abstract val targetDirPath: Property<String>

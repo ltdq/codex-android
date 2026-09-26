@@ -29,13 +29,7 @@ import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.ConvertFile
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
-/**
- * The patch summary of one turn.
- *
- * Mirrors `codex-rs/tui/src/history_cell/patches.rs`: the card lists every changed file with its
- * per-file diff and only expands the one the reader asked for, so a wide patch cannot swamp the
- * transcript.
- */
+/** Patch summary of one turn; mirrors `codex-rs/tui/src/history_cell/patches.rs`. */
 @Composable
 fun FileChangeCell(
     item: FileChangeItem,

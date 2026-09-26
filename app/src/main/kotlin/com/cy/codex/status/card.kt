@@ -119,25 +119,13 @@ import top.yukonga.miuix.kmp.icon.extended.Tune
 import top.yukonga.miuix.kmp.overlay.OverlayListPopup
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
-/**
- * The floating status card.
- *
- * Mirrors `codex-rs/tui/src/status/card.rs` and `chatwidget/status_surfaces.rs`: one window that
- * answers "what is this session doing, with which model, how full is the context, and what has it
- * changed".
- *
- * The card is a fixed size and never moves: opening a file's diff opens a *second* card beside it
- * (see [DiffCard]) instead of widening this one. Growing the card meant the section column slid
- * sideways every time a diff opened, so the row the user had just tapped was no longer under their
- * finger, and closing the diff moved it back.
- */
+/** Floating status card; mirrors `codex-rs/tui/src/status/card.rs` +
+ * `chatwidget/status_surfaces.rs`. Fixed size: a diff opens a second card ([DiffCard]). */
 @Composable
 fun StatusCard(
     state: StatusPanelState,
     session: ThreadSessionState,
-    /** True while a hidden turn is generating this thread's automatic title. */
     titlePending: Boolean,
-    /** Branch / PR / diff totals, or null while the probe has nothing to show. */
     gitSummary: com.cy.codex.GitSummary?,
     status: ThreadStatus,
     usage: ThreadTokenUsage,
@@ -153,10 +141,9 @@ fun StatusCard(
     onEffort: (ReasoningEffort) -> Unit,
     onPolicy: (AskForApproval) -> Unit,
     onReviewer: (ApprovalsReviewer) -> Unit,
-    /** Whether managed policy and `guardian_approval` allow AutoReview; see `CatalogState`. */
     autoReviewAvailable: Boolean,
     onServiceTier: (String?) -> Unit,
-    /** Whether `collaborationMode/list` offered a plan preset; hides the row when it did not. */
+    /** `collaborationMode/list` offered a plan preset; hides the row when it did not. */
     planAvailable: Boolean,
     onCollaborationMode: (CollaborationMode) -> Unit,
     onCompact: () -> Unit,
@@ -165,7 +152,6 @@ fun StatusCard(
     onOpenAgentInfo: (String) -> Unit,
     modifier: Modifier = Modifier,
     panelElevation: Dp = UiConsts.PanelElevation,
-    /** Wall-clock time of the last rate-limit read; `null` when nothing was read yet. */
     rateLimitsUpdatedAt: Long? = null,
 ) {
     val shape = RoundedCornerShape(UiConsts.PanelCorner)
@@ -207,14 +193,7 @@ fun StatusCard(
     }
 }
 
-/**
- * The diff card that opens to the left of the status card.
- *
- * Mirrors `codex-rs/tui/src/diff_render.rs`: one file's unified diff with a header, two gutter line
- * numbers, horizontally scrollable code lines and a footer that switches files without closing the
- * card. It is sized to the card beside it, so the two read as one panel split in two rather than as
- * two unrelated windows.
- */
+/** Diff card beside the status card, sized to it; mirrors `codex-rs/tui/src/diff_render.rs`. */
 @Composable
 fun DiffCard(
     file: FileDiff,
@@ -299,8 +278,7 @@ private fun SectionsColumn(
             onCompact = onCompact,
         )
 
-        // Only when the account answered with something worth drawing: an empty limits card on a
-        // platform without rate limits (Bedrock, API key) would read as "no limits left".
+        // Only when the account reported limits: an empty card would read as "no limits left".
         if (
             rateLimits.rateLimits.primary != null ||
                 rateLimits.rateLimits.secondary != null ||
@@ -502,7 +480,6 @@ private fun CardHeader(
                 overflow = TextOverflow.Ellipsis,
             )
             gitSummary?.let { summary ->
-                // `PR #123 · main +3 -1`, the same parts the TUI's status line composes.
                 Text(
                     text =
                         listOfNotNull(
@@ -520,9 +497,7 @@ private fun CardHeader(
             }
         }
         Spacer(Modifier.width(dotGap))
-        // Not settings: the status card reads one session, and a way into the app's configuration
-        // does not belong in a read-out. The slot is worth more as the second way into the agents —
-        // the dashboard lists every agent with its usage, which the two rows below cannot fit.
+        // Not settings: the card is a read-out; the slot is the second way into the agents.
         IconButton(onClick = onOpenAgents, minWidth = buttonSize, minHeight = buttonSize) {
             Icon(
                 imageVector = MiuixIcons.Community,
@@ -665,9 +640,7 @@ private fun UsageSection(
                 color = colors.onSurfaceVariantSummary,
                 maxLines = 1,
             )
-            // The two halves of the total that the first line folds away: reasoning is part of
-            // output,
-            // cache writes are part of input, and the TUI prints them only when they are non-zero.
+            // Reasoning belongs to output, cache writes to input; the TUI folds them out of the first line.
             if (
                 usage.total.reasoningOutputTokens != 0L || usage.total.cacheWriteInputTokens != 0L
             ) {
@@ -698,13 +671,8 @@ private fun UsageSection(
     }
 }
 
-/**
- * The account's rate-limit windows and credits.
- *
- * Mirrors the rows in `status/rate_limits.rs`: a bar per window, the reset time under it, and the
- * credits line. The card only appears when the account reported something, so a server without rate
- * limits (Bedrock, API key) never shows an empty one.
- */
+/** Mirrors the rows in `status/rate_limits.rs`; hidden when the account reported nothing,
+ * so a server without rate limits (Bedrock, API key) never shows an empty one. */
 @Composable
 private fun RateLimitsSection(
     rateLimits: AccountRateLimits,
@@ -721,8 +689,7 @@ private fun RateLimitsSection(
             snapshot.primary?.let { it to stringResource(R.string.status_card_rate_primary) },
             snapshot.secondary?.let { it to stringResource(R.string.status_card_rate_secondary) },
         )
-    // A stale window is worse than no window: it is presented as current, so after ten minutes the
-    // footer says so instead of leaving the percentages looking freshly fetched.
+    // A stale window presented as current is worse than none; ten minutes and the footer says so.
     val ageMs = updatedAt?.takeIf { it > 0L }?.let { System.currentTimeMillis() - it }
     val stale = ageMs != null && ageMs > RateLimitStaleAfterMs
     Card(
@@ -976,10 +943,8 @@ private fun RateLimitsSection(
     }
 }
 
-/** Rate limits older than this read as stale in the status card. */
 private const val RateLimitStaleAfterMs = 10 * 60 * 1000L
 
-/** Compact age for the rate-limit footer: seconds, minutes, hours or days. */
 private fun formatAge(ageMs: Long): String {
     val seconds = (ageMs / 1000).coerceAtLeast(0)
     return when {
@@ -1006,13 +971,8 @@ private fun formatResetTime(epochMillis: Long): String =
         .SimpleDateFormat("MMM d, HH:mm", Locale.getDefault())
         .format(java.util.Date(epochMillis))
 
-/**
- * The compact-context action of the usage row.
- *
- * Once the thread has been compacted there is nothing left to ask for, so the button keeps its
- * place and goes inert rather than disappearing: the row it would leave behind is the one being
- * read.
- */
+/** Goes inert once compacted instead of disappearing: the row it would leave behind is
+ * the one being read. */
 @Composable
 private fun CompactButton(
     compacted: Boolean,
@@ -1111,21 +1071,12 @@ private fun ModelSection(
             )
         }
         if (!collapsed) {
-            // Each row *is* the picker. These used to open a modal sheet, which for a three-item
-            // choice
-            // is a page of ceremony on top of the card the user is already reading; a cascading
-            // popup
-            // anchored to the row keeps the choice next to the value it changes, and gets the open
-            // and
-            // close motion from the library instead of having none.
+            // Each row is the picker: a modal sheet for a three-item choice is ceremony.
             Column(verticalArrangement = Arrangement.spacedBy(UiConsts.Space1)) {
                 val modelIndex = models.indexOfFirst { it.model == session.model }.coerceAtLeast(0)
                 PickerRow(
                     label = stringResource(R.string.status_card_model_label),
-                    // The chosen option's own name, not the config's label for it: the two disagree
-                    // after SetModel writes the id into the label, and the popup's check mark is on
-                    // the
-                    // option, so the row has to agree with the option.
+                    // The option's own name, not the config label: the two disagree after SetModel.
                     value = models.getOrNull(modelIndex)?.displayName ?: session.modelDisplayName,
                     items =
                         models.map { model ->
@@ -1159,11 +1110,8 @@ private fun ModelSection(
                     onSelectedIndexChange = { onPolicy(policies[it]) },
                 )
 
-                // The reviewer beside the policy: the policy decides whether a request is raised,
-                // the
-                // reviewer decides who answers it. AutoReview is offered only when the feature flag
-                // is
-                // on and managed policy allows the value (`auto_review_available` upstream).
+                // Policy decides whether a request is raised, the reviewer who answers it. AutoReview
+                // only when the flag allows it (`auto_review_available` upstream).
                 val reviewers =
                     ApprovalsReviewer.entries.filter {
                         it != ApprovalsReviewer.AutoReview || autoReviewAvailable
@@ -1179,9 +1127,8 @@ private fun ModelSection(
                     onSelectedIndexChange = { onReviewer(reviewers[it]) },
                 )
 
-                // Fast and other service tiers are per model. The row only exists when the catalog
-                // offers tiers for the current model, so a model without them never grows an empty
-                // picker; `null` selection is the model's own default (`"default"` on the wire).
+                // Tiers are per model; without them the row does not exist, and null selection is the
+                // model's own default (`"default"` on the wire).
                 val serviceTiers = models.getOrNull(modelIndex)?.serviceTiers.orEmpty()
                 if (serviceTiers.isNotEmpty()) {
                     val tierIds = listOf<String?>(null) + serviceTiers.map { it.id }
@@ -1205,9 +1152,7 @@ private fun ModelSection(
                     )
                 }
 
-                // The collaboration mode row the TUI's status card prints: Default and Plan, the
-                // two
-                // modes it makes user-selectable (`TUI_VISIBLE_COLLABORATION_MODES`).
+                // Default and Plan, the modes the TUI makes selectable (`TUI_VISIBLE_COLLABORATION_MODES`).
                 if (planAvailable) {
                     val modes = listOf(CollaborationMode.Default, CollaborationMode.Plan)
                     PickerRow(
@@ -1324,7 +1269,6 @@ private fun ModelSection(
     }
 }
 
-/** The sandbox policy as one line: mode plus the two switches that change what it permits. */
 @Composable
 internal fun accessSummary(session: ThreadSessionState): String {
     val parts = buildList {
@@ -1337,7 +1281,6 @@ internal fun accessSummary(session: ThreadSessionState): String {
     return parts.joinToString(" · ")
 }
 
-/** `Agents.md` as the file names that contributed instructions, or an explicit "none". */
 @Composable
 internal fun agentsSummary(session: ThreadSessionState): String =
     session.instructionSourcePaths
@@ -1346,17 +1289,8 @@ internal fun agentsSummary(session: ThreadSessionState): String =
         .joinToString(", ")
         .ifEmpty { stringResource(R.string.status_card_none) }
 
-/**
- * A row that *is* its own picker: the value on the right is the current choice, and tapping the row
- * drops that choice's options next to it.
- *
- * These rows used to be `miuix-preference` spinners, and a preference row is built for a settings
- * page: a 56dp minimum height and a 17/14sp type ramp, a full step above every other row in this
- * card. The popup shell is still the library's — anchoring it to the row, the open/close motion and
- * the haptic are the parts worth not rewriting — but both the row and the options it opens are
- * drawn at the card's own ramp, so a label/value row and its list read like the file and agent rows
- * beside them rather than as a settings page that landed on top of the card.
- */
+/** Row that is its own picker; miuix preference spinners are a full step above the card's
+ * ramp (56dp min height, 17/14sp), so row and options use the card's ramp. */
 @Composable
 private fun PickerRow(
     label: String,
@@ -1424,8 +1358,7 @@ private fun PickerRow(
             overflow = TextOverflow.Ellipsis,
         )
         Spacer(Modifier.width(arrowGap))
-        // The library's up/down arrow rather than this app's chevron: the row opens a list of
-        // alternatives, and the arrow is the affordance that says so everywhere else in the app.
+        // Library up/down arrow, the app-wide affordance for "opens a list of alternatives".
         DropdownArrowEndAction(actionColor = colors.onSurfaceVariantSummary)
         PickerPopup(
             items = items,
@@ -1437,15 +1370,8 @@ private fun PickerRow(
     }
 }
 
-/**
- * The option list a [PickerRow] drops next to itself.
- *
- * Not the library's `OverlayDropdownPopup`: that popup draws its options with the library's own
- * dropdown row, whose title is `body1` at 16sp over a summary at 14sp and whose padding belongs to
- * a settings page. A list opened from a 13sp row therefore arrived a full step larger than the row
- * itself. The popup's shell, anchoring and scale-in are still the library's; only the rows inside
- * are drawn here.
- */
+/** Not the library's `OverlayDropdownPopup` (its rows are settings-page sized); only the
+ * shell, anchoring and scale-in are the library's. */
 @Composable
 private fun PickerPopup(
     items: List<DropdownItem>,
@@ -1457,8 +1383,7 @@ private fun PickerPopup(
     verticalPadding: Dp = 8.dp,
 ) {
     val haptics = LocalHapticFeedback.current
-    // The popup outlives the composition that opened it, so the click reads the callback that is
-    // current when the option is tapped rather than the one captured when the list was built.
+    // The popup outlives its opener; read the callback current at tap time, not build time.
     val currentOnSelectedIndexChange by rememberUpdatedState(onSelectedIndexChange)
     OverlayListPopup(
         show = show,
@@ -1486,10 +1411,7 @@ private fun PickerPopup(
     }
 }
 
-/**
- * One option of a [PickerPopup], drawn full bleed so the popup's own rounded silhouette is what
- * shapes the top and bottom of the list.
- */
+/** Full-bleed row so the popup's own rounded silhouette shapes the list's top and bottom. */
 @Composable
 private fun PickerOptionRow(
     item: DropdownItem,
@@ -1625,10 +1547,6 @@ private fun AgentsSection(
         if (!collapsed) {
 
             Column(verticalArrangement = Arrangement.spacedBy(rowGap)) {
-                // Same two gestures as a file row: a tap goes into the thing the row names, a long
-                // press asks about it. For an agent that is "open its session" and "show me what it
-                // is",
-                // and the dashboard stays one tap away in the header for the overview.
                 roster.forEach { agent ->
                     AgentRow(
                         agent = agent,
@@ -1664,8 +1582,7 @@ private fun AgentRow(
 ) {
     val colors = MiuixTheme.colorScheme
     val shape = remember { RoundedCornerShape(UiConsts.RowCorner) }
-    // Only a subagent opens. The main agent is the thread this card is describing, so "entering" it
-    // would push a page about the page the user is already on.
+    // Only a subagent opens; the main agent is the thread this card describes.
     val opens = agent.role != AgentRole.Main
     Row(
         modifier =
@@ -1896,8 +1813,6 @@ private fun FileRow(
         Spacer(Modifier.width(statGap))
         FileStatText(file.additions, file.removals)
         Spacer(Modifier.width(chevronGap))
-        // Same disclosure as every other expanding row: 90 degrees when open, over
-        // Motion.Disclosure.
         val chevronRotation by
             animateFloatAsState(
                 targetValue = if (open) 90f else 0f,
@@ -1918,13 +1833,7 @@ private fun FileRow(
     }
 }
 
-/**
- * The diff pane that opens to the left of the section column.
- *
- * Mirrors `codex-rs/tui/src/diff_render.rs`: one file's unified diff with a header, two gutter line
- * numbers, horizontally scrollable code lines and a footer that switches files without closing the
- * pane.
- */
+/** Diff pane beside the section column; mirrors `codex-rs/tui/src/diff_render.rs`. */
 @Composable
 fun DiffPane(
     file: FileDiff,
@@ -2031,10 +1940,7 @@ fun DiffPane(
                     color = colors.onSurfaceVariantSummary,
                 )
                 siblings.forEach { sibling ->
-                    // These were drawn as pills with no tap handler behind them, which is a button
-                    // that lies about itself. They are names in a list of names, so the fill and
-                    // the
-                    // silhouette are gone and only the open file keeps a colour.
+                    // Names, not buttons: the pill fill is gone and only the open file keeps a colour.
                     Text(
                         text = sibling.fileName,
                         modifier = Modifier.padding(chipPadding),
@@ -2050,13 +1956,7 @@ fun DiffPane(
     }
 }
 
-/**
- * The foldable sub-cards of the status card.
- *
- * Every one of them answers a different question — how full the context is, what this turn is
- * doing, which agents and files it has touched — and a reader who is watching one of them pays for
- * the other four with rows they are not reading, so each folds on its own.
- */
+/** One foldable sub-card per question the card answers (context, turn, agents, files). */
 enum class StatusSection {
     Usage,
     RateLimits,
@@ -2074,19 +1974,11 @@ class StatusPanelState {
     var openFilePath by mutableStateOf<String?>(null)
         private set
 
-    /**
-     * Last opened diff, kept after [openFilePath] clears so the pane still has content to fade out
-     * with instead of collapsing to nothing for a frame.
-     */
+    /** Kept after [openFilePath] clears so the pane can fade out with content. */
     var paneFilePath by mutableStateOf<String?>(null)
         private set
 
-    /**
-     * The sections the reader has folded away; every one starts open.
-     *
-     * The choice outlives the panel: closing the card and reopening it must not unfold the sections
-     * that were folded on purpose.
-     */
+    /** Sections folded away; the choice outlives the panel so reopen does not unfold them. */
     private val folded = mutableStateMapOf<StatusSection, Boolean>()
 
     fun isFolded(section: StatusSection): Boolean = folded[section] == true
@@ -2119,19 +2011,8 @@ class StatusPanelState {
     }
 }
 
-/**
- * Toggle button for the status card.
- *
- * The press feedback is a tint in the chip's own silhouette rather than the default rectangular
- * ripple: a ripple over a rounded chip spills outside the shape it is answering, which read as the
- * button being a different shape from the one that was drawn. The icon does not move when the panel
- * opens — the panel appearing next to it is the state change, and a rotating glyph on top of that
- * made the button look like it was doing something to the session rather than to the panel.
- *
- * The chip stays silent about the session's state: it opens the card, and the card is where
- * running, waiting and approvals are read. The running outline and the badge dot that used to sit
- * on top of it made the button look like the thing doing the work.
- */
+/** Toggle button; press feedback is a tint in the chip's silhouette (a ripple would spill
+ * outside), and the icon neither rotates nor reflects session state. */
 @Composable
 fun StatusCardButton(
     open: Boolean,
@@ -2178,7 +2059,6 @@ fun StatusCardButton(
     }
 }
 
-/** Back chevron used by the drill-down surfaces. */
 @Composable
 fun BackChevron(
     onClick: () -> Unit,

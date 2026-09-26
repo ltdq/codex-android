@@ -30,15 +30,8 @@ import com.cy.codex.MarkdownStream
 import com.cy.codex.SessionDiagnostic
 import com.cy.codex.TooltipCell
 
-/**
- * The transcript dispatcher.
- *
- * Mirrors the `HistoryCell` trait in `codex-rs/tui/src/history_cell/mod.rs`: one item in, one cell
- * out. Every branch is a cell of its own so the transcript screen never has to know which item
- * kinds exist.
- */
-
-/** Renders one transcript item. This is the only function the transcript screen calls. */
+/** One item in, one cell out; mirrors the `HistoryCell` trait in
+ * `codex-rs/tui/src/history_cell/mod.rs`. */
 @Composable
 fun ThreadItemCell(
     item: ThreadItem,
@@ -81,14 +74,8 @@ fun ThreadItemCell(
     }
 }
 
-/**
- * One warning/error the session produced, rendered like a transcript entry.
- *
- * The reducer names its own notices by [DiagnosticCode] rather than by text — it has no `Context`
- * and no composition — so the wording is resolved here, at the edge, where a string resource can be
- * read. [SessionDiagnostic.message] is kept for text the transport supplied, which is data rather
- * than copy: `error.message` is reported as it arrived.
- */
+/** Notices are named by [DiagnosticCode] (the reducer has no Context);
+ * [SessionDiagnostic.message] passes through unchanged. */
 @Composable
 fun DiagnosticCell(
     diagnostic: SessionDiagnostic,
@@ -109,7 +96,6 @@ fun DiagnosticCell(
     )
 }
 
-/** The wording of one client-authored notice. */
 @Composable
 private fun diagnosticText(code: DiagnosticCode, args: List<String>): String = when (code) {
     DiagnosticCode.ThreadLoadFailed -> stringResource(R.string.chatwidget_diagnostic_thread_load_failed)

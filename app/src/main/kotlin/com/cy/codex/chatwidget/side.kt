@@ -33,12 +33,9 @@ import top.yukonga.miuix.kmp.icon.extended.Th1
 import top.yukonga.miuix.kmp.icon.extended.Timer
 
 /**
- * Sidebar model.
- *
- * Mirrors the TUI's side panel (`codex-rs/tui/src/chatwidget/side.rs` and `app/side.rs`): the
- * drawer is made of an action list, a project/working-directory grouping and the sessions inside
- * each group. The TUI builds it from `thread/list`; so does this, through
- * [ThreadListState.grouped]. Groups are derived from each thread's working directory.
+ * Sidebar model, mirroring the TUI's side panel (`codex-rs/tui/src/chatwidget/side.rs` and
+ * `app/side.rs`). Built from `thread/list` through [ThreadListState.grouped]; groups derive from
+ * each thread's working directory.
  */
 data class SidebarEntry(
     val id: String,
@@ -74,10 +71,7 @@ object SidebarModel {
         SidebarEntry(DestinationCatalog.Id.Workspace, stringResource(R.string.sidebar_add_workspace), MiuixIcons.AddFolder),
     )
 
-    /**
-     * Tools that act on the open thread. They stay out of Settings because their result and their
-     * availability are session-scoped, unlike account, model and integration preferences.
-     */
+    /** Tools that act on the open thread; session-scoped, so they stay out of Settings. */
     @Composable
     @ReadOnlyComposable
     fun sessionEntries(): List<SidebarEntry> = listOf(
@@ -92,7 +86,6 @@ object SidebarModel {
         SidebarEntry(DestinationCatalog.Id.Realtime, stringResource(R.string.sidebar_library_realtime), MiuixIcons.Mic),
     )
 
-    /** Turn the thread list into the sidebar's project groups. */
     @Composable
     @ReadOnlyComposable
     fun projects(threads: ThreadListState, includeArchived: Boolean): List<SidebarProject> =
@@ -115,7 +108,7 @@ object SidebarModel {
             }
         }
 
-    /** Coarse relative time; the TUI prints the same three buckets in its session picker. */
+    /** Coarse relative time in the TUI's session-picker buckets. */
     @Composable
     @ReadOnlyComposable
     fun relativeTime(epochMillis: Long): String {
@@ -137,12 +130,8 @@ object SidebarModel {
     }
 
     /**
-     * Slash-command suggestions for the composer.
-     *
-     * Built from [SlashCommands.All], the same table submission recognizes, so the popup cannot
-     * drift from the dispatch. [planAvailable] mirrors the feature gate upstream applies to
-     * `SlashCommand::Plan`: the row is hidden until `collaborationMode/list` has answered with a
-     * plan preset.
+     * Slash-command suggestions built from [SlashCommands.All], the same table submission
+     * recognizes; [planAvailable] mirrors the upstream feature gate on `SlashCommand::Plan`.
      */
     @Composable
     fun slashSuggestions(query: String = "/", planAvailable: Boolean = true): List<SlashCommand> =

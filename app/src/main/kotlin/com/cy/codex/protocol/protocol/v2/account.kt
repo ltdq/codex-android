@@ -3,28 +3,22 @@ package com.cy.codex.protocol.protocol.v2
 /**
  * `account/…` — signing in, signing out, and the account's own read models.
  *
- * Mirrors `schema/typescript/v2/LoginAccountParams.ts`, which is an internally-tagged union over six
- * sign-in methods. The phone only starts two of them (ChatGPT and an API key) but the whole union is
- * carried, because [LoginAccountResponse] has to be decoded for whichever one the user picked and a
- * half-modelled union silently decodes the wrong variant.
+ * Mirrors `schema/typescript/v2/LoginAccountParams.ts`: an internally-tagged union over six
+ * sign-in methods. The phone only starts two of them (ChatGPT and an API key) but the whole union
+ * is carried, because a half-modelled union silently decodes the wrong variant.
  */
 
-/** `account/login/start` params. The `type` tag decides which variant is on the wire. */
 sealed interface LoginAccountParams {
-    /** Paste an API key; completes immediately. */
     data class ApiKey(val apiKey: String) : LoginAccountParams
 
-    /** Browser/device sign-in: the server returns a URL (or a code) and waits. */
     data class Chatgpt(
         val appBrand: LoginAppBrand = LoginAppBrand.Codex,
         val useHostedLoginSuccessPage: Boolean = true,
         val codexStreamlinedLogin: Boolean = false,
     ) : LoginAccountParams
 
-    /** Headless sign-in: show `userCode`, send the user to `verificationUrl`. */
     data object ChatgptDeviceCode : LoginAccountParams
 
-    /** Re-hydrate a session from tokens the host already holds (e.g. an Android account). */
     data class ChatgptAuthTokens(
         val accessToken: String,
         val chatgptAccountId: String,
@@ -50,9 +44,7 @@ enum class LoginAppBrand(val wire: String) {
     Chatgpt("chatgpt"),
 }
 
-/** `account/login/start` response. */
 sealed interface LoginAccountResponse {
-    /** The key was accepted; there is nothing to wait for. */
     data object ApiKey : LoginAccountResponse
 
     /** Open [authUrl]; completion arrives as `account/login/completed` with this [loginId]. */
@@ -73,10 +65,8 @@ sealed interface LoginAccountResponse {
     data object Unknown : LoginAccountResponse
 }
 
-/** `account/login/cancel`. */
 data class CancelLoginAccountParams(val loginId: String)
 
-/** `account/login/completed`. */
 data class AccountLoginCompletedNotification(
     val success: Boolean,
     val loginId: String? = null,
@@ -92,9 +82,9 @@ data class WorkspaceMessagesResponse(
 /** One account-level notice. Mirrors `WorkspaceMessage`. */
 data class WorkspaceMessage(
     val messageId: String,
+    /** Server-side render kind; an unknown future value decodes to [WorkspaceMessageType.Unknown]. */
     val messageType: WorkspaceMessageType,
     val messageBody: String,
-    /** Server-side render kind; an unknown future value decodes to [WorkspaceMessageType.Unknown]. */
     val createdAt: Long? = null,
     val archivedAt: Long? = null,
 )

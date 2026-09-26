@@ -19,12 +19,7 @@ import com.cy.codex.raisedSurface
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
-/**
- * The conversation recap cell, mirroring `chatwidget/recap.rs`:
- * "Generating conversation recap…" while the hidden turn runs, "Conversation recap" with the
- * summary and an optional `↳ Recap:` next action after it, and a failure line when it could not be
- * generated.
- */
+/** Recap cell, mirroring `chatwidget/recap.rs`. */
 @Composable
 internal fun RecapCell(item: RecapItem, modifier: Modifier = Modifier) {
     val colors = MiuixTheme.colorScheme

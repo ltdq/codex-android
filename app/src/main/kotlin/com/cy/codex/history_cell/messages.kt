@@ -54,14 +54,7 @@ import top.yukonga.miuix.kmp.icon.extended.Send
 import top.yukonga.miuix.kmp.squircle.squircleClip
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
-/**
- * User turns and agent answers.
- *
- * Mirrors `codex-rs/tui/src/history_cell/messages.rs`: the user's prompt is a right-aligned block
- * that carries every non-text attachment as a labelled chip, and the agent's answer is a labelled
- * markdown body. The streaming variant appends the TUI's block caret while deltas are still
- * arriving.
- */
+/** User turns and agent answers; mirrors `codex-rs/tui/src/history_cell/messages.rs`. */
 @Composable
 fun UserMessageCell(
     item: UserMessageItem,
@@ -143,8 +136,7 @@ fun AgentMessageCell(
                 color = colors.primary,
                 maxLines = 1,
             )
-            // The rendered markdown is a lossy view of the source; `/copy` and this button both
-            // hand over `item.text` so pasting keeps the original markdown.
+            // The rendered markdown is lossy; copy hands over `item.text` so pasting keeps the source.
             if (item.text.isNotBlank()) {
                 IconButton(
                     onClick = { copyToClipboard(context, item.text, copyLabel) },
@@ -160,14 +152,11 @@ fun AgentMessageCell(
                 }
             }
         }
-        // A question message's text is the server's own rendering of the same questions — each
-        // title followed by its options as a markdown list — so drawing it here would show every
-        // question twice: once as inert markdown and once as the answerable list below. The list
-        // carries the titles and options, so nothing is lost.
+        // A question message's text is the server's own rendering of the same questions, so
+        // drawing it here would show every question twice.
         if (questions.isEmpty()) {
             Spacer(Modifier.height(labelSpacing))
-            // While deltas are being buffered the parsed blocks are the body; once the item
-            // completes the stream is dropped and the authoritative text renders instead.
+            // Buffered deltas render as streamed blocks; the completed item's text is authoritative.
             if (stream != null && stream.hasContent) {
                 MarkdownStreamText(stream = stream, streaming = streaming, cwd = cwd)
             } else {
@@ -181,7 +170,6 @@ fun AgentMessageCell(
     }
 }
 
-/** One `@file` / image / skill chip above the bubble text. */
 @Composable
 private fun AttachmentChip(
     input: UserInput,
@@ -221,17 +209,8 @@ private fun AttachmentChip(
     )
 }
 
-/**
- * Questions the agent asked inside its message, shown as a bordered list so a request that is
- * waiting on the user never reads as plain prose.
- *
- * Mirrors `codex-rs/tui/src/bottom_pane/async_questions/`: an option is one tap, a free-text answer
- * is always reachable — the "None of the above" row on a question that has options, the only row on
- * one that does not — and the submitted answer goes back as an ordinary user message framed with
- * the question it answers ([AsyncQuestions.answeredText]), which is what `go_next_or_submit` does
- * upstream. Answering locks the question locally; the list itself is a snapshot of the message, so
- * only a replayed item can show it again.
- */
+/** Mirrors `codex-rs/tui/src/bottom_pane/async_questions/`; the list is a message snapshot,
+ * so only a replay shows it again. */
 @Composable
 private fun QuestionList(
     questions: List<AsyncUserInputQuestion>,
@@ -253,11 +232,9 @@ private fun QuestionList(
     val colors = MiuixTheme.colorScheme
     val shape = remember(corner) { RoundedCornerShape(corner) }
     val optionShape = remember(corner) { RoundedCornerShape(corner) }
-    // The editor applies the TUI's option bounds before anything is shown.
     val bounded = remember(questions) { AsyncQuestions.normalize(questions) }
     // question index -> the answer already submitted; an entry locks its question.
     val answered = remember(bounded) { mutableStateMapOf<Int, String>() }
-    // question index -> the in-progress free-text draft.
     val drafts = remember(bounded) { mutableStateMapOf<Int, String>() }
     // question index -> the free-text row of an option question was tapped open.
     val otherOpen = remember(bounded) { mutableStateMapOf<Int, Boolean>() }
@@ -339,7 +316,6 @@ private fun QuestionList(
     }
 }
 
-/** One tappable row of a question: a model-authored option, the free-text row, or an answer. */
 @Composable
 private fun QuestionOptionRow(
     text: String,
@@ -394,7 +370,6 @@ private fun QuestionOptionRow(
     }
 }
 
-/** The free-text row: a field and the one button that sends what it holds. */
 @Composable
 private fun QuestionAnswerField(
     value: String,
@@ -435,5 +410,5 @@ private fun QuestionAnswerField(
     }
 }
 
-// The streaming caret lives with the markdown renderer: it is drawn by the tail block's own
-// composable there, so a blink no longer changes the message text and no longer forces a re-parse.
+// The streaming caret lives in the markdown renderer, so blinking neither changes
+// the message text nor re-parses it.

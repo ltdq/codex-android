@@ -13,14 +13,10 @@ import kotlinx.serialization.json.Json as JsonFormat
 /**
  * JSON codec for the app-server wire.
  *
- * The tree, parser and printer are kotlinx.serialization's [JsonElement]; the decoder is a real
- * RFC 8259 implementation, so surrogate pairs, `\u` escapes and number literals keep their exact
- * text (the hand-written parser turned every number into a [Double] and rounded anything past
- * 2^53). This object only pins the format and gives the wire code one import.
- *
- * Transport contract: one [parse] per incoming message and one [write] per outgoing message. The
- * Rust side mirrors it with `serde_json` typed deserialization, so a message never crosses more
- * than one encode/decode pair per direction.
+ * RFC 8259 tree, parser and printer from kotlinx.serialization: surrogate pairs, `\u` escapes and
+ * number literals keep their exact text (a hand-written parser turned every number into a [Double]
+ * and rounded anything past 2^53). One [parse] per incoming message and one [write] per outgoing
+ * message; the Rust side mirrors it with `serde_json` typed deserialization.
  */
 object Json {
     fun parse(text: String): JsonElement = JsonFormat.Default.parseToJsonElement(text)

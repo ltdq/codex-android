@@ -47,23 +47,14 @@ import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
- * `mcpServer/elicitation/request` in its form mode: an MCP server asks the user to fill in a
- * schema.
- *
- * Mirrors `codex-rs/tui/src/bottom_pane/mcp_server_elicitation.rs`: the flattened
- * [McpElicitationField] list is rendered as a real form, required fields gate the submit button,
- * and the submitted map is the *whole* form rather than only the fields the user touched.
- *
- * Every field is a label (with the required marker beside it), an optional description, and the
- * control. Boolean fields use miuix switch preferences so the label and switch share one action.
+ * `mcpServer/elicitation/request` in form mode (codex-rs/tui/src/bottom_pane/mcp_server_elicitation.rs):
+ * required fields gate the submit button, and the submitted map is the whole form, not just the
+ * fields the user touched.
  */
 
-/**
- * Enum options are chips: fully rounded, and the only control here that is not a full-width row.
- */
+/** Enum options are chips: fully rounded, and the only control here that is not a full-width row. */
 private val ChipShape = RoundedCornerShape(percent = UiConsts.PillCorner)
 
-/** One field's own rhythm. */
 private val RequiredBadgeShape = RoundedCornerShape(UiConsts.CornerChip)
 private val FieldControlGap = UiConsts.Space8
 
@@ -77,9 +68,7 @@ internal fun McpElicitationForm(
     onDecline: () -> Unit,
     busy: Boolean = false,
 ) {
-    // The two wire modes are different interactions: a schema form to fill in, or a page to open
-    // and accept. Rendering the URL variant as an empty form lost the URL entirely, which is why it
-    // gets its own body.
+    // Two wire modes, two interactions: a schema form to fill in, or a page to open and accept — the URL variant rendered as an empty form would lose the URL.
     when (val payload = request.params) {
         is McpElicitationRequest.Url ->
             McpElicitationUrl(
@@ -150,12 +139,9 @@ private fun McpElicitationFields(
                 )
             }
         }
-        // The scrolling body stops here and the footer starts: without the gap the last question
-        // reads as if it ran into the buttons, which are a different thing entirely.
         Spacer(Modifier.height(UiConsts.DialogFooterGap))
         FormButtons(
-            // The submit button *is* the protocol's accept action, so it takes that label rather
-            // than keeping a second copy of the same word.
+            // The submit button is the protocol's accept action, so it takes that label.
             confirmLabel = ElicitationAction.Accept.label(),
             enabled = complete,
             busy = submitted || busy,
@@ -168,13 +154,7 @@ private fun McpElicitationFields(
     }
 }
 
-/**
- * URL-mode elicitation: the connector sign-in or browser-action flow, in two screens.
- *
- * Mirrors `bottom_pane/app_link_view.rs`: the first screen explains what is about to happen and
- * opens the URL; the second asks the user to come back and confirm. Both the accept and the URL
- * validation happen here, and an unrecognized or unsafe URL shows no open button at all.
- */
+/** URL-mode elicitation in two screens, mirroring bottom_pane/app_link_view.rs; an invalid URL shows no open button. */
 @Composable
 private fun McpElicitationUrl(
     payload: McpElicitationRequest.Url,
@@ -284,8 +264,7 @@ private fun McpElicitationUrl(
                     auth -> stringResource(R.string.app_link_signed_in)
                     else -> stringResource(R.string.app_link_finished)
                 },
-            // A URL that failed validation has no open button: declining is the only way out, the
-            // same outcome the TUI reaches by rejecting the conversion.
+            // A URL that failed validation has no open button; declining is the only way out, as the TUI's rejection of the conversion.
             enabled = prompt != null,
             busy = busy,
             onConfirm = {
@@ -306,7 +285,6 @@ private fun McpElicitationUrl(
     }
 }
 
-/** The redirect target as a code surface, the way every other payload is shown. */
 @Composable
 private fun UrlSurface(url: String) {
     Text(

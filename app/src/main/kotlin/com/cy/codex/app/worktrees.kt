@@ -58,12 +58,7 @@ data class GitWorktree(
     val bare: Boolean,
 )
 
-/**
- * Parse `git worktree list --porcelain`.
- *
- * Porcelain output is one block per worktree, blank-line separated, one `key value` per line.
- * Unknown keys are ignored on purpose so a newer git that adds one does not break the list.
- */
+/** Parse `git worktree list --porcelain` blocks; unknown keys are ignored. */
 fun parseWorktrees(output: String): List<GitWorktree> =
     output.split(Regex("\\n\\s*\\n")).mapNotNull { block ->
         val lines = block.lineSequence().map(String::trim).filter { it.isNotEmpty() }.toList()
@@ -94,12 +89,8 @@ internal fun worktreePathFor(repository: String, branch: String): String {
 }
 
 /**
- * `/worktree` as a page.
- *
- * The TUI's managed-worktree pool is a client-side concept with no protocol surface, so the GUI
- * equivalent is the VCS feature itself: `git worktree list` through `command/exec`, and a form that
- * adds one. Picking a worktree starts a new thread there, which is what the TUI does when it
- * resumes a worktree session.
+ * `/worktree` page: the TUI's managed pool has no protocol surface, so the GUI is the
+ * VCS feature itself.
  */
 @Composable
 fun WorktreesScreen(
@@ -231,8 +222,7 @@ fun WorktreesScreen(
                         createError = null
                         val path = worktreePathFor(repository, name)
                         scope.launch {
-                            // `git worktree add -b` fails clearly when the branch or path already
-                            // exists; the page shows git's own message rather than guessing.
+                            // git's own failure message is shown as-is: add fails clearly on an existing branch or path.
                             client
                                 .execCommand(
                                     listOf("git", "worktree", "add", path, "-b", name),

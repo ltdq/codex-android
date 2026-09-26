@@ -33,12 +33,9 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.window.WindowBottomSheet
 
 /**
- * The `/copy` picker.
- *
- * Mirrors `codex-rs/tui/src/chatwidget/interaction.rs::show_copy_picker`: the whole last response,
- * each code block it contains, and — when a status snapshot exists — the status report. The TUI
- * also offers a status-only picker when `/status` was the last thing printed; on the phone the
- * status page owns its own copy button, so this sheet always leads with the response.
+ * The `/copy` picker: the whole last response, each code block, and the status report when present.
+ * Mirrors `codex-rs/tui/src/chatwidget/interaction.rs::show_copy_picker`; the TUI's status-only
+ * picker is skipped because the status page owns its own copy button.
  */
 @Composable
 fun CopySheet(

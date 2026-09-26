@@ -15,11 +15,8 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 /**
- * Manual conversation recaps, ported from `tui/src/app/recap.rs` and
- * `context-fragments/src/recap_prompt.rs`.
- *
- * The recap is a hidden structured turn over the recent user/assistant exchange; tools and
- * reasoning never enter the prompt, and the model answers with a bounded JSON object.
+ * Manual conversation recaps, ported from `codex-rs/.../tui/src/app/recap.rs` and
+ * `codex-rs/.../context-fragments/src/recap_prompt.rs`.
  */
 internal const val RecapSummaryMaxChars = 700
 internal const val RecapNextActionMaxChars = 200
@@ -79,12 +76,7 @@ internal fun parseRecap(response: String?): RecapResult? {
     return RecapResult(summary, next)
 }
 
-/**
- * The recent visible exchange, newest-last, in `recap_history.rs` shape.
- *
- * User messages and assistant messages with a final (non-commentary) phase are kept; the last
- * [RecapHistoryMaxTurns] of them survive, and the prompt byte cap trims the front.
- */
+/** Recent visible exchange, newest-last, in `codex-rs/.../recap_history.rs` shape. */
 internal fun recapHistory(items: List<ThreadItem>): String? {
     val exchanges = items.asReversed()
         .mapNotNull { item ->
@@ -108,8 +100,7 @@ internal fun recapHistory(items: List<ThreadItem>): String? {
         .asReversed()
     if (exchanges.isEmpty()) return null
     val history = exchanges.joinToString("\n\n")
-    // The prompt fragment caps the whole prompt by bytes and keeps the newest end; this stand-in
-    // keeps roughly the same slice without re-deriving the model's token estimate.
+    // Byte cap keeping the newest end, in place of the fragment's own token estimate.
     return if (history.toByteArray(Charsets.UTF_8).size <= MaxRecapHistoryBytes) {
         history
     } else {

@@ -11,7 +11,6 @@ import kotlinx.serialization.json.JsonElement
  * but the phone ignores them.
  */
 enum class ServerNotificationMethod(val wire: String) {
-    // item/…
     ItemStarted("item/started"),
     ItemCompleted("item/completed"),
     AgentMessageDelta("item/agentMessage/delta"),
@@ -27,14 +26,12 @@ enum class ServerNotificationMethod(val wire: String) {
     AutoApprovalReviewStarted("item/autoApprovalReview/started"),
     AutoApprovalReviewCompleted("item/autoApprovalReview/completed"),
 
-    // turn/…
     TurnStarted("turn/started"),
     TurnCompleted("turn/completed"),
     TurnDiffUpdated("turn/diff/updated"),
     TurnPlanUpdated("turn/plan/updated"),
     TurnModerationMetadata("turn/moderationMetadata"),
 
-    // thread/…
     ThreadStarted("thread/started"),
     ThreadClosed("thread/closed"),
     ThreadArchived("thread/archived"),
@@ -54,14 +51,12 @@ enum class ServerNotificationMethod(val wire: String) {
     ThreadGoalCleared("thread/goal/cleared"),
     ThreadQueueChanged("thread/queue/changed"),
 
-    // diagnostics and warnings
     Error("error"),
     Warning("warning"),
     ConfigWarning("configWarning"),
     GuardianWarning("guardianWarning"),
     DeprecationNotice("deprecationNotice"),
 
-    // account / model / mcp
     AccountUpdated("account/updated"),
     AccountLoginCompleted("account/login/completed"),
     AccountRateLimitsUpdated("account/rateLimits/updated"),
@@ -116,11 +111,10 @@ enum class ServerNotificationMethod(val wire: String) {
 }
 
 /**
- * `ServerRequest` — the 11 requests that must be answered.
+ * `ServerRequest` — the 11 requests that must be answered, experimental-inclusive.
  *
- * Mirrors the experimental-inclusive upstream set. A client that ignores one of these leaves the
- * agent blocked forever. The transport either delivers a typed request to the UI or returns an
- * explicit unsupported-method error.
+ * Ignoring one blocks the agent forever, so the transport either delivers a typed request to the
+ * UI or returns an explicit unsupported-method error.
  */
 enum class ServerRequestMethod(val wire: String) {
     CommandExecutionApproval("item/commandExecution/requestApproval"),
@@ -146,10 +140,10 @@ enum class ServerRequestMethod(val wire: String) {
 /**
  * Decision the user can hand back for a command execution approval.
  *
- * Mirrors the upstream union: four plain-string decisions plus two payload-carrying ones — the
- * execpolicy amendment ("accept and remember this rule") and the network-policy amendment ("allow
- * or deny this host from now on"). A four-value enum cannot represent the payload variants, which
- * is why "accept and remember" was unreachable before.
+ * Four plain-string decisions plus two payload-carrying ones — the execpolicy amendment ("accept
+ * and remember this rule") and the network-policy amendment ("allow or deny this host from now
+ * on"). A four-value enum cannot represent the payload variants, which is why "accept and
+ * remember" was unreachable before (mirrors the upstream union).
  */
 sealed interface CommandExecutionApprovalDecision {
     data object Accept : CommandExecutionApprovalDecision
@@ -220,10 +214,9 @@ sealed interface McpElicitationRequest {
     val message: String
 
     /**
-     * The wire `_meta` object, or null when the server sent none.
-     *
-     * Opaque to the client except for the `_codex_apps.connector_auth_failure` keys the app-link
-     * flow reads; keeping it around also lets an accept echo it back.
+     * The wire `_meta` object, or null when the server sent none. Opaque to the client except for
+     * the `_codex_apps.connector_auth_failure` keys the app-link flow reads; keeping it around also
+     * lets an accept echo it back.
      */
     val meta: JsonElement?
 

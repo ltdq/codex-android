@@ -8,11 +8,7 @@ import org.gradle.kotlin.dsl.create
 import org.gradle.kotlin.dsl.register
 import java.io.File
 
-/**
- * Gradle entry points for the embedded Codex app-server: patch the upstream
- * worktree, build the pinned Rust sysroot and compile/strip the JNI library and
- * helper. The recipes no longer live in shell scripts.
- */
+/** Gradle entry points for the embedded Codex app-server: worktree, Rust sysroot, JNI build. */
 open class NativeExtension(private val project: Project) {
     val rootDir: File = project.rootProject.projectDir
     val nativeDir: File = File(rootDir, "native")

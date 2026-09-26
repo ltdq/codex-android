@@ -5,13 +5,10 @@ import kotlinx.serialization.json.JsonElement
 /**
  * JSON-RPC 2.0 envelopes used on the app-server wire.
  *
- * Mirrors `codex-rs/app-server-protocol/src/protocol/common.rs`: every message the server and the
- * client exchange is one of these four shapes, tagged by which optional members are present
- * (`method` + `id` = request, `method` only = notification, `id` + `result`/`error` = response).
- *
- * The envelopes are plain data classes; the transport owns serialization. Keeping them free of
- * codec annotations means the wire format lives in exactly one place once a real socket client
- * lands, instead of being spread across every protocol type.
+ * Every message is one of four shapes, tagged by which optional members are present (`method` +
+ * `id` = request, `method` only = notification, `id` + `result`/`error` = response); mirrors
+ * `codex-rs/app-server-protocol/src/protocol/common.rs`. Plain data classes: the transport owns
+ * serialization, so the wire format lives in one place once a real socket client lands.
  */
 data class JsonRpcRequest(
     val id: RequestId,

@@ -11,15 +11,8 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
 
-/**
- * Syntax highlighting for transcript code.
- *
- * The TUI uses syntect (`codex-rs/tui/src/render/highlight.rs`), whose grammar set is far past what
- * a phone needs. This is the same contract with a much smaller surface: one line-oriented lexer
- * that understands comments, strings, numbers, keywords and types, and a keyword table per
- * language. A language it does not know renders as plain monospace, which is what the transcript
- * looked like before.
- */
+/** Same contract as the TUI's syntect highlighter (`codex-rs/tui/src/render/highlight.rs`) with a
+ * smaller surface: one line-oriented lexer and a keyword table per language. */
 @Immutable
 class SyntaxPalette(
     val plain: Color,
@@ -30,7 +23,6 @@ class SyntaxPalette(
     val number: Color,
     val function: Color,
 ) {
-    /** Style for a token kind; [FontWeight.Normal] keeps the mono ramp uniform. */
     fun style(kind: TokenKind): SpanStyle = when (kind) {
         TokenKind.Plain -> SpanStyle(color = plain)
         TokenKind.Keyword -> SpanStyle(color = keyword, fontWeight = FontWeight.Medium)
@@ -45,12 +37,7 @@ class SyntaxPalette(
 /** Token classes the one lexer can produce. */
 enum class TokenKind { Plain, Keyword, Type, String, Comment, Number, Function }
 
-/**
- * Highlighting colours for the current theme.
- *
- * The values follow the same adaptive pair the diff palette uses: one set for dark surfaces and one
- * for light, because the miuix tonal palette has no syntax ramp of its own.
- */
+/** Adaptive dark/light pairs, like the diff palette; miuix has no syntax ramp of its own. */
 @Composable
 fun syntaxPalette(): SyntaxPalette {
     val dark = isSystemInDarkTheme()
@@ -79,13 +66,8 @@ fun syntaxPalette(): SyntaxPalette {
     }
 }
 
-/**
- * Highlight a whole code block, one [AnnotatedString] per line.
- *
- * Returns plain lines for an unknown language or a block past [SyntaxHighlightMaxBytes],
- * [SyntaxHighlightMaxLines] or [SyntaxHighlightMaxLineBytes]; the limits mirror the TUI's
- * `render/highlight.rs` so a giant diff or log cannot stall a frame.
- */
+/** Unknown languages and blocks past the byte/line limits render plain, so a giant diff cannot
+ * stall a frame (mirrors the TUI). */
 fun highlightCodeLines(
     code: String,
     language: String?,
@@ -102,27 +84,20 @@ fun highlightCodeLines(
     return lines.map { lexer.highlight(it) }
 }
 
-/** Highlight one line when the caller knows its language, e.g. a diff hunk. */
 fun highlightCodeLine(text: String, language: String?, palette: SyntaxPalette): AnnotatedString {
     val spec = languageSpec(language) ?: return AnnotatedString(text)
     if (text.length > SyntaxHighlightMaxLineBytes) return AnnotatedString(text)
     return SyntaxLexer(spec, palette).highlight(text)
 }
 
-/** Highlight one shell command line, as the TUI does with `highlight_bash_to_lines`. */
 fun highlightShellCommand(command: String, palette: SyntaxPalette): AnnotatedString {
     val spec = languageSpec("bash") ?: return AnnotatedString(command)
     if (command.length > SyntaxHighlightMaxLineBytes) return AnnotatedString(command)
     return SyntaxLexer(spec, palette).highlight(command)
 }
 
-/**
- * A stateful line lexer.
- *
- * State is only the multi-line constructs a line-oriented renderer cannot otherwise see: block
- * comments and triple-quoted strings. [snapshot]/[restore] let a streaming block re-highlight its
- * partial line without advancing the state it will need for the next complete one.
- */
+/** State is only the multi-line constructs a line renderer cannot see; [snapshot]/[restore]
+ * re-highlight a streaming partial line without advancing it. */
 class SyntaxLexer internal constructor(
     private val spec: LanguageSpec,
     private val palette: SyntaxPalette,
@@ -279,7 +254,6 @@ class SyntaxLexer internal constructor(
     }
 }
 
-/** Saved multi-line lexer state, for re-highlighting a streaming partial line. */
 class LexerState internal constructor(
     internal val blockCommentEnd: String?,
     internal val tripleEnd: String?,
@@ -331,7 +305,6 @@ private val ShellKeywords = keyword(
     "echo", "printf", "cd", "pwd", "read", "eval", "exec", "trap", "wait", "test", "true", "false",
 )
 
-/** Normalize a fence info string or file extension into one of the known grammars. */
 internal fun languageSpec(language: String?): LanguageSpec? {
     val name = language?.trim()?.lowercase()?.substringBefore(',')?.substringBefore(' ') ?: return null
     return when (name) {
@@ -516,7 +489,6 @@ internal fun languageSpec(language: String?): LanguageSpec? {
     }
 }
 
-/** The grammar implied by a file extension, for diffs and file rows. */
 internal fun languageFromPath(path: String): String? {
     val name = path.substringAfterLast('/').lowercase()
     return when {

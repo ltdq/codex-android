@@ -37,43 +37,21 @@ import top.yukonga.miuix.kmp.preference.RadioButtonPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.window.WindowBottomSheet
 
-/**
- * One field of a [FormSheet].
- *
- * A list of these rather than a composable slot per page: the sheets in this app are two fields and
- * a button, and the four of them had already drifted on where the submit button sits and what a
- * missing required field does. Describing the fields as data is what makes one sheet do all four.
- */
+/** One field of a [FormSheet] as data; data-shaped fields let one sheet serve every form. */
 data class FormField(
-    /** Key the value is reported under; also the field's identity across recompositions. */
     val key: String,
     val label: String,
     val placeholder: String? = null,
     val initial: String = "",
-    /** A blank required field disables the submit button rather than being sent empty. */
     val required: Boolean = true,
     val keyboardType: KeyboardType = KeyboardType.Text,
-    /** Shown under the field; use it to say what the value is for. */
     val help: String? = null,
-    /**
-     * Fixed choices as wire value to label. When present the field renders as a radio group and the
-     * reported value is the chosen wire value, so a form that must send an enum cannot send prose.
-     */
+    // Wire value to label; a radio group can only send a valid wire value.
     val choices: List<Pair<String, String>>? = null,
-    /** Render the input as bullets; for secrets that are about to be sent to the server. */
     val masked: Boolean = false,
 )
 
-/**
- * A sheet that collects a few values and submits them together.
- *
- * `config/batchWrite` is the reason this shape exists: several of these forms write more than one
- * key, and sending them one at a time would leave the config in a half-applied state if the second
- * write were refused.
- *
- * Dismissal is the caller's: the sheet is composed only while it should be visible, matching every
- * other sheet in the app, so `onDismissFinished` and `onDismiss` are the same callback.
- */
+/** Collects a few values and submits them together; `config/batchWrite` must not be half-applied. */
 @Composable
 fun FormSheet(
     title: String,
@@ -220,7 +198,6 @@ fun FormSheet(
     }
 }
 
-/** The project editor: a name, and the directory it stands for. */
 @Composable
 fun ProjectFormSheet(
     title: String,
@@ -252,7 +229,6 @@ fun ProjectFormSheet(
     )
 }
 
-/** A sheet whose single value is a path — importing a project, opening a file. */
 @Composable
 fun PathSheet(
     title: String,
@@ -282,13 +258,7 @@ fun PathSheet(
     )
 }
 
-/**
- * Registering an execution environment.
- *
- * Two fields that look unrelated and are not: an environment is a *remote* exec server, so it is
- * named by an id the caller chooses and reached by its url. There is no "add this folder" form in
- * the protocol — a local directory is a project, not an environment.
- */
+/** Registers a remote exec server by caller-chosen id and url; a local directory is a project. */
 @Composable
 fun EnvironmentFormSheet(
     onDismiss: () -> Unit,

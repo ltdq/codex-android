@@ -3,10 +3,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/**
- * The MCP result projection mirrors `codex-rs/tui/src/history_cell/mcp_result.rs`: text stays
- * verbatim, media bodies never reach the transcript, malformed blocks keep their exact JSON.
- */
+/** Mirrors codex-rs/tui/src/history_cell/mcp_result.rs. */
 class McpResultProjectionTest {
     @Test
     fun `text blocks are kept and media blocks become summaries`() {

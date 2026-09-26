@@ -11,15 +11,9 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-/** Which path asked for a recap; automatic ones are gated by the setting and by focus. */
 internal enum class RecapTrigger { Manual, Automatic }
 
-/**
- * `tui.auto_recap`, persisted in the same `codex_ui` preferences as the other client-side toggles.
- *
- * Upstream defaults this to `true` (`config/src/types.rs` `default_true`): disabling it leaves
- * `/recap` available on demand.
- */
+/** `tui.auto_recap` in `codex_ui` prefs; upstream default true (codex-rs/.../config/src/types.rs). */
 object RecapSettings {
     private const val FileName = "codex_ui"
     private const val KeyAutoRecap = "auto_recap"
@@ -40,11 +34,8 @@ object RecapSettings {
 }
 
 /**
- * The automatic recap schedule, ported from `app/recap.rs` `RecapState`.
- *
- * A recap becomes due at `max(focus lost, last turn finished) + 30 minutes`, and only when at
- * least three turns completed and at least two completed since the last recap. The scheduler owns
- * only the bookkeeping and the timer; [ChatWidget] owns the request and the transcript cell.
+ * Automatic recap schedule, ported from `codex-rs/.../app/recap.rs` `RecapState`: due at
+ * `max(focus lost, last turn finished) + 30 minutes`, gated by completed-turn thresholds.
  */
 internal class RecapScheduler {
     var completedTurns = 0
@@ -54,7 +45,6 @@ internal class RecapScheduler {
     var turnRevision = 0
         private set
 
-    /** The trigger of the recap currently running, or `null`. */
     var inFlightTrigger: RecapTrigger? = null
         private set
 
@@ -64,7 +54,6 @@ internal class RecapScheduler {
     private var scheduledCheck: Job? = null
     private var retryRevision: Int? = null
 
-    /** Record a turn's final status; only completed turns count toward the threshold. */
     fun noteTurnFinished(status: TurnStatus, nowMs: Long) {
         if (status == TurnStatus.Completed) completedTurns++
         turnRevision++
@@ -77,7 +66,6 @@ internal class RecapScheduler {
         if (unfocusedSinceMs == null) unfocusedSinceMs = nowMs
     }
 
-    /** The app came back: cancel the timer and abandon an automatic request still in flight. */
     fun noteFocusGained() {
         unfocusedSinceMs = null
         scheduledCheck?.cancel()
@@ -98,12 +86,7 @@ internal class RecapScheduler {
         inFlightTrigger = null
     }
 
-    /**
-     * Seed the counters from a thread's loaded turns.
-     *
-     * `lastRecappedTurnCount` stays null: reseeding cannot know whether the last recap was already
-     * recorded, and not recapping is the harmless side of that uncertainty.
-     */
+    // lastRecappedTurnCount stays null: reseeding cannot know whether the last recap was recorded.
     fun seedFromTurns(turns: List<Turn>, nowMs: Long) {
         scheduledCheck?.cancel()
         scheduledCheck = null
@@ -113,7 +96,6 @@ internal class RecapScheduler {
         lastTurnFinishedAtMs = if (completedTurns > 0) nowMs else null
     }
 
-    /** When the next automatic recap is due, or `null` when none is. */
     fun nextCheckDeadlineMs(): Long? {
         val unfocusedSince = unfocusedSinceMs ?: return null
         if (completedTurns < MinCompletedTurns) return null
@@ -125,7 +107,7 @@ internal class RecapScheduler {
 
     fun shouldGenerate(nowMs: Long): Boolean = nextCheckDeadlineMs()?.let { nowMs >= it } == true
 
-    /** (Re)arm the one-shot check. Every call aborts the previous timer; a disabled setting none. */
+    /** (Re)arms the one-shot check; every call aborts the previous timer. */
     fun scheduleCheck(
         scope: CoroutineScope,
         threadId: String,
@@ -164,7 +146,6 @@ internal class RecapScheduler {
         lastRecappedTurnCount = completedTurnCount
     }
 
-    /** Returns false when a recap is already running; otherwise claims the in-flight slot. */
     fun beginInFlight(trigger: RecapTrigger): Boolean {
         if (inFlightTrigger != null) return false
         inFlightTrigger = trigger
@@ -182,10 +163,10 @@ internal class RecapScheduler {
         /** Upstream `MIN_TURNS_BETWEEN_RECAPS`. */
         const val MinTurnsBetweenRecaps = 2
 
-        /** Upstream `RECAP_DELAY`: the terminal has been unfocused for 30 minutes. */
+        /** Upstream `RECAP_DELAY`; units: ms. */
         const val RecapDelayMs = 30 * 60 * 1000L
 
-        /** Upstream `RECAP_RETRY_DELAY`. */
+        /** Upstream `RECAP_RETRY_DELAY`; units: ms. */
         const val RecapRetryDelayMs = 30_000L
     }
 }

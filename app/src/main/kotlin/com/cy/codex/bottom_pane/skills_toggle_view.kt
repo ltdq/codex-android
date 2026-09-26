@@ -52,15 +52,9 @@ import top.yukonga.miuix.kmp.icon.extended.Lock
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
- * `/skills` output as a page.
- *
- * Mirrors `skills/list` and `bottom_pane/skills_toggle_view.rs`: the TUI toggles skills in a
- * multi-select picker over one flat list; the phone groups the same entries by scope, because the
- * scope is what decides whether a skill can be turned off at all — a system skill is not the user's
- * to disable, and a flat list hides that.
- *
- * The switch writes through `skills/config/write` and the list is re-read from the server rather
- * than flipped locally: a skill the server refuses to change would otherwise appear to toggle.
+ * `/skills` as a page (skills/list, bottom_pane/skills_toggle_view.rs): grouped by scope, because
+ * scope decides whether a skill can be turned off. Switches write through `skills/config/write`
+ * and the list re-reads, so a server refusal does not appear to toggle.
  */
 @Composable
 fun SkillsScreen(

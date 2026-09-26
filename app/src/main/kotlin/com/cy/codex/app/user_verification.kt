@@ -53,33 +53,9 @@ import top.yukonga.miuix.kmp.theme.LocalDismissState
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
- * User verification: enrolling a local credential and signing a challenge with it.
- *
- * Mirrors `codex-rs/tui/src/app/user_verification.rs` and `…/bottom_pane/user_verification.rs`, and
- * covers the whole `userVerification` family — status, enroll, verify, cancel and delete.
- *
- * Three protocol facts decide this page's shape and are the reason it does not present verification
- * as a state machine with a "pending" step:
- *
- * - **There is no `state` on the wire.** `userVerification/status` answers with a credential id
- *   and, only when verification cannot run at all, an `unavailableReason` plus a human
- *   `unavailableMessage`. So there are exactly three shapes — unavailable, not enrolled, enrolled —
- *   and no fourth one for "verifying". A server that answers with neither field is read as
- *   not-enrolled, because that is the one shape in which enrolling is the useful next action.
- * - **Enrolling registers nothing.** `userVerification/enroll` creates or reuses a credential on
- *   this device and answers with its public metadata. Backend registration is the caller's job
- *   afterwards, and an older app-server may omit `algorithm` and `publicKey` entirely, so both are
- *   shown only when they are there rather than being filled in with a guess.
- * - **Verifying is a signing primitive, not a check of the user's state.**
- *   `userVerification/verify` takes a challenge plus display context and answers with a proof — a
- *   signature. Nothing about it consults the server or an elicitation. On a phone the real
- *   implementation would hand the challenge to the platform keystore and let it prompt for
- *   biometrics; this client has no keystore binding, so the form asks the user to paste the
- *   challenge and the page reports what came back instead of pretending a prompt happened.
- *
- * Cancelling is not an undo: `userVerification/cancel` stops an in-flight verification and a
- * completed one is not rolled back by it, which is why it sits beside the signing action under that
- * name rather than being offered as "undo".
+ * User verification, mirroring `codex-rs/tui/src/app/user_verification.rs` and
+ * `codex-rs/.../bottom_pane/user_verification.rs`. Wire facts: no state field (three
+ * shapes), enroll registers nothing, verify signs a pasted challenge (no keystore binding).
  */
 @Composable
 fun UserVerificationScreen(
@@ -91,10 +67,7 @@ fun UserVerificationScreen(
     val colors = MiuixTheme.colorScheme
     val status = catalog.userVerification
     val shape = status.shape()
-    // Every string on this line is a resource: the server's own sentence when it sent one, this
-    // page's name for the shape when the server has not answered yet, and the shape's label
-    // otherwise. The message is preferred over the label because the server knows *why* it is
-    // unavailable and a label can only name the category.
+    // Server message over the shape label: the server knows why it is unavailable.
     val serverMessage = status?.unavailableMessage
     val subtitle =
         when {
@@ -170,10 +143,7 @@ fun UserVerificationScreen(
                     AppEvent.VerifyUserVerification(
                         UserVerificationVerifyParams(
                             challenge = challenge,
-                            // The title is the page's own name for the operation, which is the
-                            // display context a platform prompt would have shown: the user has
-                            // already read it by the time they submit, so it is not a second
-                            // question, it is a record of what was approved.
+                            // The page title stands in for the display context a platform prompt would show.
                             title = pageTitle,
                             description = description,
                         )
@@ -185,21 +155,12 @@ fun UserVerificationScreen(
     }
 }
 
-/**
- * The three shapes this page can be in, read out of the status answer.
- *
- * Deliberately three and not more: the protocol carries no verification *state*, so "pending",
- * "verified" and "failed" exist only inside a single `userVerification/verify` call and are never
- * something this page is told about. Inventing them here would make the page claim to know
- * something the server never said.
- */
 private enum class UserVerificationShape {
     Unavailable,
     NotEnrolled,
     Enrolled,
 }
 
-/** This page's headline for a shape; the body of the card spells the shape out again in full. */
 @Composable
 private fun UserVerificationShape.label(): String =
     stringResource(
@@ -210,13 +171,7 @@ private fun UserVerificationShape.label(): String =
         }
     )
 
-/**
- * Which of the three shapes [this] describes.
- *
- * Unavailable wins over the credential id on purpose: a reason is the server saying verification
- * cannot run here at all, and the id it may still be carrying is then moot — offering to sign with
- * it would offer an action that is guaranteed to fail.
- */
+// Unavailable outranks a present credential id: signing with it always fails.
 private fun UserVerificationStatusResponse?.shape(): UserVerificationShape =
     when {
         this?.unavailableReason != null -> UserVerificationShape.Unavailable
@@ -224,13 +179,7 @@ private fun UserVerificationStatusResponse?.shape(): UserVerificationShape =
         else -> UserVerificationShape.Enrolled
     }
 
-/**
- * The status card: which shape applies, and the id it applies to.
- *
- * The credential id is monospace because it is a value a human compares against what the server
- * holds; a proportional face makes `l` and `1` the same shape and the comparison stops being one a
- * person can make by eye.
- */
+// Credential id monospace: compared by eye against what the server holds.
 @Composable
 private fun UserVerificationStatusCard(
     shape: UserVerificationShape,
@@ -238,9 +187,7 @@ private fun UserVerificationStatusCard(
 ) {
     val tint =
         when (shape) {
-            // Green and amber carry the meaning here, so the state row reads as a state rather than
-            // as
-            // one more label/value pair.
+            // Colours carry the state meaning, so the row reads as a state, not a label/value pair.
             UserVerificationShape.Enrolled -> successColor()
             UserVerificationShape.Unavailable -> warningColor()
             UserVerificationShape.NotEnrolled -> MiuixTheme.colorScheme.onSurface
@@ -318,15 +265,7 @@ private fun UserVerificationStatusCard(
     }
 }
 
-/**
- * What the page says when the platform cannot verify at all — and the only action it offers.
- *
- * Enrolling and signing are both hidden in this shape, because a device the server has already
- * called unavailable cannot complete either one: the capability is biometrics plus a keystore, and
- * both live on the device rather than in the protocol. A re-read is the one action that can change
- * the answer, since the availability the server reported is a property of this device's state and
- * not of the request.
- */
+// Enroll and sign are hidden: the capability lives on the device; re-read alone can change the answer.
 @Composable
 private fun UnavailableCard(onEvent: (AppEvent) -> Unit) {
     Card(
@@ -363,14 +302,7 @@ private fun UnavailableCard(onEvent: (AppEvent) -> Unit) {
     }
 }
 
-/**
- * The one action of the not-enrolled shape.
- *
- * *Not* the not-enrolled shape's whole story: `userVerification/enroll` mints or reuses a
- * credential in this device's keystore and answers with the public half of it. It signs nothing,
- * registers nothing with the backend and prompts for nothing — so the note under the button says
- * what the tap will and will not do before the user spends a biometric on it.
- */
+// `userVerification/enroll` mints or reuses a local credential; it signs, registers or prompts for nothing.
 @Composable
 private fun EnrollCard(onEvent: (AppEvent) -> Unit) {
     Card(
@@ -407,14 +339,7 @@ private fun EnrollCard(onEvent: (AppEvent) -> Unit) {
     }
 }
 
-/**
- * The enrolled shape: the credential's public metadata, the signing action, and the two ways out.
- *
- * The metadata comes from [credential] — the answer to the enroll call — and not from the status
- * answer, which never carries it. Both fields are optional on the wire, so a row appears only when
- * its field is present: on an older app-server that omits them this card shows the credential id
- * and nothing that looks like a fact but is really a blank.
- */
+// Public metadata comes from the enroll answer; the status never carries it.
 @Composable
 private fun EnrolledCard(
     credential: UserVerificationEnrollResponse?,
@@ -463,8 +388,6 @@ private fun EnrolledCard(
             credential.publicKey
                 ?.takeIf { it.isNotBlank() }
                 ?.let { key ->
-                    // The marker lives in a resource like every other visible character on this
-                    // page.
                     val ellipsis = stringResource(R.string.user_verification_page_ellipsis)
                     BasicComponent(
                         title = stringResource(R.string.user_verification_page_public_key),
@@ -524,20 +447,11 @@ private fun EnrolledCard(
                 Text(text = stringResource(R.string.user_verification_page_delete), maxLines = 1)
             }
         }
-        // The two buttons above are not opposites and the page has to say so: cancel stops a
-        // verification that is still running, and nothing that already returned a proof is taken
-        // back by it. Delete is the destructive half — it removes the local credential, so signing
-        // stops working until a new one is enrolled.
+        // Cancel is not undo: it stops an in-flight verification; delete removes the local credential.
         UserVerificationNote(stringResource(R.string.user_verification_page_cancel_note))
     }
 }
 
-/**
- * The body text of a card's explanatory paragraph.
- *
- * One composable so the four notes on this page share a leading and a colour; the sentence itself
- * is always a string resource, because each of them is a claim about what the protocol does.
- */
 @Composable
 private fun UserVerificationNote(text: String) {
     Text(
@@ -552,21 +466,8 @@ private fun UserVerificationNote(text: String) {
 }
 
 /**
- * The signing form: a challenge to sign, and the display context that goes with it.
- *
- * Two protocol limits are visible here rather than hidden.
- *
- * - The description is collected because `userVerification/verify` takes display context beside the
- *   challenge, and a real implementation would put both in the keystore prompt — but
- *   [AppEvent.VerifyUserVerification] carries one string, so only the challenge reaches the server.
- *   The field's help text says that; a form that quietly dropped it would be worse than one that
- *   never offered it.
- * - `userVerification/cancel` addresses a *verification* by request id, and its `AppEvent` takes no
- *   parameters — the shell supplies the id. So one verification at a time is all this page can
- *   express, and the form cannot be reopened while it is open.
- *
- * The sheet is dismissed through the app's shared [LocalDismissState] so the grabber, the scrim, a
- * drag and the back gesture all reach the same callback as the submit button.
+ * Sign form: `userVerification/verify` takes challenge plus display context, but only the
+ * challenge reaches the server; `cancel` takes no params, so one verification at a time.
  */
 @Composable
 private fun UserVerificationSignSheet(
@@ -611,15 +512,7 @@ private fun UserVerificationSignSheet(
     }
 }
 
-/**
- * Cut [value] down to something a phone can show, marking the cut with [ellipsis].
- *
- * A public key is a long base64url blob whose interesting ends are the beginning (the algorithm
- * prefix) and the end; the middle is the part a human never reads. The screen this is shown on is
- * not where the key is verified either — the server holds both halves — so the row exists to
- * confirm that a key arrived, and a truncated value does that as well as a whole one while keeping
- * the card from turning into a wall of characters.
- */
+// The middle of a public key is never read; the row only confirms a key arrived.
 private fun truncated(value: String, ellipsis: String, keep: Int = 36): String =
     if (value.length <= keep * 2 + ellipsis.length) {
         value

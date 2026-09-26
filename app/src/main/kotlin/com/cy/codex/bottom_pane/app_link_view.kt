@@ -53,13 +53,7 @@ import top.yukonga.miuix.kmp.icon.extended.GridView
 import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
-/**
- * `/apps` output as a page.
- *
- * Mirrors `app/list` and `bottom_pane/app_link_view.rs`: the TUI opens one app at a time to link or
- * install it in a browser, the phone lists the account's connectors and keeps the same two-section
- * split the plugin catalog uses. The action is inert until an app-link event exists.
- */
+/** `/apps` as a page, mirroring `app/list` and codex-rs/tui/src/bottom_pane/app_link_view.rs. */
 @Composable
 fun AppsScreen(
     catalog: CatalogState,
@@ -70,12 +64,10 @@ fun AppsScreen(
 ) {
     val colors = MiuixTheme.colorScheme
     val scope = rememberCoroutineScope()
-    // `app/installed` and `app/list` are two different questions. The list the catalog holds comes
-    // from `app/list`; asking for the installed set narrows it server-side and drops the rest.
+    // `app/installed` re-narrows server-side; the catalog list itself comes from `app/list`.
     var installedOnly by remember { mutableStateOf(false) }
     var narrowed by remember { mutableStateOf<List<AppInfo>?>(null) }
-    // `app/read` takes ids, which is what a page needs after it has *written* one app's state: it
-    // can re-read just that row instead of the whole catalog.
+    // `app/read` takes ids: after a write, re-read just that row.
     var reread by remember { mutableStateOf<List<AppInfo>>(emptyList()) }
     val apps = narrowed ?: catalog.apps
     val installed = apps.filter { it.installed }
@@ -324,9 +316,6 @@ private fun AppsRow(
             )
         }
         Spacer(Modifier.width(UiConsts.Space10))
-        // Re-reading one app is `app/read` with a single id: after a write, the server's copy of
-        // that row is the only one that can say whether the install actually took, and re-listing
-        // every app to find out would be a request per row.
         Button(
             onClick = { onReread(app.id) },
             modifier = Modifier,
@@ -349,8 +338,6 @@ private fun AppsRow(
             )
         }
         Spacer(Modifier.width(UiConsts.Space6))
-        // Installing is the one thing this page can do for an app, so the marketplace chip is the
-        // accent pill and "Installed" — a state, not an action — is the outlined one.
         Button(
             onClick = { onEvent(AppEvent.SetAppInstalled(app.id, !app.installed)) },
             colors =

@@ -27,15 +27,7 @@ import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.squircle.squircleBorder
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
-/**
- * Shared decision controls for the approval dialog.
- *
- * Mirrors the option list `codex-rs/tui/src/bottom_pane/approval_overlay.rs` builds for all four
- * request families: the *same* pill row sits under every dialog, so a command approval and an MCP
- * form cannot disagree about what "允许" looks like.
- */
-
-/** Approval choices retain their hierarchy while miuix owns the button behavior. */
+/** Shared decision pills for the approval dialog (codex-rs/tui/src/bottom_pane/approval_overlay.rs). */
 enum class DecisionRole {
     Primary,
     Secondary,
@@ -49,13 +41,7 @@ data class DecisionAction(
     val onClick: () -> Unit,
 )
 
-/**
- * A wrapping row of pill buttons.
- *
- * Wraps instead of scrolling: four decisions (`允许` / `本会话总是允许` / `拒绝` / `取消本轮`) do not fit on a
- * phone in one line, and a horizontally scrolling decision bar hides the destructive escape hatch
- * off-screen.
- */
+/** Wrapping pill row; wraps instead of scrolling so the destructive escape hatch never goes off-screen. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun DecisionRow(
@@ -113,13 +99,7 @@ fun DecisionRow(
     }
 }
 
-/**
- * The remaining-request footer.
- *
- * Reads as a report rather than a warning: the queue is a fact about the session, not a problem
- * with the answer being given, so it takes the muted caption colour and sits under the buttons
- * instead of competing with them.
- */
+/** Remaining-queue footer, muted because the queue is a fact, not a warning. */
 @Composable
 internal fun RemainingQueueLine(remainingQueue: Int) {
     if (remainingQueue <= 0) return
@@ -134,16 +114,7 @@ internal fun RemainingQueueLine(remainingQueue: Int) {
     )
 }
 
-/**
- * `取消` + confirm row for the two form dialogs.
- *
- * They cannot use [DecisionRow]: both have an invalid state (an unanswered question, a missing
- * required field) that has to keep the primary action visible but disabled, which a decision list
- * has no notion of.
- *
- * The two buttons split the dialog's width evenly, so the confirm action is always the same size as
- * the escape next to it whichever label happens to be longer.
- */
+/** Confirm + cancel row for the two form dialogs; they cannot use [DecisionRow] because their primary action has a disabled-visible invalid state. The buttons split the width evenly. */
 @Composable
 internal fun FormButtons(
     confirmLabel: String,
@@ -200,12 +171,6 @@ internal fun FormButtons(
     }
 }
 
-/**
- * A section of a dialog body: an eyebrow and its content.
- *
- * The two form dialogs build their bodies out of these so a question block, a field block and the
- * command block of a command approval all start on the same left edge with the same gap above them.
- */
 @Composable
 internal fun DialogSection(
     modifier: Modifier = Modifier,

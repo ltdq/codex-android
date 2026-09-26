@@ -67,18 +67,9 @@ import top.yukonga.miuix.kmp.squircle.squircleBackground
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
- * Signing in through Amazon Bedrock instead of ChatGPT.
- *
- * Mirrors `codex-rs/tui/src/onboarding/bedrock.rs`: the two calls split reading from writing.
- * `account/bedrock/discover` is a read — it lists the AWS profiles and environment credentials the
- * server can see — so it is safe to run on entry and again from the header. `account/bedrock/setup`
- * is the write: it moves the account onto the picked credential, which is why it is a button of its
- * own and why nothing performs it as a side effect of opening the page.
- *
- * A discovered credential may not carry a region, and setup always needs one, so picking such a row
- * opens a form for the region rather than sending a half-filled setup. The picked credential lives
- * in this screen: it only means something to the setup about to be sent, and one held above the
- * screen would outlive the visit that made it.
+ * Signing in through Amazon Bedrock; mirrors `codex-rs/tui/src/onboarding/bedrock.rs`.
+ * `account/bedrock/discover` is a read, `account/bedrock/setup` the only write; a credential
+ * without a region opens a form for one.
  */
 @Composable
 fun BedrockScreen(
@@ -92,15 +83,10 @@ fun BedrockScreen(
     var profiles by remember { mutableStateOf<List<BedrockAwsProfile>>(emptyList()) }
     var environment by remember { mutableStateOf<List<BedrockEnvironmentCredential>>(emptyList()) }
     var selected by remember { mutableStateOf<BedrockSetupParams?>(null) }
-    // The credential a region is being typed for; non-null while the region sheet is open.
     var awaitingRegion by remember { mutableStateOf<BedrockSetupParams?>(null) }
     var loading by remember { mutableStateOf(true) }
     var failure by remember { mutableStateOf<String?>(null) }
-    // Which manual credential form is open, if any. Mirrors the non-discovered options in
-    // `onboarding/bedrock.rs`: a typed profile name, typed access keys, or a Bedrock API key.
     var manualForm by remember { mutableStateOf<ManualBedrockForm?>(null) }
-    // Bumped by the header's refresh. The effect keys on it, so a refresh runs the same code path
-    // as the first read instead of a second one that could drift away from it.
     var generation by remember { mutableStateOf(0) }
 
     fun discover() {
@@ -112,8 +98,7 @@ fun BedrockScreen(
                     profiles = response.profiles
                     environment = response.environmentCredentials
                     failure = null
-                    // A credential the server no longer offers must not stay selected: setup would
-                    // otherwise send one it has just said it cannot serve.
+                    // A credential the server no longer offers must not stay selected.
                     selected = selected?.takeIf { pick ->
                         response.profiles.any {
                             it.name == (pick as? BedrockSetupParams.Profile)?.profile
@@ -314,10 +299,8 @@ fun BedrockScreen(
                     }
                 }
             }
-            // The methods the server cannot discover. A typed profile goes through the same
-            // `account/bedrock/setup` as a discovered one; access keys and an API key are login
-            // methods of their own (`AmazonBedrockAccessKeys` / `AmazonBedrock`), because they
-            // establish the credential rather than pointing at one already on the host.
+            // Methods the server cannot discover: a typed profile reuses `account/bedrock/setup`; access
+            // keys and an API key establish the credential themselves.
             Card(
                 cornerRadius = UiConsts.SectionCorner,
                 insideMargin = PaddingValues(horizontal = 11.dp, vertical = 8.dp),
@@ -451,7 +434,6 @@ fun BedrockScreen(
         }
     }
 
-    // A credential without a region cannot be sent, so the row opens this instead of selecting.
     if (awaitingRegion != null) {
         RegionSheet(
             credential = awaitingRegion!!,
@@ -585,14 +567,12 @@ fun BedrockScreen(
     }
 }
 
-/** The manual credential methods offered beside the discovered ones. */
 private enum class ManualBedrockForm {
     Profile,
     AccessKeys,
     ApiKey,
 }
 
-/** The one-field form the region-less credentials use. */
 @Composable
 private fun RegionSheet(
     credential: BedrockSetupParams,
@@ -617,7 +597,6 @@ private fun RegionSheet(
     )
 }
 
-/** The label for a discovered environment credential's type. */
 @Composable
 private fun environmentCredentialLabel(type: String): String =
     when (type) {
@@ -626,7 +605,6 @@ private fun environmentCredentialLabel(type: String): String =
         else -> type
     }
 
-/** The summary line for a picked credential: its profile or kind, plus the region to use. */
 @Composable
 private fun credentialSummary(credential: BedrockSetupParams): String =
     when (credential) {
@@ -637,12 +615,8 @@ private fun credentialSummary(credential: BedrockSetupParams): String =
     }
 
 /**
- * One discovered credential, as a row that can be picked.
- *
- * A row rather than a dropdown because the list is short and the choice is the whole page: the
- * selected credential is what the button below sends, and a collapsed control would hide the
- * alternatives the user is deciding between. The tick is the same one the model picker uses, so
- * "this is the selected one" reads the same way in both places.
+ * One discovered credential as a pickable row, not a dropdown: the choice is the whole page and
+ * the alternatives must stay visible.
  */
 @Composable
 private fun CredentialRow(

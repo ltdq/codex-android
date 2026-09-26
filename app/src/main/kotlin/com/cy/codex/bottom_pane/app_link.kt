@@ -7,24 +7,14 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 
-/**
- * The app-link flow of a URL-mode elicitation, mirroring `tui/src/bottom_pane/app_link_view.rs`.
- *
- * The server asks the user to visit a page: sign in to a connector (`codex_apps` with the
- * `_codex_apps.connector_auth_failure` metadata), or complete some other browser action. The URL is
- * validated before it is ever opened, and [AppLinkPrompt] carries only data — every word the user
- * reads is resolved from a string resource by the composable.
- */
+/** App-link flow of URL-mode elicitation (codex-rs/tui/src/bottom_pane/app_link_view.rs); the URL is validated before opening. */
 internal enum class AppLinkKind { Auth, ExternalAction }
 
-/** Which screen of the flow is showing; see [AppLinkPrompt]'s composable. */
 internal enum class AppLinkScreen { Link, Confirmation }
 
 internal data class AppLinkPrompt(
     val kind: AppLinkKind,
-    /** Connector display name, from the auth-failure metadata; null for a generic URL. */
     val connectorName: String? = null,
-    /** Connector id, used to name the app when the metadata has no display name. */
     val connectorId: String? = null,
     val serverName: String,
     val message: String,
@@ -44,13 +34,7 @@ private const val ConnectorAuthFailureIsAuthFailureKey = "is_auth_failure"
 private const val ConnectorAuthFailureConnectorIdKey = "connector_id"
 private const val ConnectorAuthFailureConnectorNameKey = "connector_name"
 
-/**
- * Read the auth-failure metadata, or null when the `is_auth_failure` flag is not exactly true.
- *
- * The flag check is what `codex-mcp/src/auth_elicitation.rs` does before it builds the request:
- * metadata that forgot the flag is not an auth failure, and guessing here would show a sign-in
- * screen for something else.
- */
+/** Auth-failure metadata, or null unless `is_auth_failure` is exactly true — the flag check mirrors `codex-mcp/src/auth_elicitation.rs`. */
 internal fun connectorAuthFailure(meta: JsonElement?): ConnectorAuthFailure? {
     val failure = ((meta as? JsonObject)?.get(McpToolCodexAppsMetaKey) as? JsonObject)
         ?.get(ConnectorAuthFailureMetaKey) as? JsonObject
@@ -64,13 +48,7 @@ internal fun connectorAuthFailure(meta: JsonElement?): ConnectorAuthFailure? {
     )
 }
 
-/**
- * Validate an external URL before opening it.
- *
- * `requireChatgptHost` is set for the `codex_apps` server: a connector sign-in URL that points
- * anywhere else is not a URL this client will hand to the browser, because the request that carried
- * it was supposed to come from ChatGPT.
- */
+/** Validate before opening; `requireChatgptHost` pins `codex_apps` sign-in URLs to ChatGPT hosts. */
 internal fun validateAppLinkUrl(url: String, requireChatgptHost: Boolean): String? {
     val parsed = runCatching { URI(url) }.getOrNull() ?: return null
     if (!parsed.scheme.equals("https", ignoreCase = true)) return null
@@ -88,12 +66,7 @@ internal fun isAllowedChatgptAuthHost(host: String): Boolean {
         lower.endsWith(".chatgpt-staging.com")
 }
 
-/**
- * Build the app-link prompt for a URL elicitation, or null when the URL must not be opened.
- *
- * For `codex_apps` the connector metadata is required, exactly as upstream: without it there is
- * nothing to sign in to and the request is declined rather than shown as a generic link.
- */
+/** Build the prompt, or null when the URL must not be opened; `codex_apps` requires connector metadata, as upstream. */
 internal fun appLinkPrompt(payload: McpElicitationRequest.Url): AppLinkPrompt? {
     if (payload.serverName == CodexAppsServerName) {
         val failure = connectorAuthFailure(payload.meta) ?: return null
@@ -116,6 +89,5 @@ internal fun appLinkPrompt(payload: McpElicitationRequest.Url): AppLinkPrompt? {
     )
 }
 
-/** True when an accepted elicitation came from the connector sign-in flow. */
 internal fun McpElicitationRequest.isConnectorAuth(): Boolean =
     serverName == CodexAppsServerName && connectorAuthFailure(meta) != null

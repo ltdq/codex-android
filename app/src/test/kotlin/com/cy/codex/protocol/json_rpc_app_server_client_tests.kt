@@ -455,8 +455,7 @@ class JsonRpcAppServerClientTest {
         assertEquals(123, goal.await()!!.tokensUsed)
         assertEquals(50_000L, goal.await()!!.tokenBudget)
 
-        // An explicit JSON null clears the budget; an absent key leaves it alone, and so does an
-        // absent objective/status.
+        // Explicit JSON null clears the budget; absent keys leave it alone.
         val cleared = async {
             client.setGoal(
                 com.cy.codex.protocol.protocol.v2.ThreadGoalSetParams(
@@ -980,8 +979,7 @@ class JsonRpcAppServerClientTest {
         assertEquals("abc", failure?.connectorId)
         assertEquals("Calendar", failure?.connectorName)
 
-        // An accepted connector sign-in echoes the metadata back, the way the TUI resolves with
-        // `meta: None` and the server keeps its own copy; here the client carries it explicitly.
+        // The accepted sign-in echoes the metadata back, as the TUI does with `meta: None`.
         client.respond(
             received.requestId,
             ApprovalResponse.Elicitation(ElicitationAction.Accept, meta = payload.meta),

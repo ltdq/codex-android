@@ -50,8 +50,8 @@ internal object WireCodec {
             // The wire field stays snake_case: the v2 enum's variant fields were not renamed.
             "text_elements" to value.textElements.map(::textElement),
         )
-        // The image arm is a flattened `{url} | {fileId}` union, so only the present reference is
-        // sent; `obj` drops null fields for exactly this reason.
+        // The image arm is a flattened `{url} | {fileId}` union, so only the present
+        // reference is sent; `obj` drops null fields for exactly this reason.
         is UserInput.Image -> obj("type" to "image", "url" to value.url, "fileId" to value.fileId, "detail" to value.detail)
         is UserInput.LocalImage -> obj("type" to "localImage", "path" to value.path, "detail" to value.detail)
         is UserInput.Audio -> obj("type" to "audio", "url" to value.url)
@@ -78,8 +78,8 @@ internal object WireCodec {
         val o = value.objectValue()
         return when (o.required("type")) {
             "text" -> UserInput.Text(o.required("text"), o.array("text_elements").map(::textElement))
-            // `url` and `fileId` are a union, so neither may be required: an uploaded image has
-            // no url and requiring one would abort the whole message.
+            // `url` and `fileId` are a union, so neither may be required: an uploaded image
+            // has no url.
             "image" -> UserInput.Image(o.text("url"), o.text("fileId"), o.text("detail"))
             "localImage" -> UserInput.LocalImage(o.required("path"), o.text("detail"))
             "audio" -> UserInput.Audio(o.required("url"))
@@ -126,7 +126,6 @@ internal object WireCodec {
             durationMs = o.long("durationMs"))
     }
 
-    /** One `TurnsPage`: `thread/turns/list` and `thread/resume.initialTurnsPage` share the shape. */
     fun turnsPage(value: JsonElement): TurnsPage {
         val o = value.objectValue()
         return TurnsPage(o.array("data").map(::turn), o.text("nextCursor"), o.text("backwardsCursor"))
@@ -220,10 +219,9 @@ internal object WireCodec {
     }
 
     /**
-     * One `DynamicToolCallOutputContentItem` block.
-     *
-     * Unknown or malformed blocks are dropped rather than rendered: unlike an MCP result there is no
-     * exact-JSON fallback upstream (`dynamic_tools.rs`), and a missing URL would be unusable.
+     * One `DynamicToolCallOutputContentItem` block. Unknown or malformed blocks are dropped:
+     * there is no exact-JSON fallback upstream (`dynamic_tools.rs`), and a missing URL would
+     * be unusable.
      */
     fun dynamicToolContent(value: JsonElement): DynamicToolOutputContent? {
         val block = value as? JsonObject ?: return null
@@ -236,10 +234,9 @@ internal object WireCodec {
     }
 
     /**
-     * Inline questions an `agentMessage` carries, or `null` when the field is absent.
-     *
-     * `options` is nullable upstream, so an explicit JSON null has to stay distinct from an empty
-     * list: the first means "free text only", the second a choice with nothing to choose.
+     * Inline questions an `agentMessage` carries, or `null` when absent. `options` is nullable
+     * upstream: an explicit JSON null means "free text only", an empty list a choice with
+     * nothing to choose.
      */
     private fun asyncQuestions(o: JsonObject): List<AsyncUserInputQuestion>? {
         val raw = o["questions"] ?: return null
@@ -253,8 +250,8 @@ internal object WireCodec {
     }
 
     fun account(o: JsonObject): AccountReadResponse {
-        // `requiresOpenaiAuth` is required upstream; a malformed response is the only way to miss
-        // it, and treating that as "auth required" is the safe default.
+        // `requiresOpenaiAuth` is required upstream; a malformed response is the only way to
+        // miss it, and treating that as "auth required" is the safe default.
         val requires = o.bool("requiresOpenaiAuth") ?: true
         val a = o.objectOrNull("account") ?: return AccountReadResponse(requires)
         val account = when (a.required("type")) {
@@ -360,7 +357,6 @@ internal object WireCodec {
     fun realtimeItem(o: JsonObject) = ThreadRealtimeItem(o.required("id"), o.text("realtimeSessionId").orEmpty(),
         o.text("type").orEmpty(), o.text("role"), o.text("text"), o.text("turnId"), o.text("itemId"), o.text("outcome"))
 
-    /** One `WebSearchAction`; unknown tags fall back to [WebSearchAction.Other]. */
     private fun webSearchAction(o: JsonObject): WebSearchAction = when (o.text("type")) {
         "openPage" -> WebSearchAction.OpenPage(o.text("url"))
         "findInPage" -> WebSearchAction.FindInPage(o.text("url"), o.text("pattern"))
@@ -373,11 +369,9 @@ internal object WireCodec {
     }
 
     /**
-     * One element of `webSearch.results`.
-     *
-     * The wire type is opaque JSON (`ext/items/src/web_search.rs`), so anything without a title or
-     * a url is dropped instead of rendered as a blank row — a result the transcript cannot name is
-     * not worth a line.
+     * One element of `webSearch.results`. The wire type is opaque JSON
+     * (codex-rs/ext/items/src/web_search.rs), so a result with neither title nor url is dropped
+     * rather than rendered as a blank row.
      */
     private fun webSearchResult(value: JsonElement): WebSearchResult? {
         val o = value as? JsonObject ?: return null
@@ -388,10 +382,8 @@ internal object WireCodec {
     }
 
     /**
-     * One `ImageGenerationFailure`; unknown tags are dropped rather than shown as a generic failure.
-     *
-     * The union has a single variant today, so an unrecognised tag means the server knows a failure
-     * mode this build cannot describe.
+     * One `ImageGenerationFailure`; an unrecognised tag means the server knows a failure mode
+     * this build cannot describe — dropped rather than shown as a generic failure.
      */
     private fun imageGenerationFailure(o: JsonObject): ImageGenerationFailure? {
         val failure = o.objectOrNull("failure") ?: return null
@@ -404,10 +396,8 @@ internal object WireCodec {
     }
 
     /**
-     * Memory the agent message cited.
-     *
-     * `entries` is the only place the citation's file paths live; upstream keeps `threadIds` on the
-     * wire too (`MemoryCitation` in `codex-rs/protocol/src/memory_citation.rs`).
+     * Memory the agent message cited: `entries` is where the file paths live; `threadIds` is
+     * kept for wire parity (codex-rs/protocol/src/memory_citation.rs).
      */
     private fun memoryCitation(o: JsonObject): MemoryCitation? {
         val citation = o.objectOrNull("memoryCitation") ?: return null
@@ -437,7 +427,6 @@ internal object WireCodec {
         )
     }
 
-    /** `mcpToolCall.mcpAppUi`: presentation captured from the invoked descriptor. */
     private fun mcpAppUi(o: JsonObject): McpAppUi? {
         val ui = o.objectOrNull("mcpAppUi") ?: return null
         return McpAppUi(ui.text("resourceUri"), ui.text("preferredModelDisplayMode"))
@@ -445,7 +434,7 @@ internal object WireCodec {
 
     /**
      * One `CommandAction` element, shared by `commandExecution.commandActions` and the approval
-     * requests that describe the same parsed command; an unknown future tag is dropped, not faked.
+     * requests for the same parsed command; an unknown future tag is dropped, not faked.
      */
     fun commandAction(value: JsonElement): CommandAction? {
         val o = value as? JsonObject ?: return null

@@ -8,12 +8,6 @@ import kotlin.test.assertNotSame
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
 
-/**
- * The accumulator stands between a turn's repeated `turn/diff/updated` payloads and the transcript,
- * so its two contracts are pinned here: the result equals a full parse of the newest payload, and
- * unchanged files keep their parsed instance so downstream `remember`s and row skipping survive a
- * notification.
- */
 class TurnDiffAccumulatorTest {
 
     private val fileA = section(
@@ -51,8 +45,6 @@ class TurnDiffAccumulatorTest {
 
     @Test
     fun appendingToTheGrowingFileKeepsTheEarlierFileInstances() {
-        // B's hunk already declares the two lines the append brings, so the grown payload is a
-        // strict extension of the first one — the shape a real `turn/diff/updated` stream has.
         val openB = section(
             path = "app/B.kt",
             body = listOf(
@@ -137,9 +129,7 @@ class TurnDiffAccumulatorTest {
 
     @Test
     fun extendingAPayloadThatEndsMidLineReparsesItWhole() {
-        // The first payload stops inside the second `diff --git` line, so that header is not a
-        // section boundary yet. The notification completing it must split the payload exactly like
-        // a full parse, or B's content would stay folded into A forever.
+        // A mid-line header is no section boundary; the completing notification must split it.
         val completed = fileA +
             "diff --git a/app/B.kt b/app/B.kt\n" +
             "--- a/app/B.kt\n" +
@@ -156,8 +146,6 @@ class TurnDiffAccumulatorTest {
 
     @Test
     fun singleFilePatchWithoutGitHeaderStillParsesAndGrows() {
-        // No `diff --git`, so there is no section to extend; the payload takes the full-parse
-        // fallback on every notification and must still match a fresh parse.
         val accumulator = TurnDiffAccumulator()
         val first = accumulator.apply("--- a/only.kt\n+++ b/only.kt\n@@ -1 +1 @@\n-x\n+y\n")
         assertEquals("only.kt", first[0].path)

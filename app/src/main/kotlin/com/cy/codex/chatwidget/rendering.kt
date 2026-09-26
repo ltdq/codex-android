@@ -135,12 +135,9 @@ import top.yukonga.miuix.kmp.squircle.squircleClip
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
- * The chat surface: transcript, drawer, status card, approval cards and composer.
- *
- * Mirrors `codex-rs/tui/src/chatwidget.rs` rendered as one screen. Every widget here is fed from
- * [com.cy.codex.SessionState], and everything the user does is expressed as an
- * [com.cy.codex.AppEvent] handed to [CodexApp.onAppEvent] — the screen itself owns only
- * presentation state (which drawer is open, which sheet is up, what is typed).
+ * The chat surface: transcript, drawer, status card, approval cards and composer, mirroring
+ * `codex-rs/tui/src/chatwidget.rs`. Owns only presentation state; everything else is an
+ * [com.cy.codex.AppEvent].
  */
 @Composable
 fun ChatScreen(
@@ -164,9 +161,7 @@ fun ChatScreen(
     minDiffHeight: Dp = 300.dp,
     maxDiffHeight: Dp = 560.dp,
     statusCardMaxHeight: Dp = 560.dp,
-    // Every transition here reads its duration from Motion: the panel, the diff card and the
-    // queued banner used to enter at 160 / 170 / 180ms, which is three values nobody can tell
-    // apart on purpose.
+    // All transition durations read from Motion; three hand-picked values nobody could tell apart.
     panelEnterDurationMs: Int = Motion.EnterMs,
     panelExitDurationMs: Int = Motion.ExitMs,
     diffEnterDurationMs: Int = Motion.EnterMs,
@@ -176,8 +171,7 @@ fun ChatScreen(
 ) {
     val session = app.widget.state
     val threads = app.threads
-    // `OpenDocument` rather than `GetContent`: the protocol takes an identity key the server can
-    // read back later, and a document uri is one the app keeps a grant for across a restart.
+    // OpenDocument, not GetContent: the app keeps a document-uri grant the server can read back later.
     val attachmentPicker =
         rememberLauncherForActivityResult(contract = ActivityResultContracts.OpenDocument()) { uri
             ->
@@ -185,8 +179,7 @@ fun ChatScreen(
                 app.importAttachment(uri)
             }
         }
-    // `/export` with no path asks the system save dialog for a destination; the request flag is
-    // consumed before launching so a recomposition cannot open it twice.
+    // Consume the request before launching; a recomposition must not open the dialog twice.
     val exportPicker =
         rememberLauncherForActivityResult(
             contract = ActivityResultContracts.CreateDocument("text/markdown")
@@ -203,21 +196,16 @@ fun ChatScreen(
     }
     val colors = MiuixTheme.colorScheme
     var overviewOpen by remember { mutableStateOf(false) }
-    // `show` stays true while the sheet animates out: it calls back when it has actually left, and
-    // clearing the flag on the request instead would cut the exit off mid-slide.
+    // `show` stays true through the exit animation; clearing on the request would cut it mid-slide.
     var overviewLeaving by remember { mutableStateOf(false) }
     val panelState = remember { StatusPanelState() }
 
     val mainAgentLabel = stringResource(R.string.agent_roster_main_label)
     val subAgentNameFormat = stringResource(R.string.agent_roster_sub_agent_name)
-    // The roster is folded out of the whole transcript, so it is derived through
-    // [rememberAgentRoster] rather than read here: reading the items list in this scope would
-    // subscribe the entire screen to every streaming delta, and only the memo's folded value may
-    // invalidate this screen.
+    // Folded via [rememberAgentRoster]: reading the items list here subscribes the whole screen to
+    // every streaming delta.
     val roster = rememberAgentRoster(session, mainAgentLabel, subAgentNameFormat)
     val approval = app.widget.currentApproval
-    // Names the thread the way the sidebar and the resume picker do, for the cross-thread
-    // approval notice; the state read happens where the notice renders.
     val threadNameOf: (String) -> String = { threadId ->
         threads.threads
             .firstOrNull { it.id == threadId }
@@ -233,18 +221,11 @@ fun ChatScreen(
 
     BoxWithConstraints(modifier = modifier.fillMaxSize()) {
         val density = LocalDensity.current
-        // The transcript column. On a wide window it is inset by the drawer's width *at all times*
-        // —
-        // centred while the drawer is shut, pushed across when it opens — so the text is wrapped
-        // once
-        // and never again. Opening the drawer then costs one composited translation instead of a
-        // full re-measure of every cell in the list. On a narrow window there is no room for a
-        // second
-        // column, so the drawer goes back over the text the way it always did.
+        // Wide window: the column is inset by the drawer's width at all times — centred while
+        // the drawer is shut, pushed across when it opens — so text wraps once and the drawer
+        // costs a composited translation, not a re-measure of every cell. Narrow: overlays.
         val wide = maxWidth >= UiConsts.WideContentBreakpoint
         val drawerWidth = minOf(UiConsts.SidebarWidth, UiConsts.SidebarWidthCap)
-        // Where the column's left edge sits while the drawer is open: clear of the drawer by
-        // [UiConsts.ContentGap], not flush against it.
         val contentStart =
             (UiConsts.ScreenMargin + drawerWidth + UiConsts.ContentGap).coerceAtMost(maxWidth)
         val contentWidth =
@@ -255,8 +236,6 @@ fun ChatScreen(
             } else {
                 maxWidth
             }
-        // Rest is centred; the open position is the same column translated, so the text is never
-        // re-measured — the width above does not depend on whether the drawer is open.
         val centredStart = (maxWidth - contentWidth) / 2
         val contentShift by
             animateDpAsState(
@@ -264,12 +243,6 @@ fun ChatScreen(
                 animationSpec = Motion.PanelDp,
                 label = "contentShift",
             )
-        // The backdrop layer spans the *window*, not the column. `layerBackdrop` only captures what
-        // is drawn inside it, and everything that samples it — the composer across its full width,
-        // the two progressive-blur bands — reaches past the column's edges. A layer as wide as the
-        // column left those samples reading outside the captured texture, which is what put flat
-        // colour blocks in the composer's glass. The background rect keeps the capture opaque under
-        // the text, so the blur has no transparent pixels to smear colour into.
         Box(modifier = Modifier.fillMaxSize().layerBackdrop(backdrop)) {
             Box(
                 modifier =
@@ -288,8 +261,6 @@ fun ChatScreen(
             }
         }
 
-        // Top and bottom progressive blur: the transcript fades under the floating chrome instead
-        // of being cut off by it.
         Box(
             modifier =
                 Modifier.align(Alignment.TopCenter)
@@ -315,8 +286,6 @@ fun ChatScreen(
                     )
         )
 
-        // A drop after the first load keeps the transcript; this banner is the retry. It sits just
-        // above the composer rather than at the top so it does not fight the status-card button.
         app.connectionLostMessage?.let { message ->
             ConnectionBanner(
                 message = message,
@@ -339,15 +308,8 @@ fun ChatScreen(
                     .padding(end = UiConsts.ScreenMargin, top = topInset + UiConsts.ScreenMargin),
         )
 
-        // The right-hand panels. Two cards, not one: the diff card is *added* to the left of the
-        // status card, so the card the user was reading keeps its size and its place under the
-        // button. Widening one card meant the section column slid sideways as the diff opened and
-        // slid back as it closed, and the row that had just been tapped was no longer where it was
-        // tapped.
         val panelMax = maxWidth - UiConsts.ScreenMargin * 2
         val statusWidth = minOf(UiConsts.StatusPanelWidth, panelMax)
-        // Both cards fit side by side on anything tablet-shaped; on a narrow window the diff takes
-        // the whole strip and the status card steps aside rather than being pushed off-screen.
         val sideBySide = panelMax >= statusWidth + UiConsts.PanelGap + UiConsts.MinDiffPaneWidth
         val diffWidth =
             if (sideBySide) {
@@ -355,8 +317,6 @@ fun ChatScreen(
             } else {
                 minOf(UiConsts.DiffPaneWidth, panelMax)
             }
-        // Measured by the status card's layout and read by the diff card's own content below, so a
-        // status remeasure invalidates the diff pane instead of this whole screen.
         val statusHeight = remember { mutableStateOf(0.dp) }
 
         AnimatedVisibility(
@@ -386,15 +346,10 @@ fun ChatScreen(
                 horizontalArrangement = Arrangement.spacedBy(UiConsts.PanelGap),
                 verticalAlignment = Alignment.Top,
             ) {
-                // Read inside the panel's scope: the whole-turn diff is replaced on every
-                // `turn/diff/updated`, and a card in here is a cheaper thing to rebuild than the
-                // screen that hosts it.
                 val paneFile = session.turnDiff.firstOrNull { it.path == panelState.paneFilePath }
                 val diffOpen = panelState.openFilePath != null
                 AnimatedVisibility(
                     visible = diffOpen && paneFile != null,
-                    // Grows out of the status card's edge, leftwards: the new card is the one that
-                    // moves, and the card beside it is the anchor it moves away from.
                     enter =
                         expandHorizontally(
                             expandFrom = Alignment.End,
@@ -406,8 +361,6 @@ fun ChatScreen(
                             animationSpec = tween(diffExitDurationMs, easing = Motion.ExitEasing),
                         ) + fadeOut(tween(diffExitDurationMs, easing = Motion.ExitEasing)),
                 ) {
-                    // The last opened file survives the close, so the card still has something to
-                    // draw while it shrinks away.
                     paneFile?.let { file ->
                         DiffCard(
                             file = file,
@@ -464,16 +417,8 @@ fun ChatScreen(
             }
         }
 
-        // The composer only steps aside for the drawer, and only on a wide window: it keeps the
-        // full
-        // width of the transcript column otherwise. It is a single bar, so re-measuring *it* is
-        // cheap
-        // — the point of holding the transcript's width fixed is that the list underneath is not
-        // re-measured with it.
         val promptBarStartInset by
             animateDpAsState(
-                // The composer lines up with the column, so it starts at the same place the column
-                // does.
                 targetValue =
                     if (wide && sidebarExpanded) contentStart - UiConsts.ScreenMargin else 0.dp,
                 animationSpec = Motion.PanelDp,
@@ -493,8 +438,6 @@ fun ChatScreen(
             modifier = Modifier.align(Alignment.BottomCenter),
         )
 
-        // `AgentPickerSheet` is the roster as a filterable list; it has no trigger yet — the status
-        // card's agent section opens the overview instead — so it is not mounted here.
         AgentsOverviewPane(
             app = app,
             session = session,
@@ -511,10 +454,6 @@ fun ChatScreen(
             },
         )
 
-        // The drawer is painted last and sized to the window: it is a drawer, so the transcript and
-        // the composer both pass underneath it and it reaches the bottom edge instead of stopping
-        // short of the thing it is covering. The composer still steps aside (promptBarStartInset),
-        // so nothing the user has to reach is hidden behind it.
         SidebarPanel(
             expanded = sidebarExpanded,
             onExpandedChange = onSidebarExpandedChange,
@@ -532,8 +471,6 @@ fun ChatScreen(
             panelWidth = minOf(UiConsts.SidebarWidth, UiConsts.SidebarWidthCap),
             collapsedWidth = UiConsts.ChipSize,
             collapsedHeight = UiConsts.ChipSize,
-            // Same bottom line as the composer: the drawer and the composer are the two pieces
-            // anchored to the bottom of the transcript, and they end together.
             maxPanelHeight =
                 (maxHeight - topInset - UiConsts.ScreenMargin * 2).coerceAtLeast(minPanelHeight),
             modifier =
@@ -541,8 +478,6 @@ fun ChatScreen(
                     .padding(start = UiConsts.ScreenMargin, top = topInset + UiConsts.ScreenMargin),
         )
 
-        // Window-level, so it is on screen whatever else is open: the turn is blocked on it, and a
-        // request that only showed up inside a collapsed panel would read as a hung session.
         ApprovalDialog(
             request = approval,
             busy = app.widget.answeringApproval,
@@ -557,8 +492,7 @@ fun ChatScreen(
             GoalSheet(
                 goal = goal,
                 onSet = { objective ->
-                    // Creating a goal leaves the status to the server; editing one keeps the
-                    // state the goal already had (`edited_goal_status` upstream).
+                    // Creating leaves status to the server; editing keeps it (upstream edited_goal_status).
                     app.onAppEvent(
                         AppEvent.SetGoal(
                             objective = objective,
@@ -597,11 +531,8 @@ fun ChatScreen(
 }
 
 /**
- * The transcript surface: either the empty-runtime screen or the live transcript.
- *
- * Split out of [ChatScreen] so the session's transcript state — the item list, the diagnostics, the
- * plan and the streaming id — is read inside this scope. A streaming write then invalidates this
- * pane instead of the composer, the status panels and the drawer that surround it.
+ * The transcript surface, split out of [ChatScreen] so a streaming write invalidates only this
+ * pane, not the composer, panels and drawer around it.
  */
 @Composable
 private fun TranscriptPane(
@@ -613,8 +544,7 @@ private fun TranscriptPane(
 ) {
     val items = session.items
     val diagnostics = session.diagnostics
-    // The empty/loading decision is a derived boolean: the underlying lists are written on every
-    // delta, and this pane should only recompose when the decision itself flips.
+    // Derived boolean: the pane only recomposes when the empty/loading decision flips.
     val runtimeEmpty by
         remember(session) {
             derivedStateOf {
@@ -633,17 +563,12 @@ private fun TranscriptPane(
         )
         return
     }
-    // Remembered so a recomposition of this pane (a status flip, say) does not hand the list a new
-    // lambda and force the rows to be rebuilt with it.
+    // Stable lambda: a recomposition (a status flip, say) must not force every row to rebuild.
     val isStreaming: (ThreadItem) -> Boolean =
         remember(session) {
-            // Deferred: the transcript asks per row whether it is the streaming one, so the reads
-            // of
-            // `running` and `streamingItemId` belong to the row's scope, not to this pane's.
+            // Deferred to the row's scope: per-row streaming reads must not subscribe this pane.
             { item -> session.running && item.id == session.streamingItemId }
         }
-    // The markdown buffer a row renders while its deltas are still arriving; looked up per row so
-    // only the row that owns the stream reads that entry of the map.
     val streamFor: (String) -> MarkdownStream? = remember(session) { { id -> session.stream(id) } }
     Transcript(
         items = items,
@@ -674,12 +599,6 @@ private fun TranscriptPane(
     )
 }
 
-/**
- * The in-transcript "connection lost" banner and its retry.
- *
- * Mirrors the backend banner the TUI shows on disconnect: the session stays readable, and the one
- * action that helps — reconnect — is on the notice instead of replacing the screen.
- */
 @Composable
 private fun ConnectionBanner(message: String, onRetry: () -> Unit, modifier: Modifier = Modifier) {
     val colors = MiuixTheme.colorScheme
@@ -758,9 +677,6 @@ private fun RuntimeTranscript(app: CodexApp, modifier: Modifier) {
                             else R.string.runtime_starting
                         )
                     )
-                    // A genuine spinner, and the only animation this screen runs: it is composed
-                    // only while the runtime is starting or a thread is being created, so an idle
-                    // chat never holds it.
                     LinearProgressIndicator(modifier = Modifier.width(160.dp))
                 }
                 app.startupError != null -> {
@@ -887,8 +803,8 @@ private fun onApprovalDecision(
     response: ApprovalResponse,
 ) {
     app.onAppEvent(AppEvent.ResolveApproval(request.requestId, response))
-    // A completed connector sign-in invalidates the app catalog: upstream asks for a forced
-    // connector refresh on the same accept (`app_link_view.rs:complete_external_flow_and_close`).
+    // A completed connector sign-in invalidates the app catalog; upstream refreshes connectors
+    // on the same accept (app_link_view.rs complete_external_flow_and_close).
     if (
         request is ApprovalRequest.Elicitation &&
             request.params.isConnectorAuth() &&
@@ -899,17 +815,9 @@ private fun onApprovalDecision(
     }
 }
 
-/**
- * One routing table for every "go to this page" id in the app.
- *
- * The drawer and the settings page both name destinations by id, and both have to land on the same
- * page. Navigation and session tools live in the drawer; configuration lives in Settings; this is
- * the shared route table that keeps the two placements from drifting.
- */
+/** Shared route table for the drawer and Settings, so the two placements cannot drift. */
 internal fun openSurfaceFor(app: CodexApp, id: String) {
-    // The three routes that need a subject take it from the open session rather than from the id:
-    // there is exactly one open thread, and a caller that had to pass its id would be able to pass
-    // one that is no longer open.
+    // Routes needing a subject read the open session: a caller-passed id could name one no longer open.
     val threadId = app.widget.state.threadId
     val cwd = app.widget.state.config.cwd.ifBlank { app.defaultWorkspace }
     when (id) {
@@ -951,25 +859,17 @@ internal fun openSurfaceFor(app: CodexApp, id: String) {
         "status" -> app.openSurface(Surface.SessionStatus)
         else -> Unit
     }
-    // `threadId` is read for the same reason the routes above are: a page that needs the open
-    // session takes it from the app, and the compiler should see that this table depends on it.
+    // Read so the compiler sees this table depends on the open session.
     if (threadId.isEmpty()) return
 }
 
-/**
- * One row of the transcript after folding.
- *
- * A run of exploring commands (reads, listings, searches) collapses into one [exposed] row, which
- * is what the TUI's `ExecCell` does; everything else is a single item. [indices] point into the
- * session's item list so each row still reads its own element in its own scope.
- */
+/** One transcript row after folding; [indices] keep each row reading its own element in its own scope. */
 internal data class TranscriptRow(
     val key: String,
     val indices: List<Int>,
     val exposed: Boolean,
 )
 
-/** Fold a run of exploring commands into one row, leaving every other item on its own. */
 internal fun foldTranscriptRows(items: List<ThreadItem>): List<TranscriptRow> {
     val rows = ArrayList<TranscriptRow>()
     var index = 0
@@ -992,12 +892,6 @@ internal fun foldTranscriptRows(items: List<ThreadItem>): List<TranscriptRow> {
     return rows
 }
 
-/**
- * The collapsed `Explored` group.
- *
- * The TUI shows only the header because the full transcript is one keystroke away; a phone has no
- * second surface, so the group expands to the per-command cards it stands for.
- */
 @Composable
 private fun ExploredGroupRow(
     commands: List<CommandExecutionItem>,
@@ -1025,11 +919,8 @@ private fun ExploredGroupRow(
 }
 
 /**
- * The transcript.
- *
- * Mirrors the history viewport of `codex-rs/tui/src/chatwidget.rs`: a scrollable list of items,
- * sticky to the bottom while a turn streams, plus the session's diagnostics as notices. The plan
- * checklist is rendered inline where the `PlanItem` sits, so the transcript reads in order.
+ * The transcript: scrollable item list sticky to the bottom while a turn streams, diagnostics as
+ * notices. Mirrors the history viewport of `codex-rs/tui/src/chatwidget.rs`.
  */
 @Composable
 internal fun Transcript(
@@ -1059,12 +950,9 @@ internal fun Transcript(
         return
     }
 
-    // Diagnostics have content equality, so a content hash is not a key: two identical notices
-    // would collide. This allocates one identity per notice instead, and prunes entries for
-    // notices the bounded list has already evicted.
+    // Content-equal diagnostics would collide as keys; one identity per notice, pruned on eviction.
     val diagnosticKeys = remember { IdentityKeys<SessionDiagnostic>() }
-    // The fold is a derived value so a streaming write inside a row does not rewrite it: only an
-    // item insertion or replacement changes the list it reads.
+    // Derived fold: a streaming write inside a row must not rewrite it.
     val rowsState = remember(items) { derivedStateOf { foldTranscriptRows(items) } }
     val rows = rowsState.value
 
@@ -1074,16 +962,12 @@ internal fun Transcript(
         contentPadding = contentPadding,
         verticalArrangement = Arrangement.spacedBy(itemGap),
     ) {
-        // The page pager sits above the first row, not in the top padding: it belongs to the
-        // transcript's scroll content, so a reader who tapped it stays put when the page lands.
         if (canLoadEarlier || loadingEarlier) {
             item(key = "load-earlier") {
                 LoadEarlierRow(loading = loadingEarlier, onLoad = onLoadEarlier)
             }
         }
-        // The list is read here, not copied: the count and the keys re-read it when it changes,
-        // and each row reads its own element inside its own scope, so a delta that replaces one
-        // element does not rebuild the screen around the list.
+        // Not copied: rows read their own elements in their own scope, so a one-element delta rebuilds one row.
         items(count = rows.size, key = { rows[it].key }) { index ->
             val row = rows[index]
             val item = row.indices.firstOrNull()?.let { items.getOrNull(it) } ?: return@items
@@ -1123,12 +1007,6 @@ internal fun Transcript(
     }
 }
 
-/**
- * "Load earlier" as a row at the top of the transcript.
- *
- * Centered and compact: it is a pager for history the reader has scrolled away from, not a primary
- * action, and a full-width button would read as one.
- */
 @Composable
 private fun LoadEarlierRow(loading: Boolean, onLoad: () -> Unit) {
     Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
@@ -1162,32 +1040,17 @@ private fun LoadEarlierRow(loading: Boolean, onLoad: () -> Unit) {
 }
 
 /**
- * The transcript's auto-pager: keeps the newest row against the bottom of the viewport as a turn
- * writes into it, and leaves the page alone the moment the reader is not at the bottom.
- *
- * Two things make this more than "scroll to the last item when the list grows", which is what the
- * transcript used to do. The newest row is usually the row that is already there, growing: a delta
- * lands *inside* it, so the item count never changes and an effect keyed on the count sits still
- * while the newest line slides under the fold. And content arriving moves the viewport off the
- * bottom by itself, so "not at the bottom" cannot be read as "the reader left" — a pager that read
- * the two the same way would stop following the moment it started to keep up.
- *
- * It is therefore driven by both the layout and the source of the movement. Every remeasure brings
- * the newest row back, but only while the pager is pinned; the pager is pinned as long as the
- * reader has not scrolled away, and a scroll *they* drove — a drag, a fling, a keyboard or an
- * accessibility scroll — unpins it until the bottom is theirs again. Reading back through a running
- * turn is therefore a page that stays put: the newest content keeps arriving below the fold, and
- * the transcript returns to it only when the reader does.
+ * Keeps the newest row against the bottom of the viewport while a turn writes, and leaves
+ * the page alone the moment the reader is not at the bottom. Driven by layout, not item
+ * count — a delta usually lands inside the newest row, and content arriving moves the
+ * viewport off the bottom by itself; only a scroll the reader drove unpins the follow.
  */
 @Composable
 private fun AutoPager(listState: LazyListState) {
-    // A touch down ends the follow, not the scroll it turns into: the reader's intent is known the
-    // moment their finger lands, and waiting for the drag to travel would let the follow fight the
-    // gesture for its first frames.
+    // A touch down unpins before the drag: intent is known the moment the finger lands.
     val dragging by listState.interactionSource.collectIsDraggedAsState()
     var pinned by remember { mutableStateOf(true) }
-    // Set while this pager is the one moving the list, so its own scroll is not read as the
-    // reader's — which is the one way a follower could unpin itself.
+    // True while this pager moves the list itself, so its own scroll is not read as the reader's.
     var parking by remember { mutableStateOf(false) }
 
     LaunchedEffect(listState) {
@@ -1196,19 +1059,13 @@ private fun AutoPager(listState: LazyListState) {
                 if (atNewest) {
                     pinned = true
                 } else if (!parking && (dragging || listState.isScrollInProgress)) {
-                    // The viewport left the bottom under a scroll the reader drove. Whatever drove
-                    // it —
-                    // a drag, a fling, a trackpad or an accessibility action — the page it landed
-                    // on is
-                    // the page they asked for, and it stays there.
                     pinned = false
                 }
             }
     }
 
     LaunchedEffect(listState) {
-        // Keyed on the layout rather than on the item count, because the event being followed is a
-        // remeasure: that is what a delta landing in the newest row produces.
+        // Keyed on layout: the followed event is a remeasure, not an item-count change.
         snapshotFlow { listState.layoutInfo }
             .collect {
                 if (pinned && !dragging) {
@@ -1223,7 +1080,6 @@ private fun AutoPager(listState: LazyListState) {
     }
 }
 
-/** Whether the transcript is showing the end of its content: the bottom edge of the newest row. */
 private fun LazyListState.atNewestRow(): Boolean {
     val layout = layoutInfo
     val last = layout.visibleItemsInfo.lastOrNull() ?: return true
@@ -1232,16 +1088,9 @@ private fun LazyListState.atNewestRow(): Boolean {
 }
 
 /**
- * Brings the transcript's newest row to the bottom of the viewport.
- *
- * Three cases, and they are three because the distance is not the same thing as the motion. A row
- * already on screen is the one that is growing, and it is moved without animation, because an
- * animation per delta is cancelled by the next delta and reads as a stutter. A row that arrived as
- * the next row is a card away and is animated — that is the page turn — and the rest of the
- * distance to its bottom edge is animated with it, so a row taller than the viewport does not slide
- * to its top and then jump. A row further down than that is a transcript that just loaded, and that
- * is jumped rather than slid through, because animating a screen of history is a ride nobody asked
- * for.
+ * Bring the newest row to the bottom of the viewport. Row already on screen: no animation
+ * (per-delta animations stutter). Next row: animated, including the distance to its bottom edge.
+ * Newly loaded transcript: jumped — animating a screen of history is a ride nobody asked for.
  */
 private suspend fun LazyListState.parkOnNewestRow() {
     val layout = layoutInfo
@@ -1255,9 +1104,8 @@ private suspend fun LazyListState.parkOnNewestRow() {
         visible.index < newest -> scrollToItem(newest)
     }
 
-    // Land on the row's bottom edge rather than on its top: the newest row is often taller than the
-    // viewport, and the line being written is the last one. The trailing content padding is the gap
-    // under the list, so the row ends exactly where the content ends.
+    // Land on the bottom edge: the newest row is usually taller than the viewport, and the line
+    // being written is the last one.
     val end = layoutInfo.visibleItemsInfo.lastOrNull() ?: return
     val distance =
         end.offset + end.size - (layoutInfo.viewportEndOffset - layoutInfo.afterContentPadding)
@@ -1364,7 +1212,6 @@ private fun EmptyTranscript(
     }
 }
 
-/** Small status chip reused by the transcript header rows. */
 @Composable
 internal fun StatusChip(
     label: String,
@@ -1396,13 +1243,7 @@ internal fun StatusChip(
 /** Cache-relative name of the file `ACTION_EDIT` edits; matches `res/xml/file_paths.xml`. */
 private const val ComposerDraftFile = "drafts/composer.txt"
 
-/**
- * The queued-message tray and the composer.
- *
- * Its reads — the draft, the queue, the running flag — live here rather than in [ChatScreen], so a
- * keystroke, a queue change or a turn starting does not recompose the transcript and the panels
- * behind it.
- */
+/** Queue tray and composer; reads live here so a keystroke or queue change does not recompose the content behind it. */
 @Composable
 private fun ComposerDock(
     app: CodexApp,
@@ -1416,20 +1257,16 @@ private fun ComposerDock(
     queuedEnterDurationMs: Int = Motion.EnterMs,
     queuedExitDurationMs: Int = Motion.ExitMs,
 ) {
-    // The draft is read from the session rather than kept in a `remember`, because two other things
-    // write it — a slash command that prefills an argument, and a transcript row that offers to
-    // quote itself — and both outlive this composable's own state.
+    // The draft lives in the session: a slash prefill and a quote offer write it too.
     val prompt = session.composerDraft
     val onPromptChange: (String) -> Unit = { app.onAppEvent(AppEvent.SetComposerDraft(it)) }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    // The safety-stop findings currently open in their sheet, if any.
     var misalignmentReview by remember {
         mutableStateOf<com.cy.codex.protocol.protocol.v2.MisalignmentErrorDetails?>(null)
     }
-    // The draft as it was when the editor launched, so an editor that saves nothing cannot wipe
-    // what was typed. The result code is deliberately ignored: several editors return CANCELED
-    // while still having written the file.
+    // Snapshot for the editor: it cannot wipe the draft, and the result code is ignored — several
+    // editors return CANCELED after writing the file.
     var editorOriginal by remember { mutableStateOf<String?>(null) }
     val externalEditor =
         rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
@@ -1494,8 +1331,7 @@ private fun ComposerDock(
                     app.onAppEvent(AppEvent.MoveQueuedMessage(entry.id, delta))
                 },
                 onRemove = { entry -> app.onAppEvent(AppEvent.DeleteQueuedMessage(entry.id)) },
-                // The non-text inputs are carried across untouched: the sheet edits the body,
-                // and a queued image is not something a text field can have an opinion about.
+                // Non-text inputs ride along: the sheet edits only the body.
                 onEdit = { entry, body ->
                     val kept = entry.input.filterNot { it is UserInput.Text }
                     app.onAppEvent(
@@ -1511,7 +1347,6 @@ private fun ComposerDock(
             )
         }
 
-        // A safety stop blocks the composer until the user reviews it or confirms continuing.
         session.misalignment?.let { details ->
             MisalignmentBar(
                 details = details,
@@ -1527,8 +1362,6 @@ private fun ComposerDock(
             )
         }
 
-        // A side conversation has no sidebar row of its own, so the one piece of context the user
-        // needs — where it came from, and how to leave — lives on a strip above the composer.
         app.sideParentOf(session.threadId)?.let { parent ->
             SideConversationBanner(
                 parentLabel = threadNameOf(parent),
@@ -1537,8 +1370,6 @@ private fun ComposerDock(
             )
         }
 
-        // The live turn status sits directly above the composer, like the TUI's status indicator:
-        // the duration, the tool that is running, and the hook on display right now.
         TurnActivityBar(
             running = session.running,
             startedAtMs = session.turnStartedAtMs,
@@ -1556,12 +1387,10 @@ private fun ComposerDock(
         Composer(
             value = prompt,
             onValueChange = onPromptChange,
-            // An approval dialog must not steal the keyboard mid-sentence; the widget uses this
-            // signal to hold the dialog for a second after the last edit.
+            // Held one second after the last edit, so an approval dialog cannot steal the keyboard mid-sentence.
             onActivity = app.widget::noteComposerActivity,
             onSubmit = {
-                // The staged images are part of the submission: the widget assembles them from the
-                // draft so a placeholder the user deleted cannot resurrect its file.
+                // Staged images come from the draft, so a deleted placeholder cannot resurrect its file.
                 val inputs = session.pendingTurnInputs()
                 if (inputs.isNotEmpty()) {
                     app.onAppEvent(AppEvent.SubmitUserMessage(inputs))
@@ -1645,9 +1474,7 @@ private fun ComposerDock(
                     emptyList()
                 },
             onSuggestionPicked = { command ->
-                // A command that takes no argument is dispatched on the spot rather than typed
-                // out and submitted: `/clear` with a trailing space is a draft nobody wants,
-                // and the TUI runs it the moment it is picked.
+                // Argument-less commands dispatch on the spot: `/clear` plus a trailing space is a draft nobody wants.
                 if (command.takesArgument) {
                     onPromptChange(command.command + " ")
                 } else {
@@ -1655,12 +1482,9 @@ private fun ComposerDock(
                 }
             },
             mentionSuggestions = app.mentionSuggestions,
-            // The composer already spliced the picked text into the draft; this hook exists for
-            // surfaces that want to react to the mention itself (nothing does yet).
             onMentionPicked = {},
             onMentionQueryChange = app::onMentionQueryChange,
-            // Only enabled skills are offered: a disabled skill mentioned by name would resolve to
-            // nothing, and the popup is the one place that can say so before the turn is sent.
+            // Only enabled skills are offered: one mentioned by name would resolve to nothing.
             skillCandidates = app.catalog.skills.filter { it.enabled }.map { it.name },
             onSkillPicked = {},
             backdrop = backdrop,
@@ -1675,12 +1499,8 @@ private fun ComposerDock(
 }
 
 /**
- * The agent overview sheet, with its reads scoped away from [ChatScreen].
- *
- * The token total moves while a turn streams; the roster read is already the memoized fold, so this
- * indirection keeps the usage updates from invalidating the chat screen around the sheet.
- * Per-thread usage and subagent liveness are folded in here for the same reason: the sheet is
- * rebuilt from them, not the screen behind it.
+ * The agent overview sheet, reads scoped away from [ChatScreen] so usage updates invalidate the
+ * sheet, not the chat screen behind it.
  */
 @Composable
 private fun AgentsOverviewPane(
@@ -1712,7 +1532,6 @@ private fun AgentsOverviewPane(
     )
 }
 
-/** "Side conversation · from <parent>" with the way back to the parent thread. */
 @Composable
 private fun SideConversationBanner(
     parentLabel: String,
@@ -1753,10 +1572,8 @@ private fun SideConversationBanner(
 }
 
 /**
- * The local images the draft is holding, as removable `[Image #N]` chips.
- *
- * The placeholder also sits in the draft text, so this row is a second, visible handle on the same
- * attachment: tapping the close icon deletes both.
+ * Removable `[Image #N]` chips; the placeholder also sits in the draft, so closing deletes
+ * both handles to the same attachment.
  */
 @Composable
 private fun ComposerImageTray(
@@ -1808,14 +1625,7 @@ private fun ComposerImageTray(
     }
 }
 
-/**
- * The files and images attached to the open thread.
- *
- * Between the queue and the composer, because that is the order they are sent in: queued messages
- * go first, then whatever the tray holds when the next turn starts. Nothing renders when it is
- * empty — an empty tray is a row of chrome that says "nothing here" on every thread that has no
- * attachments, which is most of them.
- */
+/** Attachments between queue and composer — the order they are sent in. */
 @Composable
 private fun AttachmentTray(
     attachments: List<ThreadAttachment>,

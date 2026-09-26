@@ -16,11 +16,7 @@ import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import javax.inject.Inject
 
-/**
- * Creates `native/build-upstream/` from the pinned codex submodule revision and
- * applies `native/patches/android-runtime.patch` there; the submodule itself
- * stays untouched. Mirrors the old `prepare-upstream.sh`, minus the shell.
- */
+/** Patched worktree from the pinned codex revision; the submodule stays untouched. */
 abstract class PrepareUpstreamTask : DefaultTask() {
     @get:Internal abstract val codexDirPath: Property<String>
     @get:Internal abstract val worktreeDirPath: Property<String>
@@ -98,11 +94,6 @@ abstract class PrepareUpstreamTask : DefaultTask() {
     }.exitValue
 }
 
-/**
- * Builds the generated Rust sysroot: a symlink shell of the pinned toolchain
- * plus a copy of `rust-src` patched to enable `flock` on Android. Ports the old
- * `prepare-rust-std.sh`.
- */
 abstract class PrepareRustStdTask : DefaultTask() {
     @get:Internal abstract val rustToolchain: Property<String>
     @get:Internal abstract val sysrootDirPath: Property<String>
@@ -172,10 +163,6 @@ abstract class PrepareRustStdTask : DefaultTask() {
     }
 }
 
-/**
- * Compiles the codex JNI library and helper with cargo (`-Z build-std`), then
- * installs the stripped `.so` files and enforces 16 KB ELF alignment.
- */
 abstract class NativeBuildTask : DefaultTask() {
     @get:Internal abstract val nativeDirPath: Property<String>
     @get:Internal abstract val codexDirPath: Property<String>

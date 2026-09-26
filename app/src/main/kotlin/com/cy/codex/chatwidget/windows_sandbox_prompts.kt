@@ -55,22 +55,11 @@ import top.yukonga.miuix.kmp.icon.extended.Settings
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
- * The Windows sandbox: whether the host can confine a turn, and the two ways to set it up.
+ * The Windows sandbox: whether the host can confine a turn, and the two setup modes. Mirrors
+ * codex-rs/tui/src/chatwidget/windows_sandbox_prompts.rs: elevated raises a UAC prompt and can
+ * install what the sandbox needs; unelevated only starts what is installed. Windows-only.
  *
- * Mirrors `codex-rs/tui/src/chatwidget/windows_sandbox_prompts.rs`, which asks the user the one
- * question the protocol cannot answer for them. `windowsSandbox/setupStart` takes a mode, and the
- * two modes are not a preference. The elevated one raises a UAC prompt, and that is what lets it
- * install the pieces the sandbox needs; the unelevated one cannot install anything and can only
- * start what is already on the machine. The protocol exposes both because only the user can decide
- * whether to approve that prompt, so this page offers both rather than choosing on their behalf.
- *
- * This is a Windows-only capability and is not offered by the Android runtime's navigation.
- *
- * The page keeps its own copy of the readiness answer as well as reading `CatalogState`, because
- * the catalog copy is only written when a completion notification arrives: without a local read the
- * first visit would show nothing until a setup had already run. The local copy is read on entry and
- * re-read after every completion, which is also what makes the card follow the new state without
- * leaving the page.
+ * Readiness is kept locally — the catalog copy only moves on a completion notification.
  */
 @Composable
 fun WindowsSandboxScreen(
@@ -87,8 +76,7 @@ fun WindowsSandboxScreen(
     var failure by remember { mutableStateOf<String?>(null) }
     var pending by remember { mutableStateOf<WindowsSandboxSetupMode?>(null) }
     var loading by remember { mutableStateOf(true) }
-    // Bumped by the recheck button. The effect keys on it, so a recheck runs the same code path as
-    // the read this page opened with instead of a second one that could drift away from it.
+    // Recheck bumps this; the effect keys on it, so a recheck runs the page's own read path.
     var generation by remember { mutableStateOf(0) }
 
     fun read() {
@@ -107,9 +95,8 @@ fun WindowsSandboxScreen(
 
     LaunchedEffect(generation) { read() }
 
-    // A setup completion is the only place an outcome can arrive from: `windowsSandbox/setupStart`
-    // answers as soon as the attempt begins, so success and the error string come back here. The
-    // readiness is re-read on the same event because a finished setup is exactly what changes it.
+    // setupStart answers when the attempt begins, so the outcome arrives only via the completion
+    // notification; the same event re-reads readiness, since a finished setup is what changes it.
     LaunchedEffect(client) {
         client.events.collect { event ->
             if (event !is AppServerEvent.WindowsSandboxSetupCompleted) return@collect
@@ -119,17 +106,15 @@ fun WindowsSandboxScreen(
         }
     }
 
-    // Both buttons stay enabled while an attempt is in flight. The start call answers before the
-    // work is done, so a button disabled until the completion notification would lock the page
-    // behind a notification that a refused start never sends.
+    // Buttons stay enabled while an attempt is in flight: setupStart answers before the work is
+    // done, and a refused start never sends the completion that would re-enable a button.
     val request: (WindowsSandboxSetupMode) -> Unit = { mode ->
         pending = mode
         outcome = null
         onEvent(AppEvent.WindowsSandboxSetupStart(mode, null))
     }
 
-    // The local answer wins over the catalog's, which is only ever as new as the last notification;
-    // the catalog is the fallback for the frame before this page's own read comes back.
+    // Local answer wins; the catalog is the fallback until this page's own read lands.
     val status = readiness ?: catalog.windowsSandboxReadiness
     val completed = outcome
     val started = pending
@@ -387,11 +372,8 @@ fun WindowsSandboxScreen(
 }
 
 /**
- * Name the readiness the way the card's status row shows it.
- *
- * The wire values (`ready`, `notConfigured`, `updateRequired`) are the protocol's spelling, not the
- * user's; this is the one place that turns them into words, so the card header and the status row
- * cannot end up naming the same state two different ways.
+ * Readiness labels: the wire values (`ready`, `notConfigured`, `updateRequired`) are the
+ * protocol's spelling; this is the one place that turns them into words.
  */
 @Composable
 @ReadOnlyComposable
@@ -406,12 +388,6 @@ private fun WindowsSandboxReadiness.label(): String =
         }
     )
 
-/**
- * Say what the state means for the host, because the state's name alone does not.
- *
- * "Update required" and "not configured" both read as "something is missing", and they differ in
- * what can be done about it: one is what this page's setup buttons are for, the other is not.
- */
 @Composable
 @ReadOnlyComposable
 private fun WindowsSandboxReadiness.detail(): String =
@@ -424,13 +400,6 @@ private fun WindowsSandboxReadiness.detail(): String =
         }
     )
 
-/**
- * Colour the readiness the way every other status in the app is coloured.
- *
- * `Ready` is the only state that lets a turn run confined, so it is the only "done". The other two
- * are both "something still has to happen" and are separated because only one of them is something
- * a setup started from here could fix.
- */
 private fun WindowsSandboxReadiness.tone(): ThreadStatusTone =
     when (this) {
         WindowsSandboxReadiness.Ready -> ThreadStatusTone.Done
@@ -438,7 +407,7 @@ private fun WindowsSandboxReadiness.tone(): ThreadStatusTone =
         WindowsSandboxReadiness.UpdateRequired -> ThreadStatusTone.Failed
     }
 
-/** Name the setup mode the outcome row reports; the wire values are `elevated` and `unelevated`. */
+/** Setup mode labels; wire values are `elevated` and `unelevated`. */
 @Composable
 @ReadOnlyComposable
 private fun WindowsSandboxSetupMode.label(): String =

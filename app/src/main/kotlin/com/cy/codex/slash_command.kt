@@ -2,16 +2,7 @@ package com.cy.codex
 
 import androidx.annotation.StringRes
 
-/**
- * One slash command's metadata.
- *
- * Mirrors the parts of `codex-rs/tui/src/slash_command.rs` this client can honor: the name, the
- * description shown in the popup, whether an argument is spliced into the draft instead of being
- * dispatched, whether the command may run while a turn is in flight
- * (`SlashCommand::available_during_task`), and the aliases the terminal accepts for it. Feature
- * gating stays at the call site because it needs catalog data — `/plan` needs the mode list to have
- * answered — while this table is static.
- */
+/** Mirrors `codex-rs/tui/src/slash_command.rs`; feature gating stays at the call site. */
 internal data class SlashCommandSpec(
     val name: String,
     @StringRes val descriptionRes: Int,
@@ -20,14 +11,7 @@ internal data class SlashCommandSpec(
     val aliases: List<String> = emptyList(),
 )
 
-/**
- * The command catalog, in popup order.
- *
- * This is the single source of truth for [CodexApp.ComposerCommands] and for the popup: a command
- * that is missing here is neither recognized on submission nor suggested. Aliases are recognized
- * and dispatched but never listed, the way `command_popup.rs` hides `quit`, `btw`, `clean` and
- * `cwd` until they are typed.
- */
+/** Catalog in popup order; aliases are recognized but never listed (command_popup.rs). */
 internal object SlashCommands {
     val All: List<SlashCommandSpec> = listOf(
         SlashCommandSpec("new", R.string.runtime_new_thread, availableDuringTask = false),
@@ -73,20 +57,12 @@ internal object SlashCommands {
         SlashCommandSpec("init", R.string.slash_desc_init, availableDuringTask = false),
     )
 
-    /** Names and aliases: everything a submission may resolve to a command. */
     val Known: Set<String> = All.flatMap { it.aliases + it.name }.toSet()
 
-    /** Resolve a typed name or alias to its command, preferring an exact canonical name. */
     fun find(name: String): SlashCommandSpec? =
         All.firstOrNull { it.name == name } ?: All.firstOrNull { name in it.aliases }
 
-    /**
-     * The popup rows for [query] (which includes the leading `/`).
-     *
-     * Upstream `command_popup.rs` puts exact matches before prefix matches and preserves the
-     * catalog's own order inside each group; a bare `/` matches everything in declared order. An
-     * alias matches only exactly, so typing `/cle` does not offer `clean` but `/clean` does.
-     */
+    /** Exact matches before prefix matches, catalog order per group; aliases exact-only. */
     fun filter(query: String): List<SlashCommandSpec> {
         val needle = query.removePrefix("/")
         if (needle.isEmpty()) return All

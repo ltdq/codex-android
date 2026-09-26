@@ -59,18 +59,8 @@ import top.yukonga.miuix.kmp.squircle.squircleSurface
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
- * The floating navigation drawer.
- *
- * Mirrors `codex-rs/tui/src/chatwidget/side.rs`: one bar that holds the way in to a new workspace,
- * the project groups and the sessions inside them. The list is built from `thread/list` through
- * [SidebarModel], so the drawer shows the same threads the server knows about.
- *
- * Collapsed it is a chip the size of the status button in the opposite corner; expanded it ends on
- * the same line as the composer. The two are the app's only bottom-anchored pieces, and a drawer
- * that stopped anywhere else — short of the composer, or flush with the screen edge — read as a
- * mistake rather than as a margin.
- *
- * @param maxPanelHeight expanded height, measured so the bottom edge lands on the composer's line.
+ * The floating navigation drawer, mirroring codex-rs/tui/src/chatwidget/side.rs; built from
+ * `thread/list` via [SidebarModel].
  */
 @Composable
 fun SidebarPanel(
@@ -100,7 +90,6 @@ fun SidebarPanel(
     modifier: Modifier = Modifier,
 ) {
     val sizeSpec = Motion.PanelDp
-    // Animating one corner radius keeps the collapsed chip and expanded panel continuous.
     val corner by
         animateDpAsState(
             targetValue = if (expanded) UiConsts.DrawerCorner else UiConsts.ChipCorner,
@@ -148,10 +137,8 @@ fun SidebarPanel(
                 sessionToolsTitle,
             )
         }
-    // The list never scrolls itself: every move happens under the finger that asked for it.
-    // Scrolling the selected session into view used to run while the bar was still growing — with a
-    // zero-height viewport LazyColumn always answered "not visible" and the offset was clamped as
-    // the viewport grew, so a tap aimed at the row being revealed landed on its neighbour.
+    // No programmatic scroll into view: while the bar grows, a zero-height viewport reports "not
+    // visible" and clamped offsets make a tap land on the neighbour of the row being revealed.
     val listState = rememberLazyListState()
 
     Surface(
@@ -297,15 +284,9 @@ private fun SidebarHeader(
             maxLines = 1,
             softWrap = false,
         )
-        // Settings lives here rather than in the status card: this drawer is the app's navigation,
-        // and the status card is a read-out of one session. A settings entry inside it mixed the
-        // two
-        // jobs, and every other list that used to be down here is now a row inside that page.
-        //
-        // Only composed while the drawer is open. An alpha-0 icon is still hit-testable, and in the
-        // 48dp-wide collapsed bar this button lays out exactly on top of the toggle — so tapping
-        // the
-        // collapsed chip opened settings and the drawer could not be opened at all.
+        // Settings lives in the drawer, not the status card: the drawer is navigation, the card is one
+        // session's read-out. Composed only when expanded — alpha-0 is still hit-testable and would
+        // sit on top of the collapsed toggle.
         if (expanded) {
             Box(modifier = Modifier.alpha(titleAlpha)) {
                 IconButton(

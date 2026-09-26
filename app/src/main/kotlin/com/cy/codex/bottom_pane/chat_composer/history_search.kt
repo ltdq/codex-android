@@ -35,20 +35,13 @@ import top.yukonga.miuix.kmp.icon.extended.Search
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
- * Reverse history search, mirroring `codex-rs/tui/src/bottom_pane/chat_composer/history_search.rs`.
- *
- * The model half is pure: [historySearchMatches] filters [history] (newest first) for the current
- * query and [nextHistoryMatch] walks the matches with Ctrl+R / Ctrl+S. The TUI keeps the query in
- * a footer while the matched entry stays in the textarea; the bar below the field does the same,
- * adding touch controls because a phone is the primary device here.
+ * Reverse history search (codex-rs/tui/src/bottom_pane/chat_composer/history_search.rs): the model
+ * half filters newest-first and walks matches; the bar below the field adds touch controls.
  */
 internal fun historySearchMatches(history: List<String>, query: String): List<Int> =
     history.indices.filter { history[it].contains(query, ignoreCase = true) }
 
-/**
- * The next match in [matches] from [current], walking toward older entries (higher indices) or
- * newer ones. At a boundary the current match is kept, which is the TUI's `AtBoundary` result.
- */
+/** Next match from [current] walking older or newer; at a boundary the current match is kept (the TUI's `AtBoundary`). */
 internal fun nextHistoryMatch(matches: List<Int>, current: Int, older: Boolean): Int {
     if (matches.isEmpty()) return -1
     if (current !in matches) return if (older) matches.first() else matches.last()
@@ -59,7 +52,6 @@ internal fun nextHistoryMatch(matches: List<Int>, current: Int, older: Boolean):
     }
 }
 
-/** The search bar that replaces nothing but rides under the field while search is active. */
 @Composable
 internal fun HistorySearchBar(
     query: String,

@@ -3,13 +3,12 @@ package com.cy.codex.protocol.protocol.v2
 /**
  * `command/exec` and `process/…` — running a process outside a turn.
  *
- * Mirrors `schema/typescript/v2/{CommandExecParams, CommandExecResponse, ProcessSpawnParams,
- * ProcessOutputDeltaNotification}.ts`.
- *
  * These are the "one-off command" family the TUI uses for `/shell`: the client owns the process and
  * reads its output from notifications, unlike a turn where the agent owns it and the client only
- * watches. [CommandExecParams] streams (`streamStdoutStderr`), so the companion notification is the
- * normal way to see output and [CommandExecResponse] is only the final summary.
+ * watches (schema/typescript/v2/{CommandExecParams, CommandExecResponse, ProcessSpawnParams,
+ * ProcessOutputDeltaNotification}.ts). [CommandExecParams] streams (`streamStdoutStderr`), so the
+ * companion notification is the normal way to see output and [CommandExecResponse] is only the
+ * final summary.
  */
 
 /** `command/exec` params. `command` is argv, never a shell string. */
@@ -80,16 +79,12 @@ data class CommandExecOutputDeltaNotification(
     val capReached: Boolean = false,
 )
 
-// ---------------------------------------------------------------------------------------------
-// process/* — the same idea, but for a long-lived pty the client keeps talking to
-// ---------------------------------------------------------------------------------------------
-
 /**
  * `process/spawn` params.
  *
- * [processHandle] is client-supplied and connection-scoped: it is how the follow-up
- * `writeStdin`/`resizePty`/`kill` calls name this process, which is why the client returns the
- * handle it generated rather than one from the server.
+ * [processHandle] is client-supplied and connection-scoped: the follow-up
+ * `writeStdin`/`resizePty`/`kill` calls name this process through it, which is why the client
+ * returns the handle it generated rather than one from the server.
  */
 data class ProcessSpawnParams(
     val command: List<String>,

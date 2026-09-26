@@ -50,35 +50,16 @@ private const val FirstScreenTurnLimit = 20
 /** Turns per "load earlier" page; the server clamps whatever the client asks for. */
 private const val EarlierPageSize = 25
 
-/**
- * The reducer that owns one open thread.
- *
- * Mirrors `codex-rs/tui/src/chatwidget.rs`. Everything the user does to a session goes through
- * [action]; everything the server says arrives through [SessionEvent] and lands in [state]. The
- * widget only sends commands through the application server client.
- */
+/** The reducer that owns one open thread; mirrors `codex-rs/tui/src/chatwidget.rs`. */
 class ChatWidget(
     private val client: AppServerClient,
     private val scope: CoroutineScope,
     val state: SessionState = SessionState(),
 ) {
-    /**
-     * Server requests waiting for a decision, oldest first.
-     *
-     * Snapshot-backed on purpose. The dialog and the transcript are both composed from this queue,
-     * and a plain deque gives a composable that reads it nothing to observe: the request would sit
-     * here until some *unrelated* state change (opening the status panel, a streaming delta) forced
-     * a recomposition. That is exactly how an approval used to disappear into a blocked turn.
-     */
+    /** Server requests waiting for a decision, oldest first; snapshot-backed so composables observe the queue. */
     private val pendingApprovals = mutableStateListOf<ApprovalRequest>()
 
-    /**
-     * Notices the app turns into system notifications.
-     *
-     * The widget knows *when* something happened (a turn ended, an approval became blocking) but
-     * has no Context, so it emits a structured event and [CodexApp] formats and posts it. A small
-     * buffer with `tryEmit` on purpose: an alert is best-effort and must never suspend a reducer.
-     */
+    /** Notices for [CodexApp] to post; `tryEmit` with a buffer because an alert must never suspend a reducer. */
     private val _notices = MutableSharedFlow<AgentNotice>(extraBufferCapacity = 32)
     val notices: SharedFlow<AgentNotice> = _notices.asSharedFlow()
 
@@ -88,57 +69,26 @@ class ChatWidget(
     private var loadVersion = 0
     private var eventRevision = 0L
 
-    /**
-     * Turns that have already completed.
-     *
-     * Used to drop approvals that arrive late: a request can be emitted just as its turn finishes,
-     * and a card for a finished turn can never be answered meaningfully. Bounded because a session
-     * only ever needs the recent past.
-     */
+    /** Completed turns, bounded; used to drop approvals that arrive after their turn finished. */
     private val finishedTurns = ArrayDeque<String>()
 
-    /**
-     * The accumulating `turn/diff/updated` payload of the current turn.
-     *
-     * The server re-sends the whole diff on every notification, so the accumulator re-parses only
-     * the appended tail and keeps the parsed `FileDiff` of every unchanged file. Reset wherever the
-     * turn or the thread changes, so a later turn never extends the previous turn's payload.
-     */
+    /** Accumulating `turn/diff/updated` payload; the server re-sends the whole diff, so only the tail is re-parsed. */
     private val turnDiff = TurnDiffAccumulator()
 
     /**
-     * Patch content for a file-change item, as last announced by the stream.
-     *
-     * `item/fileChange/requestApproval` identifies the item but carries no diff, and
-     * `item/fileChange/patchUpdated` can arrive before `item/started` — so this is where the two
-     * are matched up. The item wins when it is present because it is the authoritative copy;
-     * upstream recovers the same way in `tui/src/app/file_change_approvals.rs`.
+     * Last streamed patch for a file-change item; `requestApproval` carries no diff and
+     * `patchUpdated` can precede `item/started` (tui/src/app/file_change_approvals.rs).
      */
     private val patchChanges = mutableStateMapOf<String, List<FileUpdateChange>>()
 
-    /** The patch under review for [itemId], or empty when nothing has arrived yet. */
     fun fileChangeChanges(itemId: String): List<FileUpdateChange> =
         (state.item(itemId) as? FileChangeItem)?.changes?.takeIf { it.isNotEmpty() }
             ?: patchChanges[itemId].orEmpty()
 
-    /**
-     * Streaming deltas waiting for the next commit tick.
-     *
-     * A server can emit a delta per token, and committing each one recomposes the transcript row
-     * and the tail block with it. Deltas are therefore accumulated here and applied together at
-     * [Motion.StreamCommitIntervalMs], which is the cadence the transcript renders at; an item that
-     * completes flushes first, so nothing is lost at the end of a message.
-     */
+    /** Deltas accumulate for the render cadence ([Motion.StreamCommitIntervalMs]); a completing item flushes first. */
     private enum class DeltaKind { AgentMessage, Plan, Reasoning, CommandOutput, McpProgress }
 
-    /**
-     * One item's pending deltas, in arrival order.
-     *
-     * A batch is not one string per item: `aggregatedOutput` and a reasoning summary are appended
-     * in arrival order across kinds, so a command's stdout and its terminal interaction must replay
-     * in the order the server sent them. Adjacent deltas of the same kind are concatenated; a kind
-     * change starts a new chunk.
-     */
+    /** One item's pending deltas in arrival order; adjacent same-kind deltas concatenate, a kind change starts a chunk. */
     private class PendingDeltas {
         val chunks = mutableListOf<Pair<DeltaKind, StringBuilder>>()
 
@@ -152,14 +102,7 @@ class ChatWidget(
     private val pendingDeltas = linkedMapOf<String, PendingDeltas>()
     private var deltaFlushJob: Job? = null
 
-    /**
-     * A bounded, per-thread queue of the notifications worth replaying on switch.
-     *
-     * Bounded twice over: per thread so one noisy agent cannot grow without limit, and by thread
-     * count so a session that spawns many agents keeps only the most recently active ones. The
-     * oldest thread is evicted first, and an evicted thread simply opens without replay — the same
-     * behaviour as before the buffer existed, never a wrong transcript.
-     */
+    /** Notifications worth replaying on switch; bounded per thread and by thread count, oldest evicted first. */
     private class ForeignEventBuffer(
         private val perThreadCapacity: Int = 256,
         private val maxThreads: Int = 8,
@@ -179,8 +122,7 @@ class ChatWidget(
         fun drain(threadId: String): List<AppServerEvent> = threads.remove(threadId)?.toList().orEmpty()
 
         private fun replayable(event: AppServerEvent): Boolean = when (event) {
-            // A completed item carries its full body, so replaying it cannot duplicate anything:
-            // upsert by id replaces the snapshot copy with the same immutable content.
+            // A completed item carries its full body; replaying upserts by id, so nothing duplicates.
             is AppServerEvent.ItemCompleted,
             is AppServerEvent.TurnStarted,
             is AppServerEvent.TurnCompleted,
@@ -194,67 +136,34 @@ class ChatWidget(
         }
     }
 
-    /** Turns that already produced their one safety-buffering notice, bounded like [finishedTurns]. */
     private val safetyBufferedTurns = LinkedHashSet<String>()
 
-    /** Threads with an automatic title generation in flight. */
     private val titleRequests = mutableSetOf<String>()
 
-    /** The manual recap request, if one is running; a second `/recap` is ignored. */
     private var recapJob: Job? = null
 
-    /**
-     * Automatic recap bookkeeping, mirroring `app/recap.rs`.
-     *
-     * Automatic recaps are generated silently once the app has been in the background for 30
-     * minutes with enough completed turns; `/recap` still runs on demand.
-     */
     private val recap = com.cy.codex.app.RecapScheduler()
 
-    /** The background git/PR probe for the status card. */
     private var gitSummaryJob: Job? = null
 
-    /**
-     * When the composer last changed, on a monotonic clock.
-     *
-     * An approval that lands mid-sentence must not take the keyboard away, so a request waits for
-     * typing to be idle for [ApprovalTypingIdleDelayMs] before the dialog appears — the same
-     * one-second gate upstream keeps in `tui/src/bottom_pane/mod.rs`. Monotonic because a wall-clock
-     * adjustment must not turn a live keystroke into an old one; zero means "nothing typed yet".
-     */
+    /** Last composer change on a monotonic clock; approvals wait for [ApprovalTypingIdleDelayMs] of idle typing (tui/src/bottom_pane/mod.rs). */
     private var composerActiveAtMs = 0L
 
-    /** Cancels the pending promotion when a new request or a keystroke restarts the idle window. */
     private var promotionJob: Job? = null
 
-    /**
-     * Requests from a thread other than the open one.
-     *
-     * They cannot be answered from this transcript — the dialog belongs to the thread on screen —
-     * so they are kept apart and surfaced as a banner that switches threads. Upstream lists them
-     * above the composer the same way (`bottom_pane/pending_thread_approvals.rs`).
-     */
+    /** Requests for other threads, surfaced as a switch-thread banner (bottom_pane/pending_thread_approvals.rs). */
     private val otherApprovals = mutableStateListOf<ApprovalRequest>()
 
     /**
-     * Replayable notifications from threads that are not on screen.
-     *
-     * The server keeps streaming while the user reads another thread, and only a snapshot is read
-     * on switch: transient diagnostics, turn boundaries and item completions that happened in
-     * between are not in it. This buffer holds that subset per thread and [open] drains it after
-     * the snapshot. Content deltas are deliberately not held — the snapshot already contains their
-     * result, so replaying them would append the same text twice. Upstream has the same split in
-     * `app/thread_event_buffer.rs` + `app/replay_filter.rs`, at the scale of a whole event store.
+     * Replayable notifications from threads not on screen; the snapshot read on switch lacks
+     * transient events (app/thread_event_buffer.rs + app/replay_filter.rs).
      */
     private val foreignEvents = ForeignEventBuffer()
 
-    /** In-flight auto reviews, arrival order, for the aggregated review footer. */
     private val reviewsInFlight = mutableStateListOf<PendingReview>()
 
-    /** Recent auto-review denials the user may override once; newest first, bounded. */
     private val autoReviewDenials = mutableStateListOf<AutoReviewDenial>()
 
-    /** The request the dialog is showing; only the head of the queue is ever on screen. */
     var currentApproval by mutableStateOf<ApprovalRequest?>(null)
         private set
 
@@ -263,44 +172,23 @@ class ChatWidget(
     var approvalError by mutableStateOf<String?>(null)
         private set
 
-    /**
-     * Set once anything arrives from the live stream for the thread being loaded.
-     *
-     * `thread/read` is issued while opening, so what it returns is a snapshot taken at request
-     * time; this flag says whether the stream has since overtaken it. See [open].
-     */
+    /** Set once the live stream overtook the load's snapshot; see [open]. */
     private var streamOvertookLoad = false
 
-    /**
-     * Cursor into the turns older than what [open] loaded.
-     *
-     * `thread/resume` answers with a bounded `initialTurnsPage` when the client asks for one; the
-     * transcript uses the page's `nextCursor` to offer "load earlier" and replaces it with each
-     * subsequent page's own cursor. Null means there is nothing older on the server, so the button
-     * is absent rather than disabled.
-     */
+    /** Cursor into turns older than the loaded screen, from `thread/resume`'s page; null means nothing older. */
     var nextTurnCursor by mutableStateOf<String?>(null)
         private set
 
     var loadingEarlier by mutableStateOf(false)
         private set
 
-    /** Whether a "load earlier" affordance should be on screen right now. */
     val canLoadEarlier: Boolean get() = nextTurnCursor != null && !loadingEarlier
 
-    /** How many requests are actually on screen, i.e. eligible for the "in queue" line. */
     val approvalQueueSize: Int get() = if (currentApproval == null) 0 else pendingApprovals.size
 
-    /**
-     * Whether [threadId] is a side conversation.
-     *
-     * A side conversation forks its parent and inherits the parent's persisted dynamic tool specs
-     * (`thread/fork` has no `dynamicTools` field), so delegation is refused at call time rather
-     * than filtered out of the advertised spec.
-     */
+    /** Side threads inherit the parent's tool specs; `thread/fork` has no `dynamicTools` field. */
     var isSideThread: (String) -> Boolean = { false }
 
-    /** Per-thread counts of approvals waiting in threads that are not open. */
     val otherThreadApprovals: List<ForeignApproval>
         get() = otherApprovals.groupBy { it.threadId }.map { (threadId, requests) ->
             ForeignApproval(threadId, requests.size)
@@ -309,13 +197,6 @@ class ChatWidget(
     val pendingReviews: List<PendingReview> get() = reviewsInFlight
     val approvalDenials: List<AutoReviewDenial> get() = autoReviewDenials
 
-    /**
-     * Record a composer edit.
-     *
-     * Called on every text change. When the head of the queue is waiting out the idle window, the
-     * deadline moves to one second from this keystroke, so a user who keeps typing is never
-     * interrupted.
-     */
     fun noteComposerActivity() {
         composerActiveAtMs = monotonicMs()
         if (currentApproval == null && pendingApprovals.isNotEmpty() && promotionJob != null) {
@@ -325,7 +206,6 @@ class ChatWidget(
 
     private fun monotonicMs(): Long = System.nanoTime() / 1_000_000
 
-    /** Milliseconds until the composer has been idle long enough to show an approval. */
     private fun typingIdleRemainingMs(): Long {
         if (composerActiveAtMs == 0L) return 0L
         return composerActiveAtMs + ApprovalTypingIdleDelayMs - monotonicMs()
@@ -337,18 +217,10 @@ class ChatWidget(
         promotionJob = scope.launch {
             if (remaining > 0) delay(remaining)
             promotionJob = null
-            // Only the head is promoted; the rest is the modal's own queue.
             if (currentApproval == null) currentApproval = pendingApprovals.firstOrNull()
         }
     }
 
-    /**
-     * Show the head unless the composer is still being typed in.
-     *
-     * A request that arrives while nothing has been typed (or after the idle window) appears at
-     * once; otherwise the dialog waits and [noteComposerActivity] moves the deadline with each
-     * keystroke.
-     */
     private fun promoteApprovalIfIdle() {
         if (currentApproval != null) return
         if (typingIdleRemainingMs() > 0) {
@@ -360,7 +232,6 @@ class ChatWidget(
         }
     }
 
-    /** Approvals queued for a thread that is not open, adopted when that thread is opened. */
     private fun adoptOtherThreadApprovals() {
         if (state.threadId.isBlank()) return
         val mine = otherApprovals.filter { it.threadId == state.threadId }
@@ -374,10 +245,8 @@ class ChatWidget(
 
     fun attach() {
         subscription?.cancel()
-        // Subscribing has to be finished by the time this returns. The transport has no replay
-        // buffer on purpose — a socket delivers a notification exactly once — so anything emitted
-        // between `attach()` and the collectors' first dispatch would be lost. Starting the
-        // collectors undispatched runs their `collect` registration on this very stack frame.
+        // UNDISPATCHED: a socket delivers each notification exactly once, so anything emitted
+        // before the collectors register would be lost.
         subscription = scope.launch(start = CoroutineStart.UNDISPATCHED) {
             launch(start = CoroutineStart.UNDISPATCHED) {
                 client.requests.collect { request -> onApprovalRequest(request) }
@@ -401,7 +270,6 @@ class ChatWidget(
         state.applyStatus(ThreadStatus.NotLoaded)
     }
 
-    /** Drop every approval-scoped queue and notice; the thread they belonged to is gone. */
     private fun resetApprovalState() {
         promotionJob?.cancel()
         promotionJob = null
@@ -414,14 +282,11 @@ class ChatWidget(
         approvalError = null
     }
 
-    /** Open a thread and load its history. */
     fun open(threadId: String, onLoaded: (Result<ThreadReadResponse>) -> Unit = {}) {
         loadJob?.cancel()
         val version = ++loadVersion
         dropDeltas()
-        // Everything approval-scoped belongs to the old thread. `otherApprovals` survives the reset
-        // by one step: a request for the thread being opened is adopted back into the queue once
-        // `beginLoad` has made that thread current.
+        // `otherApprovals` survives the reset by one step so the opening thread adopts its requests back.
         promotionJob?.cancel()
         promotionJob = null
         pendingApprovals.clear()
@@ -442,8 +307,7 @@ class ChatWidget(
             val resumed = client.resumeThread(
                 ThreadResumeParams(
                     threadId = threadId,
-                    // The metadata-only resume plus one bounded page is what keeps a long thread
-                    // from replaying its whole rollout on open.
+                    // Metadata-only resume plus one bounded page keeps a long thread from replaying its rollout.
                     excludeTurns = true,
                     initialTurnsPage = ThreadResumeInitialTurnsPageParams(
                         limit = FirstScreenTurnLimit,
@@ -458,9 +322,7 @@ class ChatWidget(
                 streamedStatus = state.status.takeIf { streamOvertookLoad && it != ThreadStatus.NotLoaded }
                 state.bindThread(threadId, session)
                 if (streamedStatus != null) state.applyStatus(streamedStatus)
-                // Read after `bindThread` so a stale resume from a cancelled load cannot plant a
-                // cursor for the thread that replaced it; the version check above already guards
-                // the common race, and this keeps the invariant local to the success branch.
+                // Read after `bindThread` so a stale resume cannot plant a cursor for the thread that replaced it.
                 if (version == loadVersion) nextTurnCursor = session.initialTurnsPage?.nextCursor
             }
                 .onFailure { error ->
@@ -482,8 +344,7 @@ class ChatWidget(
             val page = session?.initialTurnsPage
             var loadedTurns = emptyList<com.cy.codex.protocol.protocol.v2.Turn>()
             if (version == loadVersion && row != null && page != null) {
-                // Separators after finished turns are rebuilt from the page's turns: the server
-                // does not store the divider this client draws.
+                // Separators are rebuilt; the server does not store this client's divider.
                 val transcript = com.cy.codex.history_cell.transcriptWithSeparators(page.turns)
                 applyLoadedTranscript(transcript)
                 if (streamedStatus == null) state.applyStatus(row.status)
@@ -515,15 +376,12 @@ class ChatWidget(
                 onLoaded(history)
             }
             if (version != loadVersion) return@launch
-            // Events that arrived while another thread was open are applied after the snapshot, so
-            // content comes from the server exactly once and only the snapshot-less facts — a turn
-            // that ended, a diagnostic, an item that completed — come from the buffer.
+            // Replay after the snapshot so content arrives once; only snapshot-less facts come from the buffer.
             foreignEvents.drain(threadId).forEach { buffered ->
                 if (version != loadVersion) return@launch
                 apply(buffered)
             }
-            // Seeded after the replay so a buffered `TurnCompleted` is not counted twice; the recap
-            // schedule then reflects the loaded transcript.
+            // Seed after the replay so a buffered `TurnCompleted` is not counted twice.
             recap.seedFromTurns(loadedTurns, monotonicMs())
             scheduleRecapCheck()
             refreshQueue(threadId)
@@ -534,14 +392,7 @@ class ChatWidget(
         }
     }
 
-    /**
-     * Apply a history snapshot, live-stream-aware.
-     *
-     * If the stream got there first, the snapshot describes a thread that has already moved on and
-     * may only fill the gaps it left. Applying it wholesale replaced freshly streamed bodies with
-     * the older copies the snapshot was taken from — a plan whose deltas had arrived collapsed back
-     * to an empty card.
-     */
+    /** A snapshot may only fill the gaps when the stream got there first; applied wholesale it would replace streamed bodies with older copies. */
     private fun applyLoadedTranscript(transcript: List<ThreadItem>) {
         if (streamOvertookLoad) {
             transcript.forEach(state::addIfAbsent)
@@ -550,15 +401,7 @@ class ChatWidget(
         }
     }
 
-    /**
-     * Fetch one page of turns older than the transcript's first row.
-     *
-     * `thread/turns/list` pages backwards: the request's cursor names the oldest loaded turn, the
-     * page comes back newest-first, and its `nextCursor` names the next-older page. The page is
-     * therefore reversed before it is prepended (with separators rebuilt, exactly like the first
-     * screen), and a failure leaves the cursor in place so the button retries rather than
-     * disappearing.
-     */
+    /** `thread/turns/list` pages newest-first; reverse before prepending. */
     fun loadEarlier() {
         val cursor = nextTurnCursor ?: return
         if (loadingEarlier) return
@@ -592,7 +435,6 @@ class ChatWidget(
         }
     }
 
-    /** Start a fresh thread in [cwd]. */
     fun newThread(cwd: String) {
         resetApprovalState()
         scope.launch {
@@ -609,8 +451,6 @@ class ChatWidget(
                     patchChanges.clear()
                     recap.resetForNewThread()
                     state.bindThread(session.threadId, session)
-                    // A brand-new thread starts with one tip, the way the TUI shows one in its
-                    // startup session cell.
                     maybeShowStartupTip()
                 }
                 .onFailure { error ->
@@ -625,21 +465,8 @@ class ChatWidget(
         }
     }
 
-    // ---------------------------------------------------------------------------------------
-    // User actions
-    // ---------------------------------------------------------------------------------------
-
-    /**
-     * Reduce one user action.
-     *
-     * Exhaustive on purpose, with no `else`. The events this widget does not own are listed at the
-     * bottom rather than caught by a catch-all, so adding a variant to [AppEvent] without deciding
-     * which reducer owns it is a compile error here — which is exactly the check that was missing
-     * when Fork / Rename / Archive / Delete rendered in the session list and did nothing at all.
-     */
     fun action(event: AppEvent) {
         when (event) {
-            // ---- thread lifecycle ---------------------------------------------
             is AppEvent.NewThread -> newThread(event.cwd ?: state.config.cwd)
             is AppEvent.ResumeThread -> open(event.threadId)
             is AppEvent.ForkThread -> request({
@@ -663,8 +490,6 @@ class ChatWidget(
             is AppEvent.RunShellCommand -> request {
                 client.runShellCommand(event.threadId, event.command).onSuccess {
                     if (state.threadId != event.threadId) return@onSuccess
-                    // Both spellings are cleared: `/shell cmd`, and the `!cmd` escape the composer
-                    // now recognizes.
                     if (state.composerDraft.startsWith("/shell ") || state.composerDraft.startsWith("!")) {
                         state.applyDraft("")
                     }
@@ -680,7 +505,6 @@ class ChatWidget(
             is AppEvent.DismissAutoReviewDenial ->
                 autoReviewDenials.removeAll { it.itemId == event.itemId }
 
-            // ---- turns ----------------------------------------------------------
             is AppEvent.SubmitUserMessage -> submitInput(event.inputs)
             is AppEvent.AnswerAsyncQuestion -> submitInput(listOf(UserInput.Text(event.text)), clearDraft = false)
             AppEvent.InterruptTurn -> interrupt()
@@ -702,7 +526,6 @@ class ChatWidget(
 
             AppEvent.ClearGoal -> request({ client.clearGoal(state.threadId) }) { state.applyGoal(null) }
 
-            // ---- server-side queue ----------------------------------------------
             is AppEvent.StartQueuedMessage -> request { client.startQueued(state.threadId, event.queuedId) }
             is AppEvent.DeleteQueuedMessage -> request { client.deleteQueued(state.threadId, event.queuedId) }
 
@@ -711,8 +534,7 @@ class ChatWidget(
             }
 
             is AppEvent.ClearQueue -> request({
-                // No bulk endpoint exists, so dropping the queue means dropping every entry. The
-                // list is re-read once at the end rather than after each delete.
+                // No bulk endpoint; delete per entry, re-read once at the end.
                 state.queued.map { it.id }.forEach { id -> client.deleteQueued(state.threadId, id) }
                 client.listQueue(state.threadId)
             }) { replaceQueue(it) }
@@ -727,7 +549,6 @@ class ChatWidget(
                 client.reorderQueue(state.threadId, ids)
             }
 
-            // ---- settings --------------------------------------------------------
             is AppEvent.SetModel -> request({
                 client.updateThreadSettings(state.threadId, model = event.model)
             }) {
@@ -764,14 +585,12 @@ class ChatWidget(
                 client.updateThreadSettingsFull(
                     ThreadSettingsUpdateParams(
                         threadId = state.threadId,
-                        // The wire spells "no preference" as the literal `default`, not as a missing
-                        // field; `SERVICE_TIER_DEFAULT_REQUEST_VALUE` upstream.
+                        // The wire spells "no preference" as the literal `default`, not a missing field.
                         serviceTier = event.tier ?: ServiceTierDefault,
                     ),
                 )
             }) { state.applyConfig(state.config.copy(serviceTier = event.tier)) }
 
-            // ---- attachments and background terminals -----------------------------
             is AppEvent.RemoveAttachment -> request({
                 client.removeAttachment(event.threadId, event.type, event.identityKey)
             }) { state.attachments.removeAll { it.identityKey == event.identityKey } }
@@ -784,12 +603,7 @@ class ChatWidget(
                 client.cleanBackgroundTerminals(event.threadId)
             }) { state.backgroundTerminals.clear() }
 
-            // ---- composer ---------------------------------------------------------
-            //
-            // A paste that is exactly one local image path is staged as an attachment instead of
-            // typed out: the placeholder `[Image #N]` goes where the path would have been. The
-            // path must exist and fit the transport limit, which is why the check lives here and
-            // not in the pure diff.
+            // A paste of one local image path stages an attachment instead of text; the path must exist and fit the transport limit.
             is AppEvent.SetComposerDraft -> {
                 val pasted = detectPastedImagePath(state.composerDraft, event.text)
                 if (pasted == null) {
@@ -821,10 +635,7 @@ class ChatWidget(
 
             is AppEvent.SubmitSlashCommand,
 
-            // ---- owned by `CodexApp` ----------------------------------------------
-            //
-            // Listed rather than caught by an `else`, so a new event has to be classified. These
-            // never reach here: `CodexApp.onAppEvent` handles them before forwarding.
+            // Events `CodexApp` handles before forwarding; listed, not caught by an `else`, so a new event must be classified.
             is AppEvent.ToggleSideConversation,
             is AppEvent.ReloadAccount,
             is AppEvent.ReloadRateLimits,
@@ -913,23 +724,11 @@ class ChatWidget(
         }
     }
 
-    /**
-     * Run one request against the open thread, and report a failure where the user can see it.
-     *
-     * These used to be bare `scope.launch { client.… }` calls whose `Result` was discarded, so a
-     * rename the server refused looked exactly like one it accepted.
-     */
     private fun request(block: suspend () -> Result<*>) {
         request(block, then = {})
     }
 
-    /**
-     * Run one request and fold a successful answer.
-     *
-     * `then` is a suspend lambda rather than the `onSuccess` receiver so that a continuation may
-     * itself talk to the server — following a rename with a re-read, for instance — without the
-     * call site having to nest another `launch`.
-     */
+    /** `then` is suspend so a continuation can talk to the server itself. */
     private fun <T> request(block: suspend () -> Result<T>, then: suspend (T) -> Unit) {
         scope.launch {
             block()
@@ -942,7 +741,6 @@ class ChatWidget(
         }
     }
 
-    /** Bind a thread a lifecycle call just produced — a fork, which is a new thread id. */
     fun bind(session: com.cy.codex.protocol.protocol.v2.ThreadSessionState) {
         loadJob?.cancel()
         loadVersion++
@@ -955,12 +753,7 @@ class ChatWidget(
         state.bindThread(session.threadId, session)
     }
 
-    /**
-     * Put one startup tip at the top of a fresh conversation.
-     *
-     * Mirrors `tui/src/tooltips.rs`: gated by the `show_tooltips` appearance setting, picked at
-     * random, and only on a conversation that has no messages yet.
-     */
+    /** One random tip per fresh conversation, gated by `show_tooltips` (tui/src/tooltips.rs). */
     private fun maybeShowStartupTip() {
         if (!com.cy.codex.theme.Appearance.showTooltips) return
         if (state.items.isNotEmpty()) return
@@ -992,7 +785,6 @@ class ChatWidget(
         pendingDeltas.clear()
     }
 
-    /** Buffer one streaming delta until the next commit tick. */
     private fun appendDelta(itemId: String, kind: DeltaKind, delta: String) {
         pendingDeltas.getOrPut(itemId) { PendingDeltas() }.append(kind, delta)
         if (deltaFlushJob == null) {
@@ -1003,12 +795,6 @@ class ChatWidget(
         }
     }
 
-    /**
-     * Apply every buffered delta now.
-     *
-     * The tick calls this after [Motion.StreamCommitIntervalMs]; item completion and turn end call
-     * it directly so a message never loses its tail to a pending flush.
-     */
     internal fun flushDeltas() {
         deltaFlushJob = null
         if (pendingDeltas.isEmpty()) return
@@ -1060,12 +846,7 @@ class ChatWidget(
         }
     }
 
-    /**
-     * Refresh the branch/PR/diff summary the status card shows.
-     *
-     * Mirrors `tui/src/branch_summary.rs`: `git` and `gh` run through `command/exec` in the
-     * session workspace, and failures are silent because the card simply omits the line.
-     */
+    /** `git`/`gh` run via `command/exec`; failures are silent (tui/src/branch_summary.rs). */
     private fun refreshGitSummary(threadId: String) {
         val cwd = state.config.cwd
         if (threadId.isBlank() || cwd.isBlank()) return
@@ -1076,13 +857,11 @@ class ChatWidget(
         }
     }
 
-    /** Clear the draft and any staged local images after a submission consumed them. */
     private fun clearComposer() {
         state.applyDraft("")
         state.clearComposerImages()
     }
 
-    /** Re-read the server's queue for [threadId] and replace the local copy. */
     private fun refreshQueue(threadId: String) {
         scope.launch {
             client.listQueue(threadId).onSuccess {
@@ -1113,8 +892,6 @@ class ChatWidget(
             try {
                 client.respond(requestId, response)
                 pendingApprovals.removeAll { it.requestId == requestId }
-                // The modal already has the user's attention, so the next queued request follows
-                // immediately instead of waiting out the typing window again.
                 if (currentApproval?.requestId == requestId) currentApproval = pendingApprovals.firstOrNull()
                 if (pendingApprovals.isEmpty() && state.running) state.applyStatus(ThreadStatus.Active())
             } catch (error: kotlinx.coroutines.CancellationException) {
@@ -1134,10 +911,7 @@ class ChatWidget(
     }
 
     private fun onApprovalRequest(request: ApprovalRequest) {
-        // Three of the eleven server requests are not decisions: the server is asking the *host* for
-        // something only the host can produce. Showing them as cards would put a "sign in again"
-        // dialog in front of the user for something they cannot answer, and would block the turn
-        // behind it. They are answered here and never enter the queue.
+        // Three of the server requests are host-only answers, not user decisions; answering here keeps them out of the queue.
         when (request) {
             is ApprovalRequest.CurrentTimeRead -> {
                 scope.launch {
@@ -1147,9 +921,7 @@ class ChatWidget(
             }
 
             is ApprovalRequest.DynamicTool -> {
-                // Dynamic tools are the model delegating work to this client; they execute
-                // immediately and never surface as an approval card, the way `dynamic_tools.rs`
-                // answers them. The answer is a `DynamicToolCallResponse`, not a user decision.
+                // Dynamic tools run immediately and never surface as cards (dynamic_tools.rs).
                 val calling = request.threadId
                 val cwd = state.config.cwd
                 val model = state.config.model
@@ -1174,9 +946,7 @@ class ChatWidget(
 
             is ApprovalRequest.AttestationGenerate -> {
                 scope.launch {
-                    // A real host signs the nonce with the platform attestation key. The client has
-                    // no keystore integration, so the reply is well-formed but unverifiable — which
-                    // is the honest answer, and the server rejects it rather than the UI pretending.
+                    // No keystore integration: reply well-formed but unverifiable; the server rejects it honestly.
                     client.respond(request.requestId, ApprovalResponse.Attestation(token = ""))
                 }
                 return
@@ -1184,9 +954,7 @@ class ChatWidget(
 
             is ApprovalRequest.ChatgptAuthTokensRefresh -> {
                 scope.launch {
-                    // The tokens live in the account store, not here; re-reading the account is what
-                    // produces them, and an empty reply tells the server to fall back to its own
-                    // refresh path instead of waiting on a request nobody will answer.
+                    // Tokens live in the account store; an empty reply makes the server fall back to its own refresh path.
                     client.respond(
                         request.requestId,
                         ApprovalResponse.Tokens(accessToken = "", chatgptAccountId = ""),
@@ -1204,8 +972,7 @@ class ChatWidget(
             -> Unit
         }
 
-        // One alert per request, before the queue dedup below: a request for another thread still
-        // blocks that agent and is exactly what a backgrounded user should hear about.
+        // Alert per request before dedup: another thread's blocking request is what a backgrounded user should hear.
         _notices.tryEmit(
             AgentNotice.Approval(
                 threadId = request.threadId,
@@ -1216,11 +983,9 @@ class ChatWidget(
 
         if (pendingApprovals.any { it.requestId == request.requestId }) return
         if (otherApprovals.any { it.requestId == request.requestId }) return
-        // A request whose turn already finished is stale: the server resolved it while this client
-        // was not listening. Showing it would offer a decision with no effect.
+        // A request whose turn already finished is stale; showing it would offer a decision with no effect.
         if (request.turnId != null && request.turnId in finishedTurns) return
-        // A request for another thread must not take over this transcript. It is tracked for the
-        // cross-thread banner, and adopted if the user switches to that thread.
+        // Another thread's request is tracked for the banner and adopted on switch.
         if (request.threadId.isNotBlank() && request.threadId != state.threadId) {
             otherApprovals.add(request)
             return
@@ -1233,14 +998,8 @@ class ChatWidget(
                 ),
             ),
         )
-        // The dialog waits out the composer's idle window; a request that arrives while nothing has
-        // been typed (or after the window) is shown at once.
         promoteApprovalIfIdle()
     }
-
-    // ---------------------------------------------------------------------------------------
-    // Server events
-    // ---------------------------------------------------------------------------------------
 
     private fun apply(event: AppServerEvent) {
         val eventThread = event.threadId
@@ -1278,9 +1037,7 @@ class ChatWidget(
             is AppServerEvent.McpToolProgress ->
                 appendDelta(event.delta.itemId, DeltaKind.McpProgress, event.delta.message)
 
-            // The bridge dropped events, so deltas may have gone missing. Anything the transcript
-            // holds from the stream is untrustworthy; re-reading the thread is the same repair a
-            // compact or a revert uses.
+            // The bridge dropped events; re-read, the same repair a compact or a revert uses.
             is AppServerEvent.TransportLagged -> {
                 dropDeltas()
                 if (state.threadId.isNotEmpty()) {
@@ -1328,9 +1085,6 @@ class ChatWidget(
             is AppServerEvent.ThreadCompacted -> refreshHistory(event.threadId)
             is AppServerEvent.ThreadRevertedEvent -> refreshHistory(event.threadId)
 
-            // The five diagnostic notifications are separate methods on the wire with different
-            // payloads, so they are folded into the transcript one by one rather than through a
-            // shared "diagnostic" shape that would have to drop `path`.
             is AppServerEvent.ErrorEvent -> state.addDiagnostic(
                 SessionDiagnostic(
                     severity = DiagnosticSeverity.Error,
@@ -1390,18 +1144,13 @@ class ChatWidget(
                 )
             }
 
-            // `item/fileChange/patchUpdated` carries the patch as it grows. The item may not have
-            // been started yet, in which case the later `item/started` brings the same content; the
-            // update is kept by id either way so an approval arriving in between still has a diff.
+            // `patchUpdated` may precede `item/started`; keep the update by id so an approval in between still has a diff.
             is AppServerEvent.FileChangePatchUpdated -> {
                 patchChanges[event.delta.itemId] = event.delta.changes
                 val item = state.item(event.delta.itemId) as? FileChangeItem
                 if (item != null) state.upsert(item.copy(changes = event.delta.changes))
             }
 
-            // The review lifecycle does not render per item; in-flight reviews are aggregated into
-            // the composer's approval notice, and a denial is remembered there so it can be
-            // overridden once.
             is AppServerEvent.AutoApprovalReviewStarted -> onReviewStarted(event.delta)
             is AppServerEvent.AutoApprovalReviewCompleted -> onReviewCompleted(event.delta)
 
@@ -1413,8 +1162,7 @@ class ChatWidget(
                 ),
             )
 
-            // A hook that failed is worth a notice; one that succeeded is not, or a session with
-            // hooks on would fill the transcript with a line per tool call.
+            // Only failed hooks get a notice; a session with hooks on would otherwise fill the transcript.
             is AppServerEvent.HookCompleted -> {
                 state.applyHookCompleted()
                 if (event.delta.run.failed) {
@@ -1445,13 +1193,7 @@ class ChatWidget(
                 )
             }
 
-            // ---------------------------------------------------------------------------------
-            // Everything below belongs to a surface this reducer does not own. The transcript is
-            // the only thing `ChatWidget` drives; the catalogs, the terminal drawer and the
-            // realtime session are `CodexApp`'s. They are listed explicitly rather than caught by
-            // an `else` so that adding a notification to the protocol is a compile error here
-            // until someone decides which of the two owns it.
-            // ---------------------------------------------------------------------------------
+            // Events other surfaces own; listed explicitly so a new protocol notification is a compile error here.
             is AppServerEvent.McpStartupStatusEvent,
             is AppServerEvent.SkillsChanged,
             is AppServerEvent.AppListUpdated,
@@ -1502,12 +1244,6 @@ class ChatWidget(
         }
     }
 
-    /**
-     * Fold an in-flight auto review into the aggregated review notice.
-     *
-     * Parallel reviews are aggregated the way upstream's `PendingGuardianReviewStatus` does it: one
-     * entry per review, keyed by the review id so an update replaces rather than duplicates.
-     */
     private fun onReviewStarted(delta: com.cy.codex.protocol.protocol.v2.GuardianApprovalReviewNotification) {
         if (delta.status != "inProgress") return
         val detail = reviewActionSummary(delta.action) ?: return
@@ -1516,12 +1252,7 @@ class ChatWidget(
         if (index >= 0) reviewsInFlight[index] = entry else reviewsInFlight.add(entry)
     }
 
-    /**
-     * Drop a finished review and remember a denial so it can be overridden once.
-     *
-     * A denial is the one review outcome the user can act on: `thread/approveGuardianDeniedAction`
-     * needs the serialized assessment, which the client cached under the target item id.
-     */
+    /** A denial is the one review outcome the user can act on; `thread/approveGuardianDeniedAction` needs the cached assessment. */
     private fun onReviewCompleted(delta: com.cy.codex.protocol.protocol.v2.GuardianApprovalReviewNotification) {
         reviewsInFlight.removeAll { it.id == delta.reviewId }
         if (delta.status != "denied" || delta.itemId.isBlank()) return
@@ -1541,13 +1272,6 @@ class ChatWidget(
         }
     }
 
-    /**
-     * Note the safety buffer once per turn.
-     *
-     * The notification can repeat while the turn waits, and the TUI only re-shows its transient
-     * menu when the retry offer changes. The phone has no retry affordance, so one informational
-     * notice per turn is the whole behaviour: `showBufferingUi == false` only dismisses the menu.
-     */
     private fun onSafetyBuffering(delta: com.cy.codex.protocol.protocol.v2.ModelSafetyBufferingUpdatedNotification) {
         if (!delta.showBufferingUi) return
         if (delta.turnId.isEmpty() || delta.turnId in finishedTurns) return
@@ -1563,30 +1287,16 @@ class ChatWidget(
         )
     }
 
-    private fun onItemCompleted(item: ThreadItem) {        // Any delta still waiting for its tick belongs to this item; the authoritative text that
-        // follows would otherwise be overwritten by a late flush with an older prefix.
+    private fun onItemCompleted(item: ThreadItem) {
+        // Flush first: a late tick would otherwise overwrite the authoritative text with an older prefix.
         flushDeltas()
-        // The completed item carries the authoritative text; the streamed buffer is only a stand-in
-        // for the case where it does not (a server that completes an item without a text body).
         state.upsert(withStreamedText(item))
         state.endStream(item.id)
         if (state.streamingItemId == item.id) state.applyStreaming(null)
-        // The first completed user message is what a thread title is generated from; the hidden
-        // turn itself completes later and arrives as a foreign event this widget never renders.
         if (item is com.cy.codex.protocol.protocol.item.UserMessageItem) maybeGenerateTitle()
-        // A finished item can never still be waiting for a decision: either this client answered it,
-        // another client did (the server says so through `serverRequest/resolved`), or the server
-        // resolved it itself. Leaving the card queued would show the user a decision that no longer
-        // has any effect, so the queue is pruned on every completion.
         dropResolvedApprovals(item)
     }
 
-    /**
-     * Remove pending requests whose item has finished.
-     *
-     * Only the item id is needed: the request and the item it belongs to share it, which is what
-     * makes this check possible without tracking a separate correlation table.
-     */
     private fun dropResolvedApprovals(item: ThreadItem) {
         val settled = when (item) {
             is CommandExecutionItem -> item.status != com.cy.codex.protocol.protocol.v2.CommandExecutionStatus.InProgress
@@ -1601,12 +1311,6 @@ class ChatWidget(
         syncCurrentApproval()
     }
 
-    /**
-     * Show the next request after the one on screen was removed from the queue underneath it.
-     *
-     * Called only when a request is guaranteed gone; a head that is merely waiting out the typing
-     * window has `currentApproval == null` already and must not be promoted early.
-     */
     private fun syncCurrentApproval() {
         val shown = currentApproval ?: return
         if (pendingApprovals.none { it.requestId == shown.requestId }) {
@@ -1614,13 +1318,7 @@ class ChatWidget(
         }
     }
 
-    /**
-     * Generate a recap and replace its cell with the answer.
-     *
-     * Mirrors `app/recap.rs`: the prompt carries only user/assistant exchange, and the result is a
-     * client-local transcript cell rather than anything the server persists. Manual requests show a
-     * loading cell and report failures; automatic ones are silent and retry once per turn revision.
-     */
+    /** Recap into a client-local cell (app/recap.rs); automatic ones retry once per revision. */
     private fun generateRecap(trigger: com.cy.codex.app.RecapTrigger) {
         if (recapJob?.isActive == true) return
         if (trigger == com.cy.codex.app.RecapTrigger.Automatic && !com.cy.codex.app.RecapSettings.autoRecap) return
@@ -1651,9 +1349,7 @@ class ChatWidget(
                     outputSchema = com.cy.codex.app.recapOutputSchema(),
                 )
                 val parsed = com.cy.codex.app.parseRecap(result.getOrNull())
-                // Freshness mirrors `handle_generated_recap`: a result computed from a transcript
-                // that has since moved on (thread switched, a turn started, focus regained, the
-                // setting turned off) is dropped.
+                // Freshest wins (handle_generated_recap): drop results computed from a transcript that has moved on.
                 val stale = state.threadId != threadId ||
                     state.running ||
                     recap.completedTurns != capturedCompletedTurns ||
@@ -1710,12 +1406,6 @@ class ChatWidget(
         ) { onRecapCheck(it) }
     }
 
-    /**
-     * The Android equivalent of terminal focus, for the auto-recap idle clock.
-     *
-     * Focus gained cancels the timer and abandons an in-flight automatic recap; focus lost starts
-     * the idle window and re-arms the scheduler.
-     */
     fun noteForegroundChanged(inForeground: Boolean) {
         if (inForeground) {
             recap.noteFocusGained()
@@ -1725,13 +1415,6 @@ class ChatWidget(
         }
     }
 
-    /**
-     * Generate and apply an automatic title once the thread has its first user message.
-     *
-     * Mirrors `app/thread_title.rs`: the request runs on an ephemeral structured thread, only sets
-     * a name the thread still does not have, and a manual rename wins because the name is re-checked
-     * when the generated one comes back.
-     */
     private fun maybeGenerateTitle() {
         val threadId = state.threadId
         if (threadId.isBlank() || !state.open) return
@@ -1764,13 +1447,6 @@ class ChatWidget(
         }
     }
 
-    /**
-     * Re-submit the safety stop's steer with the misalignment override.
-     *
-     * Mirrors `app/misalignment_policy.rs`: the steer text is the continuation message, a new turn
-     * needs the override metadata, and the gate only lifts once that turn starts. The steer is
-     * bounded to 1,024 characters, and a stop without one cannot be continued.
-     */
     private fun continueMisalignment() {
         val steer = state.misalignment?.steer?.message
             ?.takeIf { it.isNotBlank() && it.length <= 1024 }
@@ -1802,20 +1478,15 @@ class ChatWidget(
     private fun onTurnCompleted(event: AppServerEvent.TurnCompleted) {
         flushDeltas()
         state.applyStatus(ThreadStatus.Idle)
-        // Recap bookkeeping sees the turn's final status before any deferred check runs; the timer
-        // is re-armed from the new completion count and idle deadline.
         recap.noteTurnFinished(event.status, monotonicMs())
         scheduleRecapCheck()
-        // A safety stop is not an ordinary failure: it holds input until the user reviews or
-        // confirms continuing, and the server dropped whatever was queued.
+        // A safety stop holds input until the user reviews; the server dropped whatever was queued.
         state.applyMisalignment(event.misalignment)
         if (event.misalignment != null) {
             state.queued.clear()
             refreshQueue(event.threadId)
         }
-        // The agent is now waiting for the user; announce that only when nothing else will start a
-        // turn on its own. The preview is the first line of the last answer, the same thing the
-        // TUI puts in its `AgentTurnComplete` payload.
+        // Preview is the last answer's first line, like the TUI's `AgentTurnComplete`.
         _notices.tryEmit(
             AgentNotice.TurnComplete(
                 threadId = event.threadId,
@@ -1826,13 +1497,10 @@ class ChatWidget(
                     ?.take(200),
             ),
         )
-        // An interrupted turn may never complete its last item; its buffered deltas are folded back
-        // into the item before the stream flag is cleared.
+        // Fold back an interrupted turn's buffered deltas before clearing the stream flag.
         state.settleStreams()
         state.applyStreaming(null)
-        // A completed turn gets the same divider upstream draws after the final answer. Its label
-        // is built from the notification's own duration and completion time, so a turn loaded from
-        // history (which rebuilds this from `Turn.durationMs`) and a live one read the same.
+        // Label from the notification's own timing, so live and history turns read the same.
         if (event.status == TurnStatus.Completed) {
             val label = com.cy.codex.history_cell.finalMessageSeparatorLabel(
                 elapsedSeconds = event.durationMs?.let { it / 1000 },
@@ -1848,20 +1516,13 @@ class ChatWidget(
             }
         }
         refreshQueue(event.threadId)
-        // Every approval belongs to the turn that asked for it. Card families with no item of their
-        // own (`request_user_input`, permissions, elicitation) are settled exactly this way: when the
-        // turn ends, nothing is waiting any more.
         finishedTurns.addLast(event.turnId)
         while (finishedTurns.size > MaxRememberedTurns) finishedTurns.removeFirst()
         pendingApprovals.removeAll { it.turnId == event.turnId }
         syncCurrentApproval()
         if (event.status != TurnStatus.Completed) {
-            // Anything still running when an interrupted or failed turn ends will never receive its
-            // `item/completed`, so the cards are closed out here rather than left spinning.
             state.failInProgressItems()
-            // The notice is named by code, not by text: the status label is a string resource and
-            // this reducer is not composable. `TurnFinished` carries the status so the transcript
-            // can name it through the label it already has.
+            // Named by code; the transcript resolves the label.
             val (code, args) = when (event.status) {
                 TurnStatus.Interrupted -> DiagnosticCode.TurnInterrupted to emptyList()
                 TurnStatus.Failed -> DiagnosticCode.TurnFailed to emptyList()
@@ -1880,11 +1541,8 @@ class ChatWidget(
                 ),
             )
         }
-        // The turn is over, so the payload it accumulated is never extended again. [SessionState]
-        // keeps the parsed diff for the status card; only the accumulator's memory is released.
         turnDiff.reset()
         patchChanges.clear()
-        // The working tree may have moved during the turn; the status line follows it.
         refreshGitSummary(event.threadId)
     }
 
@@ -1904,8 +1562,7 @@ class ChatWidget(
                 if (version != loadVersion || state.threadId != threadId) return@launch
                 if (revision == eventRevision) {
                     state.items.clear()
-                    // This snapshot follows a compact or revert, so the old page cursor names a
-                    // turn that may no longer exist; the transcript is whole again after this read.
+                    // Post-compact/revert: the old cursor may name a turn that no longer exists.
                     nextTurnCursor = null
                     val transcript = if (response.turns.isNotEmpty()) {
                         com.cy.codex.history_cell.transcriptWithSeparators(response.turns)
@@ -1914,9 +1571,7 @@ class ChatWidget(
                     }
                     transcript.forEach(state::upsert)
                     state.applyStatus(response.thread.status)
-                    // A snapshot can be older than the live stream, so the buffer for the item
-                    // still streaming is kept; only buffers for items this client no longer has
-                    // are dropped.
+                    // A snapshot can be older than the live stream; keep only the still-streaming item's buffer.
                     val keep = response.items.mapTo(mutableSetOf()) { it.id }
                     state.streamingItemId?.let(keep::add)
                     state.retainStreams(keep)
@@ -1926,12 +1581,6 @@ class ChatWidget(
         }
     }
 
-    /**
-     * Fill in a text body from the item's stream when the completion event left it empty.
-     *
-     * This materializes the buffer once, at the end of a message, which is the only point where the
-     * whole text is needed: until then the transcript renders the parsed blocks instead.
-     */
     private fun withStreamedText(item: ThreadItem): ThreadItem = when {
         item is AgentMessageItem && item.text.isEmpty() ->
             state.streamText(item.id)?.let { item.copy(text = it) } ?: item
@@ -1994,14 +1643,7 @@ private fun approvalNoticeDetail(request: ApprovalRequest): String? = when (requ
     else -> null
 }
 
-/**
- * One-line summary of the action an auto review is judging.
- *
- * Mirrors `tui/src/auto_review_denials.rs::action_summary`: the strings are the wire's own nouns
- * (commands, paths, hosts), so they stay in the action's language rather than being translated.
- * Returns `null` for a shape this client does not know, which keeps it out of the review notice
- * instead of showing an empty bullet.
- */
+/** One-line summary in the wire's own nouns; null keeps unknown shapes out of the notice (tui/src/auto_review_denials.rs). */
 private fun reviewActionSummary(action: kotlinx.serialization.json.JsonElement?): String? {
     val o = action as? kotlinx.serialization.json.JsonObject ?: return null
     fun str(key: String): String? =

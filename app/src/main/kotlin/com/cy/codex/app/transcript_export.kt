@@ -26,11 +26,8 @@ import com.cy.codex.protocol.protocol.item.WebSearchItem
 import com.cy.codex.protocol.protocol.v2.UserInput
 
 /**
- * `/export`: the whole conversation as markdown, mirroring `app/transcript_export.rs`.
- *
- * The first line is `# Codex conversation`; every visible item becomes a section headed `User`,
- * `Assistant`, `Plan`, `Reasoning` or `Activity`, and activity bodies are indented four spaces.
- * Client-local cells (separators, recaps) are not part of the conversation and are skipped.
+ * `/export`: whole conversation as markdown, mirroring
+ * `codex-rs/.../app/transcript_export.rs`; activity bodies indent four spaces.
  */
 internal fun transcriptMarkdown(items: List<ThreadItem>): String? {
     val markdown = StringBuilder("# Codex conversation\n")

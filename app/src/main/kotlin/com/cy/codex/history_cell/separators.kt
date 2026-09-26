@@ -17,22 +17,16 @@ import java.util.Locale
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
-/** Id prefix of a [TurnSeparatorItem]; the separator exists once per turn id. */
+/** Prefix of [TurnSeparatorItem] ids; one separator per turn id. */
 internal const val TurnSeparatorIdPrefix = "turn-separator-"
 
-// Locale.US on purpose: upstream's chrono formats `%b`/`%p` in English whatever the host locale,
-// and a translated month next to the literal "at" would be worse than one language throughout.
+// Locale.US: upstream's chrono keeps %b/%p in English whatever the host locale.
 private val ClockFormatter = DateTimeFormatter.ofPattern("h:mm a", Locale.US)
 private val SameYearFormatter = DateTimeFormatter.ofPattern("MMM d 'at' h:mm a", Locale.US)
 private val OlderFormatter = DateTimeFormatter.ofPattern("MMM d, yyyy 'at' h:mm a", Locale.US)
 
-/**
- * Completion metadata for the divider after a turn, mirroring `FinalMessageSeparator::label`.
- *
- * The elapsed part is dropped for turns under a minute (upstream `> 60`); the timestamp records
- * when the turn finished, with the date added when it is not today. Every part is absent-tolerant:
- * a turn with neither duration nor completion time gets no divider at all.
- */
+/** Mirrors `FinalMessageSeparator::label`; parts are absent-tolerant, so a turn with
+ * neither duration nor completion time gets no divider. */
 internal fun finalMessageSeparatorLabel(
     elapsedSeconds: Long?,
     completedAtMillis: Long?,
@@ -65,7 +59,6 @@ internal fun finalMessageSeparatorLabel(
     return parts.takeIf { it.isNotEmpty() }?.joinToString(" · ")
 }
 
-/** The subtle, indented divider drawn after a turn's last cell. */
 @Composable
 internal fun TurnSeparatorCell(item: TurnSeparatorItem, modifier: Modifier = Modifier) {
     Text(
@@ -79,12 +72,8 @@ internal fun TurnSeparatorCell(item: TurnSeparatorItem, modifier: Modifier = Mod
     )
 }
 
-/**
- * The transcript of [turns], with a divider inserted after every finished turn.
- *
- * `thread/read` returns turns in order, so this is also the order the transcript was streamed in.
- * In-progress turns get no divider: they have neither a completion time nor a duration yet.
- */
+/** Divider after a finished turn; `thread/read` returns turns in order. In-progress turns
+ * are skipped: no completion time or duration yet. */
 internal fun transcriptWithSeparators(turns: List<Turn>): List<ThreadItem> {
     val items = ArrayList<ThreadItem>(turns.sumOf { it.items.size } + turns.size)
     for (turn in turns) {

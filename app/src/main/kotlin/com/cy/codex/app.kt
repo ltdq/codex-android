@@ -147,10 +147,8 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 /**
  * Application root.
  *
- * Mirrors `codex-rs/tui/src/app.rs`: one object owns the backend connection, the thread list, the
- * open session and the overlay stack, and hands them to the screen. The TUI's `App` is a struct
- * with an event loop; here it is a small holder plus Compose state, but the ownership boundaries are
- * the same so the widgets below stay transport-agnostic.
+ * Mirrors `codex-rs/tui/src/app.rs`: this object owns the connection, thread list and overlay
+ * stack, so the widgets stay transport-agnostic.
  */
 class CodexApp(
     private val scope: CoroutineScope,
@@ -163,34 +161,19 @@ class CodexApp(
     val threads = ThreadListState()
     val catalog = CatalogState()
 
-    /**
-     * Where a failed request is reported.
-     *
-     * Owned here rather than by the shell so that the reducer can reach it: a write that the server
-     * rejects has to say so, and the reducer is the only place that sees the rejection.
-     */
+    /** Where a failed request is reported; owned here so the reducer can reach it. */
     val snackbar = SnackbarHostState()
 
     var widget by mutableStateOf(ChatWidget(client, scope))
         private set
 
     /**
-     * The page stack: [Surface.Chat] at the root, every pushed page above it, outermost last.
-     *
-     * A stack rather than one slot, because the pages nest: the settings page opens the workspace
-     * picker, and a single slot made that picker *replace* settings, so backing out of it landed on
-     * the transcript and the page the user came from was gone.
-     *
-     * It is a `miuix-nav` back stack, so the shell can hand it straight to `NavDisplay`: the
-     * navigation runtime owns the animated depth, the transition and the back gesture, and this
-     * object stays a plain list of destinations. It is an in-memory stack (not
-     * `rememberNavBackStack`), which is why [Surface] only has to be a `NavKey` and not
-     * `@Serializable` — the app object outlives recomposition but not the process, exactly like the
-     * rest of the session state it holds.
+     * The page stack ([Surface.Chat] at the root), a `miuix-nav` back stack so the shell can hand it
+     * to `NavDisplay`. A stack rather than one slot, because pages nest — a single slot made the
+     * workspace picker *replace* settings.
      */
     val surfaces: NavBackStack = navBackStackOf(Surface.Chat)
 
-    /** The page on top, or [Surface.Chat] when the chat is unobstructed. */
     val surface: Surface get() = surfaces.lastOrNull() as? Surface ?: Surface.Chat
 
     var startupLoading by mutableStateOf(false)
@@ -200,28 +183,19 @@ class CodexApp(
     var startupError by mutableStateOf<String?>(null)
         private set
 
-    /**
-     * A connection lost *after* the first successful start.
-     *
-     * Kept apart from [startupError] so the transcript stays on screen: the TUI shows a banner and
-     * keeps what the user was reading, while replacing the whole screen is only right before the
-     * first load. [reconnect] is the banner's retry.
-     */
+    /** A connection lost after the first successful start; kept apart from [startupError] so the transcript stays on screen. */
     var connectionLostMessage by mutableStateOf<String?>(null)
         private set
     var creatingThread by mutableStateOf(false)
         private set
     private var observersStarted = false
 
-    /** The live `fuzzyFileSearch` session behind [mentionSuggestions], if one is open. */
     private var mentionSessionId: String? = null
     private var mentionSessionStart: Job? = null
     private var mentionUpdateJob: Job? = null
 
-    /** Whether the rate-limit model prompt was already offered in this process. */
     private var rateLimitNudgeShown = false
 
-    /** Input held while a post-rate-limit recovery read is in flight. */
     private var recoverySubmission: List<com.cy.codex.protocol.protocol.v2.UserInput>? = null
 
     /** The in-flight recovery read; new input queues behind it instead of starting a turn. */
@@ -233,71 +207,46 @@ class CodexApp(
     var exportTranscriptRequest by mutableStateOf(false)
         private set
 
-    /**
-     * Parent of every open side conversation, keyed by the side thread id.
-     *
-     * The server marks the fork ephemeral but has no notion of "side conversation"; the parent
-     * link exists so the client can return the user and discard the fork.
-     */
+    /** Parent of each open side thread, keyed by thread id; the server has no "side conversation" notion. */
     private val sideThreadParents = mutableStateMapOf<String, String>()
 
-    /** The parent thread [threadId] was opened as a side conversation from, or null. */
     fun sideParentOf(threadId: String): String? = sideThreadParents[threadId]
 
-    /** Whether the `/copy` picker is on screen; it reads the last response and the status. */
     var copyMenuOpen by mutableStateOf(false)
 
-    /** The live `@`-mention query while the token is in the draft, or `null` when it is gone. */
     var mentionQuery by mutableStateOf<String?>(null)
         private set
 
-    /** The rows the composer's `@` popup shows; rebuilt when the query or the search results move. */
     var mentionSuggestions by mutableStateOf<List<MentionSuggestion>>(emptyList())
         private set
 
-    /** The pending "switch model for lower usage" prompt, or null when none is waiting. */
     var rateLimitNudge by mutableStateOf<RateLimitNudge?>(null)
         private set
 
     /**
-     * A folder waiting for a trust decision, with the action to resume when it is granted.
-     *
-     * Mirrors `tui/src/onboarding/trust_directory.rs`: a thread cannot start or resume in a folder
-     * that is not under a trusted project, and the folder is recorded by writing
-     * `projects."<path>".trust_level = "trusted"` through `config/batchWrite`.
+     * A folder waiting for a trust decision, with the action to resume when granted (mirrors
+     * `tui/src/onboarding/trust_directory.rs`).
      */
     var trustRequest by mutableStateOf<TrustRequest?>(null)
         private set
 
     /**
-     * The highest usage threshold already announced per rate-limit window.
-     *
-     * Keyed by label and `resetsAt` so a new window starts clean and a rolling update that does not
-     * move usage does not repeat the notice. Mirrors the threshold ladder in
-     * `codex-rs/tui/src/chatwidget/rate_limits.rs`.
+     * Highest usage threshold already announced per window; keyed by label + `resetsAt` so a new
+     * window starts clean (codex-rs/tui/src/chatwidget/rate_limits.rs).
      */
     private val rateLimitWarnings = mutableMapOf<String, Long>()
 
     init {
         widget.state.applyConfig(ThreadSessionState(threadId = "", cwd = defaultWorkspace))
-        // Side conversations inherit their parent's dynamic tools (forks carry no specs of their
-        // own), so the widget needs the parent map to refuse delegation inside them.
+        // Forks carry no specs of their own; refuse delegation via the parent map.
         widget.isSideThread = { sideThreadParents.containsKey(it) }
     }
 
     /**
      * Route one UI event.
      *
-     * Two reducers, not one. `ChatWidget` owns the open thread — its transcript, turns and
-     * approvals — while the catalogs (account, config, plugins, skills, MCP, projects, remote
-     * control) are this object's. They used to share a single forwarding call into the widget,
-     * which meant every catalog event fell into that reducer's `else` arm and vanished: the
-     * permission radio group, the account refresh button and the experimental switches all
-     * rendered but changed nothing.
-     *
-     * Events this object does not own are forwarded to [ChatWidget.action], whose `when` is
-     * exhaustive over [AppEvent] — so an event added without a home is a compile error in one of
-     * the two reducers rather than a silent no-op at runtime.
+     * Events this object does not own go to [ChatWidget.action]; its exhaustive `when` makes an
+     * unhandled event a compile error rather than a silent no-op.
      */
     fun onAppEvent(event: AppEvent) {
         when (event) {
@@ -321,9 +270,8 @@ class CodexApp(
             }
             is AppEvent.SubmitUserMessage -> {
                 if (!startupReady || creatingThread || widget.state.loading) return
-                // A turn that died on a usage limit is followed by a limits read; input arriving
-                // inside that window is held and submitted once the fresh numbers are in, the
-                // pause `hold_rate_limit_recovery` applies upstream.
+                // Input arriving during the post-limit recovery read is held and submitted once
+                // fresh numbers are in (hold_rate_limit_recovery).
                 if (rateLimitRecoveryJob?.isActive == true) {
                     recoverySubmission = event.inputs
                     return
@@ -331,15 +279,11 @@ class CodexApp(
                 val commandText = event.inputs.singleOrNull()?.let {
                     (it as? com.cy.codex.protocol.protocol.v2.UserInput.Text)?.text?.trim()
                 }
-                // Every text submission feeds the composer's reverse search, commands included;
-                // upstream's history records the submitted line the same way.
                 commandText?.let { ComposerHistory.record(context, it) }
                 when (val input = commandText?.let { classifySlashInput(it, ComposerCommands) }) {
                     is SlashInput.Command -> {
-                        // Upstream rejects an unavailable command at submission and keeps the draft
-                        // (`reject_slash_command_if_unavailable`); the popup still lists it. The
-                        // check repeats in [runSlashCommand] because that is also the path a popup
-                        // tap takes.
+                        // Reject unavailable commands at submission and keep the draft; the popup
+                        // still lists them.
                         val spec = SlashCommands.find(input.name)
                         val name = spec?.name ?: input.name
                         if (spec != null && widget.state.running && !spec.availableDuringTask) {
@@ -352,18 +296,15 @@ class CodexApp(
                     }
 
                     is SlashInput.Unknown -> {
-                        // A command-shaped token that names nothing must not become a model message:
-                        // the agent would answer a stray line of prose and the user would never learn
-                        // the command does not exist. The draft stays so the typo can be fixed.
+                        // A command-shaped token naming nothing must not become a model message;
+                        // the draft stays so the typo can be fixed.
                         reportUnknownCommand(input.name)
                         return
                     }
 
-                    // Plain text, an upload, or a path that happens to begin with a slash.
                     else -> Unit
                 }
-                // `!command` is the local shell escape (`is_bang_shell_command` upstream): it runs in
-                // the session shell without starting a turn. A bare `!` is ordinary text.
+                // `!command` runs in the session shell without starting a turn; a bare `!` is text.
                 if (commandText != null && commandText.startsWith("!") && commandText.length > 1) {
                     val command = commandText.substring(1).trim()
                     if (command.isNotEmpty()) {
@@ -385,7 +326,6 @@ class CodexApp(
                     widget.action(event)
                 }
             }
-            // ---- reads that fill a catalog ------------------------------------
             AppEvent.ReloadAccount -> load({ client.readAccount() }) { catalog.account = it }
             AppEvent.ReloadRateLimits -> load({ client.readRateLimits() }) {
                 catalog.rateLimits = it
@@ -418,8 +358,7 @@ class CodexApp(
             AppEvent.ReloadDiagnostics -> load({ client.readServerDiagnostics() }) { catalog.diagnostics = it }
 
             AppEvent.ReloadExternalAgentConfig -> {
-                // Two independent reads, so two requests: a detection failure must not stop the
-                // history from loading, which is what one chained call would have done.
+                // Two independent reads: a detection failure must not stop the history loading.
                 request {
                     client.detectExternalAgentConfig().onSuccess {
                         catalog.externalAgentConfig = it.items
@@ -433,8 +372,7 @@ class CodexApp(
                 }
             }
 
-            // The goal is per-thread, so the answered objective goes back to the widget: it is the
-            // only reducer that knows which thread is open.
+            // Goals are per-thread; only the widget knows which thread is open.
             AppEvent.ReloadGoal -> request {
                 client.getGoal(widget.state.threadId).onSuccess { widget.state.applyGoal(it) }
             }
@@ -460,12 +398,9 @@ class CodexApp(
                 refreshThreads()
             }
 
-            // ---- writes -------------------------------------------------------
             is AppEvent.InstallPlugin -> request {
                 client.installPlugin(event.name, event.marketplace).onSuccess { response ->
                     reloadPlugins()
-                    // The install is done; the connectors it needs may not be set up yet, and the
-                    // page walks through them.
                     if (response.appsNeedingAuth.isNotEmpty()) {
                         catalog.pluginInstallAuth = PluginInstallAuthFlow(
                             pluginName = event.name,
@@ -480,9 +415,8 @@ class CodexApp(
                 client.uninstallPlugin(event.pluginId).onSuccess { reloadPlugins() }
             }
 
-            // Follows `background_requests.rs`'s `write_plugin_enabled`: the whole
-            // `plugins.<id>` object is upserted with one key so a concurrent edit to another
-            // plugin field is not clobbered the way a replace would.
+            // Upsert the whole `plugins.<id>` object with one key so a concurrent edit to another
+            // field is not clobbered (background_requests.rs `write_plugin_enabled`).
             is AppEvent.SetPluginEnabled -> request {
                 client.writeConfigValue(
                     ConfigValueWriteParams(
@@ -546,8 +480,6 @@ class CodexApp(
                     .onSuccess { client.listSkills().onSuccess { fresh -> catalog.skills = fresh } }
             }
 
-            // `app/installed` has no write of its own: installing an app is a config change, so the
-            // page writes the key and the list is re-read from the server's own view of it.
             is AppEvent.SetAppInstalled -> request {
                 client.writeConfigValue(
                     ConfigValueWriteParams(
@@ -619,7 +551,6 @@ class CodexApp(
             AppEvent.BedrockDiscover -> request { client.bedrockDiscover() }
             is AppEvent.BedrockSetup -> request { client.bedrockSetup(event.params) }
 
-            // ---- sections -----------------------------------------------------
             is AppEvent.CreateSection -> request {
                 client.createSection(event.name)
                     .onSuccess { client.listSections().onSuccess { threads.sections = it } }
@@ -635,7 +566,6 @@ class CodexApp(
                     .onSuccess { client.listSections().onSuccess { threads.sections = it } }
             }
 
-            // ---- projects and environments ------------------------------------
             is AppEvent.CreateProject -> request {
                 client.createProject(event.name, event.path)
                     .onSuccess { client.listProjects().onSuccess { fresh -> catalog.projects = fresh } }
@@ -667,7 +597,6 @@ class CodexApp(
                 }
             }
 
-            // ---- remote control -----------------------------------------------
             is AppEvent.SetRemoteControlEnabled -> load(
                 {
                     if (event.enabled) client.enableRemoteControl() else client.disableRemoteControl()
@@ -696,11 +625,10 @@ class CodexApp(
                     .onSuccess { reloadRemoteControl() }
             }
 
-            // ---- user verification ---------------------------------------------
             AppEvent.EnrollUserVerification -> load({ client.enrollUserVerification() }) { enrolled ->
                 catalog.userVerificationCredential = enrolled
-                // Readiness is a separate endpoint, so it is re-read rather than assumed from the
-                // enrollment: the credential exists locally before the server knows about it.
+                // Readiness is a separate endpoint; the credential exists locally before the server
+                // knows about it.
                 request {
                     client.readUserVerificationStatus().onSuccess { catalog.userVerification = it }
                 }
@@ -708,13 +636,10 @@ class CodexApp(
 
             is AppEvent.VerifyUserVerification -> load(
                 { client.verifyUserVerification(event.params) },
-            ) { /* the proof is the answer; there is no state to fold it into */ }
+            ) { /* no state to fold the proof into */ }
 
-            // A deliberate no-op when nothing is in flight. `userVerification/cancel` names the
-            // request id the *transport* assigned to a verification RPC, and this client does not
-            // surface those ids — so it sends an id the server has never seen, which the protocol
-            // defines as a no-op rather than an error. A verification that already finished is not
-            // rolled back either way.
+            // This client cannot name the transport's request id, so it sends an id the server has
+            // never seen; the protocol defines that as a no-op rather than an error.
             AppEvent.CancelUserVerification -> request { client.cancelUserVerification("") }
             AppEvent.DeleteUserVerification -> request {
                 client.deleteUserVerification().onSuccess {
@@ -722,7 +647,6 @@ class CodexApp(
                 }
             }
 
-            // ---- sessions: realtime voice --------------------------------------
             is AppEvent.StartRealtime -> request { client.startRealtime(event.threadId, event.sdpOffer) }
             is AppEvent.StopRealtime -> request { client.stopRealtime(event.threadId) }
             is AppEvent.AppendRealtimeText -> request {
@@ -741,7 +665,6 @@ class CodexApp(
 
             is AppEvent.DecrementElicitation -> request { client.decrementElicitation(event.threadId) }
 
-            // ---- review ---------------------------------------------------------
             is AppEvent.StartReview -> request {
                 client.startReview(event.threadId, event.target).onSuccess {
                     if (it.reviewThreadId.isNotBlank() && it.reviewThreadId != widget.state.threadId) {
@@ -750,7 +673,6 @@ class CodexApp(
                 }
             }
 
-            // ---- memories, migration, feedback ----------------------------------
             AppEvent.ResetMemory -> request {
                 client.resetMemory()
                     .onSuccess { client.readMemoryStatus().onSuccess { catalog.memories = it } }
@@ -780,8 +702,8 @@ class CodexApp(
                         includeLogs = event.includeLogs,
                     ),
                 ).onSuccess { response ->
-                    // The response is the report's handle (the TUI labels it "Sentry Feedback
-                    // ID"); dropping it left the user with no way to reference what they sent.
+                    // The response is the report's handle (the TUI labels it "Sentry Feedback ID");
+                    // show it so the user can reference what they sent.
                     val reference = response.threadId.ifBlank { response.promptHash.orEmpty() }
                     if (reference.isNotBlank()) {
                         scope.launch {
@@ -793,15 +715,11 @@ class CodexApp(
                 }
             }
 
-            // ---- windows sandbox -------------------------------------------------
             is AppEvent.WindowsSandboxSetupStart ->
                 request { client.windowsSandboxSetupStart(event.mode, event.cwd) }
 
-            // ---- config ----------------------------------------------------------
-            //
-            // `config/value/write` is the only way a settings toggle survives a restart, so the
-            // write is followed by a re-read: the merged value can differ from what was written
-            // when a higher-precedence layer shadows the key, and `lastWrite` is what says so.
+            // config writes: a re-read follows because a higher-precedence layer may shadow the key,
+            // and `lastWrite` is the only proof of the merged value.
             is AppEvent.WriteConfigValue -> request {
                 client.writeConfigValue(
                     ConfigValueWriteParams(
@@ -833,8 +751,8 @@ class CodexApp(
                 ).onSuccess { response ->
                     catalog.lastWrite = response
                     reloadConfig()
-                    // The open thread reads generation from `thread/memoryMode`, which was fixed at
-                    // start; the config write alone would not change it until the next thread.
+                    // The open thread reads memory mode from `thread/memoryMode`, fixed at start;
+                    // the config write alone would not change it.
                     if (widget.state.open) {
                         client.setThreadMemoryMode(
                             widget.state.threadId,
@@ -853,8 +771,6 @@ class CodexApp(
                     .onSuccess { response ->
                         catalog.lastWrite = response
                         reloadConfig()
-                        // The page reads trust from `hooks/list`, so the list has to be re-read once
-                        // the write lands or the chip would keep showing the pre-trust state.
                         onAppEvent(AppEvent.ReloadHooks)
                     }
             }
@@ -874,26 +790,13 @@ class CodexApp(
                 }
             }
 
-            // ---- slash commands --------------------------------------------------
             is AppEvent.SubmitSlashCommand -> runSlashCommand(event)
 
-            // ---- everything the open thread owns --------------------------------
             is AppEvent.ToggleSideConversation -> toggleSideConversation(event.message)
             else -> widget.action(event)
         }
     }
 
-    /**
-     * Run a slash command the composer picked.
-     *
-     * Here rather than in the widget because most of these either navigate or change the thread
-     * list, and the widget owns neither. The commands whose whole effect is a transcript-local sheet
-     * — the model, approval and permission pickers — are routed to the page that carries the same
-     * controls, because a command line cannot open a sheet that belongs to another composable.
-     *
-     * Exhaustive over the command list: a command that is offered in the popup but handled nowhere
-     * is a row that does nothing, which is the failure this dispatch exists to prevent.
-     */
     private fun runSlashCommand(event: AppEvent.SubmitSlashCommand) {
         val argument = event.args.trim()
         val threadId = widget.state.threadId
@@ -904,8 +807,7 @@ class CodexApp(
         }
         when (spec?.name ?: event.command.removePrefix("/")) {
             "new" -> onAppEvent(AppEvent.NewThread(widget.state.config.cwd))
-            // On a phone "clear the scrollback" and "start a new conversation" are the same act:
-            // there is no scrollback, and the transcript is the old thread.
+            // No scrollback on a phone: clearing and starting a new conversation are the same act.
             "clear" -> onAppEvent(AppEvent.NewThread(widget.state.config.cwd))
             "resume" -> openSurface(Surface.Sessions)
             "fork" -> onAppEvent(AppEvent.ForkThread(threadId))
@@ -928,11 +830,7 @@ class CodexApp(
             "hooks" -> openSurface(Surface.Hooks)
             "apps" -> openSurface(Surface.Apps)
             "settings" -> openSurface(Surface.Settings)
-            // Theme and motion live in the settings page's first tab; the command is a shortcut to
-            // the same controls rather than a second picker.
             "theme" -> openSurface(Surface.Settings)
-            // cwd is per thread in this client, so changing it means opening a thread in the chosen
-            // directory; the directory browser is the one place that choice can be made.
             "cd" -> openSurface(Surface.WorkspacePicker)
             "import" -> openSurface(Surface.ExternalAgentImport)
             "feedback" -> openSurface(Surface.Diagnostics)
@@ -952,9 +850,8 @@ class CodexApp(
             "model", "approvals", "permissions" -> openSurface(Surface.Settings)
             "memories" -> openSurface(Surface.Memories)
 
-            // `/plan` toggles, where upstream's `/plan` only sets and a separate cycle key goes
-            // back. The phone has no mode-cycle binding, so the one command has to do both or plan
-            // mode would be a one-way door.
+            // `/plan` toggles: the phone has no mode-cycle binding, so one command must do both or
+            // plan mode would be a one-way door.
             "plan" -> {
                 if (catalog.collaborationModes.none { it.mode == CollaborationMode.Plan }) {
                     scope.launch { snackbar.showSnackbar(context.getString(R.string.slash_plan_unavailable)) }
@@ -970,38 +867,29 @@ class CodexApp(
                 }
             }
 
-            // `/export` with no argument asks the system for a destination; with one it writes to
-            // that path (resolved against the session cwd) the way the TUI does.
             "export" -> requestTranscriptExport(argument.trim().takeIf { it.isNotBlank() })
 
-            // `/side` and its hidden alias `/btw` fork an ephemeral conversation; the optional
-            // argument becomes its first turn. Upstream dispatch accepts both bare and messaged
-            // forms (`slash_dispatch.rs`).
+            // `/side` (alias `/btw`) forks an ephemeral conversation; the optional argument becomes
+            // its first turn (slash_dispatch.rs).
             "side" -> onAppEvent(
                 AppEvent.ToggleSideConversation(argument.trim().takeIf { it.isNotBlank() }),
             )
 
-            // A recap is a hidden structured turn over the recent exchange; it shows as a
-            // transcript cell this client owns, never as a server item.
+            // A recap is a hidden structured turn shown as a client-owned cell, never a server item.
             "recap" -> if (widget.state.open) {
                 onAppEvent(AppEvent.GenerateRecap)
             } else createThread(afterCreated = { onAppEvent(AppEvent.GenerateRecap) })
 
-            // `/init` is a *turn*: the TUI submits a fixed instruction and lets the agent write the
-            // file, because only the agent knows what the project's conventions are.
             "init" -> onAppEvent(
                 AppEvent.SubmitUserMessage(
                     listOf(com.cy.codex.protocol.protocol.v2.UserInput.Text(InitInstruction)),
                 ),
             )
 
-            // The status card's pane only shows the *turn's* diff; `/diff` is the working tree, which
-            // includes changes no turn made and files git has never seen.
             "diff" -> openSurface(Surface.Diff)
 
-            // `/goal` takes an argument, so the picker leaves it in the draft; the subcommands are
-            // the same ones `slash_dispatch.rs` recognizes (`clear` / `edit` / `pause` / `resume`),
-            // and anything else is an objective.
+            // `/goal` takes an argument; the picker leaves it in the draft, and anything that is not
+            // a subcommand (`clear` / `edit` / `pause` / `resume`, per slash_dispatch.rs) is an objective.
             "goal" -> {
                 val arg = argument.trim()
                 val openGoal = { onAppEvent(AppEvent.ReloadGoal); goalMenuOpen = true }
@@ -1032,25 +920,17 @@ class CodexApp(
                 }
             }
 
-            // Unreachable while [ComposerCommands] is exactly this dispatch's command list, but a
-            // command that is offered and handled nowhere must not fail silently.
             else -> reportUnknownCommand(event.command.removePrefix("/"))
         }
     }
 
-    /** Say that [name] names no command; the caller keeps the draft so it can be corrected. */
     private fun reportUnknownCommand(name: String) {
         scope.launch {
             snackbar.showSnackbar(context.getString(R.string.runtime_unknown_slash_command, name))
         }
     }
 
-    /**
-     * One `hooks.state.<key>` upsert.
-     *
-     * The same table and merge strategy `hooks_rpc.rs` uses, so trust pinned here and trust pinned
-     * by the TUI agree on the file layout.
-     */
+    /** One `hooks.state.<key>` upsert, matching the table and merge strategy of `hooks_rpc.rs`. */
     private fun hookStateWrite(key: String, field: String, value: kotlinx.serialization.json.JsonElement) =
         ConfigBatchWriteParams(
             edits = listOf(
@@ -1064,11 +944,8 @@ class CodexApp(
         )
 
     /**
-     * Announce a rate-limit threshold crossing once per window.
-     *
-     * Upstream emits the same warnings from `chatwidget/rate_limits.rs` at 50/75/90/95 percent and
-     * suppresses them when workspace credits make a full window waitable. The notice goes into the
-     * transcript rather than a banner because that is where the TUI puts it.
+     * Announce each rate-limit threshold once per window (chatwidget/rate_limits.rs: 50/75/90/95
+     * percent, suppressed while workspace credits cover the window).
      */
     private fun warnRateLimits() {
         val snapshot = catalog.rateLimits.rateLimits
@@ -1101,13 +978,7 @@ class CodexApp(
         }
     }
 
-    /**
-     * Turn one widget notice into a system notification, unless the app is in front.
-     *
-     * The TUI gates on `NotificationCondition::Unfocused` the same way: the alert exists for the
-     * case where the user cannot see the transcript. The widget emits a structured notice and this
-     * object supplies the wording, because only this object has a Context.
-     */
+    /** Notify only when the app is not in front, the TUI's `NotificationCondition::Unfocused` gate. */
     private fun postNotice(notice: AgentNotice) {
         if ((context.applicationContext as? CodexApplication)?.inForeground == true) return
         when (notice) {
@@ -1126,11 +997,8 @@ class CodexApp(
     }
 
     /**
-     * Poll the rate-limit windows, faster as they fill.
-     *
-     * Mirrors `chatwidget/rate_limits.rs::rate_limit_refresh_interval`: ≥99% polls every 5 s, ≥90%
-     * every 15 s, ≥75% every 30 s, otherwise once a minute. The loop re-reads the interval after
-     * every result, so a window that empties slows back down by itself.
+     * Poll rate limits, faster as they fill (chatwidget/rate_limits.rs: 99% → 5 s, 90% → 15 s,
+     * 75% → 30 s, else 60 s). Re-reading the interval each round lets a drained window slow down.
      */
     private suspend fun pollRateLimits() {
         while (true) {
@@ -1159,11 +1027,8 @@ class CodexApp(
     }
 
     /**
-     * Offer the low-cost model once per process, after a turn has finished.
-     *
-     * Mirrors `maybe_show_pending_rate_limit_prompt`: only near the codex limit, only without
-     * workspace credits, only while the nudge is not hidden, and never when the low-cost model is
-     * already selected.
+     * Offer the low-cost model once per process, near the limit, without workspace credits, and
+     * never when it is already selected (maybe_show_pending_rate_limit_prompt).
      */
     private fun maybeShowRateLimitNudge() {
         if (rateLimitNudge != null || rateLimitNudgeShown) return
@@ -1178,7 +1043,6 @@ class CodexApp(
         rateLimitNudge = RateLimitNudge(preset.model, preset.displayName)
     }
 
-    /** Take the prompt's offer. */
     fun switchToRateLimitModel() {
         val nudge = rateLimitNudge ?: return
         rateLimitNudge = null
@@ -1198,12 +1062,7 @@ class CodexApp(
         )
     }
 
-    /**
-     * Read the limits once after a usage-limit failure, holding input until the answer lands.
-     *
-     * The TUI's `hold_rate_limit_recovery` / `finish_rate_limit_recovery` pair; a read that fails
-     * still releases the held input, so a dead connection cannot trap a message forever.
-     */
+    /** After a usage-limit failure, hold input until the limits read lands; a failed read still releases it (hold_rate_limit_recovery). */
     private fun beginRateLimitRecovery() {
         if (rateLimitRecoveryJob?.isActive == true) return
         rateLimitRecoveryJob = scope.launch {
@@ -1219,31 +1078,16 @@ class CodexApp(
         }
     }
 
-    /** Say that [name] exists but cannot run mid-turn; the caller keeps the draft. */
     private fun reportUnavailableCommand(name: String) {
         scope.launch {
             snackbar.showSnackbar(context.getString(R.string.slash_unavailable_during_task, name))
         }
     }
 
-    /**
-     * Run one request, and report a failure where the user can see it.
-     *
-     * Every catalog write used to be a `scope.launch { client.… }` whose `Result` was dropped on the
-     * floor. A rejected write — a marketplace url the server will not take, a plugin that is not
-     * installed — therefore looked exactly like a successful one until the page was reopened.
-     */
     private fun request(block: suspend () -> Result<*>) {
         request(block, then = {})
     }
 
-    /**
-     * Run one request and fold a successful answer.
-     *
-     * `then` is a suspend lambda rather than the `onSuccess` receiver so a continuation may itself
-     * talk to the server — installing a plugin and then re-reading the catalog is one action, not
-     * two — without the call site nesting another `launch`.
-     */
     private fun <T> request(block: suspend () -> Result<T>, then: suspend (T) -> Unit) {
         scope.launch {
             block()
@@ -1256,7 +1100,6 @@ class CodexApp(
         }
     }
 
-    /** Run one read whose answer belongs in a catalog field, reporting a failure like [request]. */
     private fun <T> load(block: suspend () -> Result<T>, into: suspend (T) -> Unit) {
         request(block, into)
     }
@@ -1270,7 +1113,6 @@ class CodexApp(
         }
     }
 
-    /** Re-read the config stack, which the settings page renders. */
     private suspend fun reloadConfig(): Result<*> {
         return client.readConfig().onSuccess {
             catalog.config = it
@@ -1290,13 +1132,7 @@ class CodexApp(
         }
     }
 
-    /**
-     * Refresh the plugin catalog, and the marketplace list with it.
-     *
-     * One call, because the protocol has only one: `plugin/list` answers with marketplaces and the
-     * plugins hanging off them, and there is no `marketplace/list` to ask separately. Splitting the
-     * response here is what lets the rest of the app keep thinking in two flat lists.
-     */
+    /** Re-read the plugin catalog; `plugin/list` is the only call, so the response is split into marketplaces and plugins here. */
     private suspend fun reloadPlugins(): Result<*> =
         client.listPlugins().onSuccess { response ->
             catalog.marketplaces = response.marketplaces
@@ -1306,26 +1142,17 @@ class CodexApp(
     private suspend fun reloadPluginShares(): Result<*> =
         client.listPluginShares().onSuccess { catalog.pluginShares = it }
 
-    /** The status read and the paired-device list, which the remote-control page shows together. */
     private suspend fun reloadRemoteControl(): Result<*> {
         val status = client.readRemoteControlStatus().onSuccess { catalog.remoteControl = it }
-        // The paired-device list is addressed by environment, and a disabled link has none — asking
-        // with a blank id would be a request the server can only reject.
+        // The paired-device list is addressed by environment; a disabled link has none, so asking
+        // with a blank id would only be rejected.
         val environmentId = catalog.remoteControl?.environmentId ?: return status
         return client.listRemoteControlClients(environmentId).onSuccess {
             catalog.remoteControlClients = it.data
         }
     }
 
-    /**
-     * Fold the catalog-level notifications into [catalog].
-     *
-     * A second collector on the same stream the widget reads, rather than routing through it:
-     * `SharedFlow` fans out, so both reducers see every event, and neither has to know what the
-     * other is interested in. These are the notifications that say "what you are showing is stale"
-     * — without them a plugin installed on another device, or a skill toggled by another client,
-     * would never appear.
-     */
+    /** Catalog-level notifications; a second collector on the same `SharedFlow` the widget reads. */
     private suspend fun observeCatalogs() {
         client.events.collect { event ->
             when (event) {
@@ -1354,8 +1181,6 @@ class CodexApp(
                     }
                 }
 
-                // Usage arrives for every thread, not just the open one; keeping it per thread is
-                // what fills the agents dashboard's usage column.
                 is AppServerEvent.ThreadTokenUsageEvent ->
                     catalog.threadUsage = catalog.threadUsage + (event.threadId to event.delta.usage)
 
@@ -1383,8 +1208,8 @@ class CodexApp(
                 }
                 is AppServerEvent.FuzzySearchCompleted -> catalog.mentionSearching = false
 
-                // A finished turn is the moment the TUI checks its pending rate-limit prompt, and a
-                // failure that names a limit starts the hold-and-refresh recovery pair.
+                // A finished turn is when the rate-limit prompt is checked; a limit-naming failure
+                // starts the hold-and-refresh recovery pair.
                 is AppServerEvent.TurnCompleted -> {
                     if (event.status == TurnStatus.Failed &&
                         event.error?.contains("limit", ignoreCase = true) == true
@@ -1430,11 +1255,9 @@ class CodexApp(
                 is AppServerEvent.McpOauthLoginCompleted ->
                     client.listMcpServers().onSuccess { catalog.mcpServers = it }
 
-                // The bridge skipped notifications, so catalog entries that only move on events may
-                // be stale. Startup rows are settled the way upstream's
-                // `finish_mcp_startup_after_lag` does — a `Ready`/`Cancelled` notification may be
-                // the one that was dropped, while a `Failed` row is kept because nothing else
-                // recalls it — and the thread list is re-read.
+                // The bridge skipped notifications; settle startup rows like
+                // `finish_mcp_startup_after_lag`: a dropped Ready/Cancelled would linger, a Failed
+                // row is kept.
                 is AppServerEvent.TransportLagged -> {
                     catalog.mcpStartup = catalog.mcpStartup.filterValues {
                         it.status == com.cy.codex.protocol.protocol.v2.McpServerStartupState.Failed
@@ -1442,7 +1265,6 @@ class CodexApp(
                     refreshThreads()
                 }
 
-                // A config write from anywhere else invalidates the stack this page is showing.
                 is AppServerEvent.ConfigWarningEvent -> reloadConfig()
 
                 is AppServerEvent.ProjectChanged ->
@@ -1453,8 +1275,7 @@ class CodexApp(
                     reloadRemoteControl()
                 }
 
-                // An environment the session just attached to is the only way this client learns an
-                // environment id exists; there is no call that lists them.
+                // Attaching is the only way this client learns an environment id; no call lists them.
                 is AppServerEvent.EnvironmentConnected -> catalog.environments =
                     (catalog.environments + event.environmentId).distinct()
 
@@ -1473,16 +1294,13 @@ class CodexApp(
                     }
                 }
 
-                // Every other notification belongs to the open thread, and `ChatWidget` folds it.
                 else -> Unit
             }
         }
     }
 
     fun openSurface(next: Surface) {
-        // A route value may appear at most once on a `miuix-nav` stack: the reconciler rejects two
-        // entries with the same content key outright. So "open" is really "bring to the front" — if
-        // the page is already on the stack, everything above it pops and the user lands on it.
+        // `miuix-nav` rejects duplicate routes, so "open" pops back to the existing entry.
         val at = surfaces.indexOf(next)
         if (at >= 0) {
             while (surfaces.size > at + 1) surfaces.removeAt(surfaces.lastIndex)
@@ -1516,19 +1334,14 @@ class CodexApp(
         }
     }
 
-    /** Pop one page. The chat is the root and is never popped. */
+    /** Pop one page; the chat root is never popped. */
     fun closeSurface() {
         if (surfaces.size > 1) surfaces.removeAt(surfaces.lastIndex)
     }
 
     /**
-     * Drive the `@`-mention popup.
-     *
-     * [query] is the text after the trailing `@`, or `null` when the token is gone. The file half
-     * comes from a `fuzzyFileSearch` session rooted at the session's working directory — the server
-     * scores the matches, so no path list is walked here — while plugins and tasks are folded in
-     * locally, the way `mentions_v2/search_catalog.rs` merges the three sources. Results are
-     * debounced by the same 100 ms `task_mentions.rs` uses for its own search.
+     * Drive the `@` popup: server-scored files via `fuzzyFileSearch`, plugins and tasks folded in
+     * locally (mentions_v2/search_catalog.rs), debounce matching task_mentions.rs.
      */
     fun onMentionQueryChange(query: String?) {
         mentionQuery = query
@@ -1544,8 +1357,7 @@ class CodexApp(
         }
         mentionUpdateJob?.cancel()
         mentionUpdateJob = scope.launch {
-            // The start is a request of its own; an update that overtook it would name a session
-            // the server has not created yet.
+            // The start is its own request; an update must not overtake it.
             mentionSessionStart?.join()
             delay(MentionSearchDebounceMs)
             val id = mentionSessionId ?: return@launch
@@ -1566,7 +1378,6 @@ class CodexApp(
         scope.launch { client.stopFuzzySearchSession(id) }
     }
 
-    /** Rebuild the popup rows from the current query and catalogs. */
     private fun refreshMentionSuggestions() {
         val query = mentionQuery
         if (query == null) {
@@ -1611,30 +1422,22 @@ class CodexApp(
         mentionSuggestions = (plugins + tasks + files).take(MentionSuggestionLimit)
     }
 
-    /**
-     * Drop every pushed page and land back on the chat.
-     *
-     * The removals land in one snapshot, so the runtime sees a single multi-pop and animates the
-     * whole stack away as one continuous sweep rather than one slide per page.
-     */
+    /** Drop every pushed page; one snapshot so the runtime animates a single sweep, not a slide per page. */
     fun closeAllSurfaces() {
         while (surfaces.size > 1) surfaces.removeAt(surfaces.lastIndex)
     }
 
-    /** Open a thread, remembering it for the next launch the way the TUI persists its last session. */
     fun openThread(threadId: String) {
         openThread(threadId, onFailure = {})
     }
 
     private fun openThread(threadId: String, onFailure: () -> Unit) {
-        // Switching away from a side conversation discards it, the way `app/side.rs` does when the
-        // active thread changes; the fork is ephemeral, so nothing is lost by unsubscribing.
+        // Switching away discards an ephemeral side fork, like `app/side.rs`.
         val currentThread = widget.state.threadId
         if (currentThread != threadId && sideThreadParents.containsKey(currentThread)) {
             closeSideConversation(currentThread)
         }
-        // Resume into an untrusted folder asks first. The thread list already carries the cwd, so
-        // the prompt happens before a read that a blocked folder would only fail later.
+        // Ask before resuming into an untrusted folder; the read would only fail later.
         val knownCwd = (threads.threads + catalog.agentThreads).firstOrNull { it.id == threadId }?.cwd
         if (!knownCwd.isNullOrBlank() && !isProjectTrusted(knownCwd)) {
             trustRequest = TrustRequest(knownCwd) { openThread(threadId, onFailure) }
@@ -1650,11 +1453,8 @@ class CodexApp(
     }
 
     /**
-     * Start a side conversation, or return to the parent when one is open.
-     *
-     * Mirrors `app/side.rs`: the fork is ephemeral and carries the side developer instructions, the
-     * boundary prompt is injected as raw history, and the child opens with an empty transcript so
-     * the visible conversation starts at the boundary.
+     * Start a side conversation or return to its parent; mirrors `app/side.rs` (ephemeral fork,
+     * boundary prompt injected as raw history).
      */
     private fun toggleSideConversation(message: String?) {
         val current = widget.state.threadId
@@ -1701,7 +1501,6 @@ class CodexApp(
         }
     }
 
-    /** `/export` without a path: raise the flag the chat screen turns into a save dialog. */
     fun requestTranscriptExport(path: String?) {
         if (path.isNullOrBlank()) {
             exportTranscriptRequest = true
@@ -1714,10 +1513,8 @@ class CodexApp(
         exportTranscriptRequest = false
     }
 
-    /** The default file name offered to the system save dialog, `codex-session-<id>.md`. */
     fun transcriptExportFileName(): String = "codex-session-${widget.state.threadId}.md"
 
-    /** `/export <path>`: write beside the session cwd (or to the given absolute path). */
     private fun exportTranscriptToFile(requested: String) {
         scope.launch {
             val result = runCatching {
@@ -1728,7 +1525,7 @@ class CodexApp(
                     val raw = java.io.File(requested)
                     val target = if (raw.isAbsolute) raw else java.io.File(cwd, requested)
                     target.parentFile?.mkdirs()
-                    // `persist_noclobber` upstream: an existing file is never overwritten.
+                    // `persist_noclobber` upstream: never overwrite an existing file.
                     if (!target.createNewFile()) {
                         error(context.getString(R.string.transcript_export_exists, target.path))
                     }
@@ -1744,7 +1541,6 @@ class CodexApp(
         }
     }
 
-    /** `/export` through the system save dialog: the picked document receives the markdown. */
     fun exportTranscriptTo(uri: Uri) {
         scope.launch {
             val result = runCatching {
@@ -1765,7 +1561,6 @@ class CodexApp(
         }
     }
 
-    /** Interrupt and unsubscribe a side thread; the fork is gone once it is unsubscribed. */
     private fun closeSideConversation(sideThreadId: String) {
         sideThreadParents.remove(sideThreadId)
         scope.launch {
@@ -1774,13 +1569,7 @@ class CodexApp(
         }
     }
 
-    /**
-     * Whether [path] sits in a trusted project.
-     *
-     * The trusted keys are the `[projects]` entries; a thread's cwd counts when it is one of them
-     * or below one — the same containment rule `resolve_root_git_project_for_trust` applies, minus
-     * the git-root lookup, which needs a shell this object does not have.
-     */
+    /** A path is trusted when it is a `[projects]` entry or below one, per `resolve_root_git_project_for_trust` minus the git-root lookup. */
     private fun isProjectTrusted(path: String): Boolean {
         val normalized = path.replace('\\', '/').trimEnd('/')
         return catalog.config.snapshot.trustedProjects.any { key ->
@@ -1789,12 +1578,10 @@ class CodexApp(
         }
     }
 
-    /** Record the folder the prompt is about as trusted, then resume what it interrupted. */
     fun grantTrust() {
         val request = trustRequest ?: return
         trustRequest = null
-        // The key path is a quoted TOML key, so backslashes and quotes in the path are escaped the
-        // way `trusted_project_edit` escapes them.
+        // `projects."<path>"` is a quoted TOML key; escape backslashes and quotes like trusted_project_edit.
         val key = request.path.replace("\\", "\\\\").replace("\"", "\\\"")
         scope.launch {
             client.writeConfigBatch(
@@ -1817,7 +1604,6 @@ class CodexApp(
         }
     }
 
-    /** Decline the prompt; the interrupted action is abandoned, nothing is written. */
     fun dismissTrust() {
         trustRequest = null
     }
@@ -1841,8 +1627,7 @@ class CodexApp(
             }.onSuccess { (path, displayName, isImage) ->
                 if (isImage) {
                     val file = java.io.File(path)
-                    // The protocol reads the file at submission time; a file over the transport
-                    // ceiling can never be sent, so it is rejected at import instead.
+                    // Over-ceiling files can never be sent at submission; reject at import instead.
                     if (file.length() > MaxComposerImageBytes) {
                         file.delete()
                         snackbar.showSnackbar(
@@ -1901,12 +1686,6 @@ class CodexApp(
         }
     }
 
-    /**
-     * Retry after a lost connection, from the in-transcript banner.
-     *
-     * `bootstrap` refuses to run while `startupReady`, so the banner lowers the flag first; the
-     * transcript it replaces is rebuilt by the reload that follows a successful start.
-     */
     fun reconnect() {
         if (startupLoading || !startupReady) return
         startupReady = false
@@ -1914,7 +1693,6 @@ class CodexApp(
         bootstrap()
     }
 
-    /** Start the embedded server once; a failed startup can be retried. */
     fun bootstrap() {
         if (startupLoading || startupReady) return
         startupLoading = true
@@ -1927,8 +1705,7 @@ class CodexApp(
                 widget.notices.collect { notice -> postNotice(notice) }
             }
             scope.launch(start = CoroutineStart.UNDISPATCHED) {
-                // Terminal focus has no Android equivalent; backgrounding is what starts the
-                // automatic recap's idle clock (`app.rs` focus handlers).
+                // No terminal focus on Android: backgrounding drives the recap's idle clock.
                 (context.applicationContext as? CodexApplication)?.foreground?.collect { inForeground ->
                     widget.noteForegroundChanged(inForeground)
                 }
@@ -1938,8 +1715,6 @@ class CodexApp(
                 client.connection.collect { connection ->
                     when (connection) {
                         is ConnectionState.Failed -> {
-                            // Before the first load there is no transcript to keep; after it the
-                            // banner is the right surface and the session stays on screen.
                             if (startupReady) {
                                 connectionLostMessage = connection.message
                             } else {
@@ -1948,8 +1723,6 @@ class CodexApp(
                             widget.connectionLost()
                         }
                         ConnectionState.Disconnected -> if (startupReady) {
-                            // A drop after the first load keeps the screen; the banner offers the
-                            // same retry the startup screen does.
                             connectionLostMessage = context.getString(R.string.runtime_disconnected)
                             widget.connectionLost()
                         }
@@ -1970,11 +1743,7 @@ class CodexApp(
                 threads.applyListing(client.listThreads().getOrThrow())
                 catalog.account = client.readAccount().getOrThrow()
                 client.listModels().onSuccess { catalog.models = it }
-                // The plan row in the composer and `/plan` both gate on this list, so it is loaded
-                // once at startup rather than lazily when the popup first opens.
                 client.listCollaborationModes().onSuccess { catalog.collaborationModes = it }
-                // Managed policy decides whether AutoReview is offerable; it does not change while
-                // the app runs, so one read at startup is enough.
                 client.readConfigRequirements().onSuccess {
                     catalog.allowedApprovalsReviewers = it.allowedApprovalsReviewers
                 }
@@ -2009,12 +1778,7 @@ class CodexApp(
     }
 
     companion object {
-        /**
-         * What `/init` submits.
-         *
-         * A fixed instruction rather than a generated one: the agent is the only thing that can see
-         * the project, so the client asks for the file and lets the turn do the reading.
-         */
+        /** What `/init` submits; fixed, because only the agent can see the project. */
         const val InitInstruction =
             "Create an AGENTS.md file with instructions for future Codex sessions working in this " +
                 "repository. Describe the layout, the build and test commands, and the conventions " +
@@ -2024,13 +1788,7 @@ class CodexApp(
         const val KeyExpandedProjects = "projects_expanded"
         const val KeyProjectsCollapsed = "projects_collapsed"
 
-        /**
-         * Every command [CodexApp.runSlashCommand] answers.
-         *
-         * Derived from [SlashCommands.All] so the recognized set, the popup and the dispatch cannot
-         * drift apart: a name that is handled but missing from the catalog is unreachable, and a
-         * name that is listed but handled nowhere is the same failure seen from the other side.
-         */
+        /** The recognized commands; derived from [SlashCommands.All] so popup and dispatch cannot drift apart. */
         val ComposerCommands: Set<String> = SlashCommands.Known
 
         /** Usage percentages that earn a warning, ascending; the TUI's ladder. */
@@ -2038,11 +1796,7 @@ class CodexApp(
     }
 }
 
-/**
- * The low-cost model the rate-limit prompt offers, matching `NUDGE_MODEL_SLUG` upstream.
- *
- * A model the catalog does not list produces no prompt rather than a row that cannot be selected.
- */
+/** The low-cost model the rate-limit prompt offers (NUDGE_MODEL_SLUG). */
 private const val RateLimitNudgeModel = "gpt-5.6-luna"
 
 /** Used share of the codex window at which the prompt may appear. */
@@ -2062,19 +1816,12 @@ private const val MentionTaskLimit = 8
 /** Task titles are capped the way `MAX_TASK_TITLE_CHARS` caps them upstream. */
 private const val MentionTitleLimit = 80
 
-/** The rate-limit prompt's two facts: the model to switch to and what to call it. */
 data class RateLimitNudge(val model: String, val displayName: String)
 
-/**
- * A folder waiting for the user to trust it, plus the action the decision unblocks.
- *
- * A callback rather than an event: what was interrupted (starting or resuming a thread) is known
- * only at the call site, and replaying it through `AppEvent` would mean modelling every action's
- * arguments in the event just to hand them back.
- */
+/** A folder awaiting a trust decision plus the action to resume; a callback, only the call site knows what was interrupted. */
 class TrustRequest(val path: String, val onTrust: () -> Unit)
 
-/** The wording one approval notification uses, mirroring `chatwidget/notifications.rs`. */
+/** Approval notification wording (chatwidget/notifications.rs). */
 private fun approvalNoticeBody(context: Context, notice: AgentNotice.Approval): String =
     when (notice.kind) {
         ApprovalNoticeKind.Command -> context.getString(
@@ -2094,10 +1841,7 @@ private fun approvalNoticeBody(context: Context, notice: AgentNotice.Approval): 
         ApprovalNoticeKind.Other -> context.getString(R.string.notification_approval_other)
     }
 
-/**
- * Composition entry point: builds the app holder, keeps it alive across configuration changes and
- * starts the bootstrap once.
- */
+/** Composition entry point: the holder outlives configuration changes; bootstrap starts once. */
 @Composable
 fun rememberCodexApp(): CodexApp {
     val context = LocalContext.current
@@ -2106,7 +1850,6 @@ fun rememberCodexApp(): CodexApp {
     return app
 }
 
-/** Top-level composable rendered by [MainActivity]. */
 @Composable
 fun CodexRoot() {
     val app = rememberCodexApp()
@@ -2114,26 +1857,12 @@ fun CodexRoot() {
 }
 
 /**
- * The shell.
- *
- * Mirrors `codex-rs/tui/src/app.rs`: the chat surface is always mounted and every other screen is
- * pushed on top of it, so dismissing a page always lands back on the live transcript.
- *
- * The page stack is a `miuix-nav` back stack, and the transition is `NavTransitions.Modal` — the
- * entering page slides up from the bottom edge over the chat, which is exactly the bottom-sheet
- * motion this shell used to hand-roll out of one `WindowBottomSheet` per stack level. Handing the
- * stack to the navigation runtime instead buys three things the hand-rolled version could not have:
- * a real transition (a window that is created already-shown never animates in), one continuous
- * sweep when several pages pop at once, and a predictive-back gesture that drives the same
- * transition rather than a second animation written to look like it.
- *
- * The shell also owns the sidebar's persisted view state, which is the same job
- * `local_settings.rs` does for the TUI.
+ * The shell: the chat mounts always, every other screen pushes over it
+ * (codex-rs/tui/src/app.rs, `NavTransitions.Modal`); sidebar view state persists like `local_settings.rs`.
  */
 @Composable
 fun CodexScreen(
     app: CodexApp,
-    /** Space kept between the snackbar and the composer it floats above. */
     snackbarGap: Dp = 8.dp,
 ) {
     val context = LocalContext.current
@@ -2162,46 +1891,33 @@ fun CodexScreen(
         },
     ) { _ ->
         BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-            // The status bar is hidden by the activity, so this is normally 0 and the chrome sits on
-            // the screen edge. A swipe down from the top edge can reveal it as a *transient* overlay
-            // for a moment, and a bar that is overlaying the app must not push it: following the live
-            // inset made the drawer, both chips and the transcript jump down and back. So the inset
-            // is latched — it may only ever shrink — and a reveal costs nothing but the bar itself.
+            // The status bar is normally hidden; a transient reveal must not push the chrome, so the
+            // inset is latched and may only ever shrink.
             val liveTopInset = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
             var topInset by remember { mutableStateOf(liveTopInset) }
             LaunchedEffect(liveTopInset) {
                 if (liveTopInset < topInset) topInset = liveTopInset
             }
-            // The window is edge-to-edge, so the system does not resize it for the keyboard; the
-            // chat entry consumes the IME inset itself (see the `imePadding` on its box below).
+            // Edge-to-edge: the system does not resize for the keyboard; the chat entry consumes the
+            // IME inset itself (see `imePadding` below).
             val bottomInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
 
             NavDisplay(
                 backStack = app.surfaces,
                 modifier = Modifier.fillMaxSize(),
                 onBack = app::closeSurface,
-                // Bottom-up modal: the layer underneath stays visible and untouched, so the chat
-                // keeps its place while a page rides over it.
                 transition = NavTransitions.Modal,
                 effects = NavDisplayEffects(
-                    // The runtime rounds the moving page for the duration of the animation; the page
-                    // draws the same silhouette itself once it settles (see [SheetPage]).
                     cornerClipRadius = UiConsts.DrawerCorner,
                     cornerClipMode = NavCornerClipMode.All,
-                    // The same dim a modal sheet draws, so opening a picker over a page does not
-                    // darken the app in two steps.
                     dimAmount = UiConsts.ScrimAlpha,
                 ),
             ) {
                 entry<Surface.Chat>(swipeDismiss = NavSwipeDirection.None) {
                     val chatKeys = remember { FocusRequester() }
                     var chatHasFocus by remember { mutableStateOf(false) }
-                    // The window has to keep one focus target or hardware key events have nowhere
-                    // to go: the composer only holds focus while the user is typing, and Esc hands
-                    // it back to this node. Requested when the chat becomes the visible surface and
-                    // only while nothing inside it is focused yet, so a tap on the composer is
-                    // never undone. A sheet takes focus while it is up and may hand back none when
-                    // it closes, which is the other half of the same rule.
+                    // One focus target keeps hardware keys routed; request it when the chat
+                    // surfaces, unless the composer already holds it.
                     LaunchedEffect(app.surface) {
                         if (app.surface == Surface.Chat && !chatHasFocus) {
                             runCatching { chatKeys.requestFocus() }
@@ -2214,10 +1930,6 @@ fun CodexScreen(
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
-                                // The window is edge-to-edge, so the keyboard overlays the app
-                                // instead of resizing it: consuming the IME inset here lifts the
-                                // composer above the keyboard and shrinks the transcript viewport
-                                // with it. Keys still route through the focus node below.
                                 .imePadding()
                                 .focusRequester(chatKeys)
                                 .onFocusChanged { chatHasFocus = it.hasFocus }
@@ -2226,14 +1938,9 @@ fun CodexScreen(
                                     handleHardwareKey(app, shortcutsHelp, chatKeys, event)
                                 },
                         ) {
-                            // Back closes the drawer before it leaves the chat. Registered here,
-                            // inside the entry, so a covered chat never sees the event at all.
                             BackHandler(enabled = app.surface == Surface.Chat && sidebarExpanded) {
                                 sidebarExpanded = false
                             }
-                            // The overlay is modal, so the back gesture dismisses it instead of
-                            // leaving the app; registered after the drawer handler, which only
-                            // matters when both are somehow up.
                             BackHandler(enabled = shortcutsHelp.visible) {
                                 shortcutsHelp.dismiss()
                             }
@@ -2366,8 +2073,6 @@ fun CodexScreen(
                 }
 
                 entry<Surface.RemoteControl>(swipeDismiss = NavSwipeDirection.TopToBottom) {
-                    // The page is a report on state another client can change, so it re-reads on
-                    // entry rather than trusting whatever the last notification left behind.
                     LaunchedEffect(Unit) { app.onAppEvent(AppEvent.ReloadRemoteControl) }
                     SheetPage(onDismiss = app::closeSurface) {
                         RemoteControlScreen(
@@ -2466,8 +2171,6 @@ fun CodexScreen(
                             picking = route.picking,
                             client = app.client,
                             onBack = app::closeSurface,
-                            // A picked directory becomes the open thread's working directory, which
-                            // is the only thing a picker in this app is ever for.
                             onPick = { picked ->
                                 app.onAppEvent(AppEvent.NewThread(picked))
                                 app.closeAllSurfaces()
@@ -2568,10 +2271,7 @@ fun CodexScreen(
 
                 entry<Surface.SubAgentThread>(swipeDismiss = NavSwipeDirection.TopToBottom) { route ->
                     SheetPage(onDismiss = app::closeSurface) {
-                        // The roster is folded once per visited agent rather than observed: the
-                        // parent transcript keeps streaming behind this page, and subscribing to it
-                        // would rebuild the page on every delta. Spawn order is fixed by the time an
-                        // agent is open, so a snapshot is enough to navigate by.
+                        // A snapshot, not an observation: the parent transcript keeps streaming and would rebuild this page on every delta.
                         val mainLabel = stringResource(R.string.agent_roster_main_label)
                         val nameFormat = stringResource(R.string.agent_roster_sub_agent_name)
                         val roster = remember(route.threadId, mainLabel, nameFormat) {
@@ -2587,9 +2287,6 @@ fun CodexScreen(
                             client = app.client,
                             onBack = app::closeSurface,
                             roster = roster,
-                            // Replace rather than stack: switching agents is changing the subject,
-                            // not drilling further in, and a back stack of ten agents would bury
-                            // the transcript the pages were opened from.
                             onSwitchAgent = { threadId ->
                                 app.closeSurface()
                                 app.openSurface(Surface.SubAgentThread(threadId))
@@ -2609,32 +2306,19 @@ fun CodexScreen(
                     }
                 }
             }
-            // Drawn last, so it covers the nav stack; the composer's `?` reaches the same state
-            // object through [LocalShortcutsHelp].
             ShortcutsOverlay(state = shortcutsHelp)
         }
     }
 }
 
-/**
- * Global hardware-key dispatch for the chat surface.
- *
- * Consumed chords stop here; an unconsumed one falls through to the focused node — the composer's
- * own preview handler, or the text field's editing shortcuts — which is how Ctrl+C stays "copy"
- * while no turn is running and how Esc reaches an open popup before it interrupts anything.
- */
 private fun handleHardwareKey(
     app: CodexApp,
     shortcutsHelp: ShortcutsHelpState,
     chatKeys: FocusRequester,
     event: KeyEvent,
 ): Boolean {
-    // A page over the chat owns the keyboard while it is up; the chat entry stays composed behind
-    // it, so without this gate Ctrl+T inside a sheet would push another page.
     if (app.surface != Surface.Chat) return false
     val chord = event.toKeyChord() ?: return false
-    // The help overlay is modal for keys: nothing behind it may react while it is up, and Esc or
-    // either toggle closes it.
     if (shortcutsHelp.visible) {
         val closes = chord.key == CodexKeys.ESCAPE ||
             CodexKeymap.resolve(KeyContext.Global, chord) == KeyAction.ShowShortcuts ||
@@ -2648,8 +2332,6 @@ private fun handleHardwareKey(
                 app.onAppEvent(AppEvent.InterruptTurn)
                 true
             } else {
-                // Esc still belongs to an open popup or the focused field, and Ctrl+C to the
-                // clipboard.
                 false
             }
 
@@ -2659,15 +2341,12 @@ private fun handleHardwareKey(
         }
 
         KeyAction.ShowShortcuts -> {
-            // Focus moves to the root so a soft keyboard cannot keep typing into the field behind
-            // the overlay.
             shortcutsHelp.toggle()
             runCatching { chatKeys.requestFocus() }
             true
         }
 
         else ->
-            // `?` opens the same overlay, but only while there is no draft to type it into.
             if (CodexKeymap.resolve(KeyContext.Composer, chord) == KeyAction.ShowShortcuts &&
                 app.widget.state.composerDraft.isEmpty()
             ) {
@@ -2680,12 +2359,7 @@ private fun handleHardwareKey(
     }
 }
 
-/**
- * Fold the import notifications' per-type results into the progress bar's shape.
- *
- * The wire reports successes and failures per item type and nothing else — there is no total — so
- * the bar counts both, and the label names the types involved rather than an invented sentence.
- */
+/** The wire reports successes/failures per item type and no total; the bar counts both and labels the types. */
 private fun externalImportProgress(
     results: List<com.cy.codex.protocol.protocol.v2.ExternalAgentConfigImportTypeResult>,
 ): ImportProgress {
@@ -2694,7 +2368,6 @@ private fun externalImportProgress(
     return ImportProgress(done, total, results.joinToString(", ") { it.itemType })
 }
 
-/** A pushed page keeps a tappable band around its top and sides for dismissal. */
 @Composable
 private fun SheetPage(
     onDismiss: () -> Unit,
@@ -2706,11 +2379,7 @@ private fun SheetPage(
             (maxWidth - sheetSideMargin() * 2).coerceAtLeast(0.dp),
             UiConsts.SheetMaxWidth,
         )
-        // Only the band the page does not cover takes the tap. A sheet can put a scrim over the whole
-        // window because it is modal; a page is not — the transcript behind it stays mounted — so
-        // this is a hit target around the page rather than a layer over everything.
         val gutter = ((maxWidth - pageWidth) / 2).coerceAtLeast(0.dp)
-        // Drawn first, so the page painted over it wins every hit test that lands on the page.
         Row(modifier = Modifier.fillMaxSize()) {
             OutsideTapTarget(
                 interactionSource = outsideInteraction,
@@ -2750,7 +2419,6 @@ private fun SheetPage(
     }
 }
 
-/** The dead band around a pushed page: tap it and the page closes, exactly as a sheet's scrim does. */
 @Composable
 private fun OutsideTapTarget(
     interactionSource: MutableInteractionSource,

@@ -49,8 +49,7 @@ class GitDiffTest {
         assertEquals(GitDiffResult.Changes("tracked\nuntracked\n"), result)
 
         val untracked = seen.single { "--no-index" in it }
-        // `--` keeps a leading-dash file name from being read as an option, and the path is passed
-        // as one argument so a name with spaces survives.
+        // `--` guards a leading-dash file name; one argument keeps spaces intact.
         assertEquals(listOf("--", "/dev/null", "new file.txt"), untracked.takeLast(3))
         assertTrue("-c" in seen.single { "ls-files" in it })
     }

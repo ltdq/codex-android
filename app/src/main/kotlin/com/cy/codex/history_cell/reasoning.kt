@@ -48,13 +48,8 @@ import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.ChevronForward
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
-/**
- * The collapsible "thinking" block.
- *
- * Mirrors `ReasoningSummaryCell` in `codex-rs/tui/src/history_cell/messages.rs`: the reasoning body
- * is dimmed relative to the answer, so it collapses to a single summary line and only expands when
- * the user asks for the detail.
- */
+/** Collapsible "thinking" block; mirrors `ReasoningSummaryCell` in
+ * `codex-rs/tui/src/history_cell/messages.rs`. */
 @Composable
 fun ReasoningCell(
     item: ReasoningItem,
@@ -77,8 +72,7 @@ fun ReasoningCell(
 ) {
     val colors = MiuixTheme.colorScheme
     val (expanded, toggle) = rememberExpanded(defaultExpanded)
-    // The same disclosure the section cards use: 0 degrees when closed, 90 when open, over
-    // Motion.Disclosure. It used to snap, which made this header the one in the app that did.
+    // Same disclosure as the section cards (Motion.Disclosure); this header used to snap.
     val chevronRotation by animateFloatAsState(
         targetValue = if (expanded) 90f else 0f,
         animationSpec = Motion.Disclosure,
@@ -177,7 +171,6 @@ fun ReasoningCell(
     }
 }
 
-/** Fade used by the streaming reasoning label. */
 @Composable
 private fun rememberShimmerAlpha(): androidx.compose.runtime.State<Float> {
     val transition = rememberInfiniteTransition(label = "reasoningShimmer")

@@ -6,22 +6,16 @@ import top.yukonga.miuix.kmp.nav.core.NavKey
  * What the shell is currently showing.
  *
  * Mirrors the overlay stack in `codex-rs/tui/src/app.rs` (`App::overlay`): the chat is always the
- * base surface and everything else is pushed on top of it, so dismissing a page always lands back
- * on the live transcript instead of rebuilding navigation state.
- *
- * These are `miuix-nav` route keys. The shell hands them to a `NavDisplay`, which owns the page
- * stack, the transition and the back gesture — the app only says *what* is on the stack.
- *
- * The set is wider than the TUI's overlay enum on purpose. The terminal reaches several of these
- * protocol families through slash commands that print into the transcript (`/mcp`, `/skills`,
- * `/plugins`, `/status`), and a phone has no transcript wide enough to hold a table of MCP servers
- * and no way to type at a row of one. Each family that answers with a list therefore gets a page.
+ * base surface and everything else is pushed on top of it. The set is wider than the TUI's overlay
+ * enum on purpose — the terminal reaches protocol families through slash commands that print into
+ * the transcript, and a phone has no transcript wide enough to hold a table of MCP servers, so each
+ * family that answers with a list gets a page.
  */
 sealed interface Surface : NavKey {
     /** The transcript, with the sidebar, status card and composer floating over it. */
     data object Chat : Surface
 
-    // ---- catalogs, mirroring the TUI's pickers ---------------------------------
+    // ---- catalogs -----------------------------------------------------------
     data object Settings : Surface
     data object Account : Surface
     data object McpServers : Surface
@@ -34,7 +28,7 @@ sealed interface Surface : NavKey {
     /** Session picker, opened from the sidebar or `/resume`. */
     data object Sessions : Surface
 
-    // ---- projects and execution environments -----------------------------------
+    // ---- projects and execution environments --------------------------------
     /** Saved projects, and the environments a thread can be run on. */
     data object Projects : Surface
 
@@ -42,23 +36,22 @@ sealed interface Surface : NavKey {
      * One environment, named by id.
      *
      * A page rather than a section of [Projects] because `environment/info` and
-     * `environment/status` are both addressed by id and neither can be asked for the whole set:
-     * there is no call that lists environments, so a detail page is the only shape that fits.
+     * `environment/status` are both addressed by id and neither can be asked for the whole set.
      */
     data class EnvironmentDetail(val environmentId: String) : Surface
 
-    // ---- remote control and user verification ----------------------------------
+    // ---- remote control and user verification -------------------------------
     /** Pairing, the paired-device list, and the switch that turns the relay on. */
     data object RemoteControl : Surface
 
     /** Local credential readiness and enrollment. */
     data object UserVerification : Surface
 
-    // ---- plugin sharing ---------------------------------------------------------
+    // ---- plugin sharing -----------------------------------------------------
     /** Plugins this account published, and the checkouts of other people's. */
     data object PluginShares : Surface
 
-    // ---- filesystem, processes and review ---------------------------------------
+    // ---- filesystem, processes and review -----------------------------------
     /**
      * The filesystem the session can reach, browsed one directory at a time.
      *
@@ -79,22 +72,17 @@ sealed interface Surface : NavKey {
     /** `/worktree` — git worktrees of the open thread's repository. */
     data object Worktrees : Surface
 
-    /**
-     * `/diff` — the working tree, tracked and untracked.
-     *
-     * A page rather than a transcript cell: the turn diff on the status card only carries what a
-     * turn changed, and untracked files are not part of it at all.
-     */
+    /** `/diff` — the working tree, tracked and untracked. */
     data object Diff : Surface
 
-    // ---- sessions ---------------------------------------------------------------
+    // ---- sessions -----------------------------------------------------------
     /** The realtime voice session for the open thread. */
     data object Realtime : Surface
 
-    /** Ctrl+T: the read-only transcript overlay, mirroring the TUI's transcript pager. */
+    /** The read-only transcript overlay, mirroring the TUI's transcript pager. */
     data object ThreadHistory : Surface
 
-    // ---- diagnostics and maintenance --------------------------------------------
+    // ---- diagnostics and maintenance ----------------------------------------
     /** `server/diagnostics`, plus the feedback upload that goes with a bug report. */
     data object Diagnostics : Surface
 
@@ -113,11 +101,11 @@ sealed interface Surface : NavKey {
     /** Windows sandbox readiness and setup. */
     data object WindowsSandbox : Surface
 
-    // ---- MCP --------------------------------------------------------------------
+    // ---- MCP ----------------------------------------------------------------
     /** One MCP server's resources and tools, called by hand. */
     data class McpToolbox(val server: String) : Surface
 
-    // ---- agents -----------------------------------------------------------------
+    // ---- agents -------------------------------------------------------------
     /** `/agents` and `/subagents`: the roster of agents spawned from the open thread. */
     data object Agents : Surface
 
@@ -134,8 +122,8 @@ sealed interface Surface : NavKey {
      * The same agent's conversation, read as a page.
      *
      * A separate route from [SubAgent] because they are separate questions — "what is this agent"
-     * and "what did this agent do" — and because entering the conversation must not disturb the
-     * session it was spawned from.
+     * and "what did this agent do" — and entering the conversation must not disturb the session it
+     * was spawned from.
      */
     data class SubAgentThread(val threadId: String) : Surface
 }

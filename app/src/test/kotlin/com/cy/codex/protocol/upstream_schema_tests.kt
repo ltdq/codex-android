@@ -80,32 +80,8 @@ import kotlin.test.assertTrue
 import kotlin.test.fail
 
 /**
- * Compares the hand-written Kotlin protocol types against the schema the server generates.
- *
- * Every other protocol test in this module is self-referential: it builds a payload from the same
- * Kotlin types the client decodes with, so a field the server does not have, an enum value that no
- * longer exists or a method that was never registered all pass. This test reads the upstream
- * schemas — `codex-rs/app-server-protocol/schema/json/` for the field shapes and the precomputed
- * experimental export for the full method list — and checks the Kotlin declarations against them.
- *
- * The rules, in the order the schema itself allows them:
- *
- *  - A Kotlin field must exist upstream. Dropping fields is allowed (the phone does not render
- *    everything); inventing one is not, because a decoder that reads a key the server never sends
- *    silently produces a wrong value and an encoder can put a bogus key on the wire.
- *  - A field Kotlin requires must be one upstream guarantees. Kotlin may default a field upstream
- *    also sends — that is leniency, not drift — but it may never demand more than the schema
- *    promises, because that turns a legal response into a decode failure.
- *  - An enum's wire set must be equal, not a subset: a value the server added is a mode the phone
- *    silently falls back from, and a value the server removed is one the phone will never see.
- *  - The three method registries must be exactly the upstream sets, with one documented exception
- *    (`mock/experimentalMethod`, an upstream test scaffold).
- *
- * The mappings below are deliberately written out: a Kotlin type and its upstream definition often
- * have different names (`ModelPreset` mirrors `Model`, `AccountRateLimits` mirrors
- * `GetAccountRateLimitsResponse`), so deriving them automatically would need a convention the
- * protocol does not have. Adding a type to a list is a deliberate act; a rename on either side
- * makes this test fail until the table says so.
+ * Checks the Kotlin protocol types against the upstream schemas — `codex-rs/.../schema/json/`
+ * plus the experimental export; other protocol tests only round-trip their own types.
  */
 class UpstreamSchemaTest {
 
@@ -123,13 +99,7 @@ class UpstreamSchemaTest {
         "codex/codex-rs/app-server-protocol/schema/precomputed/app-server-exports-experimental.json.zst",
     )
 
-    /**
-     * Every `definitions` entry from every schema file, plus the per-file top-level schemas.
-     *
-     * The on-disk `schema/json/` tree is the stable generation, so it strips experimental-gated
-     * fields (`availableDecisions`, for one). The experimental export is laid over it last, because
-     * this client advertises `experimentalApi` and therefore really receives those fields.
-     */
+    // Experimental export layered last: the client advertises experimentalApi and receives those fields.
     private val definitions: Map<String, JsonObject> by lazy {
         val merged = LinkedHashMap<String, JsonObject>()
         schemaDirectory.walkTopDown()
@@ -158,8 +128,6 @@ class UpstreamSchemaTest {
             ?: fail("$experimentalExports has no json_schema object")
         schemas.mapValues { (_, value) -> Json.parse(value.jsonPrimitive.content).jsonObject }
     }
-
-    // ---- field names and requiredness ---------------------------------------------------------
 
     private val fieldMappings: List<Pair<KClass<*>, String>> = listOf(
         Thread::class to "Thread",
@@ -251,8 +219,6 @@ class UpstreamSchemaTest {
         )
     }
 
-    // ---- enums --------------------------------------------------------------------------------
-
     private val enumMappings: List<Pair<Class<out Enum<*>>, String>> = listOf(
         ThreadMemoryMode::class.java to "ThreadMemoryMode",
         ThreadActiveFlag::class.java to "ThreadActiveFlag",
@@ -299,8 +265,6 @@ class UpstreamSchemaTest {
         assertEquals(setOf("acceptWithExecpolicyAmendment", "applyNetworkPolicyAmendment"), payloadKeys)
     }
 
-    // ---- method registries --------------------------------------------------------------------
-
     @Test
     fun `server notification registry equals the upstream method set`() {
         assertEquals(methodSet("ServerNotification.json"), ServerNotificationMethod.entries.map { it.wire }.toSet())
@@ -325,8 +289,6 @@ class UpstreamSchemaTest {
             "Registered methods upstream does not define: ${(registered - upstream).sorted()}",
         )
     }
-
-    // ---- schema helpers -----------------------------------------------------------------------
 
     private class Shape(val properties: Set<String>, val required: Set<String>)
 

@@ -4,64 +4,45 @@ import com.cy.codex.protocol.protocol.item.ThreadItem
 import kotlinx.serialization.json.JsonElement
 
 /**
- * One row of `thread/list`: metadata only, no transcript.
+ * One row of `thread/list`: metadata only, no transcript (mirrors `v2::Thread`).
  *
- * Mirrors `v2::Thread`. The client carries the fields its surfaces render and drops the rest
- * (`source`, `turns`, `environments`, `extra`, …), which the schema allows: a Kotlin type may have
- * fewer fields than upstream, but a field it does carry must use the upstream wire name.
- *
- * `createdAt`/`updatedAt`/`recencyAt` arrive as Unix **seconds** and are decoded to epoch millis,
- * because that is what the sidebar's relative-time formatting reads.
+ * The schema allows a Kotlin type to carry fewer fields than upstream, but a field it does carry
+ * must use the upstream wire name. `createdAt`/`updatedAt`/`recencyAt` arrive as Unix **seconds**
+ * and are decoded to epoch millis, because that is what the sidebar's relative-time formatting
+ * reads.
  */
 data class Thread(
-    /** Identifier for this thread. Codex-generated thread IDs are UUIDv7. */
+    /** Codex-generated thread IDs are UUIDv7. */
     val id: String,
-    /** Usually the first user message in the thread, if available. */
     val preview: String,
     /** Model provider used for this thread, for example `openai`. */
     val modelProvider: String,
     val createdAt: Long,
     val updatedAt: Long,
-    /** Working directory captured for the thread. */
     val cwd: String,
     val status: ThreadStatus,
-    /** Version of the CLI that created the thread. */
     val cliVersion: String,
-    /** Whether the thread is ephemeral and should not be materialized on disk. */
     val ephemeral: Boolean,
-    /** Canonical project assignment owned by app-server, if any. Nullable, but always present. */
+    /** Nullable, but always present. */
     val projectId: String?,
-    /** Session id shared by threads that belong to the same session tree. */
     val sessionId: String,
-    /** Optional user-facing thread title. */
     val name: String? = null,
-    /** Source thread id when this thread was created by forking another thread. */
     val forkedFromId: String? = null,
-    /** Optional Git metadata captured when the thread was created. */
     val gitInfo: GitInfo? = null,
-    /** Current configured model when loaded, otherwise the latest persisted model. */
     val model: String? = null,
-    /** Current configured reasoning effort when loaded, otherwise the latest persisted effort. */
     val reasoningEffort: ReasoningEffort? = null,
     /** `[UNSTABLE]` Path to the thread on disk. */
     val path: String? = null,
-    /** Persisted thread history contract selected when this thread was created. */
     val historyMode: String = "legacy",
     /** Unix timestamp (in seconds) used for recency ordering. */
     val recencyAt: Long? = null,
-    /** Originator recorded when the thread was created. */
     val originator: String? = null,
-    /** Set when this thread is a sub-agent of another thread. */
     val parentThreadId: String? = null,
-    /** Whether the server accepts direct turn input for this loaded thread; `null` when unknown. */
     val canAcceptDirectInput: Boolean? = null,
-    /** Random unique nickname assigned to an AgentControl-spawned sub-agent. */
     val agentNickname: String? = null,
-    /** Role assigned to an AgentControl-spawned sub-agent. */
     val agentRole: String? = null,
 )
 
-/** Optional Git metadata captured when a thread was created. */
 data class GitInfo(
     val branch: String? = null,
     val originUrl: String? = null,
@@ -83,17 +64,15 @@ enum class ThreadActiveFlag(val wire: String) {
     WaitingOnUserInput("waitingOnUserInput"),
 }
 
-/** `thread/read` response: the full item list of one thread. */
 data class ThreadReadResponse(
     val thread: Thread,
     val items: List<ThreadItem> = emptyList(),
     val turns: List<Turn> = emptyList(),
 )
 
-/** One agent turn: a user message plus everything the agent did in response. */
 /**
  * `TurnError.misalignment`: the safety system stopped the turn because it could not confirm the
- * agent was following the user's intent. Mirrors `v2/thread_data.rs`.
+ * agent was following the user's intent (mirrors `v2/thread_data.rs`).
  */
 data class MisalignmentErrorDetails(
     val errorType: String? = null,
@@ -101,7 +80,6 @@ data class MisalignmentErrorDetails(
     val steer: MisalignmentSteer? = null,
 )
 
-/** The instruction submitted again when the user confirms continuing after a misalignment stop. */
 data class MisalignmentSteer(val message: String)
 
 data class Turn(
@@ -112,7 +90,6 @@ data class Turn(
     val status: TurnStatus = TurnStatus.Completed,
     val startedAt: Long = 0L,
     val completedAt: Long? = null,
-    /** Wall-clock duration the server measured, when it reports one. */
     val durationMs: Long? = null,
     val usage: ThreadTokenUsage? = null,
 )
@@ -130,7 +107,6 @@ enum class TurnStatus(val wire: String) {
     }
 }
 
-/** One bucket of token accounting. Mirrors `TokenUsageBreakdown`. */
 data class TokenUsageBreakdown(
     val totalTokens: Long,
     val inputTokens: Long,
@@ -148,8 +124,8 @@ data class TokenUsageBreakdown(
 /**
  * Token accounting for one thread, straight from `thread/tokenUsage/updated`.
  *
- * Mirrors `v2::ThreadTokenUsage`: [total] is the lifetime counter, [last] the most recent turn, and
- * [modelContextWindow] the denominator for the context meter.
+ * [total] is the lifetime counter, [last] the most recent turn, and [modelContextWindow] the
+ * denominator for the context meter (mirrors `v2::ThreadTokenUsage`).
  */
 data class ThreadTokenUsage(
     val total: TokenUsageBreakdown,
@@ -166,14 +142,12 @@ data class ThreadTokenUsage(
     }
 }
 
-/** One `thread/list` sweep: active rows plus, when the scope asked for them, archived rows. */
 data class ThreadListing(
     val threads: List<Thread> = emptyList(),
     /** Ids of the rows that came from the archived half of the listing. */
     val archivedIds: Set<String> = emptySet(),
 )
 
-/** `thread/list` params. Mirrors `v2::ThreadListParams`; every field is optional upstream. */
 data class ThreadListParams(
     val archived: Boolean? = null,
     val cursor: String? = null,
@@ -205,7 +179,6 @@ enum class ThreadSortKey(val wire: String) {
     SectionPosition("section_position"),
 }
 
-/** `thread/items/list` params. */
 data class ThreadItemsListParams(
     val threadId: String,
     val cursor: String? = null,
@@ -214,7 +187,6 @@ data class ThreadItemsListParams(
     val turnId: String? = null,
 )
 
-/** `thread/turns/list` params. */
 data class ThreadTurnsListParams(
     val threadId: String,
     val cursor: String? = null,
@@ -224,15 +196,11 @@ data class ThreadTurnsListParams(
 )
 
 /**
- * `thread/resume` params.
- *
- * `excludeTurns` keeps the response metadata-only, which is what makes a bounded first screen
- * possible: the client asks for [initialTurnsPage] instead of letting the server replay the whole
- * rollout. Both fields exist upstream (`v2::ThreadResumeParams`).
+ * `thread/resume` params: `excludeTurns` keeps the response metadata-only, so a bounded first
+ * screen asks for [initialTurnsPage] instead of letting the server replay the whole rollout.
  */
 data class ThreadResumeParams(
     val threadId: String,
-    /** When true, do not populate `thread.turns`; hydrate with pages instead. */
     val excludeTurns: Boolean? = null,
     /** Experimental `thread/resume.initialTurnsPage`: embed one bounded turns page. */
     val initialTurnsPage: ThreadResumeInitialTurnsPageParams? = null,
@@ -246,9 +214,9 @@ data class ThreadResumeInitialTurnsPageParams(
 )
 
 /**
- * One `thread/turns/list` page. Mirrors `TurnsPage`, which `thread/resume.initialTurnsPage` also
- * uses. [backwardsCursor] names the newest row in the page and is only meaningful when reversing
- * direction; older pages follow [nextCursor].
+ * One `thread/turns/list` page, also the shape of `thread/resume.initialTurnsPage` (mirrors
+ * `TurnsPage`). [backwardsCursor] names the newest row in the page and is only meaningful when
+ * reversing direction; older pages follow [nextCursor].
  */
 data class TurnsPage(
     val data: List<Turn> = emptyList(),
@@ -258,25 +226,20 @@ data class TurnsPage(
     val turns: List<Turn> get() = data
 }
 
-/** Which item payloads `thread/turns/list` inlines; mirrors `TurnItemsView`. */
 enum class TurnItemsView(val wire: String) {
     NotLoaded("notLoaded"),
     Summary("summary"),
     Full("full"),
 }
 
-/** `thread/read` params. */
 data class ThreadReadParams(
     val threadId: String,
     val includeTurns: Boolean? = null,
 )
 
 /**
- * `thread/start` params.
- *
- * Mirrors `v2::ThreadStartParams`. The client carries the knobs its settings surfaces expose; the
- * remaining upstream fields (`baseInstructions`, `config`, `serviceName`, `threadSource`, …) are
- * dropped rather than invented.
+ * `thread/start` params: carries the knobs this client's settings expose; remaining upstream
+ * fields are dropped rather than invented (mirrors `v2::ThreadStartParams`).
  */
 data class ThreadStartParams(
     val cwd: String? = null,
@@ -298,10 +261,8 @@ data class ThreadStartParams(
 )
 
 /**
- * `thread/fork`: copy a thread, optionally as an ephemeral side conversation.
- *
- * Every field but [threadId] overrides the parent's setting for the child only, which is what the
- * side-conversation flow uses to pin `ephemeral` and append developer instructions.
+ * `thread/fork`: every field but [threadId] overrides the parent's setting for the child only —
+ * what the side-conversation flow uses to pin `ephemeral` and append developer instructions.
  */
 data class ThreadForkParams(
     val threadId: String,
@@ -329,8 +290,8 @@ data class ThreadSection(
 /**
  * `model/list` entry.
  *
- * Mirrors `v2::Model`. `contextWindow` is deliberately absent: the wire has no such field, the
- * session's own window arrives through [ThreadTokenUsage.modelContextWindow].
+ * `contextWindow` is deliberately absent: the wire has no such field — the session's own window
+ * arrives through [ThreadTokenUsage.modelContextWindow] (mirrors `v2::Model`).
  */
 data class ModelPreset(
     val id: String,
@@ -400,10 +361,8 @@ enum class McpServerConnectionStatus(val wire: String) {
 }
 
 /**
- * Mirrors upstream `McpAuthStatus`.
- *
- * This is what decides whether a "Log in" affordance can work at all: a server on a bearer token
- * or an unsupported mode has no OAuth flow to start.
+ * Decides whether a "Log in" affordance can work at all: a server on a bearer token or an
+ * unsupported mode has no OAuth flow to start (mirrors upstream `McpAuthStatus`).
  */
 enum class McpAuthStatus(val wire: String) {
     Unknown("unknown"),
@@ -487,9 +446,9 @@ data class AppInfo(
 /**
  * One hook configured for a working directory.
  *
- * Mirrors `v2::HookMetadata`. The handler is a flattened tagged union upstream (`handlerType` plus
- * that variant's fields), so the variant fields are carried as optionals here and [handlerType]
- * says which are meaningful.
+ * The handler is a flattened tagged union upstream (`handlerType` plus that variant's fields,
+ * mirrors `v2::HookMetadata`), so the variant fields are carried as optionals here and
+ * [handlerType] says which are meaningful.
  */
 data class HookMetadata(
     /** Stable identity of the hook inside its config source. */
@@ -527,11 +486,11 @@ data class HooksListEntry(
 data class HookErrorInfo(val path: String = "", val message: String = "")
 
 /**
- * `account/read` response. Mirrors `GetAccountResponse`.
+ * `account/read` response.
  *
- * [requiresOpenaiAuth] is the field a signed-out surface needs: it says whether OpenAI
- * authentication is required at all (Bedrock and API-key accounts answer `false`), which is what
- * decides if the sign-in call to action is shown.
+ * [requiresOpenaiAuth] drives the signed-out surface: it says whether OpenAI authentication is
+ * required at all (Bedrock and API-key accounts answer `false`), which decides if the sign-in call
+ * to action is shown (mirrors `GetAccountResponse`).
  */
 data class AccountReadResponse(
     val requiresOpenaiAuth: Boolean,
@@ -552,10 +511,11 @@ sealed interface Account {
 }
 
 /**
- * `account/rateLimits/read` response. Mirrors `GetAccountRateLimitsResponse`.
+ * `account/rateLimits/read` response.
  *
- * [rateLimits] is the backward-compatible single bucket; [rateLimitsByLimitId] keys the same shape
- * by metered `limit_id` (for example `codex`), which is what multi-bucket UIs read.
+ * [rateLimits] is the backward-compatible single bucket; [rateLimitsByLimitId] keys the same
+ * shape by metered `limit_id` (for example `codex`), which is what multi-bucket UIs read
+ * (mirrors `GetAccountRateLimitsResponse`).
  */
 data class AccountRateLimits(
     val rateLimits: RateLimitSnapshot = RateLimitSnapshot(),
@@ -600,7 +560,7 @@ data class RateLimitSnapshot(
 }
 
 /**
- * `RateLimitSnapshot.individualLimit`. Mirrors `SpendControlLimitSnapshot`.
+ * `RateLimitSnapshot.individualLimit` (mirrors `SpendControlLimitSnapshot`).
  *
  * Every field is required upstream; the backend reports spend-control only for accounts that have
  * one, so the whole object is optional on the snapshot.
@@ -613,7 +573,7 @@ data class SpendControlLimitSnapshot(
 )
 
 /**
- * `account/usage/read` answer when a `threadId` is passed. Mirrors `v2::ThreadUsage`.
+ * `account/usage/read` answer when a `threadId` is passed (mirrors `v2::ThreadUsage`).
  *
  * Credits are micros, so the formatter divides once rather than carrying a float through the state.
  */
@@ -674,7 +634,7 @@ data class RateLimitResetCredit(
  * `account/usage/read` response.
  *
  * [dailyBuckets] carries the per-day series; the summary fields mirror `AccountTokenUsageSummary`
- * (lifetime/peak tokens, streaks, longest turn) and are zero when an older server omits them.
+ * and are zero when an older server omits them.
  */
 data class AccountUsage(
     val dailyBuckets: List<UsageBucket> = emptyList(),
@@ -691,9 +651,9 @@ data class UsageBucket(val day: String, val tokens: Int)
 /**
  * `fs/getMetadata` response, and the shape `fs/readDirectory` rows are folded into.
  *
- * The real `fs/readDirectory` returns `FsReadDirectoryEntry { fileName, isDirectory, isFile,
- * isSymlink }` — a name, not a path. The picker works in paths (it navigates by joining), so the
- * entry is widened to a path here and [isFile]/[isSymlink] are carried through for the row icon.
+ * The real `fs/readDirectory` returns a name, not a path. The picker works in paths (it navigates
+ * by joining), so the entry is widened to a path here and [isFile]/[isSymlink] are carried through
+ * for the row icon.
  */
 data class FileMetadata(
     val path: String,

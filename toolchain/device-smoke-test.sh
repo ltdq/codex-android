@@ -1,12 +1,6 @@
 #!/usr/bin/env bash
-# Pack the toolchain for Android, push it to a connected device and rebuild the
-# exact runtime layout the APK will use (native libs + symlink farm + assets
-# copied into the private dir), then smoke-test the tools the way codex-core
-# will invoke them (bash + GNU userland (coreutils/grep/find/procps), git, rg,
-# curl, python, bun plus the analysis/edit tools: clang-format, diff/patch,
-# zstd, yq, shfmt, gofmt, ruff, ast-grep, fd).
-#
-# The APK toolchain package is produced by Gradle (`:toolchain:packJniLibs`).
+# Pack the toolchain and rebuild the APK runtime layout on the device (native libs + symlink
+# farm + assets), then smoke-test the packaged tools. Package produced by :toolchain:packJniLibs.
 # Usage: ./device-smoke-test.sh [abi]
 set -euo pipefail
 
@@ -32,11 +26,8 @@ NATIVE=$NATIVE
 ASSETS=$ASSETS
 FARM=$FARM
 
-# 1. data files are copied straight into the private dir (like assets
-#    unpacking inside the app) ...
+# Data files copy straight into the private dir; executables become symlinks into the native lib dir.
 cp -R "\$ASSETS/." "\$FARM/"
-
-# 2. ... then executables/dlopen-ables become symlinks into the native lib dir.
 while IFS='|' read -r kind rel val; do
     case "\$kind" in
         abi|data) continue ;;
@@ -174,7 +165,6 @@ if command -v bun >/dev/null 2>&1; then
     fi
 fi
 
-# --- analysis / edit tools ---
 if command -v git >/dev/null 2>&1; then
     if git ls-remote https://github.com/octocat/Hello-World HEAD >/dev/null 2>&1; then
         echo "[git] https ok"
