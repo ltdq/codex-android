@@ -66,25 +66,12 @@ import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
- * One MCP server's manual surface: read a resource, call a tool, watch its events.
+ * One MCP server's manual surface: read a resource, call a tool, watch events. Three cards
+ * because on the wire each is its own request family; no refresh in the header because nothing
+ * here is a snapshot that could go stale.
  *
- * The sibling of `bottom_pane/mcp_server_elicitation.rs`, and its opposite half: that file is the
- * *elicited* MCP surface, where a connected server asks this client a question mid-turn. This page
- * is the half a human drives, which the TUI reaches by typing at a prompt and a phone needs a
- * surface for. The three sections talk to the same server and share nothing else — on the wire each
- * one is its own request family (a resource read, a tool call, and the event-stream start/stop
- * pair), which is why they are three cards rather than one form.
- *
- * There is no refresh in the header on purpose. Nothing here is a snapshot of server state that
- * could have gone stale: a read and a call happen because the user asked for them, and the event
- * list *is* the stream. The header's subtitle names the server instead, because the one thing a
- * page opened from a server list must never leave ambiguous is which server it is talking to.
- *
- * @param server name of the connected server every request on this page is addressed to.
- * @param client transport the reads, the tool call and the stream subscription go through.
+ * @param server the connected server every request on this page is addressed to.
  * @param onEvent hands the stream switch to the app, which owns the stream's lifecycle.
- * @param onBack closes the page; the caller owns the page stack.
- * @param modifier layout modifier applied to the page's root.
  */
 @Composable
 fun McpToolboxScreen(
@@ -111,18 +98,13 @@ fun McpToolboxScreen(
     var streaming by remember(server) { mutableStateOf(false) }
     val streamEvents = remember(server) { mutableStateListOf<String>() }
 
-    // Resolved while composing: the failure branches run inside a coroutine, which cannot read
-    // a string resource itself, and a failure with no message of its own would otherwise show
-    // nothing at all.
+    // The failure branches run inside a coroutine, which cannot read a string resource.
     val readFailureText = stringResource(R.string.mcp_toolbox_resource_failed)
     val callFailureText = stringResource(R.string.mcp_toolbox_tool_failed)
 
-    // The stream being listed is the app's, not a private one: the switch only asks for it, so the
-    // notifications are picked back out of the client's single event flow. The wire notification
-    // names its stream by subscription id, which is minted by whoever started it — the app, not
-    // this page — so what can be shown here is the method of each pushed notification. Only the
-    // most recent ones are kept: a chatty server must not grow this page's composition without
-    // bound.
+    // The stream is the app's, picked out of the client's single event flow; only each
+    // notification's method is showable (the subscription id is the app's). Keep the tail:
+    // a chatty server must not grow this page's composition without bound.
     LaunchedEffect(server, client) {
         client.events.collect { event ->
             if (event is AppServerEvent.McpServerEvent) {
@@ -133,10 +115,8 @@ fun McpToolboxScreen(
     }
 
     /**
-     * Read [resourceUri], replacing whatever the previous read returned.
-     *
-     * The blank guard is here rather than in the card so the card's button and the field's IME
-     * action cannot disagree about whether there is anything to ask for.
+     * Read [resourceUri], replacing whatever the previous read returned. The blank guard lives
+     * here so the card's button and the field's IME action cannot disagree.
      */
     fun readResource() {
         val uri = resourceUri.trim()
@@ -158,11 +138,8 @@ fun McpToolboxScreen(
     }
 
     /**
-     * Call [toolName] with [toolArguments].
-     *
-     * The arguments travel as the JSON text the field holds: the server decodes them, and a payload
-     * this client refused to send would be a second, weaker decoder disagreeing with the real one.
-     * A blank field means "no arguments", which the protocol spells as an empty object.
+     * Call [toolName] with [toolArguments] as the JSON text the field holds — the server decodes
+     * it, and a blank field means "no arguments", spelled as an empty object.
      */
     fun callTool() {
         val name = toolName.trim()
@@ -238,14 +215,7 @@ fun McpToolboxScreen(
     }
 }
 
-/**
- * The resource half: a uri in, one resource body out.
- *
- * `mcpServer/resource/read` answers with a list of `contents`, each with the uri it resolved, the
- * mime type it found and either text or base64 bytes. The first content is rendered; the mime type
- * is shown rather than guessed from the body, because a server that answers `application/json` and
- * one that answers nothing at all look the same otherwise.
- */
+/** Resource half: a uri in, one body out. The mime type is shown, not guessed; the first content renders. */
 @Composable
 private fun ResourceCard(
     uri: String,
@@ -325,8 +295,7 @@ private fun ResourceCard(
             ServerFailure(text = failure)
         }
         if (response != null) {
-            // A read may answer with several contents; the page renders the first, which is the
-            // one a single-uri request returns in practice.
+            // A read may answer with several contents; render the first.
             val content = response.contents.firstOrNull()
             Spacer(Modifier.height(UiConsts.Space8))
             BasicComponent(
@@ -361,8 +330,7 @@ private fun ResourceCard(
             Spacer(Modifier.height(UiConsts.Space8))
             val body = content?.text
             if (body.isNullOrEmpty()) {
-                // A resource may carry no text (it is bytes, or it is empty). Saying so is the
-                // difference between "the server had nothing" and "the page lost it".
+                // No text can mean bytes or empty; saying so separates "the server had nothing" from "the page lost it".
                 Text(
                     text = stringResource(R.string.mcp_toolbox_resource_no_text),
                     modifier = Modifier.padding(horizontal = UiConsts.Space4),
@@ -377,13 +345,7 @@ private fun ResourceCard(
     }
 }
 
-/**
- * The tool half: a tool name, its arguments as JSON, and whatever the server answers.
- *
- * The result is rendered even when the tool reports an error of its own: `isError` is the *tool*
- * saying the call went through and failed, which is a different thing from the call not going
- * through, and only the second one is a failure of this page.
- */
+/** Tool half: a name, JSON arguments, and the answer; `isError` is the tool's own failure and still renders. */
 @Composable
 private fun ToolCard(
     tool: String,
@@ -508,17 +470,7 @@ private fun ToolCard(
     }
 }
 
-/**
- * The stream half: one switch, and the events the server pushed through it.
- *
- * The switch carries a local boolean rather than a server-reported one, because the protocol has no
- * "is this stream open" read to ask: `mcpServer/event/stream/start` and its stop counterpart are
- * requests whose only answer is success or failure. The state is therefore the user's intent, and
- * the app — which owns the stream and every other subscriber to it — is told through [AppEvent].
- *
- * The list is the *arrival* order, oldest first, so a burst reads as a sequence; the trailing count
- * is what tells the user the list is bounded rather than broken.
- */
+/** Stream half: one switch plus pushed events; the local boolean is intent because the protocol has no "is open" read. */
 @Composable
 private fun StreamCard(
     streaming: Boolean,
@@ -571,12 +523,7 @@ private fun StreamCard(
     }
 }
 
-/**
- * A failure the *server* reported, in the same error treatment the rest of the app uses.
- *
- * Shown instead of an empty result pane: a refused tool name and a tool that answered nothing are
- * indistinguishable once the message is dropped, and only one of them is worth retrying.
- */
+/** A failure the *server* reported; shown instead of an empty result pane. */
 @Composable
 private fun ServerFailure(text: String) {
     val colors = MiuixTheme.colorScheme
@@ -593,13 +540,7 @@ private fun ServerFailure(text: String) {
     )
 }
 
-/**
- * Raw server text: monospace, on [codeSurface], bounded, and scrolling on both axes.
- *
- * A resource body is prose and would wrap, but a tool result is JSON whose lines are longer than
- * any phone. A box that only scrolled vertically would either clip those lines or reflow them into
- * something that no longer reads as the payload the server sent.
- */
+/** Raw server text: monospace, bounded, scrolling both ways so JSON lines are neither clipped nor reflowed. */
 @Composable
 private fun MonospaceOutput(text: String) {
     Box(
@@ -622,28 +563,15 @@ private fun MonospaceOutput(text: String) {
     }
 }
 
-/** Corner of the output box and of a reported failure: a control inside a card, not a card. */
 private val OutputShape = RoundedCornerShape(UiConsts.CornerControl)
 
-/**
- * Floor of the output box, so an empty answer still reads as a pane rather than as a missing one.
- */
+/** Floor of the output box, so an empty answer still reads as a pane. */
 private val OutputMinHeight = 56.dp
 
-/**
- * Ceiling of the output box.
- *
- * The page scrolls as a whole, so a box taller than this would push the cards below it off the
- * screen and make the user scroll twice to reach the switch. Long payloads scroll inside instead.
- */
+/** Ceiling of the output box; the page scrolls as a whole, so a taller box would require a second scroll. */
 private val OutputMaxHeight = 260.dp
 
-/**
- * How many stream events the page keeps.
- *
- * Enough to see a burst arrive and still read the start of it, small enough that a server notifying
- * on every request cannot turn this page into an unbounded transcript of its own.
- */
+/** Stream events kept: enough to read a burst, small enough to bound a chatty server. */
 private const val StreamEventLimit = 50
 
 /** The protocol's spelling of "this tool takes no arguments". */

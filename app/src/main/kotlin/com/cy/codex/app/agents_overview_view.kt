@@ -36,18 +36,8 @@ import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
- * One agent of the roster, as every surface that lists agents draws it.
- *
- * The picker and the dashboard used to be two unrelated row composables — 16dp rows with a
- * transparent fill against 20dp cards on `raisedSurface()`, `SheetRowTitle` against `CardTitle`, a
- * check glyph against a "current" badge — for the same object. They are now this one row; the only
- * difference between the two surfaces is how many rows they show and how tall the sheet is.
- *
- * @param tokens usage attributed to the agent. When it is greater than zero the row also draws the
- *   relative usage meter; [busiestTokens] is what the meter is measured against, so the widest bar
- *   in the list belongs to the heaviest agent rather than to an arbitrary absolute value.
- * @param selected marks the agent the transcript is currently showing.
- * @param onClick opens that agent's transcript.
+ * One roster entry as every surface draws it; tokens draw a meter relative to
+ * [busiestTokens].
  */
 @Composable
 internal fun AgentRosterRow(
@@ -59,8 +49,7 @@ internal fun AgentRosterRow(
     busiestTokens: Int = 0,
 ) {
     val colors = MiuixTheme.colorScheme
-    // The fill is animated rather than swapped: selecting an agent is a state change inside a list
-    // the user is still reading, and a row that repaints on one frame reads as a glitch.
+    // Animated, not swapped: a one-frame repaint of a row being read reads as a glitch.
     val container by
         animateColorAsState(
             targetValue =
@@ -162,12 +151,6 @@ internal fun AgentRosterRow(
     }
 }
 
-/**
- * Relative usage of one agent.
- *
- * Per-agent usage is unknown to the item stream, so an agent without usage renders an empty track
- * rather than an invented number.
- */
 @Composable
 private fun TokenMeter(tokens: Int, busiestTokens: Int) {
     val colors = MiuixTheme.colorScheme

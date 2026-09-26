@@ -4,11 +4,6 @@ import org.junit.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
-/**
- * The diff parser is the only thing standing between the server's raw unified diff and the two
- * gutters the transcript draws, so its behaviour is pinned here — including the tolerant cases a
- * streaming turn actually produces.
- */
 class DiffModelTest {
 
     @Test
@@ -77,8 +72,7 @@ class DiffModelTest {
 
     @Test
     fun gitHeadersSplitEvenWhenAHunkWasTruncated() {
-        // A truncated payload can cut a hunk short. `diff --git` is unambiguous — hunk content
-        // always carries a prefix — so it must still open a new section.
+        // A truncated hunk ends the section; `diff --git` is unambiguous — hunk content carries a prefix.
         val lines = parseUnifiedDiff(
             listOf(
                 "@@ -1,5 +1,5 @@",
@@ -167,8 +161,6 @@ class DiffModelTest {
             lines = parseUnifiedDiff("@@ -1 +1 @@\n-a\n+b"),
         )
         assertEquals("diff_model.kt", file.fileName)
-        // parentPath shortens a deep directory from the left, keeping the last three
-        // segments so the folder the file actually lives in stays readable.
         assertEquals("…/cy/codex/state/", file.parentPath)
         assertEquals("M", file.letter)
     }

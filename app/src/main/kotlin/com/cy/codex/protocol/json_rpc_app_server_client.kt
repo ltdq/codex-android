@@ -47,11 +47,8 @@ import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.put
 
 /**
- * Which JSON-RPC envelope an outgoing message is.
- *
- * The envelope shape is the only thing a transport cannot infer from the text, and the native side
- * uses it to deserialize straight into the typed request/notification/response instead of parsing an
- * envelope and re-encoding its payload.
+ * Which JSON-RPC envelope an outgoing message is. The envelope shape is the only thing a transport
+ * cannot infer from the text; the native side deserializes straight into typed messages from it.
  */
 enum class JsonRpcMessageKind(val code: Int) {
     Request(0),
@@ -75,15 +72,10 @@ class JsonRpcAppServerClient(
     private val scope: CoroutineScope,
     private val defaultWorkspace: String? = null,
     /**
-     * How often the transport is watched while a request is still in flight, in milliseconds.
-     *
-     * `0` disables the watchdog. Production passes [WatchdogIntervalMs] from `CodexApplication`;
-     * JVM tests disable it because `runTest` skips virtual delays and a live watchdog would send
-     * probe requests in the middle of a scripted exchange.
-     *
-     * The watchdog is a liveness probe, not a request timeout: a tick only acts when the server
-     * has also been silent since the previous tick, so a healthy stream that is merely quiet is
-     * never probed, and long-running silent operations are only ever checked by the canary.
+     * Watchdog period while a request is in flight, in milliseconds. `0` disables it (JVM tests
+     * pass 0: `runTest` skips virtual delays, and a live watchdog would interleave probe
+     * requests). Liveness probe, not a request timeout: a tick only probes a transport that was
+     * silent since the previous tick.
      */
     private val watchdogIntervalMs: Long = 0,
 ) : AppServerClient {
@@ -147,7 +139,7 @@ class JsonRpcAppServerClient(
 
     /**
      * The worker watchdog: a wedged native session stops answering requests without closing the
-     * event stream, so silence alone is not evidence of a crash. A canary request breaks the tie.
+     * event stream, so silence alone is not evidence of a crash; a canary request breaks the tie.
      */
     private suspend fun watch() {
         while (true) {
@@ -373,11 +365,9 @@ class JsonRpcAppServerClient(
     }
 
     /**
-     * `thread/approveGuardianDeniedAction`.
-     *
-     * The server takes the serialized `GuardianAssessmentEvent`, not an item id, so the client
-     * remembers the event it synthesized from `item/autoApprovalReview/completed` and looks it up
-     * by the item the review targeted.
+     * `thread/approveGuardianDeniedAction`: the server takes the serialized
+     * `GuardianAssessmentEvent`, not an item id; the client remembers the event it synthesized
+     * from `item/autoApprovalReview/completed` and looks it up by the item the review targeted.
      */
     override suspend fun approveGuardianDeniedAction(threadId: String, itemId: String) = result {
         val event = guardianDenials[itemId] ?: error("No guardian denial is pending for item $itemId")
@@ -385,7 +375,6 @@ class JsonRpcAppServerClient(
         Unit
     }
 
-    // ---- thread/… attachments -------------------------------------------------
     override suspend fun listAttachments(threadId: String) = result {
         catalog("thread/attachment/list", obj("threadId" to threadId)).map(WireCodec::attachment)
     }
@@ -397,7 +386,6 @@ class JsonRpcAppServerClient(
     override suspend fun removeAttachment(threadId: String, type: AttachmentType, identityKey: String) = call("thread/attachment/remove",
         obj("threadId" to threadId, "attachmentType" to type.wire, "identityKey" to identityKey))
 
-    // ---- thread/… background terminals ---------------------------------------
     override suspend fun listBackgroundTerminals(threadId: String) = result {
         catalog("thread/backgroundTerminals/list", obj("threadId" to threadId)).map(WireCodec::backgroundTerminal)
     }
@@ -407,7 +395,6 @@ class JsonRpcAppServerClient(
     }
     override suspend fun cleanBackgroundTerminals(threadId: String) = call("thread/backgroundTerminals/clean", obj("threadId" to threadId))
 
-    // ---- thread/… realtime voice ---------------------------------------------
     override suspend fun startRealtime(threadId: String, sdpOffer: String?) = result {
         val transport = sdpOffer?.let { obj("type" to "webrtc", "sdp" to it) } ?: obj("type" to "websocket")
         rpc("thread/realtime/start", obj("threadId" to threadId, "outputModality" to "audio", "transport" to transport))
@@ -434,9 +421,8 @@ class JsonRpcAppServerClient(
             "threadId" to params.threadId,
             "objective" to params.objective,
             "status" to params.status?.wire,
-            // `null` here is the double option: an explicit JSON null clears the ceiling, while an
-            // absent key leaves it untouched. `obj` filters Kotlin nulls, so the clear has to be
-            // the JsonNull value, not a null reference.
+            // Explicit JSON null clears the ceiling, an absent key leaves it untouched; `obj`
+            // filters Kotlin nulls, so the clear must be the `JsonNull` value.
             "tokenBudget" to if (params.clearTokenBudget) JsonNull else params.tokenBudget,
         )
         WireCatalogCodec.goal(rpc("thread/goal/set", body).objectOrNull("goal")!!)
@@ -573,10 +559,9 @@ class JsonRpcAppServerClient(
     override suspend fun cancelLogin(loginId: String) = call("account/login/cancel", obj("loginId" to loginId))
     override suspend fun logout() = call("account/logout", null)
     override suspend fun readRateLimits() = result {
-        // `supportsLunaReserve` is a capability claim, not a hint: it tells the backend this client
-        // can be recorded in the fallback experiment. An older server rejects the unknown params
-        // outright, so the read retries with none rather than failing the usage screen
-        // (`app/background_requests.rs` in the TUI does the same).
+        // `supportsLunaReserve` tells the backend this client can be recorded in the fallback
+        // experiment; older servers reject the unknown param, so the read retries without it
+        // (as the TUI's `app/background_requests.rs` does).
         val read = runCatching {
             rpc("account/rateLimits/read", obj("supportsLunaReserve" to true))
         }.recoverCatching { error ->
@@ -711,7 +696,6 @@ class JsonRpcAppServerClient(
     override suspend fun readMemoryStatus() = result { rpc("memory/status").let { MemoryStatusResponse(it.bool("v2Ready") == true, it.int("v2ConsolidatedThreads") ?: 0) } }
     override suspend fun resetMemory() = call("memory/reset", null)
 
-    // ---- account: reset credits, nudge e-mail, Bedrock ------------------------
     override suspend fun consumeRateLimitResetCredit(creditId: String?) = result {
         val o = rpc("account/rateLimitResetCredit/consume", obj("idempotencyKey" to UUID.randomUUID().toString(), "creditId" to creditId))
         ConsumeRateLimitResetCreditResponse(ConsumeRateLimitResetCreditOutcome.fromWire(o.text("outcome")))
@@ -737,7 +721,6 @@ class JsonRpcAppServerClient(
         Unit
     }
 
-    // ---- environments ---------------------------------------------------------
     override suspend fun addEnvironment(environmentId: String, execServerUrl: String, connectTimeoutMs: Long?) = call("environment/add",
         obj("environmentId" to environmentId, "execServerUrl" to execServerUrl, "connectTimeoutMs" to connectTimeoutMs))
     override suspend fun readEnvironmentInfo(environmentId: String) = result {
@@ -750,7 +733,6 @@ class JsonRpcAppServerClient(
         EnvironmentStatusResponse(EnvironmentStatusKind.fromWire(o.text("status")), o.text("error"))
     }
 
-    // ---- remote control -------------------------------------------------------
     override suspend fun readRemoteControlStatus() = result { remoteControlStatus(rpc("remoteControl/status/read", null)) }
     override suspend fun enableRemoteControl(ephemeral: Boolean) = result { remoteControlStatus(rpc("remoteControl/enable", obj("ephemeral" to ephemeral))) }
     override suspend fun disableRemoteControl(ephemeral: Boolean) = result { remoteControlStatus(rpc("remoteControl/disable", obj("ephemeral" to ephemeral))) }
@@ -775,7 +757,6 @@ class JsonRpcAppServerClient(
     private fun remoteControlStatus(o: JsonObject) = RemoteControlStatus(RemoteControlConnectionStatus.fromWire(o.text("status")),
         o.text("serverName").orEmpty(), o.text("installationId").orEmpty(), o.text("environmentId"))
 
-    // ---- user verification ----------------------------------------------------
     override suspend fun readUserVerificationStatus() = result {
         val o = rpc("userVerification/status")
         UserVerificationStatusResponse(o.text("credentialId"),
@@ -794,7 +775,6 @@ class JsonRpcAppServerClient(
     override suspend fun cancelUserVerification(requestId: String) = call("userVerification/cancel", obj("requestId" to requestId))
     override suspend fun deleteUserVerification() = call("userVerification/delete")
 
-    // ---- external agent config migration -------------------------------------
     override suspend fun detectExternalAgentConfig() = result {
         val o = rpc("externalAgentConfig/detect", obj("includeHome" to true, "cwds" to defaultWorkspace?.let(::listOf)))
         ExternalAgentConfigDetectResponse(
@@ -815,7 +795,6 @@ class JsonRpcAppServerClient(
             "itemTypeResults" to params.itemTypeResults.map(WireCodec::externalAgentImportTypeResultOut))).required("importId")
     }
 
-    // ---- fuzzy file search ----------------------------------------------------
     override suspend fun fuzzyFileSearch(query: String, roots: List<String>) = result {
         rpc("fuzzyFileSearch", obj("query" to query, "roots" to roots)).array("files").map { WireCodec.fuzzyResult(it.objectValue()) }
     }
@@ -825,9 +804,8 @@ class JsonRpcAppServerClient(
         obj("sessionId" to sessionId, "query" to query))
     override suspend fun stopFuzzySearchSession(sessionId: String) = call("fuzzyFileSearch/sessionStop", obj("sessionId" to sessionId))
 
-    // ---- hooks, feedback, diagnostics ----------------------------------------
     override suspend fun listHooks() = result {
-        // `hooks/list` has no cursor: it answers with one entry per requested working directory.
+        // `hooks/list` has no cursor: one entry per requested working directory.
         rpc("hooks/list", obj("cwds" to defaultWorkspace?.let(::listOf))).array("data")
             .map { entry ->
                 val o = entry.objectValue()
@@ -847,13 +825,11 @@ class JsonRpcAppServerClient(
     }
     override suspend fun readServerDiagnostics() = result { WireCodec.diagnostics(rpc("server/diagnostics")) }
 
-    // ---- mcpServer/… event streams -------------------------------------------
     override suspend fun startMcpEventStream(server: String, subscriptionId: String, name: String, arguments: JsonElement, threadId: String) = call(
         "mcpServer/event/stream/start", obj("threadId" to threadId, "server" to server, "subscriptionId" to subscriptionId,
             "name" to name, "arguments" to arguments))
     override suspend fun stopMcpEventStream(subscriptionId: String) = call("mcpServer/event/stream/stop", obj("subscriptionId" to subscriptionId))
 
-    // ---- plugin shares --------------------------------------------------------
     override suspend fun listPluginShares() = result {
         rpc("plugin/share/list").array("data").map { WireCodec.pluginShare(it.objectValue()) }
     }
@@ -875,7 +851,6 @@ class JsonRpcAppServerClient(
             PluginShareDiscoverability.fromWire(o.text("discoverability")))
     }
 
-    // ---- windows sandbox ------------------------------------------------------
     override suspend fun windowsSandboxReadiness() = result {
         val status = rpc("windowsSandbox/readiness", null).text("status")
         WindowsSandboxReadinessResponse(WindowsSandboxReadiness.entries.find { it.wire == status } ?: WindowsSandboxReadiness.NotConfigured)
@@ -989,13 +964,10 @@ class JsonRpcAppServerClient(
     override suspend fun execTerminate(processId: String) = call("command/exec/terminate", obj("processId" to processId))
 
     /**
-     * `process/spawn`.
-     *
-     * The process handle is connection-scoped and client-supplied, so this client mints one and
-     * answers with it: the handle is what the three follow-up calls address, and upstream has no
-     * server-side id to read out of the response. A tty implies stdin and stdout streaming, so both
-     * flags follow [tty]; a buffered run still streams stdout because the response only carries the
-     * tail.
+     * `process/spawn`: the process handle is connection-scoped and client-supplied, so this
+     * client mints one — it is what the follow-up calls address, and the response carries no
+     * server-side id. A tty implies stdin + stdout streaming, so both flags follow [tty]; a
+     * buffered run still streams stdout because the response only carries the tail.
      */
     override suspend fun spawnProcess(command: List<String>, cwd: String?, tty: Boolean) = result {
         val handle = UUID.randomUUID().toString()
@@ -1178,11 +1150,8 @@ class JsonRpcAppServerClient(
     }
 
     /**
-     * One `availableDecisions` element.
-     *
-     * The wire union mixes bare strings with single-key objects, so the string form is probed
-     * first; an element that is neither a known decision string nor a known payload key is dropped
-     * rather than guessed at.
+     * One `availableDecisions` element. The wire union mixes bare strings with single-key
+     * objects, so the string form is probed first; anything unrecognised is dropped, not guessed.
      */
     private fun approvalDecision(value: JsonElement): CommandExecutionApprovalDecision? {
         value.stringOrNull()?.let { wire ->

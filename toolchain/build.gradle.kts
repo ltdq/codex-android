@@ -4,12 +4,9 @@ plugins {
     id("codex.toolchain")
 }
 
-// Everything with a usable upstream repository is pinned by its third_party/
-// git submodule commit (git/curl/openssl/rust tools/llvm/binutils/cpython/...).
-// GNU tools use the release tarballs instead: their git trees carry no
-// generated configure, and the CERNET gnu/ mirror is fast and complete.
-// GNU tools come from the CERNET release mirror (gnu/), which carries the
-// generated configure scripts the git trees lack; ftp.gnu.org is the fallback.
+// Upstream repos with generated build files are pinned as third_party/ submodules; GNU tools ship
+// release tarballs only (their git trees have no generated configure) and come from the CERNET
+// gnu/ mirror with ftp.gnu.org as fallback.
 val BASH_VER = "5.3"
 val BC_VER = "1.08.2"
 val BUN_VER = "1.4.2"
@@ -28,8 +25,7 @@ val WHICH_VER = "2.25"
 // uv/ruff/fd need a newer compiler than the codex JNI core's pinned 1.95.
 val RUST_TOOLCHAIN = "1.97.1"
 
-// Release tarballs for the packages above, mirrored by CERNET with ftp.gnu.org
-// as fallback. Override with -PgnuMirror=... to use another GNU mirror.
+// -PgnuMirror overrides the CERNET gnu mirror used for the tarballs above.
 val gnuMirror: String = providers.gradleProperty("gnuMirror")
     .getOrElse("https://mirrors.cernet.edu.cn/gnu")
 
@@ -42,8 +38,7 @@ toolchain {
     tool("7zip") {
         source = SourceSpec.submodule("7zip")
         recipe {
-            // A failed cross build leaves host-arch objects behind; make does not
-            // notice the compiler change, so start from a clean object dir.
+            // A failed cross build leaves host-arch objects; make won't notice, so clean first.
             remove("\$SRC/CPP/7zip/Bundles/Alone2/b")
             make(
                 "-f", "../../cmpl_clang_arm64.mak",
@@ -150,8 +145,6 @@ toolchain {
     }
 
     tool("clang-format") {
-        // Full monorepo checkout from the CERNET git mirror, pinned by the
-        // third_party/llvm submodule.
         source = SourceSpec.submodule("llvm", tag = "llvmorg-23.1.1")
         recipe {
             val hostFlags = listOf(
@@ -257,8 +250,7 @@ toolchain {
                 "--disable-libseccomp", "--disable-bzlib", "--disable-xzlib", "--disable-lzlib",
                 env = mapOf("PKG_CONFIG_LIBDIR" to "\$SYSROOT/usr/lib/pkgconfig"),
             )
-            // magic.mgc can only be compiled by running the target binary; ship the
-            // text database instead and let libmagic read it at runtime.
+            // magic.mgc needs the target binary to compile; ship the text database instead.
             remove("\$SRC/magic/magic.mgc", "\$SRC/magic/magic.mgc.source")
             replaceInFile(
                 "\$SRC/magic/Makefile",
@@ -315,14 +307,12 @@ toolchain {
                 "NO_GETTEXT=1", "NO_EXPAT=1", "NO_OPENSSL=1", "NO_ICONV=1", "NO_TCLTK=1",
                 "NO_PERL=1", "NO_PYTHON=1", "NO_NSEC=1", "NO_RUST=1", "NO_INSTALL_HARDLINKS=1",
                 "INSTALL_SYMLINKS=1", "CSPRNG_METHOD=urandom",
-                // The generated config.mak.autogen says NO_CURL=YesPlease; an empty
-                // command-line value overrides it.
+                // Empty value overrides config.mak.autogen's NO_CURL=YesPlease.
                 "NO_CURL=",
                 "CURL_CFLAGS=-I\$PREFIX_OF(curl)/include",
                 "CURL_LDFLAGS=-L\$PREFIX_OF(curl)/lib -L\$PREFIX_OF(openssl)/lib -lcurl -lssl -lcrypto -lz -ldl",
                 "CURL_CONFIG=true",
-                // Baked into git and the installed scripts; the build itself runs
-                // with the host shell because make's shell cannot be the target.
+                // Baked into git and installed scripts; the build itself runs with the host shell.
                 "SHELL_PATH=/system/bin/sh",
                 "SHELL=/bin/sh",
             )
@@ -378,8 +368,7 @@ toolchain {
     }
 
     tool("jq") {
-        // jq vendors oniguruma as a submodule; build it in place so the gitlink
-        // directory is populated.
+        // jq vendors oniguruma as a submodule; build in place so the gitlink is populated.
         source = SourceSpec.submodule("jq", recursive = true, inPlace = true)
         recipe {
             runFirstTime("autoreconf", "-i", checkFile = "configure")
@@ -422,8 +411,7 @@ toolchain {
         source = SourceSpec.submodule("openssh")
         dependsOn += "openssl"
         recipe {
-            // The git tree ships an older generated configure than configure.ac;
-            // regenerate it before configuring.
+            // The git tree's generated configure is older than configure.ac; regenerate first.
             run("autoreconf", "-fi")
             configure(
                 "--host=\$HOST", "--prefix=/", "--sysconfdir=/etc/ssh",
@@ -516,8 +504,7 @@ toolchain {
             val openssl = "\$PREFIX_OF(openssl)"
             val libffi = "\$PREFIX_OF(libffi)"
             val sqlite = "\$PREFIX_OF(sqlite)"
-            // PKG_CONFIG_LIBDIR (not PKG_CONFIG_PATH) keeps pkg-config from seeing
-            // host libraries when probing for optional modules.
+            // PKG_CONFIG_LIBDIR keeps pkg-config from seeing host libraries during module probes.
             configure(
                 "--host=\$HOST", "--build=\$BUILD_TRIPLE", "--prefix=/", "--with-build-python=python3",
                 "--without-ensurepip", "--disable-test-modules",
@@ -612,14 +599,12 @@ toolchain {
         recipe {
             configure(
                 "--host=\$HOST", "--prefix=\$PREFIX", "--disable-shared", "--enable-static",
-                // The git tree would otherwise try to build the Tcl bindings
-                // with the host's tclConfig.sh.
+                // Avoids building the Tcl bindings against the host's tclConfig.sh.
                 "--disable-tcl", "--disable-readline",
             )
             make()
             make(targets = listOf("install"))
-            // Static libsqlite3 needs libm/libdl; expose that to pkg-config consumers
-            // (python's _sqlite3 otherwise fails to resolve trunc()).
+            // Static libsqlite3 needs libm/libdl; python's _sqlite3 fails without them.
             replaceInFile(
                 "\$PREFIX/lib/pkgconfig/sqlite3.pc",
                 "(?m)^Libs: (.*)\$",
@@ -657,8 +642,7 @@ toolchain {
     }
 
     tool("unzip") {
-        // Info-ZIP publishes source tarballs only (one release since 2009); the
-        // Debian security/portability patches live under toolchain/patches.
+        // Info-ZIP ships tarballs only; Debian's security/portability patches live under toolchain/patches.
         source = SourceSpec.tarball(
             "https://mirrors.cernet.edu.cn/debian/pool/main/u/unzip/unzip_6.0.orig.tar.gz",
             fallback = "https://downloads.sourceforge.net/infozip/unzip60.tar.gz",

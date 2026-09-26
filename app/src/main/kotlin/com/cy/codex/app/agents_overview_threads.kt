@@ -40,17 +40,8 @@ import top.yukonga.miuix.kmp.icon.extended.ChevronForward
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
- * A subagent's conversation, read on its own.
- *
- * Deliberately a *page* rather than a thread switch. A subagent does have a thread of its own —
- * `thread/read` answers for it — but making it the shell's current thread tore the parent session
- * apart on the way in: the parent's items were cleared while the new thread loaded, so the roster
- * (and the card that had just been tapped) collapsed, and the subagent's own session naturally
- * contains no subagents, so "entering the agent" looked like the agent had disappeared. Reading it
- * into a page leaves the session the user came from exactly where it was.
- *
- * The transcript is rendered with the same cells as the chat, so a subagent's messages, commands
- * and patches look like they do everywhere else.
+ * A subagent conversation as a page, not a thread switch: switching clears the parent's
+ * items while the new thread loads and collapses the roster.
  */
 @Composable
 fun SubAgentThreadScreen(
@@ -59,8 +50,8 @@ fun SubAgentThreadScreen(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
     /**
-     * The parent's roster in spawn order. Navigation follows this list exactly, wrapping at both
-     * ends, the way `app/agent_navigation.rs` walks first-seen order.
+     * Parent's roster in spawn order; navigation wraps at both ends
+     * (`codex-rs/.../app/agent_navigation.rs`).
      */
     roster: List<AgentRosterEntry> = emptyList(),
     onSwitchAgent: (String) -> Unit = {},
@@ -143,8 +134,6 @@ fun SubAgentThreadScreen(
         }
     }
 
-    // The filter box makes the page's own header the natural place to switch agents from; the
-    // picker is the same roster the overview draws, narrowed to a query.
     if (pickerOpen) {
         AgentPickerSheet(
             show = true,
@@ -160,7 +149,6 @@ fun SubAgentThreadScreen(
     }
 }
 
-/** One header affordance of the agent-navigation cluster. */
 @Composable
 private fun AgentNavButton(
     icon: androidx.compose.ui.graphics.vector.ImageVector,

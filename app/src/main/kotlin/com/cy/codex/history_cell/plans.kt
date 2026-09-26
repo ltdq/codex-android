@@ -40,14 +40,8 @@ import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Tasks
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
-/**
- * The agent's proposed plan and the turn's checklist.
- *
- * Mirrors `codex-rs/tui/src/history_cell/plans.rs`: a plan body is styled differently from an
- * answer (it is a proposal, not a reply), and `Updated Plan` renders as a checkbox list whose
- * markers carry the step status.
- */
-
+/** The agent's proposed plan and the turn's checklist; mirrors
+ * `codex-rs/tui/src/history_cell/plans.rs`. */
 @Composable
 fun PlanItemCell(
     item: PlanItem,

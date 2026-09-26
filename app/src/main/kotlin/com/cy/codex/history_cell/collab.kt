@@ -53,17 +53,8 @@ import top.yukonga.miuix.kmp.icon.extended.Pause
 import top.yukonga.miuix.kmp.icon.extended.Play
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
-/**
- * Multi-agent work: a collab tool call and the one-line activity feed it produces.
- *
- * Mirrors the collab items the app-server streams (`CollabAgentToolCall`, `SubAgentActivity`):
- * every receiver thread is listed with the last state the server reported for it, and the prompt
- * that was handed to the agents stays visible as a quote.
- *
- * The rows are the way *into* a subagent. A subagent has no thread of its own to open from the
- * session list, so if the transcript — the one place it is mentioned — is not the way in, there is
- * no way in at all.
- */
+/** Multi-agent work: a collab tool call and its activity feed. The row is the only way into
+ * a subagent, which has no thread of its own. */
 @Composable
 fun CollabToolCallCell(
     item: CollabAgentToolCallItem,
@@ -80,8 +71,7 @@ fun CollabToolCallCell(
 ) {
     val colors = MiuixTheme.colorScheme
     val tone = collabCallTone(item.status)
-    // Receivers keep the order the server sent; any extra agents in `agentsStates` follow, sorted,
-    // so recomposition never reshuffles the list.
+    // Receivers keep server order; extra agents follow sorted, so recomposition never reshuffles.
     val threadIds =
         remember(item.receiverThreadIds, item.agentsStates) {
             (item.receiverThreadIds + item.agentsStates.keys.sorted()).distinct()
@@ -134,7 +124,6 @@ fun CollabToolCallCell(
     }
 }
 
-/** Compact agent-thread activity line: kind, path, state and the short thread id. */
 @Composable
 fun SubAgentActivityCell(
     item: SubAgentActivityItem,
@@ -306,7 +295,6 @@ private fun AgentStateRow(
     }
 }
 
-/** Quote block used for the prompt handed to the agents. */
 @Composable
 private fun QuotedBlock(
     text: String,

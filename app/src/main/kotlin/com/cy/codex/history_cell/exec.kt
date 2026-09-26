@@ -51,12 +51,8 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 import java.util.Locale
 
 /**
- * Command executions with their live output.
- *
- * Mirrors the exec cells in `codex-rs/tui/src/history_cell/exec.rs` and
- * `exec_cell/render.rs`: the command is the headline, the parsed command actions are labels above
- * the body, and the aggregated output is shown tail-first because a running command's interesting
- * lines are the last ones.
+ * Command executions with their live output; mirrors `codex-rs/tui/src/history_cell/exec.rs`
+ * and `exec_cell/render.rs`.
  */
 @Composable
 fun CommandExecutionCell(
@@ -140,7 +136,6 @@ fun CommandExecutionCell(
     }
 }
 
-/** The TUI's `Read` / `List` / `Search` / `Run` labels for one parsed command action. */
 @Composable
 @ReadOnlyComposable
 internal fun commandActionLabel(action: CommandAction): String = when (action) {
@@ -178,17 +173,8 @@ internal fun commandExecutionLabel(status: CommandExecutionStatus): String = whe
     CommandExecutionStatus.Declined -> stringResource(R.string.exec_cell_status_declined)
 }
 
-// ---------------------------------------------------------------------------------------------
-// Atoms shared by every tool cell in the transcript.
-// ---------------------------------------------------------------------------------------------
-
-/** Lines of tool output shown before the cell offers its "expand all" control. */
 internal const val OutputPreviewLines = 20
 
-/**
- * Small state pill used by every tool card. Mirrors the coloured status words the TUI prints
- * next to a tool call.
- */
 @Composable
 internal fun StatusChip(
     label: String,
@@ -213,7 +199,6 @@ internal fun StatusChip(
     )
 }
 
-/** Monospace label chip: parsed command actions, file paths, tool names. */
 @Composable
 internal fun MetaChip(
     text: String,
@@ -241,9 +226,8 @@ internal fun MetaChip(
 }
 
 /**
- * Tool output in a code block, collapsed to a head and a tail with a `… +N lines` marker between
- * them, as `codex-rs/tui/src/exec_cell/render.rs` previews a command. The expander below the block
- * still reveals the whole body.
+ * Tool output in a code block, collapsed to head/tail with a `… +N lines` marker;
+ * mirrors `codex-rs/tui/src/exec_cell/render.rs`.
  */
 @Composable
 internal fun LimitedCodeBlock(
@@ -294,7 +278,7 @@ internal fun LimitedCodeBlock(
     }
 }
 
-/** `412ms` / `6.1s` / `2m3s`, the durations the TUI prints for a finished tool call. */
+// TUI's durations for a finished tool call: 412ms / 6.1s / 2m3s.
 @Composable
 @ReadOnlyComposable
 internal fun formatToolDuration(durationMs: Long): String {
@@ -315,11 +299,7 @@ internal fun formatToolDuration(durationMs: Long): String {
 }
 
 /**
- * Whether one command is "exploring" rather than "running".
- *
- * Mirrors `ExecCell::is_exploring_call` in `codex-rs/tui/src/exec_cell/model.rs`: reads, listings
- * and searches the agent runs to understand the workspace group under an `Explored` heading instead
- * of one card each.
+ * Mirrors `ExecCell::is_exploring_call` in `codex-rs/tui/src/exec_cell/model.rs`.
  */
 internal fun CommandExecutionItem.isExploringCall(): Boolean =
     source == CommandExecutionSource.Agent &&

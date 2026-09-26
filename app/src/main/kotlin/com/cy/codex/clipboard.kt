@@ -5,22 +5,10 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.widget.Toast
 
-/**
- * System-clipboard helpers shared by `/copy`, the message cells, the code fences and the status
- * pages.
- *
- * The TUI copies through `codex-rs/tui/src/clipboard_copy.rs`, which has no Android backend (the
- * arboard calls return an error there). The phone uses the platform service instead; the shapes of
- * what gets copied — a whole agent message, one fenced block, the status report — stay aligned with
- * `chatwidget/interaction.rs::show_copy_picker`.
- */
+/** Mirrors `codex-rs/tui/src/clipboard_copy.rs`, which has no Android backend; the phone uses the
+ * platform service instead. */
 
-/**
- * Put [text] on the clipboard, tagging the clip with [label] and confirming it in a toast.
- *
- * Blank text is dropped rather than replacing the clip with nothing: every caller derives its text
- * from UI state, and "copy" on an empty cell should not silently destroy the previous clip.
- */
+/** Blank text is dropped: an empty copy must not silently destroy the previous clip. */
 fun copyToClipboard(context: Context, text: String, label: String) {
     if (text.isBlank()) return
     val clipboard = context.getSystemService(ClipboardManager::class.java) ?: return

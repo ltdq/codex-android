@@ -14,11 +14,6 @@ import org.junit.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
-/**
- * The subagent page has nothing of its own to read: a subagent is not a thread on the server, so its
- * page is folded back out of the *parent* transcript. These tests pin that fold — which items count
- * as "about this agent", and that the fold is total for an agent nothing mentions.
- */
 class SubAgentTimelineTest {
 
     private val main = "th_main"
@@ -51,8 +46,6 @@ class SubAgentTimelineTest {
         )
         val events = deriveSubAgentTimeline(items, sub)
         assertEquals(listOf("c1", "a1"), events.map { it.id })
-        // The fold carries the enum, not the wording: the row's title is resolved where string
-        // resources exist, so the test pins what the fold is actually responsible for.
         assertEquals(CollabAgentTool.SpawnAgent, events[0].tool)
         assertEquals("把动效对齐侧栏", events[0].detail)
         assertEquals(SubAgentActivityKind.Started, events[1].activity)
@@ -61,8 +54,6 @@ class SubAgentTimelineTest {
 
     @Test
     fun theServersOwnStateBeatsThePrompt() {
-        // A later collab update carries the agent's last reported message; that is newer evidence
-        // than the prompt it was spawned with, so it is what the row shows.
         val items = listOf(
             spawn(
                 "c1",
@@ -84,8 +75,6 @@ class SubAgentTimelineTest {
 
     @Test
     fun anAgentMentionedOnlyByItsStateIsStillFound() {
-        // `agentsStates` can name an agent the receiver list does not (a resumed agent), and the
-        // page must still show it rather than claim the transcript never mentioned it.
         val items = listOf(spawn("c1", listOf(other), states = mapOf(sub to CollabAgentState(AgentRunStatus.Running))))
         assertEquals(listOf("c1"), deriveSubAgentTimeline(items, sub).map { it.id })
     }

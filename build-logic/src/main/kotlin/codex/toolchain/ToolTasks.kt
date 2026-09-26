@@ -11,16 +11,6 @@ import java.io.File
 import java.nio.file.Files
 import javax.inject.Inject
 
-/**
- * Materialises a tool's source into a disposable directory:
- *  - submodules become a `git worktree` at the pinned commit (submodule stays clean),
- *  - tarballs are downloaded and extracted,
- *  - host-provided tools only get an (empty) source directory.
- *
- * Patches under `toolchain/patches/<tool>/` are applied on top. The work is
- * redone whenever the pinned commit, the patches or the recipe change; a
- * `.toolchain-source` marker records the fingerprint that produced the tree.
- */
 abstract class PrepareSourceTask : DefaultTask() {
     @get:Internal abstract val toolName: Property<String>
     @get:Internal abstract val source: Property<SourceSpec>
@@ -52,8 +42,7 @@ abstract class PrepareSourceTask : DefaultTask() {
             throw GradleException("$name: patch directory $patchDir does not exist")
         }
 
-        // Initialise missing submodules before fingerprinting: the git HEAD is
-        // part of the fingerprint and "missing" must not become a stable state.
+        // Init missing submodules before fingerprinting: "missing" must not become a stable state.
         if (spec.kind == SourceSpec.Kind.SUBMODULE) {
             ensureSubmodule(name, spec, rootDir, thirdPartyDir)
         }
@@ -101,11 +90,7 @@ abstract class PrepareSourceTask : DefaultTask() {
         }
     }
 
-    /**
-     * Clone the pinned submodule checkout. `git submodule update` cannot match
-     * gitlinks that only exist in the index (nothing is committed yet), so the
-     * URL and revision are resolved from `.gitmodules`/the index explicitly.
-     */
+    // `git submodule update` cannot match gitlinks that only exist in the index; resolve explicitly.
     private fun ensureSubmodule(name: String, spec: SourceSpec, rootDir: File, thirdPartyDir: File) {
         val repo = File(thirdPartyDir, spec.value)
         if (File(repo, ".git").exists()) return
@@ -225,12 +210,7 @@ abstract class PrepareSourceTask : DefaultTask() {
     }
 }
 
-/**
- * Runs a tool's recipe into its own prefix (`toolchain/build/prefix/<name>`).
- * The prefix doubles as the build cache: a `.toolchain-built` marker stores the
- * fingerprint (source revision + patches + recipe + NDK), and a prefix that
- * still matches is left untouched. Deleting the prefix forces a rebuild.
- */
+/** Prefix doubles as build cache; a fingerprint marker skips rebuilds until it changes. */
 abstract class ToolBuildTask : DefaultTask() {
     @get:Internal abstract val toolName: Property<String>
     @get:Internal abstract val source: Property<SourceSpec>

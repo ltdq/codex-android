@@ -66,27 +66,10 @@ import top.yukonga.miuix.kmp.squircle.squircleBackground
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
- * Bringing another agent's configuration into Codex: `externalAgentConfig/…`.
- *
- * Mirrors the `codex-rs/tui/src/external_agent_config_migration/` module, where a migration is a
- * conversation in three steps rather than one command. The phone keeps all three on one page
- * because each step is the input to the next: a user who cannot see what was found cannot decide
- * what to bring over.
- *
- * Detection is a *read* and the import is the only write on the page, which is why the first card
- * says so in as many words. The two buttons sit one tap apart and only one of them changes
- * anything, so the copy has to carry the difference rather than the layout.
- *
- * The page asks for its own data on the way in. Neither the detected items nor the history are in
- * [CatalogState] until something reads them, and a page that opened on an empty list with a
- * "detect" button would read as a page that had already answered.
- *
- * @param catalog the catalog the page reads: what detection found, the import history, and the
- *   progress of an import that is running right now.
- * @param onEvent where the page's events go — [AppEvent.ReloadExternalAgentConfig] on entry,
- *   [AppEvent.DetectExternalAgentConfig] and [AppEvent.ImportExternalAgentConfig].
- * @param onBack closes the page.
- * @param modifier layout modifier for the page frame.
+ * Bringing another agent's configuration into Codex, mirroring the
+ * `codex-rs/tui/src/external_agent_config_migration/` module: detect, choose, import, kept on one
+ * page because each step is input to the next. Detection is a read; import is the only write; the
+ * page loads its own data on the way in.
  */
 @Composable
 fun ExternalAgentImportScreen(
@@ -98,8 +81,7 @@ fun ExternalAgentImportScreen(
     val colors = MiuixTheme.colorScheme
     val items = catalog.externalAgentConfig
     val histories = catalog.externalAgentImportHistories
-    // The protocol has no per-item id: an import sends the detected items back whole, so selection
-    // is keyed by what identifies one item — type, scope and description.
+    // No per-item id on the wire: selection is keyed by type, scope and description.
     val selection =
         remember(items) {
             mutableStateMapOf<String, Boolean>().apply {
@@ -108,8 +90,7 @@ fun ExternalAgentImportScreen(
         }
     val selected = items.filter { selection[it.selectionKey()] == true }
 
-    // One event covers both reads — detection and the import history — and the app runs them as two
-    // independent requests, so a detection that fails still leaves the history on screen.
+    // One event covers both reads; a failed detection still leaves the history on screen.
     LaunchedEffect(Unit) { onEvent(AppEvent.ReloadExternalAgentConfig) }
 
     Column(modifier = modifier.fillMaxSize().background(colors.background)) {
@@ -159,22 +140,13 @@ fun ExternalAgentImportScreen(
     }
 }
 
-/**
- * The identity of one detected item inside this page.
- *
- * The description is part of the key because one working directory can produce several items of the
- * same type — a `SKILLS` row per skill — and keying on the type alone would make selecting one
- * select all of them.
- */
+/** Item identity within the page; the description is part of the key — a directory can produce
+ * several items of the same type (one `SKILLS` row per skill). */
 private fun ExternalAgentConfigMigrationItem.selectionKey(): String =
     "$itemType\u0000${cwd.orEmpty()}\u0000$description"
 
-/**
- * The detect step, and the sentence that makes it safe to press.
- *
- * Its button is secondary on purpose: detection is not what the page was opened to do, and a read
- * that writes nothing should not compete with the import for the page's one filled pill.
- */
+/** The detect step; its button is secondary — a read that writes nothing must not compete with
+ * the import for the page's one filled pill. */
 @Composable
 private fun MigrationDetectCard(onEvent: (AppEvent) -> Unit) {
     val colors = MiuixTheme.colorScheme
@@ -194,9 +166,6 @@ private fun MigrationDetectCard(onEvent: (AppEvent) -> Unit) {
             },
         )
 
-        // The guarantee gets a surface of its own rather than another paragraph: "this changes
-        // nothing" is the one thing a user has to believe before pressing a button two rows above
-        // the one that does change something.
         Row(
             modifier =
                 Modifier.fillMaxWidth()
@@ -244,17 +213,8 @@ private fun MigrationDetectCard(onEvent: (AppEvent) -> Unit) {
     }
 }
 
-/**
- * The choose step: what detection found, one switch per item, and the import.
- *
- * The draft selection lives here rather than in the catalog because it is exactly that — a draft.
- * Putting it back into [CatalogState] would make a half-made choice look like server state and
- * would be wrong the moment a second detection arrived.
- *
- * The import sits under the list rather than in the progress card below it. The progress card
- * exists only while an import runs, so an action living there would vanish with it — taking the
- * page's only write away at the exact moment it became available again.
- */
+/** The choose step; draft selection lives here, not in [CatalogState] — a half-made choice is not
+ * server state, and the progress card below vanishes with the run. */
 @Composable
 private fun MigrationSelectionCard(
     items: List<ExternalAgentConfigMigrationItem>,
@@ -340,8 +300,6 @@ private fun MigrationSelectionCard(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = UiConsts.Space4),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                // The two bulk actions are enabled only when they would change something: a pill
-                // that cannot do anything is how a list ends up looking broken rather than settled.
                 Button(
                     onClick = { onSelectAll(true) },
                     enabled = items.any { selected[it.selectionKey()] != true },
@@ -401,9 +359,6 @@ private fun MigrationSelectionCard(
         items.forEachIndexed { index, item ->
             if (index > 0)
                 HorizontalDivider(modifier = Modifier.padding(vertical = UiConsts.Space1))
-            // The type first because it is the protocol's own word for what the item is, and the
-            // description is the server's sentence about it; a row showing only one of the two
-            // either repeats the title or says nothing about what would be copied.
             val kind = migrationItemTypeLabel(item.itemType)
             val subtitle =
                 when {
@@ -442,7 +397,6 @@ private fun MigrationSelectionCard(
     }
 }
 
-/** The server's uppercase item type, as a label the page can show. */
 @Composable
 @ReadOnlyComposable
 private fun migrationItemTypeLabel(type: String): String =
@@ -462,18 +416,11 @@ private fun migrationItemTypeLabel(type: String): String =
         }
     )
 
-/**
- * What a running import is doing.
- *
- * Composed only while [CatalogState.externalAgentImport] is non-null, so the card's presence *is*
- * the "an import is running" state — there is no second boolean that could disagree with it and
- * leave a finished bar on screen.
- */
+/** Composed only while an import runs, so the card's presence *is* the running state. */
 @Composable
 private fun MigrationProgressCard(progress: ImportProgress) {
     val colors = MiuixTheme.colorScheme
-    // A total of zero is a server reporting progress before it knew the size. Clamping rather than
-    // dividing keeps the bar empty instead of drawing NaN across the card.
+    // Zero total = unknown size; clamp instead of divide, or the bar draws NaN.
     val fraction =
         if (progress.total > 0) {
             (progress.imported.toFloat() / progress.total.toFloat()).coerceIn(0f, 1f)
@@ -536,13 +483,7 @@ private fun MigrationProgressCard(progress: ImportProgress) {
     }
 }
 
-/**
- * The audit trail: every import the server has recorded, newest first.
- *
- * Read-only: a history row is the server's record of a completed import, and the page that would
- * add one by hand is not this one — `externalAgentConfig/import/recordHistory` takes per-item-type
- * results, not a free-form note.
- */
+/** The audit trail, newest first; read-only — history is the server's record of a completed import. */
 @Composable
 private fun MigrationHistoryCard(histories: List<ExternalAgentConfigImportHistory>) {
     val ordered = remember(histories) { histories.sortedByDescending { it.completedAtMs } }
@@ -624,13 +565,8 @@ private fun MigrationHistoryCard(histories: List<ExternalAgentConfigImportHistor
     }
 }
 
-/**
- * One recorded import.
- *
- * A read-only row rather than an ActionRow: there is nothing behind a history entry to open, and a
- * chevron would promise one. The timestamp is the only ordering key the row has, so it is rendered
- * in the user's locale and time zone instead of as the epoch milliseconds it arrives as.
- */
+/** One recorded import as a read-only row; the timestamp renders in the user's locale, not as
+ * the epoch ms it arrives as. */
 @Composable
 private fun MigrationHistoryRow(history: ExternalAgentConfigImportHistory) {
     val colors = MiuixTheme.colorScheme
@@ -675,15 +611,7 @@ private fun MigrationHistoryRow(history: ExternalAgentConfigImportHistory) {
     }
 }
 
-/**
- * A history row's timestamp, or `null` when the server sent none.
- *
- * `0` is the field's default on the wire, and formatting it would print 1970 under a row whose own
- * contents say it happened much later; a missing stamp is better than a wrong one.
- *
- * [ReadOnlyComposable] because the helper emits nothing of its own — it resolves a pattern resource
- * and formats a date with it — so it needs no composition group of its own.
- */
+/** Null for `0` — the wire default, which would print 1970. */
 @Composable
 @ReadOnlyComposable
 private fun migrationTimeLabel(at: Long): String? =

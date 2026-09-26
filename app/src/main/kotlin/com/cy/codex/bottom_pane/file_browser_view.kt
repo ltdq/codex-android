@@ -76,24 +76,9 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.window.WindowBottomSheet
 
 /**
- * The `fs/…` family as a page: one directory at a time, the files in it, and the writes the
- * protocol exposes on them.
- *
- * Mirrors the browsing half of `codex-rs/tui/src/bottom_pane/file_search_popup.rs` and the client
- * calls in `app_server_session/fs.rs`. The TUI walks a tree behind `@`-mention and the workspace
- * prompt and prints a hit list; a phone has the room to do what the terminal cannot — open a file,
- * see whether it is text, and make a folder without leaving the app — so this page is the walk plus
- * the preview, and the two share the navigation instead of each having their own.
- *
- * [picking] is the workspace-picker reading of the same page: the rows still navigate and the
- * preview still reads, but every write is hidden and the header offers [onPick] instead. A chooser
- * that can delete is a chooser that will eventually delete the wrong folder.
- *
- * @param path the directory the page opens on; walking below it stays inside this page.
- * @param picking true when the caller wants a directory chosen rather than browsed.
- * @param client the transport every `fs/…` call goes through.
- * @param onBack pops the page, once there is no folder left to ascend to inside it.
- * @param onPick reports the directory currently on screen; only used while [picking].
+ * The `fs/…` family as a page (codex-rs/tui/src/bottom_pane/file_search_popup.rs,
+ * app_server_session/fs.rs). [picking] hides every write — a chooser that can delete will
+ * eventually delete the wrong folder.
  */
 @Composable
 fun FileBrowserScreen(
@@ -106,8 +91,7 @@ fun FileBrowserScreen(
 ) {
     val colors = MiuixTheme.colorScheme
     val scope = rememberCoroutineScope()
-    // The walk lives here rather than in the shell: descending is this page looking at another
-    // path, and a pushed page per folder would make back mean two different things one tap apart.
+    // The walk lives here; a pushed page per folder would make back mean two things one tap apart.
     var current by remember(path) { mutableStateOf(path) }
     var entries by remember { mutableStateOf<List<FileMetadata>>(emptyList()) }
     var reading by remember { mutableStateOf(true) }
@@ -115,25 +99,20 @@ fun FileBrowserScreen(
     var writeFailure by remember { mutableStateOf<String?>(null) }
     var previewPath by remember { mutableStateOf<String?>(null) }
     var preview by remember { mutableStateOf<FilePreview?>(null) }
-    // `fs/getMetadata` is a separate call from `fs/readFile` on purpose: it answers for a path this
-    // client may not be allowed to open, which is exactly the case where the size and the kind are
-    // the only things worth knowing.
+    // `fs/getMetadata` answers for paths this client may not be allowed to open.
     var metadata by remember { mutableStateOf<FileMetadata?>(null) }
     var watched by remember { mutableStateOf<Set<String>>(emptySet()) }
     var sheet by remember { mutableStateOf<FileSheet?>(null) }
     // Bumped after every successful write to re-run the read below without moving [current].
     var revision by remember { mutableStateOf(0) }
 
-    // Resolved here because the effects below are not composable: they need the text only as the
-    // fallback for a failure the server reported without a message of its own.
     val readFailed = stringResource(R.string.file_browser_read_failed)
     val writeFailed = stringResource(R.string.file_browser_action_failed)
 
     LaunchedEffect(current, revision) {
         reading = true
         readFailure = null
-        // The preview belongs to the listing that produced it, and a re-read may have removed the
-        // file: keeping a stale path on screen would show contents of something that is gone.
+        // A re-read may have removed the file; drop the stale preview.
         previewPath = null
         client
             .readDirectory(current)
@@ -161,8 +140,6 @@ fun FileBrowserScreen(
             }
     }
 
-    // Folders first, then files, each by name: the order the TUI's file list uses, and the only
-    // order in which a folder can be read by eye.
     val rows =
         remember(entries) {
             entries.sortedWith(
@@ -170,8 +147,7 @@ fun FileBrowserScreen(
             )
         }
 
-    // Every write goes through here so that a refusal is reported in one place and the listing is
-    // re-read in one place: a write the page does not re-read is a listing that lies.
+    // Every write re-reads here, so a refusal is reported and the listing refreshed in one place.
     fun mutate(action: suspend () -> Result<Unit>, onSuccess: () -> Unit = {}) {
         scope.launch {
             action()
@@ -184,9 +160,7 @@ fun FileBrowserScreen(
         }
     }
 
-    // `watchId` is the path itself. `fs/unwatch` only carries the id back, so an id the page can
-    // recompute from what it is showing is the only kind that survives a recomposition or a
-    // re-entry; a counter would leave watches behind that nothing can name again.
+    // `watchId` is the path itself: `fs/unwatch` only echoes the id, and a recomputable id is the only kind that survives recomposition.
     fun toggleWatch(target: String) {
         val registered = target in watched
         scope.launch {
@@ -202,8 +176,6 @@ fun FileBrowserScreen(
         }
     }
 
-    // Back inside the walk first, out of the page second: three folders down, a back that threw the
-    // page away would lose the path the user was reading.
     val back: () -> Unit = {
         if (current == path) {
             onBack()
@@ -245,8 +217,6 @@ fun FileBrowserScreen(
                             tint = colors.primary,
                         )
                     }
-                    // The picker's decision sits in the header, next to the path it decides about:
-                    // it is what the page was opened for, and must not scroll away with the list.
                     if (picking) {
                         Spacer(Modifier.width(UiConsts.Space6))
                         Button(
@@ -527,9 +497,7 @@ fun FileBrowserScreen(
                             }
                             Button(
                                 onClick = {
-                                    // Read out now, so the write hits the path the user confirmed
-                                    // even if the
-                                    // page has moved on by the time the coroutine runs.
+                                    // Read out now so the write hits the path the user confirmed.
                                     val target = open.path
                                     val recursive = open.isDirectory
                                     sheet = null
@@ -537,10 +505,6 @@ fun FileBrowserScreen(
                                         action = {
                                             client.removePath(target, recursive = recursive)
                                         },
-                                        // Deleting the folder on screen would leave the page
-                                        // reading a path
-                                        // that is gone; the parent is the nearest thing still
-                                        // there.
                                         onSuccess = {
                                             if (target == current)
                                                 current = fileBrowserParent(target)
@@ -588,14 +552,7 @@ fun FileBrowserScreen(
     }
 }
 
-/**
- * The directory listing: one row per child, folders before files.
- *
- * A failure is drawn in the same place as an empty folder on purpose. `fs/readDirectory` answers a
- * forbidden directory and an empty one with the same empty list, so a page that showed "nothing
- * here" for both would be telling the user their folder is empty when it is merely unreadable — and
- * only one of those two is worth a retry.
- */
+/** Directory listing; a failure is drawn where an empty folder would be, because `fs/readDirectory` answers both with the same empty list. */
 @Composable
 private fun FileListingCard(
     rows: List<FileMetadata>,
@@ -751,13 +708,7 @@ private fun FileListingCard(
     }
 }
 
-/**
- * One open file: its text, or why there is none, plus the writes that apply to it.
- *
- * The text is shown on a code surface inside a bounded scroll box rather than in the page's own
- * scroll: a 4000-character file is taller than the phone, and letting it join the page's scroll
- * would push the listing and the actions off the top of the screen.
- */
+/** One open file, on a bounded code surface so a long file cannot push the actions off the page. */
 @Composable
 private fun FilePreviewCard(
     path: String,
@@ -806,8 +757,6 @@ private fun FilePreviewCard(
             insideMargin = PaddingValues(0.dp),
         )
         Spacer(Modifier.height(8.dp))
-        // The server's answer about the path itself, which is the only description available for a
-        // file this client is not allowed to read.
         if (metadata != null) {
             BasicComponent(
                 title = stringResource(R.string.file_browser_meta_kind),
@@ -920,7 +869,6 @@ private fun FilePreviewCard(
                 }
             }
         }
-        // Reading is not writing: a picker still gets the preview, just none of the buttons.
         if (!picking && body != null && body.failure == null) {
             Spacer(Modifier.height(UiConsts.Space8))
             EntryActions(
@@ -934,14 +882,6 @@ private fun FilePreviewCard(
     }
 }
 
-/**
- * The writes that apply to the folder on screen.
- *
- * New folder and new file are separate rows because they take different forms — a name, and a name
- * plus contents — while rename, copy, delete and watch are [EntryActions], the same set a single
- * file gets. The folder these act on is the one being browsed, which is the only folder the page
- * can be sure the user is looking at.
- */
 @Composable
 private fun FolderActionsCard(
     watched: Boolean,
@@ -1012,14 +952,7 @@ private fun FolderActionsCard(
     }
 }
 
-/**
- * The four writes one entry has, as buttons: watch, rename, copy, delete.
- *
- * One composable for a file and for a folder because both need exactly these four, and two copies
- * would drift on which one asks first. Watch only *registers* the watch: `fs/watch` makes the
- * server push `fs/changed` on the client's event stream, and this page does not subscribe to that
- * stream, so the button reports what was asked for rather than promising what will be shown.
- */
+/** The four writes one entry has: watch, rename, copy, delete. Watch only registers; this page reads no `fs/changed` stream. */
 @Composable
 private fun EntryActions(
     watched: Boolean,
@@ -1139,7 +1072,6 @@ private fun EntryActions(
     }
 }
 
-/** One line of a card's state: reading, empty, binary, or a refusal from the server. */
 @Composable
 private fun FileBrowserNote(text: String, error: Boolean = false) {
     val colors = MiuixTheme.colorScheme
@@ -1161,17 +1093,7 @@ private fun fileBrowserSize(bytes: Long): String =
         else -> stringResource(R.string.file_browser_size_bytes, bytes)
     }
 
-/**
- * One file, decoded far enough to show.
- *
- * `fs/readFile` has no ranged variant, so the whole file is already in memory by the time this is
- * built; the cap is what keeps a 40 MB log from becoming 40 MB of text in one composition.
- *
- * @param bytes the file's size on disk, which is all a binary file can be shown as.
- * @param text the decoded text, or `null` when the file is binary.
- * @param failure why the read failed, when it did; [text] is then `null` as well.
- * @param clipped whether [text] is only the beginning of a longer file.
- */
+/** One file decoded far enough to show; the cap keeps a 40 MB log from becoming 40 MB of text in one composition. */
 private data class FilePreview(
     val bytes: Long,
     val text: String?,
@@ -1179,36 +1101,22 @@ private data class FilePreview(
     val clipped: Boolean = false,
 )
 
-/**
- * The form the page has open over its listing, if any.
- *
- * One sealed type rather than six flags: exactly one can be open, and a `when` over this is what
- * makes the compiler say so when a seventh write is added to the protocol.
- */
+/** The form the page has open, if any; one sealed type makes the compiler say when a seventh write is missing. */
 private sealed interface FileSheet {
     /** Create a directory inside [directory]. `recursive` is always true, so one name is enough. */
     data class NewFolder(val directory: String) : FileSheet
 
-    /** Write a new text file into [directory]. */
     data class NewFile(val directory: String) : FileSheet
 
-    /**
-     * Rename [path] to a new name in its own directory.
-     *
-     * The protocol has no move, so this is `fs/copy` to that new name — and the original stays
-     * where it was, which the form says out loud. A rename that silently leaves a second copy
-     * behind is worse than one that admits it is a copy.
-     */
+    /** Rename [path] in its own directory; there is no move, so this is `fs/copy` and the original stays, which the form says out loud. */
     data class Rename(val path: String, val isDirectory: Boolean) : FileSheet
 
-    /** Copy [path] to an absolute destination, recursively when it is a directory. */
     data class Copy(val path: String, val isDirectory: Boolean) : FileSheet
 
     /** Delete [path] once the user has confirmed, because `fs/remove` cannot be undone. */
     data class Delete(val path: String, val isDirectory: Boolean) : FileSheet
 }
 
-/** Characters of a file the preview shows before it stops; a phone shows far fewer per screen. */
 private const val PreviewCharLimit = 4000
 
 /** Bytes scanned for a NUL before a file is called binary, the way the `file` tool decides. */
@@ -1217,22 +1125,13 @@ private const val PreviewByteScan = 512
 /** Ceiling on the preview box, so one long file cannot push every other card off the page. */
 private val PreviewMaxHeight = 320.dp
 
-/** Field key of every name field; a [FormSheet] reports the typed values under it. */
 private const val NameField = "name"
 
-/** Field key of the new-file form's contents. */
 private const val ContentField = "content"
 
-/** Field key of the copy form's destination path. */
 private const val DestinationField = "destination"
 
-/**
- * Decode [bytes] for the preview card.
- *
- * Binary is decided by a NUL in the first [PreviewByteScan] bytes rather than by UTF-8 validity: a
- * source file in a legacy encoding decodes to replacement characters and is still worth reading,
- * while a PNG has NULs at the front and does not become text by being pushed through a decoder.
- */
+/** Decode [bytes] for the preview; a NUL in the first [PreviewByteScan] bytes decides binary, not UTF-8 validity. */
 private fun fileBrowserPreview(bytes: ByteArray): FilePreview {
     val binary = bytes.take(PreviewByteScan).any { it == 0.toByte() }
     if (binary) return FilePreview(bytes = bytes.size.toLong(), text = null)
@@ -1244,16 +1143,13 @@ private fun fileBrowserPreview(bytes: ByteArray): FilePreview {
     )
 }
 
-/** Child of [directory] named [name], with exactly one separator between the two. */
 private fun fileBrowserJoin(directory: String, name: String): String =
     directory.trimEnd('/') + "/" + name.trimStart('/')
 
-/** Parent of [path], clamped at the filesystem root where there is nothing above to name. */
 private fun fileBrowserParent(path: String): String {
     val trimmed = path.trimEnd('/')
     if (trimmed.isEmpty() || trimmed == "/") return "/"
     return trimmed.substringBeforeLast('/', "").ifEmpty { "/" }
 }
 
-/** Last segment of [path], or the whole path when it has none — the filesystem root. */
 private fun fileBrowserName(path: String): String = fileName(path).ifEmpty { path }

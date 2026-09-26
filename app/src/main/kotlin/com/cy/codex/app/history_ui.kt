@@ -22,15 +22,7 @@ import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.ChevronBackward
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
-/**
- * The Ctrl+T transcript overlay, mirroring `app_backtrack.rs` `open_transcript_overlay`.
- *
- * Upstream the overlay is the committed transcript cells plus a live tail, paging older history
- * with `thread/items/list`; there is no separate "history browser" in the TUI — `Ctrl+T` and the
- * transcript are the same view, one of them read-only. This page is that view: the open thread's
- * own items, rendered with the same cells, minus the composer and status chrome. It never reads a
- * different thread and has nothing to search, so the old search/timeline browser is gone.
- */
+/** Ctrl+T transcript overlay, mirroring `codex-rs/.../app_backtrack.rs` `open_transcript_overlay`. */
 @Composable
 fun ThreadHistoryScreen(app: CodexApp, onBack: () -> Unit) {
     val session = app.widget.state
@@ -56,8 +48,7 @@ fun ThreadHistoryScreen(app: CodexApp, onBack: () -> Unit) {
         Transcript(
             items = session.items,
             diagnostics = session.diagnostics,
-            // Nothing streams into an overlay: the live transcript behind it owns the stream, and
-            // this copy is a snapshot of the same items, so no row is ever the streaming one.
+            // Snapshot of the live transcript behind it: nothing streams into the overlay.
             isStreaming = { false },
             streamFor = { null },
             plan = session.plan,

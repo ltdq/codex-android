@@ -3,12 +3,6 @@ package codex.toolchain
 import java.io.File
 import java.util.Properties
 
-/**
- * Cross-compilation environment derived from the Android NDK.
- *
- * Mirrors the environment the old `toolchain/env.sh` exported: the NDK clang
- * wrappers, the common optimization flags and the per-ABI triple names.
- */
 data class NdkEnv(
     val ndkHome: String,
     val ndkBin: String,

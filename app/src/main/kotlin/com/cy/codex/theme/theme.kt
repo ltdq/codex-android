@@ -14,14 +14,8 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.theme.ThemeController
 import androidx.core.content.edit
 
-/**
- * Client-side appearance preferences, independent of the app-server.
- *
- * The TUI reads its theme from `[tui] theme` and its motion from the terminal's own settings;
- * Android's equivalent is a SharedPreferences file the activity and the settings page both watch,
- * so a change applies without recreating the app. The values are global mutable state because the
- * theme wraps the whole composition, above the `CodexApp` that owns every other client setting.
- */
+/** Client-side appearance preferences; global mutable state because the theme wraps the whole
+ * composition, above `CodexApp`. */
 object Appearance {
     private const val FileName = "codex_ui"
     private const val KeyThemeMode = "theme_mode"
@@ -37,7 +31,6 @@ object Appearance {
     var showTooltips by mutableStateOf(true)
         private set
 
-    /** Read once, before the first composition; a missing key keeps the system default. */
     fun load(context: Context) {
         val prefs = context.getSharedPreferences(FileName, Context.MODE_PRIVATE)
         themeMode = when (prefs.getString(KeyThemeMode, null)) {
@@ -50,14 +43,7 @@ object Appearance {
         syncSystemAnimators()
     }
 
-    /**
-     * Follow the system animator scale alongside the in-app switch.
-     *
-     * Android's "Remove animations" accessibility setting zeroes `ANIMATOR_DURATION_SCALE`, which
-     * `ValueAnimator.areAnimatorsEnabled` reports; the TUI gets the same behavior from the terminal
-     * (or not at all), and the settings summary already promises it. Called on load and on every
-     * activity resume, because the developer option can flip while the app is alive.
-     */
+    /** The "Remove animations" setting zeroes `ANIMATOR_DURATION_SCALE`; re-sync on resume. */
     fun syncSystemAnimators() {
         Motion.reduced = reduceMotion || !android.animation.ValueAnimator.areAnimatorsEnabled()
     }
@@ -95,9 +81,7 @@ fun CodexTheme(
     content: @Composable () -> Unit,
 ) {
     val controller = remember(colorMode) { ThemeController(colorMode) }
-    // Reading the reduce-motion flag here makes the theme the one subscriber: a flip recomposes the
-    // tree and every `Motion` spec built in that pass is a snap. The flag itself is pushed into
-    // [Motion] by [Appearance]; this read is what schedules the pass.
+    // The theme is the flag's one subscriber: a flip recomposes the tree, so `Motion` specs snap.
     Appearance.reduceMotion
     MiuixTheme(controller = controller) {
         val colors = MiuixTheme.colorScheme

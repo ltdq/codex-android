@@ -19,13 +19,7 @@ import com.cy.codex.raisedSurface
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
-/**
- * The startup tips shown on a fresh conversation.
- *
- * Mirrors `tui/src/tooltips.rs`: the TUI's list, minus the entries that name terminal-only
- * affordances (`Ctrl+V`, keymaps, the status line, `codex resume`). Selection is random per fresh
- * conversation, and the appearance setting is the `tui.show_tooltips` switch.
- */
+/** Mirrors `tui/src/tooltips.rs` minus terminal-only entries; random per fresh conversation. */
 internal object Tooltips {
     val All: List<String> = listOf(
         "Use /compact when the conversation gets long to summarize history and free up context.",
@@ -51,11 +45,9 @@ internal object Tooltips {
         "Use /copy to copy the latest agent response as Markdown.",
     )
 
-    /** One tip, random per call; null when the list is empty. */
     fun random(random: kotlin.random.Random = kotlin.random.Random.Default): String? = All.randomOrNull(random)
 }
 
-/** The tip cell: a subdued card with a "Tip" label and one line of advice. */
 @Composable
 internal fun TooltipCell(item: TipItem, modifier: Modifier = Modifier) {
     val colors = MiuixTheme.colorScheme

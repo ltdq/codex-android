@@ -56,12 +56,9 @@ import top.yukonga.miuix.kmp.squircle.squircleSurface
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
- * Directory browser behind the workspace picker.
- *
- * Mirrors the `onboarding/directory_trust.rs` + `trust_directory.rs` folder prompt and
- * `additional_dirs.rs`'s "extra writable root" flow: the TUI asks for consent on a folder it
- * already knows, the phone lets the user walk the tree with `fs/readDirectory` before consenting.
- * The screen owns no navigation state of its own beyond [currentPath].
+ * Directory browser behind the workspace picker, mirroring the TUI's folder prompt
+ * (`onboarding/directory_trust.rs`, `trust_directory.rs`, `additional_dirs.rs`): the TUI asks for
+ * consent on a folder it already knows; the phone walks the tree with `fs/readDirectory` first.
  */
 @Composable
 fun WorkspacePickerScreen(
@@ -78,8 +75,7 @@ fun WorkspacePickerScreen(
     var entries by remember { mutableStateOf<List<FileMetadata>>(emptyList()) }
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
-    // Resolved here because the effect below is not a composable; it only needs the text once, when
-    // a read fails without a message of its own.
+    // Resolved here: only needed when a read fails without its own message.
     val readError = stringResource(R.string.workspace_picker_read_error)
 
     LaunchedEffect(currentPath) {

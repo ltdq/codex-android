@@ -1,12 +1,6 @@
 package com.cy.codex.bottom_pane.mentions_v2
 
-/**
- * One row of the composer's `@` popup.
- *
- * Mirrors the candidate shape in `codex-rs/tui/src/bottom_pane/mentions_v2/candidate.rs`: a display
- * label, the text the token is replaced with, and the kind that earns its own tag. The client still
- * submits plain text, so [insert] is spliced verbatim after `@`.
- */
+/** One row of the composer's `@` popup (codex-rs/tui/src/bottom_pane/mentions_v2/candidate.rs); [insert] is spliced verbatim after `@`. */
 data class MentionSuggestion(
     val insert: String,
     val label: String,

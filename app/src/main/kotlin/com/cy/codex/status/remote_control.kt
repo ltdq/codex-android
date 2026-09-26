@@ -60,17 +60,9 @@ import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.squircle.squircleBackground
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
-/**
- * Remote control: the relay, the pairing flow, and the devices paired with this machine.
- *
- * Mirrors `codex-rs/tui/src/status/remote_connection.rs` and `app/daemon_menu.rs`: the terminal
- * puts the relay's state on the `/status` card and the pairing commands in the daemon menu, and a
- * phone reads both in one glance, so this page is the two halves together rather than two surfaces.
- *
- * The page keeps no state of its own. Every value it prints comes out of [CatalogState] and every
- * write leaves as an [AppEvent], which keeps the shell's reducer the only thing that talks to the
- * server and lets this page be recomposed from the catalog alone.
- */
+/** Relay, pairing and paired devices — the TUI's `status/remote_connection.rs` and
+ * `app/daemon_menu.rs` on one page. No local state: reads from [CatalogState],
+ * writes as [AppEvent]. */
 @Composable
 fun RemoteControlScreen(
     catalog: CatalogState,
@@ -135,15 +127,8 @@ fun RemoteControlScreen(
     }
 }
 
-/**
- * The relay's state, and the switch that turns it on.
- *
- * The switch sits in this card rather than in one of its own because it is the only control the
- * state has: a card whose whole body is one switch would hide the four facts a user needs in order
- * to decide about it. When nothing has been read yet the card shows an empty state instead of the
- * switch — an unchecked switch over an unknown link would report the machine as off, which is the
- * one thing this client does not know at that point.
- */
+/** Relay state plus the switch that turns it on; unknown state shows an empty card,
+ * because an unchecked switch would report the machine as off. */
 @Composable
 private fun ConnectionCard(
     status: RemoteControlStatus?,
@@ -278,15 +263,8 @@ private fun ConnectionCard(
     }
 }
 
-/**
- * Pairing: the code another device claims.
- *
- * Three actions, because the protocol gives three: mint a code, ask whether it has been taken, and
- * mint a different one. The middle one is a *poll* rather than a subscription — nothing pushes the
- * claim — so it is a button the user presses rather than something the page waits on; a page that
- * polled on its own would have to choose an interval, and a code read out loud is not something to
- * hammer the relay about.
- */
+/** Mint, poll, re-mint — the three protocol actions. The poll is a button: nothing pushes
+ * the claim, and a self-polling page would have to pick an interval. */
 @Composable
 private fun PairingCard(
     code: String?,
@@ -384,17 +362,8 @@ private fun PairingCard(
     }
 }
 
-/**
- * The devices that have paired with this machine, each with the one action that matters.
- *
- * A tap expands a row instead of opening a sheet, the way the project list behaves: there is one
- * action per device and it is destructive, so it stays behind a deliberate tap rather than sitting
- * in the path of a scroll.
- *
- * The list is addressed by environment — `remoteControl/client/list` takes an `environmentId` — so
- * a link that has no environment at all cannot have a list, and the app skips that read instead of
- * asking with a blank id.
- */
+/** Tap expands instead of opening a sheet: the one action per device is destructive. The
+ * list is keyed by `environmentId`; a link without one skips the read. */
 @Composable
 private fun PairedDevicesCard(
     clients: List<RemoteControlClient>,
@@ -489,12 +458,8 @@ private fun PairedDevicesCard(
     }
 }
 
-/**
- * One paired device: what it is, when it was last seen, and its revoke action.
- *
- * The title falls back to the client id because `displayName` is optional on the wire, and a row
- * with no title at all would leave the user choosing which device to cut off by elimination.
- */
+/** Title falls back to the client id: `displayName` is optional on the wire, and a row
+ * with no title leaves the user guessing which device to cut off. */
 @Composable
 private fun PairedDeviceRow(
     client: RemoteControlClient,
@@ -545,14 +510,8 @@ private fun PairedDeviceRow(
     }
 }
 
-/**
- * What a device is, as one line: platform, model and OS version.
- *
- * The three fields are optional on the wire, and one the server did not send is left out rather
- * than rendered as a gap: `platform · deviceModel · osVersion` with a hole in it reads as a device
- * whose model is unknown to the server, which is a different claim from "this client never told
- * us".
- */
+/** Optional wire fields are joined as-is; a hole would read as "the server does not know
+ * the model" rather than "the client never told us". */
 @Composable
 private fun deviceSummary(client: RemoteControlClient): String? {
     val parts =
@@ -566,15 +525,8 @@ private fun deviceSummary(client: RemoteControlClient): String? {
         ?.joinToString(stringResource(R.string.remote_control_device_separator))
 }
 
-/**
- * When a device was last seen, as the framework's own relative age.
- *
- * `DateUtils` is used rather than a resource of this page's own because the answer is a *duration*,
- * and the platform already carries that ladder in every language it supports; re-deriving it here
- * would be a second, worse copy that only ever handles the locales this app ships. A device that
- * has never checked in has no timestamp at all, and says so in words rather than by leaving the
- * column empty.
- */
+/** `DateUtils`'s relative age: the platform carries the duration ladder in every language.
+ * A device that never checked in says so instead of leaving the column empty. */
 @Composable
 private fun lastSeenAge(lastSeenAt: Long?): String =
     lastSeenAt?.let { seen ->
@@ -586,13 +538,8 @@ private fun lastSeenAge(lastSeenAt: Long?): String =
             .toString()
     } ?: stringResource(R.string.remote_control_device_never_seen)
 
-/**
- * The explanatory paragraph of a card on this page.
- *
- * One composable so every note on the page shares a size, a leading and a colour. Each sentence it
- * is given is a claim about what the protocol does, which is why the text is always a string
- * resource rather than assembled at the call site.
- */
+/** One composable so every note shares size and colour; protocol claims stay string
+ * resources. */
 @Composable
 private fun RemoteControlNote(text: String) {
     Text(
@@ -606,13 +553,8 @@ private fun RemoteControlNote(text: String) {
     )
 }
 
-/**
- * Fold the relay's connection state into the tone the theme knows how to colour.
- *
- * Kept on this page for the same reason the projects page keeps its own environment mapping: which
- * protocol state means which tone is the *surface's* reading, and putting one page's reading of
- * "errored" into the shared palette would let it re-colour an unrelated state on another page.
- */
+/** Page-local mapping: which protocol state means which tone; the shared palette must not
+ * re-colour another page's state. */
 private fun RemoteControlConnectionStatus.tone(): ThreadStatusTone =
     when (this) {
         RemoteControlConnectionStatus.Connected -> ThreadStatusTone.Done

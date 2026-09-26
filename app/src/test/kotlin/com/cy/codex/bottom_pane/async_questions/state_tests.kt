@@ -5,12 +5,7 @@ import org.junit.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
-/**
- * The answer framing and the option bounds the inline-question editor applies.
- *
- * Both mirror upstream and neither needs a screen: `codex-rs/context-fragments/src/answered_question.rs`
- * for the quote, `codex-rs/tui/src/bottom_pane/async_questions/state.rs::append` for the bounds.
- */
+/** Mirrors codex-rs/context-fragments/src/answered_question.rs and tui/src/bottom_pane/async_questions/state.rs::append. */
 class AsyncQuestionsTest {
 
     @Test
@@ -31,7 +26,7 @@ class AsyncQuestionsTest {
 
     @Test
     fun `question is cut at 512 utf8 bytes on a character boundary`() {
-        // Two bytes each: 512 bytes is 256 of them, and the 257th is left out whole.
+        // é is two bytes; 512 bytes is exactly 256 of them.
         val question = "é".repeat(300)
         val rendered = AsyncQuestions.answeredText(question, "x")
         assertEquals("> ${"é".repeat(256)}\n\nx", rendered)
@@ -39,7 +34,7 @@ class AsyncQuestionsTest {
 
     @Test
     fun `four-byte characters are not split`() {
-        // Four bytes each: 128 fit, the 129th does not.
+        // 😀 is four bytes; 128 fit in 512.
         val question = "😀".repeat(200)
         val rendered = AsyncQuestions.answeredText(question, "x")
         assertEquals("> ${"😀".repeat(128)}\n\nx", rendered)

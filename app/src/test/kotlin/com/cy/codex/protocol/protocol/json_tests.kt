@@ -15,10 +15,6 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-/**
- * The JSON layer is the one piece of the protocol without a generated schema to be correct
- * against. These tests pin the transport behaviour the wire code relies on.
- */
 class JsonTest {
 
     @Test
@@ -73,9 +69,7 @@ class JsonTest {
 
     @Test
     fun unquotedTokensStayInert() {
-        // kotlinx keeps an unquoted non-string token verbatim without validating it as a number or
-        // literal. The typed readers treat it as absent, so a malformed token can never become a
-        // string or a number in the UI.
+        // kotlinx keeps unquoted tokens verbatim; typed readers treat them as absent.
         val token = Json.parse("tru") as JsonPrimitive
         assertNull(token.stringOrNull())
         assertNull(token.takeIf { !it.isString }?.longOrNull)
@@ -89,8 +83,7 @@ class JsonTest {
 
     @Test
     fun numbersKeepTheirExactLiteral() {
-        // The handwritten parser held every number as Double, so this id came back 9007199254740992
-        // and writing a config value back corrupted any integer past 2^53.
+        // Double-based parsing corrupted integers past 2^53 when writing config back.
         assertEquals("9007199254740993", Json.write(Json.parse("9007199254740993")))
         assertEquals(100000.0, (Json.parse("1e5") as JsonPrimitive).doubleOrNull)
         assertEquals("1", Json.write(json(1.0)))

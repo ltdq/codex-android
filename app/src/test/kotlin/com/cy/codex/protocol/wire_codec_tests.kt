@@ -19,13 +19,7 @@ import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-/**
- * The `item` branches of [WireCodec] that only the server can exercise.
- *
- * Every case here is a field the transcript reads, fed the shape the app-server actually sends
- * (`app-server-protocol/src/protocol/v2/item.rs`): the point is to fail when a parser drifts back
- * to a field name the wire does not have, which a type-only schema check cannot catch.
- */
+/** `item` branches fed the app-server's shapes (app-server-protocol/src/protocol/v2/item.rs). */
 class WireCodecTest {
     private fun item(json: String) = WireCodec.item(Json.parse(json))
 

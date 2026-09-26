@@ -1,14 +1,10 @@
 package com.cy.codex.protocol.protocol.v2
 
 /**
- * `thread/queue/…` — messages submitted while a turn is already running.
- *
- * Mirrors `schema/typescript/v2/ThreadQueue*.ts`.
- *
- * The queue lives on the server, not in the client. `thread/queue/changed` carries only a thread id
- * — it is a *poke*, not a payload — so the client answers it by calling `thread/queue/list` and
- * replacing its copy. Modelling the notification as "here are the queued messages" is a trap: the
- * server never sends them, and a client that believes it does shows a stale queue forever.
+ * `thread/queue/…` — messages submitted while a turn is already running
+ * (schema/typescript/v2/ThreadQueue*.ts). The queue lives on the server; `thread/queue/changed`
+ * is a *poke* with no payload, so the client answers with `thread/queue/list` and replaces its
+ * copy — modelling it as "here are the queued messages" would show a stale queue forever.
  */
 
 /** One queued user submission. */

@@ -12,11 +12,6 @@ fun taskSuffix(name: String): String =
         .filter { it.isNotEmpty() }
         .joinToString("") { part -> part.replaceFirstChar { it.uppercaseChar() } }
 
-/**
- * Registers one `prepare<Name>` / `build<Name>` task pair per tool plus the
- * `packJniLibs` aggregator. Recipes live in the consuming build script; this
- * extension only supplies paths, the NDK environment and task wiring.
- */
 open class ToolchainExtension(private val project: Project) {
     private val specs = mutableListOf<ToolSpec>()
 

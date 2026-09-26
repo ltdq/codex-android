@@ -5,19 +5,9 @@ import kotlinx.serialization.json.JsonNull
 
 /**
  * The long tail: search, review, attachments, terminals, projects, environments, remote control,
- * verification, external-agent migration and the diagnostics probe.
- *
- * Mirrors the matching `schema/typescript/v2/….ts` files. These are grouped in one file because each
- * family is a handful of small records, and splitting them further would produce files shorter than
- * their own headers — the domain files next door (`config.kt`, `fs.kt`, `queue.kt`, `catalog.kt`)
- * carry the families that are big enough to earn one.
+ * verification, external-agent migration and diagnostics (schema/typescript/v2/….ts).
  */
 
-// ---------------------------------------------------------------------------------------------
-// fuzzy file search
-// ---------------------------------------------------------------------------------------------
-
-/** `fuzzyFileSearch` — a one-shot search. */
 data class FuzzyFileSearchParams(
     val query: String,
     val roots: List<String> = emptyList(),
@@ -28,17 +18,14 @@ data class FuzzyFileSearchResponse(val files: List<FuzzyFileSearchResult> = empt
 
 data class FuzzyFileSearchResult(
     val path: String,
-    /** `file` or `directory`. */
     val matchType: String = "file",
     val fileName: String = "",
-    /** Root the match was found under; `fuzzyFileSearch` is always rooted. */
     val root: String = "",
     /** Match score; an unsigned integer upstream, not a fraction. */
     val score: Long = 0L,
     val indices: List<Int>? = null,
 )
 
-/** `fuzzyFileSearch/sessionStart|sessionUpdate|sessionStop` — the incremental variant. */
 data class FuzzyFileSearchSessionStartParams(
     val sessionId: String,
     val roots: List<String> = emptyList(),
@@ -51,32 +38,21 @@ data class FuzzyFileSearchSessionUpdateParams(
 
 data class FuzzyFileSearchSessionStopParams(val sessionId: String)
 
-/** `fuzzyFileSearch/sessionUpdated`. */
 data class FuzzyFileSearchSessionUpdatedNotification(
     val sessionId: String,
     val query: String = "",
     val files: List<FuzzyFileSearchResult> = emptyList(),
 )
 
-/** `fuzzyFileSearch/sessionCompleted`. */
 data class FuzzyFileSearchSessionCompletedNotification(val sessionId: String)
 
-// ---------------------------------------------------------------------------------------------
-// review
-// ---------------------------------------------------------------------------------------------
-
-/** What a review should look at. */
 sealed interface ReviewTarget {
-    /** Uncommitted changes in the working tree. */
     data object UncommittedChanges : ReviewTarget
 
-    /** The changes a named branch introduced relative to its base. */
     data class BaseBranch(val branch: String) : ReviewTarget
 
-    /** One commit. */
     data class Commit(val sha: String, val title: String? = null) : ReviewTarget
 
-    /** Free-form instructions instead of a diff range. */
     data class Custom(val instructions: String) : ReviewTarget
 }
 
@@ -91,29 +67,21 @@ data class ReviewStartResponse(
     val turn: Turn = Turn(id = ""),
 )
 
-/** `EnteredReviewModeNotification`-equivalent payload used by the transcript cell. */
 data class ReviewModeEntered(
     val threadId: String,
     val target: String,
 )
 
-// ---------------------------------------------------------------------------------------------
-// attachments, terminals, timeline, search
-// ---------------------------------------------------------------------------------------------
-
 data class ThreadAttachmentAddParams(
     val threadId: String,
-    /** `image`, `file`, … — decides how the item is rendered. */
     val attachmentType: String,
     val identityKey: String,
     val payload: JsonElement = JsonNull,
 )
 
 /**
- * An attachment's `attachmentType` as far as this client distinguishes it.
- *
- * The wire field is a plain string, and a client only sets it: the server is the one that decides
- * how to interpret the payload, so anything unrecognised is carried through as [Other].
+ * An attachment's `attachmentType` as far as this client distinguishes it. The wire field is a
+ * plain string and a client only sets it — the server decides how to interpret the payload.
  */
 enum class AttachmentType(val wire: String) {
     Image("image"),
@@ -126,17 +94,14 @@ enum class AttachmentType(val wire: String) {
     }
 }
 
-/** The created or existing attachment. */
 data class ThreadAttachment(
     val id: String,
     val attachmentType: String = "file",
     val identityKey: String = "",
-    /** Type-specific body; opaque to this client. */
     val payload: JsonElement = JsonNull,
     val createdAt: Long = 0L,
 )
 
-/** `thread/attachment/add` — whether the call created the record or found the existing one. */
 enum class ThreadAttachmentAddOutcome(val wire: String) {
     Created("created"),
     Existing("existing"),
@@ -170,7 +135,6 @@ data class ThreadAttachmentRemoveParams(
     val identityKey: String,
 )
 
-/** `thread/attachment/updated`. */
 data class ThreadAttachmentUpdatedNotification(
     val threadId: String,
     val attachmentType: String = "",
@@ -190,7 +154,6 @@ enum class ThreadAttachmentOperation(val wire: String) {
     }
 }
 
-/** `thread/backgroundTerminals/list`. */
 data class ThreadBackgroundTerminalsListParams(
     val threadId: String,
     val cursor: String? = null,
@@ -198,10 +161,8 @@ data class ThreadBackgroundTerminalsListParams(
 )
 
 /**
- * One long-lived terminal a turn left running.
- *
- * The resource numbers are optional because a terminal that has just started, or one whose process
- * the OS no longer reports, sends neither.
+ * One long-lived terminal a turn left running. The resource numbers are optional: a just-started
+ * terminal, or one whose process the OS no longer reports, sends neither.
  */
 data class ThreadBackgroundTerminal(
     val itemId: String,
@@ -225,7 +186,6 @@ data class ThreadBackgroundTerminalsTerminateParams(
 
 data class ThreadBackgroundTerminalsTerminateResponse(val terminated: Boolean = false)
 
-/** `thread/timeline/list` — the sparse "what happened when" index behind the scrubber. */
 data class ThreadTimelineListParams(
     val threadId: String,
     val cursor: String? = null,
@@ -233,11 +193,9 @@ data class ThreadTimelineListParams(
 )
 
 /**
- * One entry of `thread/timeline/list`, in canonical rollout order.
- *
- * A tagged union upstream rather than a flat record, so it is one here too: an item entry carries
- * the item, a turn boundary carries only its id and timing. [position] is the entry's index in the
- * rollout and is the only field every variant has.
+ * One entry of `thread/timeline/list`, in canonical rollout order. A tagged union upstream, so
+ * one here: an item entry carries the item, a turn boundary only its id and timing. [position]
+ * is the rollout index — the only field every variant has.
  */
 sealed interface TimelineEntry {
     val position: Long
@@ -270,7 +228,6 @@ sealed interface TimelineEntry {
     ) : TimelineEntry
 }
 
-/** `thread/timeline/list` response envelope. */
 data class ThreadTimelineListResponse(
     val data: List<TimelineEntry> = emptyList(),
     val nextCursor: String? = null,
@@ -278,11 +235,8 @@ data class ThreadTimelineListResponse(
 )
 
 /**
- * One durable realtime fact in the timeline.
- *
- * The wire type flattens its tagged content into the item, so the variant payloads are optional
- * fields here: `type` is the discriminant, and which of [role]/[text]/[turnId]/[itemId]/[outcome]
- * are set follows from it.
+ * One durable realtime fact in the timeline. The wire flattens the tagged content into the item,
+ * so the variant payloads are optional fields here and `type` is the discriminant.
  */
 data class ThreadRealtimeItem(
     val id: String,
@@ -295,7 +249,6 @@ data class ThreadRealtimeItem(
     val outcome: String? = null,
 )
 
-/** `thread/search` — find threads by text. */
 data class ThreadSearchParams(
     val searchTerm: String,
     val cursor: String? = null,
@@ -306,7 +259,6 @@ data class ThreadSearchParams(
     val sourceKinds: List<String>? = null,
 )
 
-/** `thread/searchOccurrences` — find matches *inside* one thread. */
 data class ThreadSearchOccurrencesParams(
     val threadId: String,
     val searchTerm: String,
@@ -314,7 +266,6 @@ data class ThreadSearchOccurrencesParams(
     val limit: Int? = null,
 )
 
-/** UTF-16 code-unit range within a snippet. */
 data class ThreadSearchTextRange(val start: Int = 0, val end: Int = 0)
 
 data class ThreadSearchOccurrence(
@@ -332,17 +283,12 @@ data class ThreadSearchOccurrencesResponse(
     val nextCursor: String? = null,
 )
 
-// ---------------------------------------------------------------------------------------------
-// thread metadata / settings / memory mode
-// ---------------------------------------------------------------------------------------------
-
 data class ThreadMetadataUpdateParams(
     val threadId: String,
     val projectId: String? = null,
     val daybreakEnabled: Boolean? = null,
 )
 
-/** `thread/settings/update` — the per-thread half of the settings the composer changes. */
 data class ThreadSettingsUpdateParams(
     val threadId: String,
     val model: String? = null,
@@ -360,7 +306,6 @@ data class ThreadSettingsUpdateParams(
     val multiAgentMode: String? = null,
 )
 
-/** `turn/settings/update` — the same knobs, scoped to one turn. */
 data class TurnSettingsUpdateParams(
     val threadId: String,
     val turnId: String,
@@ -371,7 +316,6 @@ data class TurnSettingsUpdateParams(
     val serviceTier: String? = null,
 )
 
-/** Mirrors upstream `ThreadMemoryMode`: the server has two modes, not three. */
 enum class ThreadMemoryMode(val wire: String) {
     Enabled("enabled"),
     Disabled("disabled"),
@@ -389,10 +333,8 @@ data class ThreadMemoryModeSetParams(
 )
 
 /**
- * `thread/increment_elicitation` and `thread/decrement_elicitation`.
- *
- * Both answer with the counter *after* the change plus whether timeout accounting is currently
- * paused, which is what a status line reports while an open-form question is outstanding.
+ * `thread/increment_elicitation` and `thread/decrement_elicitation`: both answer with the
+ * counter *after* the change plus whether timeout accounting is paused.
  */
 data class ElicitationCountResponse(
     val count: Int = 0,
@@ -400,12 +342,9 @@ data class ElicitationCountResponse(
 )
 
 /**
- * One chunk of microphone audio for `thread/realtime/appendAudio`.
- *
- * [data] is base64 PCM; the sample rate and channel count travel with it because the server does
- * not assume the client's capture format. [itemId] addresses the transcript item the audio belongs
- * to when the client already knows it, and [samplesPerChannel] lets the server size a partial
- * final chunk.
+ * One chunk of microphone audio for `thread/realtime/appendAudio`: [data] is base64 PCM, and the
+ * sample rate and channel count travel with it because the server does not assume the client's
+ * capture format. [samplesPerChannel] sizes a partial final chunk.
  */
 data class ThreadRealtimeAudioChunk(
     val data: String,
@@ -420,11 +359,6 @@ data class ThreadRealtimeAppendAudioParams(
     val audio: ThreadRealtimeAudioChunk,
 )
 
-// ---------------------------------------------------------------------------------------------
-// collaboration modes, diagnostics, feedback
-// ---------------------------------------------------------------------------------------------
-
-/** `collaborationMode/list` entry. */
 data class CollaborationModeEntry(
     val id: String,
     val mode: CollaborationMode = CollaborationMode.Default,
@@ -436,13 +370,11 @@ data class CollaborationModeEntry(
 
 data class CollaborationModeListResponse(val data: List<CollaborationModeEntry> = emptyList())
 
-/** `server/diagnostics` — a content-free probe used by the connection banner. */
 data class ServerDiagnosticsResponse(
     val process: ServerDiagnosticsProcess = ServerDiagnosticsProcess(),
     val gauges: List<ServerDiagnosticsGauge> = emptyList(),
 )
 
-/** The server process behind the connection: id plus the two memory readings it can report. */
 data class ServerDiagnosticsProcess(
     val id: Long = 0L,
     val residentMemoryBytes: Long? = null,
@@ -454,7 +386,6 @@ data class ServerDiagnosticsGauge(
     val value: Long = 0L,
 )
 
-/** `feedback/upload`. */
 data class FeedbackUploadParams(
     val classification: String,
     val reason: String? = null,
@@ -464,15 +395,10 @@ data class FeedbackUploadParams(
     val tags: Map<String, String>? = null,
 )
 
-/** `feedback/upload` response: which rollout the report was filed against. */
 data class FeedbackUploadResponse(
     val threadId: String = "",
     val promptHash: String? = null,
 )
-
-// ---------------------------------------------------------------------------------------------
-// projects and environments
-// ---------------------------------------------------------------------------------------------
 
 data class ProjectEntry(
     val id: String,
@@ -500,17 +426,14 @@ data class ProjectDeleteParams(val projectId: String)
 
 data class ProjectMoveParams(
     val projectId: String,
-    /** Where in the user's ordering the project should land. */
     val position: Int = 0,
 )
 
 data class ProjectImportParams(val path: String)
 
 /**
- * An environment a loaded thread is bound to, independent of whether it is connected.
- *
- * `cwd` and `runtimeWorkspaceRoots` are file URIs on the wire; they are plain strings here because
- * nothing on this side parses them, only displays them.
+ * An environment a loaded thread is bound to. `cwd`/`runtimeWorkspaceRoots` are file URIs on
+ * the wire; plain strings here because nothing on this side parses them.
  */
 data class ThreadEnvironment(
     val environmentId: String,
@@ -518,21 +441,16 @@ data class ThreadEnvironment(
     val runtimeWorkspaceRoots: List<String> = emptyList(),
 )
 
-/** `environment/add` — register an exec server as an environment. */
 data class EnvironmentAddParams(
     val environmentId: String,
     val execServerUrl: String,
-    /** Null leaves the server's own connect timeout in place. */
     val connectTimeoutMs: Long? = null,
 )
 
-/** `environment/info` — one environment, named by id. There is no "list every environment" call. */
 data class EnvironmentInfoParams(val environmentId: String)
 
 data class EnvironmentShellInfo(
-    /** Stable shell name, for example `zsh`, `bash`, `powershell`, `sh` or `cmd`. */
     val name: String = "",
-    /** Target-native shell executable path or command name. */
     val path: String = "",
 )
 
@@ -542,15 +460,12 @@ data class EnvironmentInfoResponse(
     val cwd: String? = null,
 )
 
-/** `environment/status` — inspect one environment without starting or recovering it. */
 data class EnvironmentStatusParams(val environmentId: String)
 
 /**
- * How an environment looks right now.
- *
- * [Disconnected] is not terminal: a later ordinary use may recover it, and this call deliberately
- * does not try. [Unknown] means the id is not configured at all, which is a different problem from
- * one that is merely down.
+ * How an environment looks right now. [Disconnected] is not terminal — later ordinary use may
+ * recover it, and this call deliberately does not try. [Unknown] means the id is not configured
+ * at all, which differs from one that is merely down.
  */
 enum class EnvironmentStatusKind(val wire: String) {
     Ready("ready"),
@@ -567,21 +482,14 @@ enum class EnvironmentStatusKind(val wire: String) {
 
 data class EnvironmentStatusResponse(
     val status: EnvironmentStatusKind = EnvironmentStatusKind.Unknown,
-    /** Human-readable detail, present for `disconnected` and `unknown` only. */
     val error: String? = null,
 )
 
-/** `thread/environment/connected` and `thread/environment/disconnected`. */
 data class EnvironmentConnectionNotification(
     val threadId: String,
     val environmentId: String,
 )
 
-// ---------------------------------------------------------------------------------------------
-// remote control
-// ---------------------------------------------------------------------------------------------
-
-/** Where the remote-control link to this machine stands. */
 enum class RemoteControlConnectionStatus(val wire: String) {
     Disabled("disabled"),
     Connecting("connecting"),
@@ -603,11 +511,8 @@ data class RemoteControlEnableParams(
 data class RemoteControlDisableParams(val ephemeral: Boolean = false)
 
 /**
- * The four fields every remote-control answer carries.
- *
- * `remoteControl/enable`, `disable`, `status/read` and `status/changed` all report the same tuple,
- * which is why they share one shape here rather than four identical classes: the client stores it
- * once and every page reads the same value.
+ * The four fields every remote-control answer carries: `enable`, `disable`, `status/read` and
+ * `status/changed` all report the same tuple, so one shared shape and the client stores it once.
  */
 data class RemoteControlStatus(
     val status: RemoteControlConnectionStatus = RemoteControlConnectionStatus.Disabled,
@@ -620,18 +525,15 @@ data class RemoteControlEnableResponse(val status: RemoteControlStatus = RemoteC
 data class RemoteControlDisableResponse(val status: RemoteControlStatus = RemoteControlStatus())
 data class RemoteControlStatusReadResponse(val status: RemoteControlStatus = RemoteControlStatus())
 
-/** `remoteControl/pairing/start`; `manualCode` asks for a short code a human can type. */
 data class RemoteControlPairingStartParams(val manualCode: Boolean = false)
 
 data class RemoteControlPairingStartResponse(
     val pairingCode: String = "",
-    /** The short code, present only when the request asked for one. */
     val manualPairingCode: String? = null,
     val environmentId: String = "",
     val expiresAt: Long = 0L,
 )
 
-/** Poll a pairing attempt; either code form identifies it. */
 data class RemoteControlPairingStatusParams(
     val pairingCode: String? = null,
     val manualPairingCode: String? = null,
@@ -656,7 +558,6 @@ data class RemoteControlClientsListResponse(
     val nextCursor: String? = null,
 )
 
-/** One device that has paired with this machine. */
 data class RemoteControlClient(
     val clientId: String,
     val displayName: String? = null,
@@ -673,16 +574,10 @@ data class RemoteControlClientsRevokeParams(
     val clientId: String,
 )
 
-/** `remoteControl/status/changed`. */
 data class RemoteControlStatusChangedNotification(
     val status: RemoteControlStatus = RemoteControlStatus(),
 )
 
-// ---------------------------------------------------------------------------------------------
-// user verification
-// ---------------------------------------------------------------------------------------------
-
-/** A signature over the exact decoded challenge. The verifier validates and consumes it. */
 data class UserVerificationProof(
     val credentialId: String = "",
     /** Unpadded base64url DER ECDSA signature using P-256 and SHA-256. */
@@ -708,10 +603,9 @@ enum class UserVerificationFailureReason(val wire: String) {
 }
 
 /**
- * The closed set of ways verification can fail.
- *
- * Closed on purpose: the native layer's diagnostic payloads must not cross this boundary, so the
- * server maps them onto these four categories and the client can switch on them exhaustively.
+ * The closed set of ways verification can fail: native-layer diagnostics must not cross this
+ * boundary, so the server maps them onto these four categories and the client can switch
+ * exhaustively.
  */
 sealed interface UserVerificationErrorDetails {
     data class InvalidRequest(val reason: String = "invalidParams") : UserVerificationErrorDetails
@@ -720,7 +614,6 @@ sealed interface UserVerificationErrorDetails {
     data class Failed(val reason: UserVerificationFailureReason) : UserVerificationErrorDetails
 }
 
-/** The `error` object `userVerification/…` failures carry inside the JSON-RPC envelope. */
 data class UserVerificationRpcError(
     val code: Long = 0L,
     val message: String = "",
@@ -735,10 +628,9 @@ data class UserVerificationStatusResponse(
 )
 
 /**
- * Metadata for a credential this client just created.
- *
- * Nothing is registered by this call — the caller completes backend registration afterwards, and
- * an older app-server may omit both metadata fields, so a caller has to check them.
+ * Metadata for a credential this client just created. Nothing is registered by this call —
+ * the caller completes backend registration afterwards, and an older app-server may omit
+ * both metadata fields.
  */
 data class UserVerificationEnrollResponse(
     val credentialId: String = "",
@@ -747,7 +639,6 @@ data class UserVerificationEnrollResponse(
     val publicKey: String? = null,
 )
 
-/** Local signing primitive, independent of any pending elicitation. */
 data class UserVerificationVerifyParams(
     /** Unpadded base64url encoding of 1 to 4096 challenge bytes. */
     val challenge: String,
@@ -760,28 +651,19 @@ data class UserVerificationVerifyParams(
 data class UserVerificationVerifyResponse(val proof: UserVerificationProof = UserVerificationProof())
 
 /**
- * Cancels a native verification RPC on this connection, not an elicitation.
- *
- * The id names the *verification* being cancelled and must differ from the id of this cancellation
- * call itself.
+ * Cancels a native verification RPC on this connection, not an elicitation; [requestId] must
+ * differ from this call's own id.
  */
 data class UserVerificationCancelParams(val requestId: String)
 
-/** `attestation/generate` — the client is asked to produce an attestation token. */
 data class AttestationGenerateParams(val nonce: String = "")
 
 data class AttestationGenerateResponse(val token: String = "")
 
-// ---------------------------------------------------------------------------------------------
-// external agent config migration
-// ---------------------------------------------------------------------------------------------
-
 /**
- * One thing a competing agent's config would bring over.
- *
- * [itemType] uses the protocol's uppercase wire values (`AGENTS_MD`, `CONFIG`, `SKILLS`, …).
- * `selected` is absent upstream: every detected item is passed back by the client, which
- * is why an import carries whole items rather than ids.
+ * One thing a competing agent's config would bring over. [itemType] uses the protocol's
+ * uppercase wire values (`AGENTS_MD`, `CONFIG`, `SKILLS`, …); an import carries whole items,
+ * not ids.
  */
 data class ExternalAgentConfigMigrationItem(
     val itemType: String,
@@ -808,7 +690,6 @@ data class PluginsMigration(
     val pluginNames: List<String> = emptyList(),
 )
 
-/** `{name}` detail shared by skills, MCP servers, hooks, subagents and commands. */
 data class NamedMigration(val name: String = "")
 
 data class SessionMigration(
@@ -831,7 +712,6 @@ data class ExternalAgentConfigDetectResponse(
     val connectors: List<ExternalAgentDetectedConnectorCandidate> = emptyList(),
 )
 
-/** A connector the migration source detected, with how many sessions referenced it. */
 data class ExternalAgentDetectedConnectorCandidate(
     val name: String,
     val sessionCount: Long = 0L,
@@ -847,7 +727,6 @@ data class ExternalAgentConfigImportParams(
 
 data class ExternalAgentConfigImportResponse(val importId: String = "")
 
-/** One item type's successes and failures inside a recorded import. */
 data class ExternalAgentConfigImportTypeResult(
     val itemType: String,
     val successes: List<ExternalAgentConfigImportSuccess> = emptyList(),
@@ -884,24 +763,16 @@ data class ExternalAgentConfigImportHistoriesReadResponse(
     val data: List<ExternalAgentConfigImportHistory> = emptyList(),
 )
 
-/** `externalAgentConfig/import/recordHistory` params. */
 data class ExternalAgentConfigImportHistoryRecordParams(
-    /** Opaque provider identifier for the externally completed import. */
     val providerId: String,
     val itemTypeResults: List<ExternalAgentConfigImportTypeResult> = emptyList(),
 )
 
 data class ExternalAgentConfigImportHistoryRecordResponse(val importId: String = "")
 
-// ---------------------------------------------------------------------------------------------
-// windows sandbox
-// ---------------------------------------------------------------------------------------------
-
 /**
- * Whether the Windows sandbox is usable on this host.
- *
- * Only meaningful on a Windows host; carried on every platform so the registry stays complete and
- * a client can decode the response wherever it lands.
+ * Whether the Windows sandbox is usable on this host. Only meaningful on Windows; carried on
+ * every platform so the response decodes wherever it lands.
  */
 enum class WindowsSandboxReadiness(val wire: String) {
     Ready("ready"),
@@ -909,7 +780,6 @@ enum class WindowsSandboxReadiness(val wire: String) {
     UpdateRequired("updateRequired"),
 }
 
-/** The two ways `windowsSandbox/setupStart` can raise a sandbox. */
 enum class WindowsSandboxSetupMode(val wire: String) {
     Elevated("elevated"),
     Unelevated("unelevated"),
@@ -932,10 +802,6 @@ data class WindowsSandboxSetupCompletedNotification(
     val error: String? = null,
 )
 
-// ---------------------------------------------------------------------------------------------
-// model provider recovery and moderation
-// ---------------------------------------------------------------------------------------------
-
 data class ModelProviderAuthRecoveryNotification(
     val provider: String,
     val detail: String? = null,
@@ -947,7 +813,6 @@ data class ModelVerificationNotification(
     val verified: Boolean = true,
 )
 
-/** `model/safetyBuffering/updated` — the server paused or resumed buffering a turn. */
 data class ModelSafetyBufferingUpdatedNotification(
     val threadId: String,
     val turnId: String,
@@ -971,11 +836,9 @@ data class StrictReviewRequiredNotification(
 )
 
 /**
- * `item/autoApprovalReview/started` and `.../completed`.
- *
- * The lifecycle part is `review` (status and rationale); `action` is the request the subagent is
- * judging and is kept raw because the review action union has seven shapes and only a summary of it
- * is ever displayed.
+ * `item/autoApprovalReview/started` and `.../completed`. The lifecycle part is `review` (status
+ * and rationale); `action` stays raw because the review action union has seven shapes and only a
+ * summary of it is ever displayed.
  */
 data class GuardianApprovalReviewNotification(
     val threadId: String,
@@ -996,10 +859,9 @@ data class FileChangePatchUpdatedNotification(
 )
 
 /**
- * One hook execution, from `hook/started` and `hook/completed`.
- *
- * `status` is `running`, `completed`, `failed`, `blocked` or `stopped`; the started notification
- * always carries `running`, which is why both notifications share this shape.
+ * One hook execution, from `hook/started` and `hook/completed`. `status` is `running`,
+ * `completed`, `failed`, `blocked` or `stopped`; the started notification always carries
+ * `running`, hence both share this shape.
  */
 data class HookRunSummary(
     val id: String,
@@ -1026,21 +888,18 @@ data class HookOutputEntry(
     val text: String = "",
 )
 
-/** `hook/started`. */
 data class HookStartedNotification(
     val threadId: String,
     val turnId: String? = null,
     val run: HookRunSummary = HookRunSummary(id = ""),
 )
 
-/** `hook/completed`. */
 data class HookCompletedNotification(
     val threadId: String,
     val turnId: String? = null,
     val run: HookRunSummary = HookRunSummary(id = ""),
 )
 
-/** `project/changed` and `thread/project/updated`. */
 data class ProjectChangedNotification(val projectId: String? = null)
 
 data class ThreadProjectUpdatedNotification(
@@ -1048,7 +907,6 @@ data class ThreadProjectUpdatedNotification(
     val projectId: String? = null,
 )
 
-/** `deprecationNotice` and `configWarning` share [DeprecationNoticeNotification]/[ConfigWarningNotification]. */
 data class ModelRouterMetadata(
     val requested: String = "",
     val served: String = "",

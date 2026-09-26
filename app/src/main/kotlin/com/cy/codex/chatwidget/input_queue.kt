@@ -41,15 +41,9 @@ import top.yukonga.miuix.kmp.icon.basic.Close
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
- * Messages queued behind the running turn.
- *
- * The queue is the server's, not the client's: `thread/queue/changed` is only a poke, and the rows
- * below are whatever the last `thread/queue/list` returned. Every action here is therefore a
- * request — [onStart], [onMove] and [onRemove] address a queued submission by id, and the list is
- * re-read when the server confirms. Reordering locally would produce an order the server never saw.
- *
- * It sits inline above the composer rather than behind a scrim: queueing is normal while a turn
- * runs, not a modal decision.
+ * Messages queued behind the running turn. The queue lives on the server — `thread/queue/changed`
+ * is only a poke, so every action here is a request by id and the list is re-read on confirmation;
+ * reordering locally would produce an order the server never saw.
  */
 @Composable
 fun QueuedMessages(
@@ -64,8 +58,7 @@ fun QueuedMessages(
 ) {
     if (messages.isEmpty()) return
     val colors = MiuixTheme.colorScheme
-    // The entry being edited, held as the entry and not as its text: an edit has to write back the
-    // *whole* input list, and the text alone would drop a queued attachment on the way through.
+    // Hold the entry, not its text: an edit writes back the whole input list; text alone would drop an attachment.
     var editing by remember { mutableStateOf<QueuedSubmission?>(null) }
     val shape = remember { RoundedCornerShape(UiConsts.PanelCorner) }
     Surface(
@@ -101,9 +94,7 @@ fun QueuedMessages(
                     color = colors.onSurface,
                     maxLines = 1,
                 )
-                // Clearing is the one bulk action; it is only offered while more than one row is
-                // shown,
-                // because a single row already has its own remove chip one line below.
+                // Bulk clear only while more than one row: a single row already has its own remove chip.
                 if (messages.size > 1) {
                     QueuedChip(
                         text = stringResource(R.string.queued_messages_clear),
@@ -214,8 +205,6 @@ private fun QueuedMessageRow(
                 overflow = TextOverflow.Ellipsis,
             )
         }
-        // The action row is right-aligned under the message so the text keeps the full width of the
-        // card on the line that matters, and the four chips stay reachable with a thumb.
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(UiConsts.Space6, Alignment.End),
@@ -252,13 +241,7 @@ private fun QueuedMessageRow(
     }
 }
 
-/**
- * A small text pill, the same one the composer's inline actions use.
- *
- * Shared by the row actions and the header's clear button so a disabled chip looks the same
- * everywhere; [enabled] only dims the label rather than removing the chip, because a row whose
- * "move up" disappeared would reflow every time the order changed.
- */
+/** Small pill; [enabled] dims the label only — removing the chip would reflow the row. */
 @Composable
 private fun QueuedChip(
     text: String,

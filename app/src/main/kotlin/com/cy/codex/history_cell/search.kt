@@ -39,14 +39,8 @@ import top.yukonga.miuix.kmp.icon.extended.Photos
 import top.yukonga.miuix.kmp.icon.extended.Stopwatch
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
-/**
- * Web search, image viewing and generation, and sleeps.
- *
- * Mirrors `codex-rs/tui/src/history_cell/search.rs` and the image helpers in `patches.rs`: a search
- * is a card because its results are the payload, everything else is one compact line because it
- * only narrates what the turn is doing.
- */
-
+/** Web search, image viewing/generation and sleeps; mirrors `codex-rs/tui/src/history_cell/search.rs`
+ * and the image helpers in `patches.rs`. */
 @Composable
 fun WebSearchCell(
     item: WebSearchItem,
@@ -59,8 +53,7 @@ fun WebSearchCell(
     ToolCard(
         icon = MiuixIcons.Basic.Search,
         title = webSearchTitle(item),
-        // A server that does not ship result payloads at all is not a search that found nothing,
-        // so the count only appears when there is something to count.
+        // No count without results: a payload-less server is not a search that found nothing.
         subtitle = item.results.takeIf { it.isNotEmpty() }
             ?.let { stringResource(R.string.search_cell_result_count, it.size) },
         modifier = modifier,
@@ -80,13 +73,8 @@ fun WebSearchCell(
     }
 }
 
-/**
- * The web tool's own summary line.
- *
- * Mirrors `web_search_action_detail` and `WebSearchCell::summary` in
- * `codex-rs/tui/src/history_cell/search.rs`: the action names the verb and its own fields the
- * detail, so opening a page reads `Opened <url>` instead of an empty search query.
- */
+/** Mirrors `web_search_action_detail` and `WebSearchCell::summary` in
+ * `codex-rs/tui/src/history_cell/search.rs`. */
 @Composable
 @ReadOnlyComposable
 private fun webSearchTitle(item: WebSearchItem): String = when (val action = item.action) {
@@ -163,19 +151,14 @@ fun ImageGenerationCell(item: ImageGenerationItem, modifier: Modifier = Modifier
     }
 }
 
-/**
- * Tone for the server's own image-generation status string.
- *
- * The vocabulary belongs to the server (`ext/items/src/image_generation.rs` only guarantees
- * `completed` and `failed`), so an unknown value reads as still running rather than as a failure.
- */
+/** Unknown statuses read as running: the server only guarantees `completed` and `failed`
+ * (`ext/items/src/image_generation.rs`). */
 internal fun imageGenerationTone(status: String): ThreadStatusTone = when (status) {
     ImageGenerationItem.CompletedStatus -> ThreadStatusTone.Done
     ImageGenerationItem.FailedStatus -> ThreadStatusTone.Failed
     else -> ThreadStatusTone.Running
 }
 
-/** The chip label for [imageGenerationTone]; the three known statuses reuse the dynamic labels. */
 @Composable
 @ReadOnlyComposable
 internal fun imageGenerationLabel(status: String): String = when (status) {
@@ -227,10 +210,6 @@ private fun SearchResultRow(
     }
 }
 
-/**
- * One-line cell body shared by the narrating items: icon, label, detail and an optional trailing
- * slot (usually a status chip).
- */
 @Composable
 internal fun CompactLine(
     icon: ImageVector,

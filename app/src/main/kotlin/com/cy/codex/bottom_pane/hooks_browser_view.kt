@@ -50,12 +50,8 @@ import top.yukonga.miuix.kmp.icon.extended.ConvertFile
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
- * `/hooks` output as a page.
- *
- * Mirrors `hooks/list` and `bottom_pane/hooks_browser_view.rs`: hooks are grouped by lifecycle
- * event, each row shows its handler, and a hook that still needs review blocks the enable switch
- * until it is trusted. Trust and enablement are `config/batchWrite` upserts into `hooks.state`, the
- * same table the TUI writes (`hooks_rpc.rs`), so both clients pin the same hash.
+ * `/hooks` as a page (hooks/list, bottom_pane/hooks_browser_view.rs); trust and enablement are
+ * `config/batchWrite` upserts into `hooks.state`, the table the TUI writes (hooks_rpc.rs).
  */
 @Composable
 fun HooksScreen(
@@ -154,8 +150,7 @@ fun HooksScreen(
                     }
                 }
             }
-            // `hooks/list` reports malformed files and non-fatal problems next to the hooks, not as
-            // a failed call; without this card a broken hook file silently disappears.
+            // `hooks/list` reports problems on the same call; without this card a broken hook silently disappears.
             if (catalog.hookWarnings.isNotEmpty() || catalog.hookErrors.isNotEmpty()) {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -346,20 +341,13 @@ private fun HooksRow(hook: HookMetadata, onEvent: (AppEvent) -> Unit) {
         Switch(
             checked = hook.enabled,
             enabled = !blocked,
-            // The write lands asynchronously and re-reads `hooks/list`; the row keeps showing the
-            // server's answer rather than a local guess.
+            // The write lands asynchronously; the row shows the server's answer, not a local guess.
             onCheckedChange = { enabled -> onEvent(AppEvent.SetHookEnabled(hook.key, enabled)) },
         )
     }
 }
 
-/**
- * The handler line under a hook's key.
- *
- * Three shapes share one field on the wire — a shell command, an MCP tool, or a prompt/agent
- * handler with no payload — so the row renders whichever is meaningful and never shows an empty
- * code block for the variants that carry nothing.
- */
+/** The handler line under a hook's key: a shell command, an MCP tool, or the bare handler type. */
 private fun HookMetadata.handlerSummary(): String =
     when {
         command != null -> command

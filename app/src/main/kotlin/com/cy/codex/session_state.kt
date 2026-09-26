@@ -70,13 +70,10 @@ import com.cy.codex.protocol.protocol.v2.WindowsSandboxReadiness
 /**
  * Canonical session state, shared by the transcript, the status card and the sidebar.
  *
- * Mirrors `codex-rs/tui/src/session_state.rs` plus the observable half of `chatwidget.rs`: the
- * TUI keeps `ThreadSessionState` as the shape app orchestration reads and the chat widget as the
- * thing that mutates it. On the phone both live here because Compose reads them directly.
+ * Mirrors `codex-rs/tui/src/session_state.rs` plus the observable half of `chatwidget.rs`: on the
+ * phone both live here because Compose reads them directly.
  */
 class SessionState {
-
-    /** Thread handshake state: which thread is open and whether its history has arrived. */
     var threadId by mutableStateOf("")
         private set
 
@@ -95,15 +92,12 @@ class SessionState {
     var running by mutableStateOf(false)
         private set
 
-    /** When the running turn started, for the activity indicator's timer. */
     var turnStartedAtMs by mutableStateOf<Long?>(null)
         private set
 
-    /** True while a hidden turn is generating this thread's automatic title. */
     var titleGenerationPending by mutableStateOf(false)
         private set
 
-    /** Git branch / PR / diff totals of the session workspace, refreshed per turn. */
     var gitSummary by mutableStateOf<com.cy.codex.GitSummary?>(null)
         private set
 
@@ -184,27 +178,15 @@ class SessionState {
     /** Diagnostics surfaced as transcript notices. */
     val diagnostics = mutableStateListOf<SessionDiagnostic>()
 
-    /**
-     * Model slugs whose fallback-metadata warning has already been shown.
-     *
-     * Mirrors `chatwidget/warnings.rs`: the server repeats that warning once per turn and the slug
-     * is the only part that varies, so it is deduplicated by slug. Every other diagnostic is kept
-     * as-is.
-     */
+    /** Server repeats the fallback-metadata warning per turn; dedup by slug (chatwidget/warnings.rs). */
     private val fallbackModelMetadataSlugs = mutableSetOf<String>()
 
     /** Model label shown on the status card; reroutes update it. */
     var activeModelLabel by mutableStateOf("")
 
-    /**
-     * Files and images attached to this thread but not yet sent.
-     *
-     * The list belongs to the server — `thread/attachment/add` answers with the stored record — so
-     * this is whatever the last read or write returned, never a locally invented entry.
-     */
+    /** Server-owned thread attachments, as the last read or write returned them. */
     val attachments = mutableStateListOf<com.cy.codex.protocol.protocol.v2.ThreadAttachment>()
 
-    /** Long-running terminals the session started; the footer lists them. */
     val backgroundTerminals =
         mutableStateListOf<com.cy.codex.protocol.protocol.v2.ThreadBackgroundTerminal>()
 
@@ -285,7 +267,6 @@ class SessionState {
         return kept.map { UserInput.LocalImage(it.path) } + textInput
     }
 
-    /** Transcript text currently streaming into the last agent message, if any. */
     var streamingItemId by mutableStateOf<String?>(null)
         private set
 
@@ -461,7 +442,6 @@ class SessionState {
         if (items.removeAll { it.id == itemId }) itemsRevision++
     }
 
-    /** Append or replace one item, preserving arrival order. */
     fun upsert(item: ThreadItem) {
         val index = items.indexOfFirst { it.id == item.id }
         if (index < 0) items.add(item) else items[index] = item
@@ -471,9 +451,8 @@ class SessionState {
     /**
      * Add [item] only when the transcript has never seen its id.
      *
-     * Used for a `thread/read` snapshot that lands while the thread is still streaming. Every item
-     * already in the list arrived through the live stream, so the local copy is at least as new as
-     * the snapshot's; the snapshot is only good for the history this client has not seen yet.
+     * Used for a `thread/read` snapshot that lands while the thread is still streaming: local items
+     * arrived live and are at least as new as the snapshot's, so only unseen history is added.
      */
     fun addIfAbsent(item: ThreadItem) {
         if (items.none { it.id == item.id }) {
@@ -497,7 +476,6 @@ class SessionState {
 
     fun item(id: String): ThreadItem? = items.firstOrNull { it.id == id }
 
-    /** Append the divider that closes a turn; a second one for the same turn is dropped. */
     fun appendTurnSeparator(item: TurnSeparatorItem) {
         if (items.any { it.id == item.id }) return
         items.add(item)
@@ -579,28 +557,13 @@ private const val FallbackModelMetadataSuffix =
  * in [SessionDiagnostic.message] instead, because no resource can name it.
  */
 enum class DiagnosticCode {
-    /** Opening a thread failed. */
     ThreadLoadFailed,
-
-    /** Creating a thread failed. */
     NewThreadFailed,
-
-    /** Starting a turn failed. */
     SendFailed,
-
-    /** Interrupting a turn failed. */
     InterruptFailed,
-
-    /** The server rerouted the turn to another model. */
     ModelSwitched,
-
-    /** The turn was interrupted. */
     TurnInterrupted,
-
-    /** The turn failed. */
     TurnFailed,
-
-    /** The turn ended with a status that is neither of the two above. */
     TurnFinished,
 
     /**
@@ -610,21 +573,14 @@ enum class DiagnosticCode {
      * it found, which is why the notice takes two arguments.
      */
     WorldWritable,
-
-    /** The review policy demanded a stricter review before this turn could proceed. */
     StrictReviewRequired,
-
-    /** A hook failed; the notice names it. */
     HookFailed,
-
-    /** An MCP server's OAuth flow failed; the notice names the server. */
     McpLoginFailed,
 
     /**
      * The server put the turn behind its safety buffer.
      *
-     * This is a pause rather than a failure: the notice exists so a quiet turn does not read as a
-     * hung one.
+     * A pause rather than a failure: the notice exists so a quiet turn does not read as a hung one.
      */
     SafetyBuffering,
 
@@ -635,14 +591,8 @@ enum class DiagnosticCode {
      * primary limit left" needs both.
      */
     RateLimitWarning,
-
-    /** A rate-limit window hit 100%; requests queue until it resets. The argument is its label. */
     RateLimitReached,
-
-    /** A pasted image exceeded the 32 MiB transport limit; the notice names the file. */
     ImageTooLarge,
-
-    /** `/recap` ran before any user/assistant exchange existed. */
     RecapNoHistory,
 }
 
@@ -804,7 +754,6 @@ class CatalogState {
      */
     var allowedApprovalsReviewers by mutableStateOf<List<ApprovalsReviewer>?>(null)
 
-    /** Whether `[features] guardian_approval` is on, which is what makes AutoReview offerable. */
     val guardianApprovalEnabled: Boolean get() = configSnapshot.features["guardian_approval"] == true
 
     /** AutoReview may be selected only when the feature is on and policy allows the value. */
@@ -812,13 +761,10 @@ class CatalogState {
         get() = guardianApprovalEnabled &&
             (allowedApprovalsReviewers?.contains(ApprovalsReviewer.AutoReview) ?: true)
 
-    // ---- projects and environments ---------------------------------------------
-    //
-    // `project/…` and `environment/…` have no TUI counterpart — the terminal works in directories
-    // and has nowhere to show a saved list — so these pages are the protocol's own surface rather
-    // than a port of anything. The sidebar's groups are still derived from `cwd`; a project row is
-    // the *saved* form of one, and the two coexist.
+    // `project/…` and `environment/…` have no TUI counterpart; these pages are the protocol's own
+    // surface. The sidebar's groups are still derived from `cwd`; a project row is the saved form.
     var projects by mutableStateOf<List<ProjectEntry>>(emptyList())
+
     /**
      * Environment ids this client has learned about.
      *
@@ -828,7 +774,6 @@ class CatalogState {
      */
     var environments by mutableStateOf<List<String>>(emptyList())
 
-    // ---- plugin shares ---------------------------------------------------------
     /** Plugins this account has published, and the checkouts of them that exist locally. */
     var pluginShares by mutableStateOf<List<PluginShareEntry>>(emptyList())
 
@@ -838,30 +783,21 @@ class CatalogState {
     /** Entries the last `marketplace/upgrade` reported as changed. */
     var upgradedMarketplaces by mutableStateOf<List<String>>(emptyList())
 
-    /**
-     * Where the last `plugin/share/checkout` landed.
-     *
-     * The call answers with a path and nothing else reads it, so without this the page could not
-     * tell the user where the checkout went — the one fact the call exists to produce.
-     */
+    /** Where the last `plugin/share/checkout` landed; nothing else reads it, so keep it here. */
     var pluginCheckoutPath by mutableStateOf<String?>(null)
 
-    // ---- memory ----------------------------------------------------------------
     /** `memory/status`; `null` until asked, which is what lets the page show a loading state. */
     var memories by mutableStateOf<MemoryStatusResponse?>(null)
 
-    // ---- realtime voice --------------------------------------------------------
     /** Voices `thread/realtime/listVoices` offers; empty means the session is off. */
     var realtimeVoices by mutableStateOf<List<String>>(emptyList())
 
-    // ---- user verification -----------------------------------------------------
     /** Local credential readiness; `null` until asked. */
     var userVerification by mutableStateOf<UserVerificationStatusResponse?>(null)
 
     /** The public half of the credential the last `userVerification/enroll` created. */
     var userVerificationCredential by mutableStateOf<UserVerificationEnrollResponse?>(null)
 
-    // ---- remote control --------------------------------------------------------
     var remoteControl by mutableStateOf<RemoteControlStatus?>(null)
     var remoteControlClients by mutableStateOf<List<RemoteControlClient>>(emptyList())
 
@@ -869,10 +805,8 @@ class CatalogState {
     var remoteControlPairingCode by mutableStateOf<String?>(null)
     var remoteControlPairingClaimed by mutableStateOf<Boolean?>(null)
 
-    // ---- diagnostics -----------------------------------------------------------
     var diagnostics by mutableStateOf<ServerDiagnosticsResponse?>(null)
 
-    // ---- external agent migration ----------------------------------------------
     var externalAgentConfig by mutableStateOf<List<ExternalAgentConfigMigrationItem>>(emptyList())
     var externalAgentConnectors by mutableStateOf<List<com.cy.codex.protocol.protocol.v2.ExternalAgentDetectedConnectorCandidate>>(emptyList())
     var externalAgentImportHistories by mutableStateOf<List<ExternalAgentConfigImportHistory>>(
@@ -882,7 +816,6 @@ class CatalogState {
     /** Progress of a running `externalAgentConfig/import`, or `null` between runs. */
     var externalAgentImport by mutableStateOf<ImportProgress?>(null)
 
-    // ---- windows sandbox -------------------------------------------------------
     /** `windowsSandbox/readiness`; `null` until asked, and only ever non-null on Windows. */
     var windowsSandboxReadiness by mutableStateOf<WindowsSandboxReadiness?>(null)
 
@@ -908,8 +841,8 @@ class CatalogState {
  * The sidebar's thread list.
  *
  * Mirrors `codex-rs/tui/src/app/loaded_threads.rs` and `app/session_picker.rs`: threads are grouped
- * by working directory (the phone's stand-in for a project) and the group a thread belongs to is
- * derived from `cwd`, not stored on the thread.
+ * by working directory (the phone's stand-in for a project); the group is derived from `cwd`, not
+ * stored on the thread.
  */
 class ThreadListState {
     var threads by mutableStateOf<List<Thread>>(emptyList())

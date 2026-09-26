@@ -57,19 +57,8 @@ import top.yukonga.miuix.kmp.squircle.squircleBackground
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
- * What the server says about itself, plus the way to report it when that is not enough.
- *
- * Mirrors `codex-rs/tui/src/debug_config.rs` for the facts and the feedback path of
- * `bottom_pane/feedback_view.rs` for the action. The TUI prints `server/…` as a debug dump and
- * offers feedback from its own overlay; on the phone the two are one page, because the moment a
- * user needs the process id and the gauges is the moment they are about to describe what went
- * wrong.
- *
- * @param catalog read for [CatalogState.diagnostics]; `null` means the probe has not answered yet,
- *   which the page states rather than drawing a process with a pid of zero.
- * @param onEvent receives [AppEvent.ReloadDiagnostics] and [AppEvent.UploadFeedback].
- * @param onBack closes the page; the caller owns navigation.
- * @param modifier layout modifier for the page surface.
+ * Server self-report plus its feedback path on one page, mirrored from
+ * `codex-rs/tui/src/debug_config.rs` and `codex-rs/.../bottom_pane/feedback_view.rs`.
  */
 @Composable
 fun DiagnosticsScreen(
@@ -130,9 +119,7 @@ fun DiagnosticsScreen(
                 DiagnosticsProcessCard(diagnostics.process)
                 DiagnosticsGaugesCard(diagnostics.gauges)
             }
-            // The feedback card is not conditional. This is the page a user reaches *because*
-            // something is wrong, and an unanswered probe is the case where a report is worth most:
-            // hiding the form behind a successful read would remove it exactly when it is needed.
+            // Always shown: an unanswered probe is exactly when a report is worth most.
             DiagnosticsFeedbackCard(onReport = { reporting = true })
         }
     }
@@ -148,15 +135,6 @@ fun DiagnosticsScreen(
     }
 }
 
-/**
- * The version line under the header, or the reason there is not one.
- *
- * The version is the first thing a bug report needs, so it earns the header's one line. When the
- * server left the field blank the page names the gap instead of composing a "Server" label with
- * nothing after it.
- *
- * @param diagnostics the last probe answer, or `null` when there has never been one.
- */
 @Composable
 private fun diagnosticsSubtitle(diagnostics: ServerDiagnosticsResponse?): String =
     when {
@@ -167,15 +145,7 @@ private fun diagnosticsSubtitle(diagnostics: ServerDiagnosticsResponse?): String
         else -> stringResource(R.string.diagnostics_screen_subtitle, diagnostics.process.id)
     }
 
-/**
- * The page before the probe has answered.
- *
- * Not an empty card: "the server reported nothing" and "this client has not asked" are different
- * claims, and only one of them is worth a retry. The button repeats what the header's refresh does,
- * because the empty state is where a user looks for it.
- *
- * @param onRead emits the diagnostics read; nothing is drawn until it answers.
- */
+// Distinguishes "client has not asked" from "server reported nothing".
 @Composable
 private fun DiagnosticsEmptyCard(onRead: () -> Unit) {
     Card(
@@ -252,15 +222,7 @@ private fun DiagnosticsEmptyCard(onRead: () -> Unit) {
     }
 }
 
-/**
- * Identity of the process that answered: which one it is, what it runs, how long it has been up.
- *
- * The pid and the version are set in the monospace face because both are values a user copies into
- * a report, and a proportional face makes `l` and `1` the same shape.
- *
- * @param process the server's own report. `pid` is zero when it did not send one, and that renders
- *   as the empty-value dash rather than as a process the page invented.
- */
+// pid/version are monospace: copied into reports; proportional faces blur l and 1.
 @Composable
 private fun DiagnosticsProcessCard(process: ServerDiagnosticsProcess) {
     Card(
@@ -327,22 +289,11 @@ private fun DiagnosticsProcessCard(process: ServerDiagnosticsProcess) {
     }
 }
 
-/**
- * The server's gauges, one row each, scaled against the largest one.
- *
- * `server/…` reports named values with no unit and no ceiling — `threads.loaded` and
- * `rollout.bytes` arrive on the same list — so a bar can only be *relative*: each is that gauge's
- * share of the largest value in the same answer. That makes it a comparison between rows of one
- * reading, never a percentage of a capacity, and the card says so rather than letting the bars
- * imply a limit the protocol never sent.
- *
- * @param gauges the list as the server sent it; empty is a real answer and gets a line of its own.
- */
+// `server/…` gauges carry no unit or ceiling: bars are relative to the same reading's peak.
 @Composable
 private fun DiagnosticsGaugesCard(gauges: List<ServerDiagnosticsGauge>) {
     val colors = MiuixTheme.colorScheme
-    // The scale's unit. A list whose largest value is zero has no scale at all, so every bar is
-    // drawn empty: "0 of 0" is not "all of it", and dividing by the peak would be a crash.
+    // Peak zero means no scale: bars stay empty and divide-by-zero is avoided.
     val peak = gauges.maxOfOrNull { it.value }?.takeIf { it > 0L } ?: 0L
 
     Card(
@@ -409,17 +360,6 @@ private fun DiagnosticsGaugesCard(gauges: List<ServerDiagnosticsGauge>) {
     }
 }
 
-/**
- * One gauge: its name, its value, and its share of the largest gauge drawn as a bar.
- *
- * The bar is the app's existing usage meter rather than a widget of its own — same track, same
- * height step, same [usageColor] ramp as the context-window meter — so a server whose numbers are
- * climbing reads the same way as a context window that is filling up.
- *
- * @param gauge the name and value exactly as the server reported them.
- * @param peak the largest value in the same answer, or `0.0` when there is no scale; the fraction
- *   is clamped to 0..1 so a bar can never overrun its track.
- */
 @Composable
 private fun DiagnosticsGaugeRow(gauge: ServerDiagnosticsGauge, peak: Long) {
     val colors = MiuixTheme.colorScheme
@@ -457,17 +397,7 @@ private fun DiagnosticsGaugeRow(gauge: ServerDiagnosticsGauge, peak: Long) {
     }
 }
 
-/**
- * A gauge value the way the server reported it.
- *
- * A number is data, not copy, so it is not a string resource: a whole value prints without a
- * decimal point (`turns.active` is `1`, not `1.0`) and a fractional one keeps two places, enough to
- * tell two readings apart without a wall of digits. The locale is pinned the way the token
- * formatter pins it, so the decimal point cannot change under a translated build while the digits
- * stay the server's own.
- *
- * @param value the raw double from the answer.
- */
+// Locale pinned so the decimal point cannot shift under a translated build.
 private fun formatGaugeValue(value: Double): String {
     val whole = value.toLong()
     return if (whole.toDouble() == value) {
@@ -477,13 +407,7 @@ private fun formatGaugeValue(value: Double): String {
     }
 }
 
-/**
- * A byte count the way the server reported it: whole binary units, two decimals at most.
- *
- * The server sends these two fields as raw bytes with no unit attached; binary units are what a
- * memory reading is conventionally shown in, and a null field renders as the empty-value dash
- * rather than as a zero the server never sent.
- */
+/** Raw bytes from the server as binary units; a null field renders as a dash, not a zero. */
 private fun formatBytes(bytes: Long): String {
     val units = listOf("B", "KiB", "MiB", "GiB", "TiB")
     var value = bytes.toDouble()
@@ -497,17 +421,8 @@ private fun formatBytes(bytes: Long): String {
 }
 
 /**
- * The way out of a page that exists for bad news.
- *
- * Mirrors the feedback path of `bottom_pane/feedback_view.rs`: the user classifies what happened
- * and may add a reason. The classification is required because the server files the report under it
- * and the client cannot invent a category; the reason is optional because a user whose session is
- * broken may not be able to type one.
- *
- * The button only opens the form — the sheet's own confirm is the decision — so it is a secondary
- * action and not the page's primary one.
- *
- * @param onReport opens the form; nothing is uploaded until that sheet is confirmed.
+ * Feedback, mirroring `codex-rs/.../bottom_pane/feedback_view.rs`: classification
+ * required (the server files under it), reason optional.
  */
 @Composable
 private fun DiagnosticsFeedbackCard(onReport: () -> Unit) {
@@ -554,19 +469,8 @@ private fun DiagnosticsFeedbackCard(onReport: () -> Unit) {
 }
 
 /**
- * The report form: a fixed classification, an optional reason, and the log disclosure.
- *
- * Mirrors `bottom_pane/feedback_view.rs`: the categories are the server's own wire strings, not
- * free text, and logs are attached only when the user explicitly says so — the rollout log carries
- * prompts and tool output, which is exactly why the disclosure is a choice and not a default.
- *
- * `feedback/…` also takes a thread id and this page passes `null` for it: diagnostics is reachable
- * with no thread open, and a guessed id would attach the report to a conversation the user was not
- * looking at. A caller that knows which thread is at fault can send its own event.
- *
- * @param onDismiss closes the sheet without sending.
- * @param onSubmit reports the chosen category, the reason (`null` when left blank so the wire
- *   carries "no reason" instead of an empty string), and the log disclosure.
+ * The report form: fixed wire categories, optional reason, logs on explicit consent;
+ * thread id stays null, as diagnostics is reachable with no thread open.
  */
 @Composable
 private fun FeedbackFormSheet(

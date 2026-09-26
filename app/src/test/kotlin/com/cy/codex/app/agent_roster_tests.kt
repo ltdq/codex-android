@@ -16,18 +16,11 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-/**
- * The roster is folded out of the transcript because the app-server has no "agents" endpoint:
- * subagents only exist as collaboration items inside the parent thread. These tests pin that fold,
- * including the cases the protocol actually produces (a later `wait` with no prompt, an activity
- * item that arrives before the collab item, a thread id that is the main thread).
- */
 class AgentRosterTest {
 
     private val main = "th_main"
     private val sub = "th_sub_1"
 
-    /** The wording the UI resolves from resources and hands to the fold. */
     private val MAIN_LABEL = "主代理"
     private val SUB_FORMAT = "子代理 · %s"
 
@@ -94,7 +87,6 @@ class AgentRosterTest {
     @Test
     fun withoutAPathTheNameFallsBackToTheThreadSuffix() {
         val roster = deriveAgentRoster(listOf(spawn("c1", listOf("th_abcdef"))), main, MAIN_LABEL, SUB_FORMAT)
-        // The last four characters are enough to tell two spawned agents apart in the picker.
         assertEquals("子代理 · cdef", roster.first { it.threadId == "th_abcdef" }.name)
     }
 
@@ -124,8 +116,6 @@ class AgentRosterTest {
         val entry = roster.first { it.threadId == sub }
         assertEquals(AgentRunStatus.Completed, entry.status)
         assertEquals(SubAgentActivityKind.Completed, entry.activity)
-        // The message that came with the state is not carried on the roster entry: it is
-        // transient progress text, and the entry is a snapshot the surfaces re-derive.
     }
 
     @Test
@@ -183,7 +173,6 @@ class AgentRosterTest {
 
     @Test
     fun tokensAreNotInvented() {
-        // The item stream carries no per-agent usage, so the fold must not make numbers up.
         val roster = deriveAgentRoster(listOf(spawn("c1", listOf(sub))), main,
             MAIN_LABEL,
             SUB_FORMAT,

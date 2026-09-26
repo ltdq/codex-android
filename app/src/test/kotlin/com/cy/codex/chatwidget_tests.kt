@@ -206,7 +206,6 @@ class ChatWidgetTest {
         assertNotNull(widget.currentApproval)
         assertEquals(streamed, widget.fileChangeChanges("patch"))
 
-        // The item is the authoritative copy: once it arrives, its changes are what is rendered.
         val fromItem = listOf(FileUpdateChange("a.txt", PatchChangeKind.Update, "@@ -1,2 +1,2 @@\n-old\n-older\n+new\n+newer\n"))
         client.events.emit(
             AppServerEvent.ItemStarted(
@@ -263,7 +262,7 @@ class ChatWidgetTest {
                     ),
                 ),
             )
-            // `thread/turns/list` pages backwards, so its data arrives newest-first.
+            // thread/turns/list pages backwards: data arrives newest-first.
             earlierResult = Result.success(ThreadTurnsPage(listOf(Turn("turn-older", listOf(older))), nextCursor = null))
         }
         val widget = ChatWidget(client, backgroundScope)
@@ -314,7 +313,6 @@ class ChatWidgetTest {
                     initialTurnsPage = TurnsPage(data = listOf(Turn("turn-1", listOf(first))), nextCursor = "cursor-1"),
                 ),
             )
-            // A full read would surface `dropped`; the bounded first screen must never make it.
             historyResult = Result.success(ThreadReadResponse(thread, listOf(dropped)))
         }
         val widget = ChatWidget(client, backgroundScope)
@@ -377,7 +375,6 @@ class ChatWidgetTest {
         client.events.emit(AppServerEvent.WarningEvent("second", WarningNotification("second", "heads up")))
         client.events.emit(AppServerEvent.AgentMessageDelta("second", ItemTextDelta("second", "turn", "buffered", "ignored")))
         runCurrent()
-        // Nothing from the hidden thread leaks into the open transcript.
         assertTrue(widget.state.items.isEmpty())
         assertTrue(widget.state.diagnostics.isEmpty())
 
@@ -424,13 +421,11 @@ class ChatWidgetTest {
         client.events.emit(AppServerEvent.AgentMessageDelta("thread", ItemTextDelta("thread", "turn", id, "world")))
         runCurrent()
 
-        // Deltas wait for the commit tick, so nothing has been parsed yet.
+        // Deltas buffer without rewriting the item: no per-token copy, no fold reruns.
         assertNull(widget.state.stream(id))
         advanceTimeBy(Motion.StreamCommitIntervalMs + 1)
         runCurrent()
 
-        // The item body stays empty while the deltas are buffered, so nothing copies the answer per
-        // token, and the revision does not move, so folds keyed on it do not rerun per delta.
         assertEquals("", (widget.state.items.single() as AgentMessageItem).text)
         assertEquals(revisionAfterStart, widget.state.itemsRevision)
         assertEquals(id, widget.state.streamingItemId)
@@ -477,7 +472,6 @@ class ChatWidgetTest {
         client.events.emit(AppServerEvent.CommandOutputDelta("thread", CommandExecutionOutputDelta("thread", "turn", command, "done")))
         runCurrent()
 
-        // Nothing is committed until the tick.
         assertNull(widget.state.item(reasoning))
         assertNull((widget.state.item(command) as CommandExecutionItem).aggregatedOutput)
 
@@ -485,7 +479,7 @@ class ChatWidgetTest {
         runCurrent()
 
         assertEquals("think more", assertIs<ReasoningItem>(widget.state.item(reasoning)).summary.single())
-        // Stdout and the terminal interaction share one field, so their order must survive.
+        // Stdout and the terminal interaction share one field; their order must survive.
         assertEquals("out in\ndone", (widget.state.item(command) as CommandExecutionItem).aggregatedOutput)
     }
 
@@ -682,7 +676,6 @@ class ChatWidgetTest {
         override suspend fun close() = Unit
     }
 
-    /** A `thread/list` row with everything the wire always sends filled in. */
     private fun testThread(id: String, preview: String = "", cwd: String = "") = com.cy.codex.protocol.protocol.v2.Thread(
         id = id, preview = preview, modelProvider = "openai", createdAt = 0L, updatedAt = 0L, cwd = cwd,
         status = com.cy.codex.protocol.protocol.v2.ThreadStatus.Idle, cliVersion = "1.0", ephemeral = false,

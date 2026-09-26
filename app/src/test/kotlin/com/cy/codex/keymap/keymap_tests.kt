@@ -4,10 +4,6 @@ import org.junit.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
-/**
- * The pure keymap, on a plain JVM: every rule the adapter relies on is decided here, so this suite
- * is the contract for both the Compose handler and any future host.
- */
 class KeymapTest {
 
     private fun char(

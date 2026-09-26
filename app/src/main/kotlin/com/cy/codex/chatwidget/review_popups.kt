@@ -51,27 +51,8 @@ import top.yukonga.miuix.kmp.squircle.squircleSurface
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
- * `/review` as a page: choose what to review, then start it.
- *
- * Mirrors `chatwidget/review_popups.rs`, and the one thing that file settles is that a review is
- * not a mode this page could render. `review/start` injects a review instruction into the thread as
- * a new *turn*, so the findings arrive as ordinary transcript items on the same event stream as
- * everything else the agent does. That is why the page stops at the button: there is no result to
- * hold here, no progress to draw and nothing to refresh. [AppEvent.StartReview] hands the target to
- * the app, the app makes the request, and the answer appears in the transcript where the rest of
- * the conversation already is — a copy of it here would be a second transcript that could disagree
- * with the first.
- *
- * What is left is the choice, which is the protocol's own shape: [ReviewTarget] has exactly four
- * variants — the working tree, a base branch, one commit, or free-form instructions — and each one
- * needs different fields before it can be sent. So the page is four selectable rows plus the inputs
- * of the selected one, and the start button is enabled exactly when those inputs make a target.
- *
- * @param threadId thread the review turn is injected into; also the header's subtitle, because the
- *   transcript a review will land in is the one thing the page cannot show.
- * @param onEvent hands the chosen target to the app's reducer, which owns the request.
- * @param onBack closes the page; the caller owns the page stack.
- * @param modifier layout modifier applied to the page's root.
+ * `/review`: choose the [ReviewTarget] variant and start it. `review/start` injects a new turn,
+ * so findings arrive as transcript items — nothing to hold here. Mirrors chatwidget/review_popups.rs.
  */
 @Composable
 fun ReviewScreen(
@@ -87,8 +68,7 @@ fun ReviewScreen(
     var commitTitle by remember { mutableStateOf("") }
     var instructions by remember { mutableStateOf("") }
 
-    // One expression answers both "may the button be pressed" and "what would it send". Two would
-    // eventually disagree, and the disagreement would be a request with a half-filled target.
+    // One expression answers both "may it submit" and "what it sends"; two would disagree into a half-filled target.
     val target = reviewTarget(choice, branch, sha, commitTitle, instructions)
 
     Column(modifier = modifier.fillMaxSize().background(colors.background)) {
@@ -268,8 +248,7 @@ fun ReviewScreen(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            // The page has to say where the review will go, because the answer to "start review" is
-            // not on this screen, and a user who does not know that reads the page as a failure.
+            // The answer to "start review" lands in the transcript, not on this page; say where it goes.
             Text(
                 text = stringResource(R.string.review_footnote),
                 modifier = Modifier.padding(horizontal = UiConsts.Space4),
@@ -281,15 +260,7 @@ fun ReviewScreen(
     }
 }
 
-/**
- * One selectable target.
- *
- * The whole row is the hit target rather than a control at its trailing edge, the way every other
- * selection row in the app works: the row is the decision, and the check is only its state. The
- * inputs of the selected variant are deliberately *not* part of the row — a text field inside a
- * clickable row swallows the tap that would select it, and a user typing in the wrong row's field
- * cannot tell which target they filled in.
- */
+/** Whole row is the hit target; a text field inside it would swallow the selecting tap. */
 @Composable
 private fun ReviewChoiceRow(
     choice: ReviewChoice,
@@ -336,12 +307,6 @@ private fun ReviewChoiceRow(
     }
 }
 
-/**
- * The inputs a target needs, indented under the row they belong to.
- *
- * Indentation rather than another card: the fields are part of the row's decision, and a nested
- * surface would read as a second question with its own answer.
- */
 @Composable
 private fun ReviewFields(content: @Composable ColumnScope.() -> Unit) {
     Column(
@@ -357,29 +322,17 @@ private fun ReviewFields(content: @Composable ColumnScope.() -> Unit) {
     )
 }
 
-/**
- * Which of the four [ReviewTarget] variants the page is filling in.
- *
- * A local enum rather than the target itself: three of the four targets cannot exist until their
- * fields are non-blank, so the *selection* has to be representable while the form behind it is
- * still empty. Holding the last valid target instead would silently keep reviewing a previous
- * commit while the user typed a new sha.
- */
+/** A local enum, not the target: three variants cannot exist until their fields are non-blank. */
 private enum class ReviewChoice {
-    /** Everything in the working tree, staged or not. */
     Uncommitted,
 
-    /** The changes a branch introduced relative to its base. */
     BaseBranch,
 
-    /** One commit, named by sha. */
     Commit,
 
-    /** Free-form instructions instead of a diff range. */
     Custom,
 }
 
-/** Name of a choice, on its row and as the row's accessibility label. */
 @Composable
 @ReadOnlyComposable
 private fun ReviewChoice.title(): String =
@@ -392,7 +345,6 @@ private fun ReviewChoice.title(): String =
         }
     )
 
-/** The one line under a choice that says which question it answers. */
 @Composable
 @ReadOnlyComposable
 private fun ReviewChoice.detail(): String =
@@ -405,13 +357,7 @@ private fun ReviewChoice.detail(): String =
         }
     )
 
-/**
- * The target the current selection describes, or `null` while a required field is still blank.
- *
- * Fields are trimmed here rather than at the call site so a payload can never carry the whitespace
- * a phone keyboard adds, and an optional field that is only whitespace becomes the `null` the
- * protocol means by "absent".
- */
+/** The target the selection describes, or `null` while a required field is blank; trimming keeps keyboard whitespace out of the payload. */
 private fun reviewTarget(
     choice: ReviewChoice,
     branch: String,

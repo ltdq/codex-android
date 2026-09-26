@@ -62,16 +62,9 @@ private const val DiffExpanderChunk = 200
 private const val DiffTabReplacement = "    "
 
 /**
- * Diff rendering shared by the transcript's patch cells and the status card's diff pane.
- *
- * Mirrors `codex-rs/tui/src/diff_render.rs`: two gutters, per-kind tinting, per-hunk syntax
- * highlighting derived from the file extension, and a tail row when the body is longer than the
- * cell is willing to show. File metadata (`diff --git`, `---`, `+++`, `\ No newline…`) is dropped
- * and the hunks of one file are separated by a `⋮` row, which is what the TUI renders.
- *
- * The body is a plain Column bounded by [maxLines] and grown in chunks on demand. A lazy list would
- * nest a second vertical scrollable inside the transcript's LazyColumn, and an unbounded Column
- * would make one transcript item lay out a whole file.
+ * Diff rendering shared by the transcript's patch cells and the status card's diff pane,
+ * mirroring `codex-rs/tui/src/diff_render.rs`: two gutters, per-kind tinting, per-hunk syntax
+ * highlighting, metadata dropped, hunks separated by a `⋮` row.
  */
 @Composable
 fun DiffBody(
@@ -92,20 +85,17 @@ fun DiffBody(
     val hunkTextColor = MiuixTheme.colorScheme.onSurfaceVariantSummary
     val signAdded = stringResource(R.string.blocks_sign_added)
     val signRemoved = stringResource(R.string.blocks_sign_removed)
-    // Rows are folded once per body and re-folded only when the diff, the palette or the locale
-    // changes, so recomposing a row does no string, Color or TextStyle construction.
+    // Rows are folded once per body, so a recomposition does no string or TextStyle construction.
     val rows =
         remember(lines, palette, hunkTextColor, signAdded, signRemoved) {
             buildDiffRows(lines, palette, hunkTextColor, signAdded, signRemoved)
         }
-    // Syntax spans are built in one pass per body: the lexer has to see the lines in order for a
-    // block comment or raw string to carry across them.
+    // One lexer pass over the content lines keeps a block comment or raw string open across lines.
     val styled =
         remember(lines, language, syntax) {
             highlightDiffLines(lines, language, syntax)
         }
-    // Disclosure state for the truncated tail; keyed on the diff so a new payload opens at its
-    // start instead of at a stale offset.
+    // Keyed on the diff so a new payload opens at its start, not at a stale offset.
     val visible =
         remember(rows, maxLines) {
             mutableIntStateOf(maxLines.coerceIn(0, rows.size))
@@ -143,13 +133,7 @@ fun DiffBody(
     }
 }
 
-/**
- * One diff row with everything the layout needs already resolved.
- *
- * Immutable and comparable, which is what lets Compose skip a row whose line did not change while
- * an unrelated file of the same turn grows. [sourceIndex] points back into the parsed line list so
- * the row can pick up its syntax spans.
- */
+/** One diff row with everything the layout needs already resolved. */
 @Immutable
 internal data class DiffRowModel(
     val oldLine: String,
@@ -161,13 +145,7 @@ internal data class DiffRowModel(
     val sourceIndex: Int = -1,
 )
 
-/**
- * Fold parsed lines into row models.
- *
- * Pure, so a body pays for it once rather than per frame. File metadata lines produce no row; a
- * second and later hunk header becomes a `⋮` separator, which is the only part of a header the TUI
- * shows.
- */
+/** Fold parsed lines into row models; metadata lines produce none, later hunk headers become `⋮` rows. */
 internal fun buildDiffRows(
     lines: List<DiffLine>,
     palette: DiffPalette,
@@ -179,7 +157,6 @@ internal fun buildDiffRows(
     var seenHunk = false
     for ((index, line) in lines.withIndex()) {
         if (line.kind == DiffLineKind.Hunk) {
-            // Only `@@` headers become rows, and only as the separator between hunks.
             if (line.text.startsWith("@@")) {
                 if (seenHunk) {
                     rows +=
@@ -232,12 +209,7 @@ internal fun buildDiffRows(
     return rows
 }
 
-/**
- * Syntax spans for the content lines of one diff.
- *
- * Hunk headers and file metadata are skipped, and the lexer sees content in order so a multi-line
- * construct carries across lines the way it does in the file.
- */
+/** Syntax spans for content lines; a single lexer pass lets multi-line constructs carry across. */
 internal fun highlightDiffLines(
     lines: List<DiffLine>,
     language: String?,
@@ -258,7 +230,6 @@ internal fun highlightDiffLines(
 
 internal const val DiffHunkSeparator = "⋮"
 
-/** One diff line. Every value is precomputed in [DiffRowModel]; only color is resolved here. */
 @Composable
 internal fun DiffRow(
     model: DiffRowModel,
@@ -303,13 +274,6 @@ internal fun DiffRow(
     }
 }
 
-/**
- * The row that stands in for the hidden tail of a long diff.
- *
- * A tap reveals the next chunk rather than repeating the omitted count: a diff the caller truncated
- * is usually still worth reading, and the old note left no way to read it without opening the
- * status pane.
- */
 @Composable
 private fun DiffExpander(
     label: String,
@@ -355,12 +319,7 @@ fun DiffLineNumber(
     )
 }
 
-/**
- * Diff colors for the current theme.
- *
- * The dark and light values have no tonal equivalent in the miuix palette, so they are fixed here
- * the way `codex-rs/tui/src/color.rs` fixes the terminal's diff colors.
- */
+/** Fixed dark/light values with no miuix tonal equivalent, like `codex-rs/tui/src/color.rs`. */
 @Composable
 fun diffPalette(): DiffPalette {
     val dark = isSystemInDarkTheme()
@@ -390,7 +349,7 @@ fun diffPalette(): DiffPalette {
     }
 }
 
-/** Letter badge for one changed file: `A` / `M` / `D`. */
+/** Letter badge for one changed file: `A` / `M` / `D` / `R`. */
 @Composable
 fun FileKindBadge(
     file: FileDiff,
@@ -465,7 +424,6 @@ fun FileStatText(
     }
 }
 
-/** One expandable file inside a patch cell: header row plus the diff body when open. */
 @Composable
 fun FileDiffRow(
     file: FileDiff,
@@ -561,10 +519,7 @@ fun FileDiffRow(
     }
 }
 
-/**
- * Card chrome used by every tool cell: an icon, a title line, an optional trailing slot and a body.
- * Mirrors the shared shape of the TUI's `history_cell/{exec,mcp,patches,search}.rs` cells.
- */
+/** Card chrome for tool cells, mirroring the TUI's `history_cell/{exec,mcp,patches,search}.rs` cells. */
 @Composable
 fun ToolCard(
     icon: ImageVector,
@@ -647,7 +602,6 @@ fun ToolCard(
     }
 }
 
-/** Collapsible section inside a transcript cell, used for reasoning and long tool output. */
 @Composable
 fun CollapsibleSection(
     title: String,
@@ -721,7 +675,6 @@ fun CollapsibleSection(
     }
 }
 
-/** Small state memory for a cell that owns its own disclosure state. */
 @Composable
 fun rememberExpanded(initial: Boolean): Pair<Boolean, () -> Unit> {
     var expanded by remember { mutableStateOf(initial) }

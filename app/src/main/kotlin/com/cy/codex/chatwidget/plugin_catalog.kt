@@ -77,12 +77,8 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.window.WindowBottomSheet
 
 /**
- * `/plugins` output as a page.
- *
- * Mirrors `plugin/list` and `bottom_pane/plugin_catalog`: entries are split the way the catalog
- * presents them — what is already installed, and what the marketplace still offers. Every row's
- * action round-trips: `plugin/install` and `plugin/uninstall` are emitted as [AppEvent]s, and the
- * catalog is re-read from the server afterwards rather than patched locally.
+ * `/plugins` as a page, mirroring plugin/list and bottom_pane/plugin_catalog. Actions round-trip
+ * as [AppEvent]s; the catalog is re-read, never patched locally.
  */
 @Composable
 fun PluginsScreen(
@@ -94,20 +90,15 @@ fun PluginsScreen(
 ) {
     val colors = MiuixTheme.colorScheme
     val scope = rememberCoroutineScope()
-    // A search narrows the list with the *server's* index rather than filtering the copy on screen:
-    // `plugin/list` returns at most one marketplace's worth of entries, so a local filter would
-    // silently fail to find a plugin that is installed but not in the visible catalog.
+    // Server-side search: a local filter would miss plugins installed but not in the visible catalog.
     var term by remember { mutableStateOf("") }
     var results by remember { mutableStateOf<List<PluginEntry>?>(null) }
-    // `plugin/installed` is a different question from `plugin/list`: it answers with what is
-    // installed regardless of which marketplace it came from, and drops the rest.
+    // plugin/installed differs from plugin/list: it answers regardless of marketplace.
     var installedOnly by remember { mutableStateOf(false) }
     var installedEntries by remember { mutableStateOf<List<PluginEntry>?>(null) }
     var detail by remember { mutableStateOf<PluginDetail?>(null) }
     var addingMarketplace by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
-    // `null` is the "All plugins" tab; a name selects one marketplace, the tab set upstream builds
-    // from `plugin/list`.
     var selectedMarketplace by remember { mutableStateOf<String?>(null) }
 
     val tabPlugins =
@@ -177,8 +168,6 @@ fun PluginsScreen(
                 checked = installedOnly,
                 onCheckedChange = ::setInstalledOnly,
             )
-            // One tab per marketplace, beside "All plugins": with several marketplaces a plugin's
-            // source is a filter, not a column in a list that already scrolls.
             Row(
                 modifier =
                     Modifier.fillMaxWidth()
@@ -312,14 +301,7 @@ fun PluginsScreen(
     }
 }
 
-/**
- * The post-install connector setup.
- *
- * Mirrors the auth popup in `chatwidget/plugins.rs`: one connector per step, the browser opens its
- * `installUrl`, and "I've installed it" re-reads `app/list` before advancing — a connector the
- * account does not have yet cannot be skipped past silently. The remaining connectors can be
- * skipped as a group, which abandons the flow rather than pretending the plugin is ready.
- */
+/** Post-install connector setup; mirrors the auth popup in chatwidget/plugins.rs. */
 @Composable
 private fun PluginInstallAuthSheet(
     flow: PluginInstallAuthFlow,
@@ -634,9 +616,6 @@ private fun PluginRow(
             }
         }
         Spacer(Modifier.width(UiConsts.Space10))
-        // An installed plugin gets the enable/disable switch the TUI binds to Space; a marketplace
-        // entry gets the install button. They are never both: an entry that is not installed has no
-        // enablement to toggle, and an installed one has nothing left to install.
         if (plugin.installed) {
             Switch(
                 checked = plugin.enabled,
@@ -644,8 +623,6 @@ private fun PluginRow(
             )
             Spacer(Modifier.width(UiConsts.Space8))
         }
-        // Installing is the one thing this page can do for a plugin, so the marketplace chip is the
-        // accent pill and "Installed" — a state, not an action — is the outlined one.
         Button(
             onClick = {
                 if (plugin.installed) {
@@ -727,14 +704,7 @@ private fun PluginsChip(text: String, tint: Color) {
 private fun PluginsDivider() =
     HorizontalDivider(modifier = Modifier.padding(vertical = UiConsts.Space1))
 
-/**
- * What one plugin actually contributes.
- *
- * `plugin/read` answers with the manifest — skills, MCP servers and apps the plugin installs — and
- * `plugin/skill/read` fetches one skill's body. Both are reads the catalog list cannot answer: the
- * list only knows a plugin's name and whether it is installed, so a user deciding whether to
- * install one has nothing to decide on until this sheet opens.
- */
+/** One plugin's manifest: plugin/read, plus plugin/skill/read for one skill's body. */
 @Composable
 private fun PluginDetailSheet(
     detail: PluginDetail,

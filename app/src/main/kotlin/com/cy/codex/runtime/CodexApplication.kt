@@ -22,20 +22,12 @@ import kotlinx.coroutines.flow.asStateFlow
 class CodexApplication : Application() {
     val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
-    /**
-     * Whether any activity is started.
-     *
-     * Notifications are gated on it the way the TUI gates on terminal focus
-     * (`NotificationCondition::Unfocused`): a turn that completes while the user is looking at the
-     * transcript needs no alert. Counting starts rather than using a single activity flag keeps a
-     * configuration-change recreation from flickering the value.
-     */
+    /** Gated on foreground like the TUI gates on terminal focus; counting starts avoids config-change flicker. */
     var inForeground = false
         private set
 
     private val foregroundFlow = MutableStateFlow(false)
 
-    /** Foreground/background transitions; the recap scheduler uses them as terminal focus. */
     val foreground: StateFlow<Boolean> = foregroundFlow.asStateFlow()
     val defaultWorkspace: String get() = File(filesDir, "workspaces/default").absolutePath
     val shellPath: String get() = File(filesDir, "runtime/toolchain/bin/bash").absolutePath
@@ -50,8 +42,8 @@ class CodexApplication : Application() {
         )
     }
 
-    // Android owns this instance across Activity recreation; transcript and pending approvals
-    // stay attached to the same native session while the process remains alive.
+    // Android owns the app across Activity recreation; transcript and approvals stay attached to the
+    // same native session while the process remains alive.
     val app: CodexApp by lazy {
         CodexApp(
             appScope,

@@ -36,13 +36,7 @@ import top.yukonga.miuix.kmp.window.WindowBottomSheet
 /** The longest steer `continuation_message` accepts upstream. */
 internal const val MaxMisalignmentSteerChars = 1024
 
-/**
- * The safety-stop bar above the composer.
- *
- * Mirrors `chatwidget/misalignment_policy.rs`: the turn stopped as a precaution, the composer is
- * blocked, and the only ways forward are reviewing the findings or continuing with the steer.
- * Continuing is offered only when the server supplied a usable steer message.
- */
+/** Safety-stop bar; mirrors chatwidget/misalignment_policy.rs. */
 @Composable
 internal fun MisalignmentBar(
     details: MisalignmentErrorDetails,
@@ -108,7 +102,6 @@ internal fun MisalignmentBar(
     }
 }
 
-/** "What we detected": the findings the safety system returned, plus the quoted continuation. */
 @Composable
 internal fun MisalignmentReviewSheet(
     details: MisalignmentErrorDetails,

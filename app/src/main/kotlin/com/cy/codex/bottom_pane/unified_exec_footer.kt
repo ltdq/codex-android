@@ -61,17 +61,9 @@ import top.yukonga.miuix.kmp.squircle.squircleBorder
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
- * The background terminals one thread has left running.
- *
- * Mirrors `codex-rs/tui/src/bottom_pane/unified_exec_footer.rs`: the TUI prints this as a footer
- * strip under the composer, one line per process, because a long-running command started by a turn
- * keeps going after the turn's output has scrolled away. A phone has no footer that can hold a
- * command, a directory and an age and still be tappable, so the same three facts are rows.
- *
- * The list is the server's: it is read with `thread/backgroundTerminals/list` and mirrored into
- * [SessionState.backgroundTerminals], which the rest of the app already reads. Terminating is an
- * event rather than a call because a row only names a process — the reducer owns the cleanup that
- * has to follow the call in [SessionState].
+ * The background terminals one thread left running (codex-rs/tui/src/bottom_pane/unified_exec_footer.rs);
+ * read via `thread/backgroundTerminals/list` into [SessionState.backgroundTerminals]; terminating is
+ * an event because the reducer owns the cleanup after the call.
  */
 @Composable
 fun BackgroundTerminalsScreen(
@@ -95,9 +87,7 @@ fun BackgroundTerminalsScreen(
             client
                 .listBackgroundTerminals(threadId)
                 .onSuccess { listed ->
-                    // The read is the whole list, so it replaces rather than merges: a terminal
-                    // gone from the answer is gone from the thread, and leaving it on screen would
-                    // offer a kill button for a process that no longer exists.
+                    // The answer is the whole list: replace rather than merge, so a gone terminal offers no kill button.
                     session.backgroundTerminals.clear()
                     session.backgroundTerminals.addAll(listed)
                 }
@@ -127,8 +117,7 @@ fun BackgroundTerminalsScreen(
                 }
             },
             endActions = {
-                // Only once there is something to clean, because the action is a category error
-                // on an empty list, and a button that does nothing reads as a broken one.
+                // Only when there is something to clean; an empty-list action would read as a broken button.
                 if (terminals.isNotEmpty()) {
                     Button(
                         onClick = { onEvent(AppEvent.CleanBackgroundTerminals(threadId)) },
@@ -328,8 +317,7 @@ fun BackgroundTerminalsScreen(
                     }
                 }
             } else if (loading) {
-                // A read that has not answered yet is not the same as a thread with no terminals,
-                // and the footer is exactly the surface where the difference matters.
+                // "Not read yet" is not "no terminals".
                 Text(
                     text = stringResource(R.string.exec_terminals_reading),
                     modifier = Modifier.padding(horizontal = UiConsts.Space4),
@@ -342,13 +330,7 @@ fun BackgroundTerminalsScreen(
     }
 }
 
-/**
- * One background terminal: what is running, where, since when, and the one action that ends it.
- *
- * The command is the row's title rather than a field in a detail page, because the question this
- * list answers is "which of these is the one I need to stop" — and that question is answered by the
- * command line, not by the process id.
- */
+/** One background terminal: the command as title — the question the list answers is "which do I stop" — plus cwd, age and the kill action. */
 @Composable
 private fun BackgroundTerminalRow(
     terminal: ThreadBackgroundTerminal,

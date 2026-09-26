@@ -5,13 +5,7 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 
-/**
- * One block of the markdown-lite document the transcript renders.
- *
- * The shapes match what `parseMarkdown` produced before streaming existed, plus [OpenCode] and
- * [OpenTable] for blocks that are still growing. The model is append-only so the renderer can keep
- * the composition of every finished block and rebuild only the block the latest delta landed in.
- */
+/** One block of the markdown-lite transcript document; append-only, so the renderer rebuilds only the block the latest delta landed in. */
 sealed interface MarkdownBlock {
     data class Paragraph(val text: String) : MarkdownBlock
 
@@ -42,13 +36,7 @@ sealed interface MarkdownBlock {
     /** A display equation (`$$ … $$`); inline `$…$` stays inside a paragraph's spans. */
     data class Math(val text: String) : MarkdownBlock
 
-    /**
-     * A fence whose closing marker has not arrived.
-     *
-     * This is the one block that is mutated in place rather than replaced: [lines] takes complete
-     * lines and [partial] the line still being written, so one delta costs one line instead of a
-     * rebuild of the whole code text. The block becomes a [Code] the moment the fence closes.
-     */
+    /** A fence whose closer has not arrived; mutated in place so one delta costs one line instead of a rebuild. */
     class OpenCode(val language: String?) : MarkdownBlock {
         val lines = mutableStateListOf<String>()
 
@@ -56,12 +44,7 @@ sealed interface MarkdownBlock {
             internal set
     }
 
-    /**
-     * A table whose terminator has not arrived.
-     *
-     * Like [OpenCode] this is mutated in place: a new row appends one entry, so a long streaming
-     * table does not rebuild its parsed prefix on every delta.
-     */
+    /** A table whose terminator has not arrived; mutated in place like [OpenCode]. */
     class OpenTable(
         val header: List<String>,
         val alignments: List<TableAlignment>,
@@ -76,16 +59,10 @@ enum class TableAlignment { Start, Center, End }
 /**
  * Incremental markdown-lite parser for a streaming message.
  *
- * [append] only scans the new text: a block is frozen into [frozen] as soon as its terminator has
- * been seen, and [tail] holds the single block still being written, so scanning is O(n) over the
- * life of the message instead of the O(n) full re-parse that `remember(markdown)` forced on every
- * delta. [frozen] and [tail] are Compose state, so a delta recomposes the tail view only.
- *
- * The grammar is the tolerant subset the transcript actually sees: paragraphs with hard breaks,
- * ATX and setext headings up to level six, bullet and numbered items nested by indent, block
- * quotes, thematic breaks, indented code, fenced code (backtick or tilde, any fence length, info
- * string) and pipe tables; display math is kept as one block and inline math is left to the span
- * renderer. An unterminated fence renders as code to the end of the buffer.
+ * [append] scans only the new text: finished blocks freeze into [frozen] and [tail] holds the one
+ * block still being written, so scanning stays linear over the message and a delta recomposes the
+ * tail view only. Grammar: the tolerant subset the transcript sees — headings, nested lists,
+ * quotes, thematic breaks, indented and fenced code, pipe tables, display math.
  */
 class MarkdownStream {
 
@@ -148,8 +125,7 @@ class MarkdownStream {
                     raw.startsWith("    ") -> code.lines.add(raw.removePrefix("    "))
                     raw.startsWith("\t") -> code.lines.add(raw.removePrefix("\t"))
                     else -> {
-                        // The block ends where the indentation does; the line still has to be
-                        // classified, so the scanner stays put and re-reads it below.
+                        // The block ends where the indentation does; the scanner stays put and re-reads the line.
                         closeIndentedCode()
                         continue
                     }
@@ -344,13 +320,7 @@ class MarkdownStream {
         openTable = null
     }
 
-    /**
-     * The block still being written.
-     *
-     * A paragraph is rebuilt from its own lines (a paragraph is bounded by a blank line, so the
-     * tail itself is small); an open fence, table or code block is handed over as the same mutable
-     * instance each time, which is what keeps a long streaming block linear.
-     */
+    /** The block still being written; open fences/tables hand over the same mutable instance so a long block stays linear. */
     private fun refreshTail() {
         val open = fence
         if (open != null) {
@@ -389,8 +359,7 @@ class MarkdownStream {
             tail = null
             return
         }
-        // A still-growing line is shown as a paragraph; the scanner re-reads it when it ends and
-        // turns it into whatever its first character decides.
+        // A still-growing line shows as a paragraph; the scanner re-classifies it once the line ends.
         val text = source.substring(scanPos).trim()
         tail = if (text.isEmpty()) null else MarkdownBlock.Paragraph(text)
     }
@@ -404,8 +373,7 @@ class MarkdownStream {
             var end = source.indexOf('\n', cursor)
             if (end !in 0..to) end = to
             val raw = source.substring(cursor, end)
-            // Two trailing spaces or a trailing backslash are CommonMark's line-break markers; the
-            // marker itself is not part of the text.
+            // Two trailing spaces or a backslash are CommonMark's line-break markers; the marker is not text.
             val hard = raw.endsWith("  ") || raw.endsWith("\\")
             var line = raw.trim()
             if (hard && line.endsWith("\\")) line = line.dropLast(1).trimEnd()
@@ -443,12 +411,7 @@ private fun isClosingFence(line: String, fence: Fence): Boolean {
     return trimmed.all { it == fence.marker }
 }
 
-/**
- * Parse a fence opener, or return `null` when the line is not one.
- *
- * Any run of three or more backticks or tildes opens a fence; a backtick fence's info string may
- * not contain a backtick, which is what keeps the closing marker unambiguous.
- */
+/** Any run of ≥3 backticks or tildes opens a fence; a backtick info string may not contain a backtick. */
 private fun isFenceOpener(line: String): Fence? {
     if (!line.startsWith("```") && !line.startsWith("~~~")) return null
     val match = FenceOpener.find(line) ?: return null

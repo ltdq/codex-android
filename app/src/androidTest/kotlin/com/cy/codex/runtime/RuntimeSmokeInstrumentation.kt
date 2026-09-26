@@ -22,7 +22,6 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 
-/** Exercises the production client and JNI inside the real Android application sandbox. */
 class RuntimeSmokeInstrumentation : Instrumentation() {
     override fun onCreate(arguments: Bundle?) {
         super.onCreate(arguments)
@@ -77,9 +76,8 @@ class RuntimeSmokeInstrumentation : Instrumentation() {
                                 listOf("${installation.root.path}/bin/bash", "-c",
                                     "set -e; git --version; rg --version; " +
                                         "python3 -c 'import ssl,sqlite3; print(\"python-ok\")'; " +
-                                        // `test -r` is not usable for app-private files on Android:
-                                        // access(2) returns EACCES even for the owning UID (SELinux),
-                                        // while an actual open succeeds. Open the bundle instead.
+                                        // `test -r` fails for app-private files: access(2) returns EACCES
+                                        // under SELinux even for the owning UID; open the bundle instead.
                                         "bun --version; head -c 1 \"\$GIT_SSL_CAINFO\" >/dev/null; " +
                                         "printf 'toolchain-ok\\n'"),
                                 cwd = testDirectory.path,
@@ -129,8 +127,7 @@ class RuntimeSmokeInstrumentation : Instrumentation() {
                         client.close()
                         client.initialize(ClientInfo("codex_android_smoke", "Codex Android Test", "1.0"))
                             .getOrThrow()
-                        // Upstream thread/list excludes shell-only threads with no chat preview.
-                        // Read and resume by ID to verify their persisted transcript directly.
+                        // thread/list skips shell-only threads without a chat preview; read by ID instead.
                         val restored = client.readThread(
                             ThreadReadParams(thread.threadId),
                         ).getOrThrow()

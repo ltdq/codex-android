@@ -3,13 +3,9 @@ package com.cy.codex.bottom_pane.async_questions
 import com.cy.codex.protocol.protocol.v2.AsyncUserInputQuestion
 
 /**
- * Framing and bounds for the questions an agent message can carry inline.
- *
- * Mirrors `codex-rs/context-fragments/src/answered_question.rs` and the normalization in
- * `codex-rs/tui/src/bottom_pane/async_questions/state.rs::append`. The answer itself is an
- * ordinary user message — the server never receives a structured answer — so the quoted question
- * above it is what tells the model which question a bare "yes" belonged to. That framing is
- * client-authored, which is why it lives here and not in the protocol.
+ * Framing for the questions an agent message can carry, mirroring
+ * codex-rs/context-fragments/src/answered_question.rs and codex-rs/tui/src/bottom_pane/async_questions/state.rs::append;
+ * the answer is an ordinary user message, so the quoted question is client-authored framing.
  */
 internal object AsyncQuestions {
 
@@ -20,22 +16,11 @@ internal object AsyncQuestions {
     const val MaxOptions = 32
     const val OptionByteLimit = 512
 
-    /**
-     * `> {question}\n\n{answer}` with the question flattened to one bounded line.
-     *
-     * The answer is trimmed the way `go_next_or_submit` trims it; callers must not submit a blank
-     * one, because the whole point of the framing is that something followed it.
-     */
+    /** `> {question}\n\n{answer}` with the question flattened to one bounded line; callers must not submit a blank answer. */
     fun answeredText(question: String, answer: String): String =
         "> ${flattened(question)}\n\n${answer.trim()}"
 
-    /**
-     * Bound each question's options before they are shown.
-     *
-     * The take-then-filter order matches the TUI: the first 32 authored options are considered, and
-     * an over-long label inside that window is dropped rather than truncated. An empty result is a
-     * free-text question, exactly as an omitted `options` field is.
-     */
+    /** Bound each question's options; take-then-filter matches the TUI, and an empty result is a free-text question. */
     fun normalize(questions: List<AsyncUserInputQuestion>): List<AsyncUserInputQuestion> =
         questions.map { question ->
             question.copy(

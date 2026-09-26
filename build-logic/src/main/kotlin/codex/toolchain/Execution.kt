@@ -11,7 +11,6 @@ import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import java.security.MessageDigest
 
-/** Shell-free command/file step runner shared by the toolchain and native builds. */
 class StepContext(
     val toolName: String,
     val rootDir: File,

@@ -1,12 +1,6 @@
 package com.cy.codex
 
-/**
- * Canonical ownership for every page/action id the shell exposes.
- *
- * The TUI put navigation, session tools and configuration in one overlay list. Compose has room
- * for better placement, so the sets below make that placement explicit and testable: a destination
- * has exactly one owner, and adding it somewhere without removing it elsewhere fails a JVM test.
- */
+/** Canonical ownership of every page/action id: exactly one owner set, enforced by a JVM test. */
 object DestinationCatalog {
     object Id {
         const val Settings = "settings"

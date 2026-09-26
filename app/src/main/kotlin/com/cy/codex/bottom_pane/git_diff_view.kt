@@ -48,16 +48,10 @@ import top.yukonga.miuix.kmp.squircle.squircleBackground
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
- * `/diff`: the working tree, tracked and untracked.
- *
- * Mirrors what the TUI's `/diff` prints into the transcript (`codex-rs/tui/src/get_git_diff.rs`
- * plus `slash_dispatch.rs`): the diff is computed on entry through [GitDiff], because the working
- * tree changes without the app hearing about it — an edit in another app, a file the user just
- * saved — and a cached copy would report a state that never was.
- *
- * The transcript's patch cells show one turn's changes. This page is deliberately a second view
- * rather than another cell: `turn/diff/updated` never mentions untracked files, and a page is the
- * only shape here that can carry a reload.
+ * `/diff`: the working tree, tracked and untracked, computed on entry because the tree changes
+ * without the app hearing about it (codex-rs/tui/src/get_git_diff.rs, plus `slash_dispatch.rs`).
+ * A page rather than a transcript cell: `turn/diff/updated` never mentions untracked files, and a
+ * page can carry a reload.
  */
 @Composable
 fun GitDiffScreen(
@@ -69,17 +63,14 @@ fun GitDiffScreen(
     val colors = MiuixTheme.colorScheme
     var result by remember(cwd) { mutableStateOf<GitDiffResult?>(null) }
     var reloadToken by remember(cwd) { mutableIntStateOf(0) }
-    // Keyed on the token as well as the directory so the refresh button re-runs the read. Leaving
-    // it set keeps the previous answer on screen while the new one is computed, which is what makes
-    // the reload feel like a refresh rather than a blank page.
+    // Keyed on the token so refresh re-runs the read; the old answer stays on screen meanwhile.
     LaunchedEffect(cwd, reloadToken) { result = GitDiff.load(client, cwd) }
 
     val files =
         remember(result) {
             (result as? GitDiffResult.Changes)?.let { parseTurnDiff(it.diff) }.orEmpty()
         }
-    // Every file starts collapsed: this page can hold hundreds of files, and a page that opens with
-    // each one's first screenful laid out is a page that takes a second to appear.
+    // Every file starts collapsed; a page of hundreds must not lay out each first screenful up front.
     val expanded = remember(result) { mutableStateMapOf<String, Boolean>() }
 
     Column(modifier = modifier.fillMaxSize().background(colors.background)) {

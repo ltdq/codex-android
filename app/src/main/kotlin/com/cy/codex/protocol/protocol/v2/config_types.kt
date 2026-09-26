@@ -31,9 +31,9 @@ data class GranularApprovalConfig(
 /**
  * Who an approval request is routed to for review.
  *
- * Mirrors upstream `ApprovalsReviewer`: `auto_review` hands the request to the review subagent
- * instead of showing it to the user. The legacy wire value `guardian_subagent` is the same mode and
- * is folded into [AutoReview] on read.
+ * [AutoReview] hands the request to the review subagent instead of showing it to the user; the
+ * legacy wire value `guardian_subagent` is the same mode and folds into it on read (upstream
+ * `ApprovalsReviewer`).
  */
 enum class ApprovalsReviewer(val wire: String) {
     User("user"),
@@ -87,12 +87,9 @@ enum class Personality(val wire: String) {
     None("none"),
 }
 
-/**
- * Everything the status card and the settings page need to describe one session.
- *
- * Mirrors `ThreadSessionState` in `codex-rs/tui/src/session_state.rs`: the single internal shape
- * that app orchestration and widgets read from, filled from app-server responses.
- */
+/** Everything the status card and the settings page need to describe one session
+ * (codex-rs/tui/src/session_state.rs); the single internal shape app orchestration and widgets
+ * read, filled from app-server responses. */
 data class ThreadSessionState(
     val threadId: String,
     val forkedFromId: String? = null,
@@ -120,32 +117,27 @@ data class ThreadSessionState(
     /** Whether the server accepts direct turn input; `null` when the capability is unavailable. */
     val canAcceptDirectInput: Boolean? = null,
     /**
-     * Cursor for `thread/turns/list` with `sortDirection: desc`, as `thread/resume` reported it.
-     *
-     * It names the newest turn of the loaded history; the transcript itself pages forward from the
-     * bounded page's `nextCursor`.
+     * Cursor for `thread/turns/list` with `sortDirection: desc`, as `thread/resume` reported it:
+     * it names the newest turn of the loaded history.
      */
     val turnsBackwardsCursor: String? = null,
     /**
-     * The bounded `thread/turns/list` page `thread/resume.initialTurnsPage` returned, if the server
-     * answered one. This is what keeps opening a long thread from replaying the whole rollout.
+     * The bounded `thread/turns/list` page `thread/resume.initialTurnsPage` returned; this is what
+     * keeps opening a long thread from replaying the whole rollout.
      */
     val initialTurnsPage: TurnsPage? = null,
     /**
-     * Raw `thread/resume` metadata row, for surfaces that merge the opened thread into a list.
-     *
-     * Not part of upstream's `ThreadSessionState`; it exists so opening a thread can update the
-     * sidebar without a second full `thread/read`.
+     * Raw `thread/resume` metadata row. Not part of upstream's `ThreadSessionState`; kept so
+     * opening a thread can update the sidebar without a second full `thread/read`.
      */
     val thread: Thread? = null,
 ) {
     val displayName: String get() = threadName ?: cwd.substringAfterLast('/').ifEmpty { threadId }
 
     /**
-     * Whether the composer must refuse direct input.
-     *
-     * Mirrors `set_parent_owned_thread` upstream: a sub-agent thread, or one the server says does
-     * not accept direct input, is viewable but not writable from the composer.
+     * Whether the composer must refuse direct input. Mirrors `set_parent_owned_thread` upstream:
+     * a sub-agent thread, or one the server says does not accept direct input, is viewable but
+     * not writable from the composer.
      */
     val blocksDirectInput: Boolean get() = parentThreadId != null || canAcceptDirectInput == false
 }

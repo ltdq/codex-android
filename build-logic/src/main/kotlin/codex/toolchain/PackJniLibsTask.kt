@@ -12,16 +12,7 @@ import java.io.File
 import java.nio.file.Files
 import javax.inject.Inject
 
-/**
- * Merges every tool prefix into `toolchain/out/<abi>` and packages it for the
- * APK exactly like the old `pack-jnilibs.sh`:
- *
- *  - executables and modules become `jniLibs/lib<slug>.so` (the only place
- *    Android ≥29 lets an app exec/dlopen from),
- *  - data files (python stdlib, git templates, CA bundle) go to assets,
- *  - `native-manifest.txt` records how the runtime rebuilds the tree,
- *  - every ELF that lands in jniLibs is checked for 16 KB page alignment.
- */
+/** Executables become `jniLibs/lib<slug>.so` — the only exec location on Android ≥ 29; data goes to assets. */
 abstract class PackJniLibsTask : DefaultTask() {
     @get:Internal abstract val outRootPath: Property<String>
     @get:Internal abstract val abi: Property<String>
@@ -46,8 +37,7 @@ abstract class PackJniLibsTask : DefaultTask() {
         val assets = File(dist, "assets/toolchain")
         val manifest = File(dist, "native-manifest.txt")
 
-        // The staging tree is derived state: rebuild it from the prefixes so a
-        // removed tool (or one rebuilt with fewer files) cannot linger.
+        // Rebuild the stage from the prefixes so a removed tool cannot linger.
         stage.deleteRecursively()
         stage.mkdirs()
         prefixes.get().map(::File).filter { it.isDirectory }.forEach { prefix ->

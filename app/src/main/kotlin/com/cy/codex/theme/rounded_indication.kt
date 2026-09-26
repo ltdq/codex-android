@@ -20,10 +20,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 
-/**
- * Miuix style press highlight, but drawn as an inset rounded rect instead of a full-bleed
- * rectangle so it follows the rounded silhouette of floating surfaces and popup rows.
- */
+/** Miuix-style press highlight drawn inset, following the rounded silhouette of floating surfaces. */
 class RoundedIndication(
     private val color: Color,
     private val radius: Dp = 16.dp,

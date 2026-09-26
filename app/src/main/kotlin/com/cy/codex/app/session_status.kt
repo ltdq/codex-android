@@ -61,13 +61,9 @@ import top.yukonga.miuix.kmp.icon.extended.Timer
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
- * `/status` as a page over the open thread.
- *
- * The terminal prints one `SessionHeader` cell (`status/card.rs`); the phone already has the status
- * card as a transcript pane, so this page exists for the facts the card does not carry: the thread
- * id, the CLI version that created it, the working directory, and the estimated credit/cost usage
- * that `account/usage/read` answers only when asked by thread id. `server/diagnostics` keeps its
- * own page for process-level facts.
+ * `/status` page over the open thread: facts the status card lacks (thread id, cli version,
+ * cwd, per-thread usage from `account/usage/read`); the terminal surface is
+ * `codex-rs/.../status/card.rs`.
  */
 @Composable
 fun SessionStatusScreen(
@@ -182,10 +178,7 @@ fun SessionStatusScreen(
                     ?.cliVersion
                     ?.takeIf { it.isNotBlank() }
                     ?.let { version ->
-                        // A thread remembers the version that created it; when the server has moved
-                        // on,
-                        // the mismatch is worth flagging before the user wonders about odd
-                        // behaviour.
+                        // A thread remembers the version that created it; flag when the server has moved on.
                         val stale = serverVersion != null && serverVersion != version
                         BasicComponent(
                             title = stringResource(R.string.session_status_created_by),
@@ -648,10 +641,8 @@ fun SessionStatusScreen(
                         },
                     )
                 }
-                // The TUI's nudge CTA comes from a backend banner, which this client does not
-                // parse;
-                // the state that banner reacts to — a reached spend control or an empty credit
-                // balance — is already on this page, so the action lives next to it instead.
+                // The TUI's nudge CTA comes from a backend banner this client does not parse; the state it
+                // reacts to is already local, so the action lives next to it.
                 val nudgeType =
                     when {
                         spend.spendControlReached == true -> AddCreditsNudgeCreditType.UsageLimit
@@ -709,11 +700,8 @@ fun SessionStatusScreen(
 }
 
 /**
- * A plain-text snapshot of the page, for the clipboard.
- *
- * Mirrors the "Whole status" entry of the TUI's copy picker (`chatwidget/interaction.rs`): the same
- * facts, one per line. It deliberately skips the estimated usage, which the page fetches
- * asynchronously, so copying never waits on a request.
+ * Clipboard snapshot mirroring the TUI's "Whole status" copy entry
+ * (`codex-rs/.../chatwidget/interaction.rs`); the async estimate is skipped.
  */
 @Composable
 fun sessionStatusReport(app: CodexApp): String? {
@@ -779,7 +767,6 @@ fun sessionStatusReport(app: CodexApp): String? {
     }
 }
 
-/** The account's plan name, or the sign-in state when there is no account. */
 @Composable
 private fun planLabel(account: Account?): String =
     when (account) {

@@ -47,13 +47,7 @@ import top.yukonga.miuix.kmp.basic.LinearProgressIndicator
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
-/**
- * The live turn status row: elapsed time plus whatever the agent is doing right now.
- *
- * Mirrors `status_indicator_widget.rs`: a spinner, "Working" and a compact timer
- * (`0s` / `59s` / `1m 00s` / `1h 00m 00s`), then the current tool detail and the running hook under
- * a `└` prefix. The detail is one ellipsized line on a phone, where the TUI wraps up to three.
- */
+/** Live turn status row: elapsed time plus current agent activity (status_indicator_widget.rs). */
 @Composable
 fun TurnActivityBar(
     running: Boolean,
@@ -63,8 +57,7 @@ fun TurnActivityBar(
     modifier: Modifier = Modifier,
 ) {
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
-    // The timer only needs its own recomposition, and only while a turn runs: a tick a second on a
-    // finished session would redraw a row nobody is reading.
+    // Tick only while a turn runs; a finished session would redraw a row nobody reads.
     LaunchedEffect(running, startedAtMs) {
         if (!running) return@LaunchedEffect
         while (true) {
@@ -103,7 +96,6 @@ fun TurnActivityBar(
     }
 }
 
-/** One `└ …` payload line; nothing renders for a blank value. */
 @Composable
 private fun ActivityDetailLine(text: String?) {
     if (text.isNullOrBlank()) return
@@ -121,11 +113,7 @@ private fun ActivityDetailLine(text: String?) {
     )
 }
 
-/**
- * Compact elapsed time, exactly as `fmt_elapsed_compact` formats it.
- *
- * Split out so the boundary values (59s / 60s / 3600s) are testable without a composition.
- */
+/** Compact elapsed time as `fmt_elapsed_compact` formats it; split out so boundary values are testable. */
 internal fun formatElapsedCompact(elapsedSeconds: Long): String {
     val seconds = elapsedSeconds.coerceAtLeast(0)
     return when {
@@ -135,11 +123,7 @@ internal fun formatElapsedCompact(elapsedSeconds: Long): String {
     }
 }
 
-/**
- * What the agent is doing right now: the last tool item that has not finished.
- *
- * `null` when the only open thing is text streaming, which the transcript already shows.
- */
+/** The last tool item that has not finished; `null` while only text streams. */
 internal fun activeToolDetail(items: List<ThreadItem>): String? {
     val item = items.lastOrNull { candidate ->
         when (candidate) {

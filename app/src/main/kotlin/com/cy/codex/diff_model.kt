@@ -1,12 +1,6 @@
 package com.cy.codex
 
-/**
- * Parsed unified diff.
- *
- * Mirrors `codex-rs/tui/src/diff_model.rs`: the server hands the client raw unified diff text
- * (`turn/diff/updated`, `FileUpdateChange.diff`), and the UI parses it once into line records that
- * carry both gutters. Rendering never re-parses.
- */
+/** Parsed unified diff; the UI parses the raw text once and rendering never re-parses (codex-rs/tui/src/diff_model.rs). */
 data class DiffLine(
     val kind: DiffLineKind,
     val text: String,
@@ -54,12 +48,7 @@ fun shortenedParent(path: String): String {
     return if (parts.size <= 3) "$dir/" else "…/" + parts.takeLast(3).joinToString("/") + "/"
 }
 
-/**
- * Colors for one diff, resolved per theme so added and removed lines stay readable in both modes.
- *
- * Lives next to the model rather than in the theme layer because both the transcript cells and the
- * status card's diff pane draw from the same instance.
- */
+/** Diff colors resolved per theme; lives next to the model because transcript cells and the status pane share one instance. */
 class DiffPalette(
     val addText: androidx.compose.ui.graphics.Color,
     val addSurface: androidx.compose.ui.graphics.Color,
@@ -88,14 +77,8 @@ internal fun gitFileHeaderPaths(line: String): Pair<String, String>? =
 /**
  * Parse one unified diff body into [DiffLine]s.
  *
- * Tolerant by design: hunk headers reset the gutters, an unparseable line is treated as context,
- * and a body that carries no hunks at all renders as-is so a truncated stream still shows
- * something.
- *
- * Hunk line counts are tracked because file headers and content share prefixes: a removed line
- * whose text starts with `--` renders as `--- …`, which is indistinguishable from a file header
- * unless the parser knows it is still inside a hunk. Counts make that decision exact; a line that
- * outlives its hunk is still classified by its prefix, so a truncated stream keeps rendering.
+ * Tolerant by design: hunk headers reset the gutters, unknown lines become context. Hunk line
+ * counts distinguish a removed line starting `--` from a `---` file header.
  */
 fun parseUnifiedDiff(diff: String): List<DiffLine> {
     val lines = mutableListOf<DiffLine>()
@@ -110,23 +93,20 @@ fun parseUnifiedDiff(diff: String): List<DiffLine> {
             header != null -> {
                 oldLine = header.groupValues[1].toIntOrNull() ?: 0
                 newLine = header.groupValues[3].toIntOrNull() ?: 0
-                // A missing `,count` is one line, not an unknown count: that is the unified diff
-                // convention, and it is what lets the hunk end exactly where it should.
+                // A missing `,count` means one line, per the unified diff convention.
                 oldLeft = header.groupValues[2].toIntOrNull() ?: 1
                 newLeft = header.groupValues[4].toIntOrNull() ?: 1
                 inHunk = true
                 lines += DiffLine(DiffLineKind.Hunk, raw, null, null)
             }
 
-            // A `diff --git` line cannot be hunk content: every content line carries a ` `, `+` or
-            // `-` prefix. It is therefore always a section header, even mid-hunk.
+            // Every content line carries a prefix, so a `diff --git` line is always a section header, even mid-hunk.
             FileHeader.matches(raw) -> {
                 inHunk = false
                 lines += DiffLine(DiffLineKind.Hunk, raw, null, null)
             }
 
-            // The two path headers, by contrast, are only headers outside a hunk: a removed line
-            // whose text begins `--` renders as `--- …` and must stay a removal.
+            // Path headers are only headers outside a hunk; a removed line beginning `--` must stay a removal.
             !inHunk && (raw.startsWith("+++") || raw.startsWith("---")) -> {
                 lines += DiffLine(DiffLineKind.Hunk, raw, null, null)
             }

@@ -2,13 +2,8 @@ package com.cy.codex.status
 
 import java.math.BigInteger
 
-/**
- * Credit and cost formatting for the estimated-usage lines.
- *
- * Mirrors `codex-rs/tui/src/status/thread_usage.rs`: credits are compacted to one decimal at the
- * largest fitting unit, and USD is rounded to cents with two extra digits while the amount is under
- * a dollar. `BigInteger` because `micros * 10` overflows a `Long` for credit values near its range.
- */
+/** Mirrors `codex-rs/tui/src/status/thread_usage.rs`; `micros * 10` overflows a `Long`
+ * near the range of credit values. */
 internal fun formatCreditMicros(micros: Long): String {
     val value = BigInteger.valueOf(micros.coerceAtLeast(0L))
     val units = listOf(

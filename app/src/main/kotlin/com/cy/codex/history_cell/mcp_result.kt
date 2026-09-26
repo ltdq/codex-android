@@ -7,27 +7,15 @@ import com.cy.codex.protocol.protocol.text
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 
-/**
- * Width-independent display projection of an MCP `CallToolResult`.
- *
- * Mirrors `codex-rs/tui/src/history_cell/mcp_result.rs`: the wire result can embed multi-megabyte
- * image, audio or resource bodies, so only text is kept verbatim. Media and resource blocks become
- * short summaries, and a block the model does not recognise keeps its exact JSON so nothing is
- * silently lost.
- */
+/** Display projection of an MCP `CallToolResult` (`codex-rs/tui/src/history_cell/mcp_result.rs`):
+ * text verbatim, media/resource as summaries, unrecognised blocks keep their exact JSON. */
 sealed interface ToolContentBlock {
     data class Text(val text: String) : ToolContentBlock
     data class Summary(val summary: String) : ToolContentBlock
     data class RawJson(val json: String) : ToolContentBlock
 }
 
-/**
- * Project a `McpToolCallItem.result` body.
- *
- * A result that is not a JSON object or has no `content` array is returned as one [RawJson] block:
- * older history entries stored the whole payload as a string, and dropping it would show an empty
- * cell for a call that did produce output.
- */
+/** Older history stored the whole payload as a string; keep it as one [RawJson] block. */
 fun projectMcpResult(result: String?): List<ToolContentBlock> {
     val body = result?.takeIf { it.isNotBlank() } ?: return emptyList()
     val obj = Json.parseOrNull(body) as? JsonObject ?: return listOf(ToolContentBlock.RawJson(body))

@@ -74,8 +74,6 @@ class AppLinkTest {
         )
         assertEquals(AppLinkKind.Auth, auth?.kind)
         assertEquals("Calendar", auth?.connectorName)
-
-        // Missing metadata is not an auth failure, so the request must not be shown at all.
         assertNull(appLinkPrompt(urlElicitation("codex_apps", "https://chatgpt.com/apps/1/2")))
 
         val external = appLinkPrompt(urlElicitation("docs", "https://example.test/auth"))

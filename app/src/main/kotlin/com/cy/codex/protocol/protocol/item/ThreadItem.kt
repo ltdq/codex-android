@@ -17,12 +17,9 @@ import com.cy.codex.protocol.protocol.v2.SubAgentActivityKind
 import com.cy.codex.protocol.protocol.v2.UserInput
 
 /**
- * The v2 `ThreadItem` union — the unit the transcript is made of.
- *
- * Mirrors `codex-rs/app-server-protocol/src/protocol/v2/item.rs`. The server streams one item at a
- * time: `item/started` opens it, zero or more deltas fill it in (`item/agentMessage/delta`,
- * `item/commandExecution/outputDelta`, …) and `item/completed` finalises it. Everything the
- * transcript renders is one of these, so the UI never works from raw text.
+ * The v2 `ThreadItem` union — the unit the transcript is made of
+ * (codex-rs/app-server-protocol/src/protocol/v2/item.rs). `item/started` opens one, deltas fill it
+ * in, `item/completed` finalises it; the UI never works from raw text.
  */
 sealed interface ThreadItem {
     /** Stable server-assigned id; deltas address the item through it. */
@@ -44,9 +41,8 @@ data class HookPromptItem(
  * One `<hook_prompt>` block: the text a hook injected plus the run it belongs to.
  *
  * [hookRunId] is the opaque id of one hook invocation (`HookPromptFragment` in
- * `codex-rs/protocol/src/items.rs`), not a hook name — the wire shape never carries the name, and
- * `hooks/list` does not expose a matching run id, so it is displayed only when it is the one piece
- * of identity a transcript has.
+ * codex-rs/protocol/src/items.rs), not a hook name — the wire never carries the name, so it is
+ * only displayable as that one piece of identity.
  */
 data class HookPromptFragment(val text: String, val hookRunId: String = "")
 
@@ -60,11 +56,8 @@ data class AgentMessageItem(
 ) : ThreadItem
 
 /**
- * The memory entries an agent message leaned on.
- *
- * Mirrors `MemoryCitation` in `codex-rs/protocol/src/memory_citation.rs`: `threadIds` is the wire
- * name for the rollout ids the citation came from, and each entry points at a line range in one
- * file.
+ * The memory entries an agent message leaned on: `threadIds` is the wire name for the rollout
+ * ids the citation came from (mirrors `MemoryCitation` in codex-rs/protocol/src/memory_citation.rs).
  */
 data class MemoryCitation(
     val entries: List<MemoryCitationEntry> = emptyList(),
@@ -153,18 +146,15 @@ data class McpToolCallItem(
     val durationMs: Long? = null,
 ) : ThreadItem {
     /**
-     * The app resource this call acted on.
-     *
-     * The descriptor-captured uri is the current shape and the legacy field only fills the gap for
-     * older history, which is the order upstream resolves them in (`core/src/mcp_tool_call.rs`).
+     * The app resource this call acted on: the descriptor-captured uri wins, and the legacy field
+     * only fills the gap for older history (codex-rs/core/src/mcp_tool_call.rs).
      */
     val appResourceUri: String? get() = mcpAppUi?.resourceUri ?: mcpAppResourceUri
 }
 
 /**
- * Which connector/app an MCP tool call was routed through.
- *
- * Mirrors `McpToolCallAppContext` in `codex-rs/app-server-protocol/src/protocol/v2/item.rs`.
+ * Which connector/app an MCP tool call was routed through
+ * (codex-rs/app-server-protocol/src/protocol/v2/item.rs, `McpToolCallAppContext`).
  */
 data class McpToolCallAppContext(
     val connectorId: String,
@@ -175,10 +165,9 @@ data class McpToolCallAppContext(
 )
 
 /**
- * How an MCP app result should be presented.
- *
- * Mirrors `McpAppUi` in `codex-rs/protocol/src/items.rs`; [preferredModelDisplayMode] is `inline` or
- * `fullscreen` and stays a string because a future mode must not be coerced into a wrong one.
+ * How an MCP app result should be presented (mirrors `McpAppUi` in
+ * codex-rs/protocol/src/items.rs); [preferredModelDisplayMode] is `inline` or `fullscreen` and
+ * stays a string because a future mode must not be coerced into a wrong one.
  */
 data class McpAppUi(
     val resourceUri: String? = null,
@@ -199,8 +188,8 @@ data class DynamicToolCallItem(
 /**
  * One `DynamicToolCallOutputContentItem` block.
  *
- * Mirrors the tagged union in `codex-rs/app-server-protocol/src/protocol/v2/item.rs`: text is the
- * only variant that carries displayable content, the media variants carry a URL the transcript
+ * Mirrors the tagged union in codex-rs/app-server-protocol/src/protocol/v2/item.rs: text is the
+ * only variant that carries displayable content; the media variants carry a URL the transcript
  * cannot render, so it only records which kind arrived.
  */
 sealed interface DynamicToolOutputContent {
@@ -239,9 +228,9 @@ data class WebSearchItem(
 /**
  * One element of a web search result list.
  *
- * The wire keeps these as opaque JSON so new result types can pass through without a protocol
- * change (`ext/items/src/web_search.rs`), so only the two fields a result list needs to be useful
- * are projected; an element carrying neither is dropped rather than shown as an empty row.
+ * The wire keeps these as opaque JSON so new result types pass through without a protocol change
+ * (`ext/items/src/web_search.rs`); only title/url are projected, and an element carrying neither
+ * is dropped rather than shown as an empty row.
  */
 data class WebSearchResult(
     val title: String,
@@ -254,8 +243,8 @@ data class WebSearchResult(
 /**
  * The `WebSearchAction` union of `app-server-protocol/schema/json/v2`.
  *
- * Mirrors `codex-rs/ext/items/src/web_search.rs`: the search tool can search, open a page or find
- * text in one, and only the action's own fields name what happened.
+ * Mirrors `codex-rs/ext/items/src/web_search.rs`: the tool can search, open a page or find text
+ * in one, and only the action's own fields name what happened.
  */
 sealed interface WebSearchAction {
     data class Search(val query: String?, val queries: List<String>?) : WebSearchAction
@@ -275,13 +264,10 @@ data class SleepItem(
 ) : ThreadItem
 
 /**
- * One image-generation call.
- *
- * Mirrors `ImageGenerationItem` in `codex-rs/ext/items/src/image_generation.rs`. There is no
- * `prompt` field on the wire: the prompt the model actually used is [revisedPrompt], and the
- * original request only survives inside the backend. [status] stays a string because the server
- * owns the vocabulary (`completed` / `failed` today) and a new value must not be coerced into
- * "in progress".
+ * One image-generation call (mirrors `ImageGenerationItem` in
+ * codex-rs/ext/items/src/image_generation.rs). There is no `prompt` field on the wire: the prompt
+ * the model actually used is [revisedPrompt]; [status] stays a string because the server owns the
+ * vocabulary (`completed` / `failed` today) and a new value must not be coerced into "in progress".
  */
 data class ImageGenerationItem(
     override val id: String,
@@ -307,10 +293,9 @@ data class ImageGenerationItem(
 }
 
 /**
- * Why an image generation failed.
- *
- * Mirrors `ImageGenerationFailure` in `codex-rs/ext/items/src/image_generation.rs`: a tagged union
- * whose only variant today is `usageLimitExceeded`.
+ * Why an image generation failed (mirrors `ImageGenerationFailure` in
+ * codex-rs/ext/items/src/image_generation.rs): a tagged union whose only variant today is
+ * `usageLimitExceeded`.
  */
 sealed interface ImageGenerationFailure {
     data class UsageLimitExceeded(val limitId: String, val resetsAt: Long?) : ImageGenerationFailure
@@ -343,10 +328,8 @@ data class TurnSeparatorItem(
 ) : ThreadItem
 
 /**
- * A client-local conversation recap cell (`/recap`).
- *
- * `text == null` is the in-flight state ("Generating conversation recap…"); [failed] marks a
- * request that finished without a usable answer. Both exist only on this device.
+ * A client-local conversation recap cell (`/recap`). `text == null` is the in-flight state;
+ * [failed] marks a request that finished without a usable answer. Both exist only on this device.
  */
 data class RecapItem(
     override val id: String,
@@ -355,7 +338,7 @@ data class RecapItem(
     val failed: Boolean = false,
 ) : ThreadItem
 
-/** A client-local startup tip, shown once on a fresh conversation (`tui/src/tooltips.rs`). */
+/** A client-local startup tip, shown once on a fresh conversation (codex-rs/tui/src/tooltips.rs). */
 data class TipItem(
     override val id: String,
     val text: String,

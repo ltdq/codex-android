@@ -12,14 +12,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-/**
- * The pure half of the resume picker: ordering, local search and preview formatting.
- *
- * Mirrors `ThreadSortKey::UpdatedAt` and `Row::matches_query` from
- * `codex-rs/tui/src/resume_picker.rs`, plus the six-line transcript preview from
- * `resume_picker_transcript_preview.rs`. The composables around these functions only resolve
- * labels and render what lands here.
- */
+/** Mirrors codex-rs/tui/src/resume_picker.rs and resume_picker_transcript_preview.rs. */
 class ResumePickerTest {
 
     @Test
@@ -127,7 +120,6 @@ class ResumePickerTest {
         )
     }
 
-    /** A `thread/list` row with everything the wire always sends filled in. */
     private fun thread(
         id: String,
         preview: String = "",

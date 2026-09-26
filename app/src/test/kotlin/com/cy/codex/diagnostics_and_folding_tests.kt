@@ -10,10 +10,6 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-/**
- * The two rules that keep the transcript readable in a long session: repeated fallback-metadata
- * warnings are deduplicated by model slug, and a run of exploring commands folds into one row.
- */
 class DiagnosticsAndFoldingTest {
 
     @Test
@@ -35,7 +31,6 @@ class DiagnosticsAndFoldingTest {
         )
         assertEquals(2, state.diagnostics.size)
 
-        // A different session starts with a clean set.
         state.beginLoad("next")
         state.addDiagnostic(SessionDiagnostic(com.cy.codex.protocol.protocol.v2.DiagnosticSeverity.Warning, message))
         assertEquals(1, state.diagnostics.size)

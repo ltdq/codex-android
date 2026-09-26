@@ -75,28 +75,11 @@ import top.yukonga.miuix.kmp.squircle.squircleBorder
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
- * `command/exec` and `process/spawn` as one page.
- *
- * Mirrors `codex-rs/tui/src/exec_command.rs`: the TUI reaches both families through the same shell
- * entry point and only the *lifetime* of the process differs — a command runs to completion and
- * answers with its exit code, a spawned pty stays open and is talked to. Two pages would have
- * duplicated the argv editor, the cwd field and the output pane, so they share one page, with the
- * one-shot command at the top and the long-lived terminal below it.
- *
- * The output of a command is never read from its answer: `command/exec` streams stdout and stderr
- * as output-delta notifications and returns only the final summary, so the pane is fed by
- * [AppServerClient.events] while the call is still in flight.
- *
- * That summary is also why correlation is partial. It carries the exit code, the duration and the
- * last of the output, but no process id — the protocol models `command/exec` as one call with one
- * answer, and only `process/spawn` names what it started. So the running command is tracked by what
- * the form was told: an id typed into the form filters deltas strictly, and with the field blank
- * every delta that arrives while a run is in flight belongs to it, because this page runs one
- * command at a time. The response's stdout and stderr are deliberately not appended to the pane:
- * for a streaming command they are the same bytes the deltas already delivered.
- *
- * A pty that outlives the page is exactly what `thread/backgroundTerminals/list` reports, which is
- * what [BackgroundTerminalsScreen] lists.
+ * `command/exec` and `process/spawn` as one page (codex-rs/tui/src/exec_command.rs), because only
+ * the process lifetime differs. Output is never read from the answer: `command/exec` streams
+ * output deltas and returns only a summary with no process id, so a typed id filters deltas
+ * strictly and a blank one takes every delta while a run is in flight. A pty that outlives the
+ * page appears in [BackgroundTerminalsScreen].
  */
 @Composable
 fun ExecCommandScreen(
@@ -115,8 +98,7 @@ fun ExecCommandScreen(
     var timeoutText by remember { mutableStateOf("") }
     var status by remember { mutableStateOf<ExecRunStatus>(ExecRunStatus.Idle) }
     var startedAt by remember { mutableStateOf<TimeSource.Monotonic.ValueTimeMark?>(null) }
-    // Two outputs, not one: the one-shot command and the pty are different processes, and mixing
-    // their bytes would make the page unreadable the moment both are alive.
+    // Separate outputs: the command and the pty are different processes.
     var execOutput by remember { mutableStateOf("") }
     var execProcessId by remember { mutableStateOf<String?>(null) }
     var truncated by remember { mutableStateOf(false) }
@@ -129,8 +111,7 @@ fun ExecCommandScreen(
     var rowsText by remember { mutableStateOf("24") }
     var colsText by remember { mutableStateOf("80") }
     var notice by remember { mutableStateOf<String?>(null) }
-    // The elapsed readout is the only thing on this page that moves on its own; resolving it into
-    // state here is what makes it redraw, because the time mark itself is not observable.
+    // Elapsed time resolves into state so it redraws; the time mark itself is not observable.
     var elapsedMs by remember { mutableStateOf(0L) }
 
     LaunchedEffect(client) {
@@ -140,8 +121,7 @@ fun ExecCommandScreen(
                     val delta = event.delta
                     val watching = execProcessId
                     if (watching != null && delta.processId == watching) {
-                        // A delta with no bytes is the server acknowledging stdin, not output;
-                        // echoing it would print the user's own input back at them.
+                        // An empty delta acknowledges stdin; echoing it would print the user's own input back.
                         if (delta.capReached) truncated = true
                         if (delta.deltaBase64.isNotEmpty()) {
                             execOutput += decodeOutput(delta.deltaBase64)
@@ -156,8 +136,7 @@ fun ExecCommandScreen(
                     }
                 }
 
-                // An exit notification is trusted only when it names a process this page issued:
-                // the one it killed, or the pty. Anything else belongs to a turn, not to this page.
+                // Trust only exits naming a process this page issued; the rest belong to a turn.
                 is AppServerEvent.ProcessExited -> {
                     val delta = event.delta
                     if (delta.processHandle == terminalId) {
@@ -301,9 +280,7 @@ fun ExecCommandScreen(
                 },
             )
 
-            // The pty half. `process/spawn` names what it starts, so the handle the call returns is
-            // what every control below addresses — unlike `command/exec`, whose response carries no
-            // id at all.
+            // `process/spawn` returns the handle every pty control addresses, unlike `command/exec`.
             TerminalCard(
                 start = termStart,
                 onStartChange = { termStart = it },
@@ -377,27 +354,17 @@ fun ExecCommandScreen(
     }
 }
 
-/**
- * What one `command/exec` call is currently doing.
- *
- * The pane reports four different things — nothing yet, the call is in flight, it exited with a
- * code, it was refused — and three independent nullable fields could not say which one is true.
- */
+/** What one `command/exec` call is doing: one sealed type for four states a nullable pair could not express. */
 private sealed interface ExecRunStatus {
-    /** No command has been run on this page yet. */
     data object Idle : ExecRunStatus
 
-    /** The call is in flight; deltas stream into the pane while this holds. */
     data object Running : ExecRunStatus
 
-    /** The process exited and the response carried its code. */
     data class Finished(val exitCode: Int, val durationMs: Long) : ExecRunStatus
 
-    /** The call itself failed, so nothing was started. */
     data class Failed(val reason: String) : ExecRunStatus
 }
 
-/** The argv editor, plus the two facts every command needs: where it runs, and how long it may. */
 @Composable
 private fun ExecCommandForm(
     arguments: MutableList<String>,
@@ -446,8 +413,7 @@ private fun ExecCommandForm(
             lineHeight = UiType.FootnoteLine,
             color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
         )
-        // One field per argument, because the protocol takes argv and never a shell string: a
-        // quoted command line would have to be re-split here with rules a filename would break.
+        // One field per argument: the protocol takes argv, never a shell string to re-split.
         arguments.forEachIndexed { index, argument ->
             if (index > 0) Spacer(Modifier.height(UiConsts.Space6))
             Row(
@@ -595,7 +561,6 @@ private fun ExecCommandForm(
     }
 }
 
-/** The streamed pane, the exit summary, and the controls that exist while a process is alive. */
 @Composable
 private fun ExecOutputCard(
     status: ExecRunStatus,
@@ -950,20 +915,7 @@ private fun ExecOutputCard(
     }
 }
 
-/**
- * The pty half of the page: `process/spawn` and the three calls that keep it talking.
- *
- * The command here is one line rather than an argv row because a pty is where a shell line makes
- * sense — it is the thing that will interpret the pipes and the quotes — and [splitCommandLine] is
- * the one place that turns it back into argv.
- *
- * The pty has its own stdin and resize controls, and they are `process/writeStdin` and
- * `process/resizePty` rather than the `command/exec` pair above. The two families are separate on
- * the wire: a one-shot command is addressed by the id the caller supplied to `command/exec`, while
- * a spawned process is addressed by the id `process/spawn` *returned*. Sending a spawned process's
- * bytes through `command/exec/write` would name a request the server never saw, so the controls
- * cannot be shared however alike they look.
- */
+/** The pty half: `process/spawn` plus its own stdin, resize and kill calls; addressed by the id `process/spawn` returns, unlike `command/exec`. */
 @Composable
 private fun TerminalCard(
     start: String,
@@ -1280,8 +1232,7 @@ private fun TerminalCard(
                     onClick = {
                         val r = rows.toIntOrNull()
                         val c = cols.toIntOrNull()
-                        // A pty with no size is a request the server can only reject, so a blank or
-                        // zero field disables the button rather than sending one.
+                        // A pty without a size can only be rejected, so blank or zero disables the button.
                         if (r != null && c != null && r > 0 && c > 0) onResizePty(r, c)
                     },
                     enabled = (rows.toIntOrNull() ?: 0) > 0 && (cols.toIntOrNull() ?: 0) > 0,
@@ -1318,14 +1269,7 @@ private fun TerminalCard(
     }
 }
 
-/**
- * A read-only, monospace, scrollable pane of captured output.
- *
- * Both the command's stdout and the pty's stream go through it, so the two halves of the page
- * cannot end up with different leading, corner or gutter. It follows the tail as text arrives —
- * output that grows below the fold is output the user has to chase — and it scrolls sideways rather
- * than wrapping, because a wrapped log line stops being readable as a table.
- */
+/** Read-only monospace pane for both output streams; follows the tail and scrolls sideways rather than wrapping. */
 @Composable
 private fun MonospacePane(text: String) {
     val colors = MiuixTheme.colorScheme
@@ -1333,9 +1277,7 @@ private fun MonospacePane(text: String) {
     val vertical = rememberScrollState()
     val horizontal = rememberScrollState()
 
-    // The pane is one frame behind the text that feeds it, so the scroll is issued from inside the
-    // next frame and the extent is read in the snapshot that produced it. Reading `maxValue` here
-    // would chase a value that is still the previous frame's, leaving the last line off screen.
+    // One frame behind its text: issue the scroll in the next frame and read the extent in the snapshot that produced it, or the last line stays off screen.
     LaunchedEffect(vertical) {
         snapshotFlow { text }
             .collect {
@@ -1371,23 +1313,13 @@ private fun MonospacePane(text: String) {
     }
 }
 
-/**
- * Decode one base64 output chunk, tolerating a codec that is not what the wire said.
- *
- * A delta is base64 on the wire (`deltaBase64`), but a transport that already put text in the field
- * can occur in terminal output, so it must not hide the rest of the response.
- */
+/** Decode one base64 output chunk, tolerating a transport that already put text in the field. */
 private fun decodeOutput(base64: String): String = runCatching {
     Base64.getDecoder().decode(base64).decodeToString()
 }
     .getOrElse { base64 }
 
-/**
- * Split a shell-ish command line into argv for `process/spawn`.
- *
- * Quotes and backslash escapes are honoured because a pty command usually starts a shell, and a
- * path with a space in it has to survive the trip. This is not a shell: no expansion, no operators.
- */
+/** Split a shell-ish line into argv for `process/spawn`, honouring quotes and backslash escapes; not a shell. */
 private fun splitCommandLine(line: String): List<String> {
     val arguments = mutableListOf<String>()
     val current = StringBuilder()

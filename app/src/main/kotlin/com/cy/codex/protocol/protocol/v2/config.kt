@@ -14,13 +14,11 @@ import kotlinx.serialization.json.booleanOrNull
 /**
  * `config/read`, `config/value/write`, `config/batchWrite`, `configRequirements/read`.
  *
- * Mirrors `schema/typescript/v2/{ConfigReadResponse, ConfigLayer, ConfigBatchWriteParams,
- * ConfigValueWriteParams, ConfigWriteResponse}.ts`.
- *
- * The effective config is carried as a raw [JsonElement] tree rather than a typed struct: on the
- * wire it *is* a nested map (the TOML `config.toml` parsed into JSON), and `ConfigLayer.config` is
- * untyped for exactly that reason. The typed projection the UI actually renders lives in
- * [ConfigSnapshot], which reads keys out of that tree.
+ * The effective config travels as a raw [JsonElement] tree: on the wire it *is* a nested map (the
+ * TOML `config.toml` parsed into JSON), and `ConfigLayer.config` is untyped for exactly that
+ * reason. The typed projection the UI actually renders lives in [ConfigSnapshot], which reads keys
+ * out of that tree (schema/typescript/v2/{ConfigReadResponse, ConfigLayer, ConfigBatchWriteParams,
+ * ConfigValueWriteParams, ConfigWriteResponse}.ts).
  */
 
 /** One contributing layer of the config stack, `config.layers[i]`. */
@@ -39,8 +37,8 @@ data class ConfigLayer(
  * Where a layer came from.
  *
  * The protocol spells this as an internally-tagged enum over many variants (packaged defaults, MDM,
- * system, user, project, session flags, …). The phone renders a label and a precedence hint, so the
- * variants collapse onto the four that read differently in a settings row.
+ * system, user, project, session flags); the phone renders a label and a precedence hint, so the
+ * variants collapse onto the ones that read differently in a settings row.
  */
 enum class ConfigLayerSource(val wire: String, val label: String) {
     PackagedDefaults("packagedDefaults", "内置默认"),
@@ -71,8 +69,8 @@ data class ConfigReadResponse(
      * Render the effective value at a dotted [keyPath] for display, or `null` when it is unset.
      *
      * Read from the raw tree rather than from [snapshot] on purpose: the sources card lists keys the
-     * typed projection deliberately does not model (an arbitrary `features.*` flag, say), and a key
-     * that is absent must render as absent rather than as a blank row.
+     * typed projection deliberately does not model, and an absent key must render as absent rather
+     * than as a blank row.
      */
     fun displayValue(keyPath: String): String? = when (val value = readOrigin(config, keyPath)) {
         null, JsonNull -> null
@@ -208,8 +206,8 @@ data class ConfigRequirementsReadResponse(
  * The subset of `config.toml` the phone renders, read out of the raw tree.
  *
  * Mirrors the `Config` struct's shape (not its field-for-field contents): only the keys the
- * settings page, the composer and the status card show. Everything else stays in the [JsonElement]
- * tree and is passed through untouched by a write.
+ * settings page, the composer and the status card show; everything else stays in the [JsonElement]
+ * tree and passes through untouched by a write.
  */
 data class ConfigSnapshot(
     val model: String? = null,
@@ -252,7 +250,7 @@ data class ConfigSnapshot(
          * Read the rendered keys out of a raw config tree.
          *
          * Tolerant on purpose: a config file is hand-written, so a key may be absent, spelled in
-         * either case, or of the wrong type, and the page must still render the keys it did get.
+         * either case, or of the wrong type, and the page must still render what it got.
          */
         fun from(tree: JsonElement): ConfigSnapshot {
             val root = tree as? JsonObject ?: return ConfigSnapshot()

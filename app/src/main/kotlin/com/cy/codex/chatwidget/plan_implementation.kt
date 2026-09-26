@@ -45,14 +45,9 @@ import top.yukonga.miuix.kmp.icon.basic.Check
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
- * The plan timeline.
- *
- * Mirrors `chatwidget/plan_implementation.rs` and the plan section of `status/card.rs`: the whole
- * plan arrives from `turn/plan/updated`, so the timeline is a pure function of [steps] — one node
- * per step, the rail between them carrying the same colour as the step that owns it.
+ * The plan timeline, a pure function of [steps] — the whole plan arrives from `turn/plan/updated`.
+ * Mirrors `chatwidget/plan_implementation.rs` and the plan section of `status/card.rs`.
  */
-
-/** Vertical plan timeline: hollow node for pending, half-filled for running, check for done. */
 @Composable
 fun PlanTimeline(
     steps: List<PlanStep>,
@@ -80,7 +75,6 @@ fun PlanTimeline(
     }
 }
 
-/** Compact "3/5 steps" pill with a thin bar, for the status card header. */
 @Composable
 fun PlanProgressChip(
     steps: List<PlanStep>,
@@ -219,7 +213,6 @@ private fun PlanNode(status: PlanStepStatus) {
     }
 }
 
-/** Completed steps read as done, running ones as active, pending ones as a quiet outline. */
 @Composable
 private fun planStepColor(status: PlanStepStatus): Color = when (status) {
     PlanStepStatus.Completed -> successColor()
@@ -227,7 +220,6 @@ private fun planStepColor(status: PlanStepStatus): Color = when (status) {
     PlanStepStatus.Pending -> MiuixTheme.colorScheme.onSurfaceVariantSummary
 }
 
-/** The rail under a node takes the colour of the step it leaves behind. */
 @Composable
 private fun planRailColor(status: PlanStepStatus): Color =
     if (status == PlanStepStatus.Completed) {
@@ -236,7 +228,6 @@ private fun planRailColor(status: PlanStepStatus): Color =
         MiuixTheme.colorScheme.dividerLine
     }
 
-/** Display label of a plan step. */
 @Composable
 @ReadOnlyComposable
 internal fun PlanStepStatus.label(): String = stringResource(

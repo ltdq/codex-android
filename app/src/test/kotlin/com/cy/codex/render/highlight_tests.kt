@@ -5,11 +5,6 @@ import org.junit.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
-/**
- * The highlighter is line-oriented and tolerant: unknown languages stay plain, strings and
- * comments win over keywords, and multi-line state (a block comment, a raw string) carries across
- * lines through a [SyntaxLexer].
- */
 class SyntaxHighlightTest {
 
     private val palette = SyntaxPalette(
@@ -87,8 +82,6 @@ class SyntaxHighlightTest {
         assertEquals("rs", languageFromPath("src/main.rs"))
         assertEquals("kt", languageFromPath("app/src/state.kt"))
         assertEquals("dockerfile", languageFromPath("Dockerfile"))
-        // An unknown extension resolves to a name the grammar table does not know, which renders
-        // plain; it is not an error.
         assertEquals(null, languageSpec(languageFromPath("Vagrantfile")))
     }
 

@@ -4,7 +4,6 @@ import org.junit.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
-/** Locks the information architecture so a route cannot return to two competing menus. */
 class DestinationCatalogTest {
     @Test
     fun `every destination has exactly one owner`() {

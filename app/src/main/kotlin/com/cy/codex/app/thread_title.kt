@@ -9,11 +9,8 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
 /**
- * Automatic thread titles, ported from `tui/src/app/thread_title.rs`.
- *
- * A hidden structured turn writes a one-field JSON object; the client normalizes it and calls
- * `thread/name/set`. The server never generates the name itself, so the constraints (one line,
- * 36 characters, no quotes or trailing punctuation) live here.
+ * Automatic thread titles, ported from `codex-rs/.../tui/src/app/thread_title.rs`; the
+ * server never names threads, so the constraints live here.
  */
 internal const val ThreadTitleMaxChars = 36
 internal const val ThreadTitlePromptMaxBytes = 960
@@ -51,13 +48,7 @@ internal fun threadTitlePrompt(userMessage: String): String {
     return prefix + takeUtf8Bytes(userMessage.trim(), remaining)
 }
 
-/**
- * Normalize the generated JSON into a title, or null when it is unusable.
- *
- * Mirrors `parse_thread_title`: the response must be a JSON object with a `title` string, which is
- * then trimmed, stripped of wrapping quotes, collapsed to single spaces, stripped of trailing
- * sentence punctuation, and cut to the display limit without splitting a character.
- */
+/** Normalizes the generated JSON into a title; mirrors `parse_thread_title`. */
 internal fun parseThreadTitle(response: String?): String? {
     val text = response?.trimStart().orEmpty()
     if (!text.startsWith("{")) return null
