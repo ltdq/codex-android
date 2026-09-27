@@ -17,6 +17,7 @@ import com.cy.codex.protocol.protocol.item.McpToolCallItem
 import com.cy.codex.protocol.protocol.item.WebSearchAction
 import com.cy.codex.protocol.protocol.item.WebSearchItem
 import com.cy.codex.protocol.protocol.v2.CommandAction
+import com.cy.codex.protocol.protocol.v2.GatewayOAuthStatus
 import org.junit.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -355,5 +356,23 @@ class WireCodecTest {
         val valid = rateLimits("""{"rateLimits":{},"rateLimitUpsell":{"banner_type":"b","title":"t","description":"d","ctas":[]}}""")
         assertTrue(valid.rateLimitUpsellPresent)
         assertNotNull(valid.rateLimitUpsell)
+    }
+
+    @Test
+    fun `gateway oauth read maps the status and tolerates a not-ready provider`() {
+        val parsed = WireCodec.gatewayOAuthRead(
+            Json.parse("""{"providerId":"gw","providerName":"Gateway","required":true,"status":"started","error":null}""").objectValue(),
+        )
+        assertEquals("gw", parsed.providerId)
+        assertEquals("Gateway", parsed.providerName)
+        assertTrue(parsed.required)
+        assertEquals(GatewayOAuthStatus.Started, parsed.status)
+        assertNull(parsed.error)
+
+        val notReady = WireCodec.gatewayOAuthRead(
+            Json.parse("""{"providerId":"gw","providerName":"Gateway","required":false}""").objectValue(),
+        )
+        assertNull(notReady.status, "a provider without gateway OAuth has no status")
+        assertFalse(notReady.required)
     }
 }

@@ -73,6 +73,45 @@ data class AccountLoginCompletedNotification(
     val error: String? = null,
 )
 
+/**
+ * `account/gatewayOAuth/…` login state (codex-rs/app-server-protocol/src/protocol/v2/account.rs).
+ * The client must advertise `explicitGatewayOauth` in its capabilities for the flow to be used.
+ */
+enum class GatewayOAuthStatus(val wire: String) {
+    NotReady("notReady"),
+    Started("started"),
+    Succeeded("succeeded"),
+    Failed("failed"),
+    ;
+
+    companion object {
+        fun fromWire(value: String?): GatewayOAuthStatus? =
+            value?.let { wire -> entries.firstOrNull { it.wire == wire } }
+    }
+}
+
+/** `account/gatewayOAuth/read` response: readiness only, never credentials. */
+data class GatewayOAuthReadResponse(
+    val providerId: String,
+    val providerName: String,
+    /** Whether the selected provider uses gateway OAuth, even when already signed in. */
+    val required: Boolean,
+    /** Null when the effective provider does not use gateway OAuth. */
+    val status: GatewayOAuthStatus? = null,
+    val error: String? = null,
+)
+
+/**
+ * `account/gatewayOAuth/changed`: the handoff is sent only to the connection that started login,
+ * so [authUrl] must be opened by that client or the user never sees it.
+ */
+data class GatewayOAuthChangedNotification(
+    val providerId: String,
+    val status: GatewayOAuthStatus,
+    val authUrl: String? = null,
+    val error: String? = null,
+)
+
 /** `account/workspaceMessages/read` response. Mirrors `GetWorkspaceMessagesResponse`. */
 data class WorkspaceMessagesResponse(
     val featureEnabled: Boolean,

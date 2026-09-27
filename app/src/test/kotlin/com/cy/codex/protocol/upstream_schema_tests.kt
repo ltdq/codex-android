@@ -12,6 +12,8 @@ import com.cy.codex.protocol.protocol.v2.CommandExecutionStatus
 import com.cy.codex.protocol.protocol.v2.CreditsSnapshot
 import com.cy.codex.protocol.protocol.v2.DynamicToolCallParams
 import com.cy.codex.protocol.protocol.v2.FileChangeApprovalParams
+import com.cy.codex.protocol.protocol.v2.GatewayOAuthChangedNotification
+import com.cy.codex.protocol.protocol.v2.GatewayOAuthReadResponse
 import com.cy.codex.protocol.protocol.v2.GitInfo
 import com.cy.codex.protocol.protocol.v2.GoalStatus
 import com.cy.codex.protocol.protocol.v2.InitializeCapabilities
@@ -151,6 +153,8 @@ class UpstreamSchemaTest {
         WorkspaceMessagesResponse::class to "GetWorkspaceMessagesResponse",
         WorkspaceMessage::class to "WorkspaceMessage",
         McpResourceReadResponse::class to "McpResourceReadResponse",
+        GatewayOAuthReadResponse::class to "GatewayOAuthReadResponse",
+        GatewayOAuthChangedNotification::class to "GatewayOAuthChangedNotification",
         InitializeResponse::class to "InitializeResponse",
         InitializeParams::class to "InitializeParams",
         InitializeCapabilities::class to "InitializeCapabilities",

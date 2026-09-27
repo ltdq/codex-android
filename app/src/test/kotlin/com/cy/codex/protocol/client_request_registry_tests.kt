@@ -12,6 +12,9 @@ class ClientRequestRegistryTest {
     private val wireToClientMethod: Map<String, String> = mapOf(
         "account/bedrock/discover" to "bedrockDiscover",
         "account/bedrock/setup" to "bedrockSetup",
+        "account/gatewayOAuth/cancel" to "cancelGatewayOAuth",
+        "account/gatewayOAuth/login" to "loginGatewayOAuth",
+        "account/gatewayOAuth/read" to "readGatewayOAuth",
         "account/login/cancel" to "cancelLogin",
         "account/login/start" to "login",
         "account/logout" to "logout",

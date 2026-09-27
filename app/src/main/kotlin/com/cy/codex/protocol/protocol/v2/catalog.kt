@@ -107,6 +107,8 @@ data class PluginDetail(
     val author: String? = null,
     val homepage: String? = null,
     val skills: List<SkillEntry> = emptyList(),
+    /** The declared onboarding skill, when the plugin and visible skill are enabled. */
+    val onboardingSkill: SkillEntry? = null,
     val mcpServers: List<McpServerStatusEntry> = emptyList(),
     val apps: List<AppInfo> = emptyList(),
     val readme: String? = null,
@@ -334,6 +336,14 @@ data class McpResourceReadParams(
     val server: String,
     val uri: String,
     val threadId: String? = null,
+    /** Explicit hosted app/account; omit to retain legacy resource discovery. */
+    val target: McpResourceReadTarget? = null,
+)
+
+/** `mcpServer/resource/read.target`: [linkId] null explicitly requests no-auth access. */
+data class McpResourceReadTarget(
+    val connectorId: String,
+    val linkId: String? = null,
 )
 
 /** One resource body. Mirrors `ResourceContent`: either inline [text] or base64 [blob]. */

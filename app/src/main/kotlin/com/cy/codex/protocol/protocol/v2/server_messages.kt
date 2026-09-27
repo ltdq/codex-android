@@ -60,6 +60,7 @@ enum class ServerNotificationMethod(val wire: String) {
     AccountUpdated("account/updated"),
     AccountLoginCompleted("account/login/completed"),
     AccountRateLimitsUpdated("account/rateLimits/updated"),
+    AccountGatewayOAuthChanged("account/gatewayOAuth/changed"),
     ModelRerouted("model/rerouted"),
     ModelVerification("model/verification"),
     McpServerStartupStatusUpdated("mcpServer/startupStatus/updated"),
@@ -214,7 +215,7 @@ sealed interface McpElicitationRequest {
 
     /**
      * Wire `_meta`, opaque except for the `_codex_apps.connector_auth_failure` keys and the accept
-     * echo; null by default because userVerification carries none.
+     * echo; userVerification may carry a persist choice here since upstream stopped omitting it.
      */
     val meta: JsonElement? get() = null
 
@@ -243,13 +244,14 @@ sealed interface McpElicitationRequest {
 
     /**
      * `mode: "openai/userVerification"` (codex-rs/app-server-protocol/src/protocol/v2/mcp.rs): no
-     * message or meta on the wire; an accept carries a `credentialId`/`signature` proof as content.
+     * message on the wire; an accept carries a `credentialId`/`signature` proof as content.
      */
     data class UserVerification(
         override val serverName: String,
         val title: String,
         val description: String,
         val challenge: String,
+        override val meta: JsonElement? = null,
     ) : McpElicitationRequest
 }
 

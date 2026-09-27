@@ -3,7 +3,7 @@ package com.cy.codex.protocol.protocol.v2
 import kotlinx.serialization.json.JsonElement
 
 /**
- * `ClientRequest` — the 163 methods the client may call, experimental-inclusive (the TUI's
+ * `ClientRequest` — the 166 methods the client may call, experimental-inclusive (the TUI's
  * [InitializeCapabilities.experimentalApi] defaults to `true`). `UpstreamSchemaTest` pins the
  * registry to the upstream export minus `mock/experimentalMethod`, and the enum doubles as the
  * request registry so a call site cannot invent a method name.
@@ -87,6 +87,9 @@ enum class ClientRequestMethod(val wire: String) {
     AccountSendAddCreditsNudgeEmail("account/sendAddCreditsNudgeEmail"),
     AccountBedrockDiscover("account/bedrock/discover"),
     AccountBedrockSetup("account/bedrock/setup"),
+    AccountGatewayOAuthRead("account/gatewayOAuth/read"),
+    AccountGatewayOAuthLogin("account/gatewayOAuth/login"),
+    AccountGatewayOAuthCancel("account/gatewayOAuth/cancel"),
 
     FsReadFile("fs/readFile"),
     FsWriteFile("fs/writeFile"),
@@ -220,6 +223,11 @@ enum class ClientNotificationMethod(val wire: String) {
 }
 
 data class InitializeCapabilities(
+    /**
+     * Use explicit gateway OAuth login instead of automatic browser authorization; the app-server
+     * reads it once per connection (codex-rs/app-server-protocol/src/protocol/v1.rs).
+     */
+    val explicitGatewayOauth: Boolean = false,
     /** Receives experimental methods and fields; the TUI itself declares `true`. */
     val experimentalApi: Boolean = true,
     val requestAttestation: Boolean = false,

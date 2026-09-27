@@ -68,6 +68,7 @@ internal object WireCatalogCodec {
         val summary = plugin(o.objectOrNull("summary") ?: error("Missing plugin summary"), marketplace)
         return PluginDetail(summary.id, summary.name, o.text("description") ?: summary.description, summary.version, marketplace, summary.installed,
             skills = o.array("skills").map { skill(it.objectValue()) },
+            onboardingSkill = o.objectOrNull("onboardingSkill")?.let { skill(it) },
             mcpServers = o.strings("mcpServers").map { McpServerStatusEntry(it, McpServerConnectionStatus.Starting) },
             apps = o.array("apps").map { app(it.objectValue()) })
     }

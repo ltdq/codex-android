@@ -1,6 +1,6 @@
 # TODO
 
-与上游 TUI 逐模块对比后的缺口（基线：`codex/` submodule `b0659c53865d`；范围
+与上游 TUI 逐模块对比后的缺口（基线：`codex/` submodule `41f9084b3081`；范围
 `tui/src/bottom_pane/`、`tui/src/chatwidget/` + `history_cell/` + `streaming/`、app 级模块与
 slash 命令），
 以及对比中发现的协议解析/绑定缺陷。已完成能力见 [README.md](../README.md) 与

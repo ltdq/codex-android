@@ -9,7 +9,7 @@ use codex_app_server_protocol::{
 use codex_arg0::Arg0DispatchPaths;
 use codex_config::{CloudConfigBundleLoader, LoaderOverrides, NoopThreadConfigLoader};
 use codex_core::config::{ConfigBuilder, ConfigOverrides};
-use codex_exec_server::{EnvironmentManager, ExecServerRuntimePaths};
+use codex_exec_server::{EnvironmentManager, ExecServerRuntimeOptions};
 use codex_feedback::CodexFeedback;
 use codex_protocol::protocol::SessionSource;
 use serde::{Deserialize, Serialize};
@@ -360,10 +360,13 @@ async fn start_client(settings: StartConfig) -> Result<InProcessClientHandle> {
     let state_db = codex_core::init_state_db(&config).await;
     let environment_manager = EnvironmentManager::from_codex_home(
         config.codex_home.clone(),
-        Some(ExecServerRuntimePaths::new(settings.codex_self_exe, None)?),
+        Some(ExecServerRuntimeOptions::new(settings.codex_self_exe, None)?),
         config.http_client_factory(),
     )
     .await?;
+    // Same startup policy as the TUI/exec surfaces: local application rules are loaded before
+    // any caller-owned client exists, everything else starts unavailable.
+    let embedded_network_policy = in_process::EmbeddedNetworkPolicy::load(&loader_overrides).await;
     Ok(in_process::start(InProcessStartArgs {
         arg0_paths,
         config: Arc::new(config),
@@ -371,6 +374,7 @@ async fn start_client(settings: StartConfig) -> Result<InProcessClientHandle> {
         loader_overrides,
         strict_config: false,
         cloud_config_bundle,
+        embedded_network_policy,
         thread_config_loader: Arc::new(NoopThreadConfigLoader),
         feedback: CodexFeedback::new(),
         log_db: None,

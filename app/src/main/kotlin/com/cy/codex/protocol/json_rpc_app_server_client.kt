@@ -333,7 +333,12 @@ class JsonRpcAppServerClient(
     override suspend fun runShellCommand(threadId: String, command: String) = call("thread/shellCommand", obj("threadId" to threadId, "command" to command))
     override suspend fun unsubscribeThread(threadId: String) = call("thread/unsubscribe", obj("threadId" to threadId))
     override suspend fun listThreadItems(params: ThreadItemsListParams) = result {
-        val o = rpc("thread/items/list", obj("threadId" to params.threadId, "cursor" to params.cursor, "limit" to params.limit,
+        val cursor = when (val value = params.cursor) {
+            null -> null
+            is ThreadItemsListCursor.Opaque -> value.value
+            is ThreadItemsListCursor.Anchor -> obj("type" to "item", "itemId" to value.itemId)
+        }
+        val o = rpc("thread/items/list", obj("threadId" to params.threadId, "cursor" to cursor, "limit" to params.limit,
             "sortDirection" to params.sortDirection?.wire, "turnId" to params.turnId))
         ThreadItemsPage(o.array("data").map { WireCodec.item(it.objectValue()["item"] ?: it) }, o.text("nextCursor"))
     }
@@ -681,7 +686,7 @@ class JsonRpcAppServerClient(
             servers += page.array("data").map { value -> value.objectValue().let { o -> McpServerStatusEntry(o.required("name"),
                 McpServerConnectionStatus.entries.find { it.wire == o.text("runtimeStatus") } ?: McpServerConnectionStatus.Starting,
                 o.objectOrNull("tools")?.size ?: 0, o.array("resources").size, o.text("toolsError"),
-                McpAuthStatus.fromWire(o.text("authStatus"))) } }
+                McpAuthStatus.fromWire(o.text("authStatus")), httpOrigin = o.text("httpOrigin")) } }
             val next = page.text("nextCursor")
             check(next == null || next != cursor) { "MCP pagination did not advance" }
             cursor = next
@@ -694,8 +699,10 @@ class JsonRpcAppServerClient(
         val o = rpc("mcpServer/tool/call", obj("threadId" to thread, "server" to server, "tool" to tool, "arguments" to Json.parse(arguments)))
         McpServerToolCallResponse(Json.write(o), o.bool("isError") == true)
     }
-    override suspend fun readMcpResource(server: String, uri: String) = result {
-        val o = rpc("mcpServer/resource/read", obj("server" to server, "uri" to uri))
+    override suspend fun readMcpResource(server: String, uri: String, target: McpResourceReadTarget?) = result {
+        val o = rpc("mcpServer/resource/read", obj("server" to server, "uri" to uri,
+            // linkId is required-but-nullable upstream, so the key must be present even as null.
+            "target" to target?.let { obj("connectorId" to it.connectorId, "linkId" to (it.linkId ?: JsonNull)) }))
         McpResourceReadResponse(
             contents = o.array("contents").map { value -> value.objectValue().let { content ->
                 ResourceContent(content.required("uri"), content.text("mimeType"), content.text("text"), content.text("blob"))
@@ -730,9 +737,18 @@ class JsonRpcAppServerClient(
         rpc("account/bedrock/setup", body)
         Unit
     }
+    override suspend fun readGatewayOAuth() = result { WireCodec.gatewayOAuthRead(rpc("account/gatewayOAuth/read")) }
+    override suspend fun loginGatewayOAuth() = call("account/gatewayOAuth/login")
+    override suspend fun cancelGatewayOAuth() = call("account/gatewayOAuth/cancel")
 
-    override suspend fun addEnvironment(environmentId: String, execServerUrl: String, connectTimeoutMs: Long?) = call("environment/add",
-        obj("environmentId" to environmentId, "execServerUrl" to execServerUrl, "connectTimeoutMs" to connectTimeoutMs))
+    override suspend fun addEnvironment(
+        environmentId: String,
+        execServerUrl: String,
+        connectTimeoutMs: Long?,
+        authBearerToken: String?,
+    ) = call("environment/add",
+        obj("environmentId" to environmentId, "execServerUrl" to execServerUrl,
+            "authBearerToken" to authBearerToken, "connectTimeoutMs" to connectTimeoutMs))
     override suspend fun readEnvironmentInfo(environmentId: String) = result {
         val o = rpc("environment/info", obj("environmentId" to environmentId))
         val shell = o.objectOrNull("shell")
@@ -1083,6 +1099,12 @@ class JsonRpcAppServerClient(
             }
             "account/updated" -> { scope.launch { readAccount().onSuccess { eventQueue.send(AppServerEvent.AccountUpdated(it)) } }; null }
             "account/login/completed" -> AppServerEvent.AccountLoginCompleted(AccountLoginCompletedNotification(p.bool("success") == true, p.text("loginId"), p.text("error")))
+            "account/gatewayOAuth/changed" -> AppServerEvent.GatewayOAuthChanged(GatewayOAuthChangedNotification(
+                providerId = p.required("providerId"),
+                status = GatewayOAuthStatus.fromWire(p.text("status")) ?: GatewayOAuthStatus.NotReady,
+                authUrl = p.text("authUrl"),
+                error = p.text("error"),
+            ))
             "account/rateLimits/updated" -> AppServerEvent.RateLimitsUpdatedEvent(WireCodec.rateLimitSnapshot(p.objectOrNull("rateLimits")!!))
             "skills/changed" -> AppServerEvent.SkillsChanged(CatalogChanged())
             "app/list/updated" -> AppServerEvent.AppListUpdated(CatalogChanged())
@@ -1289,6 +1311,7 @@ class JsonRpcAppServerClient(
                         title = p.required("title"),
                         description = p.text("description").orEmpty(),
                         challenge = p.required("challenge"),
+                        meta = meta,
                     )
                     else -> {
                         val schema = p.objectOrNull("requestedSchema") ?: obj()

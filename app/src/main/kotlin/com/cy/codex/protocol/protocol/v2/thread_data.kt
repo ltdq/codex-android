@@ -181,11 +181,22 @@ enum class ThreadSortKey(val wire: String) {
 
 data class ThreadItemsListParams(
     val threadId: String,
-    val cursor: String? = null,
+    val cursor: ThreadItemsListCursor? = null,
     val limit: Int? = null,
     val sortDirection: SortDirection? = null,
     val turnId: String? = null,
 )
+
+/**
+ * `thread/items/list.cursor`: either the opaque continuation cursor returned by a previous page,
+ * or an exclusive anchor inside the visible turn (the anchor requires a non-empty [ThreadItemsListParams.turnId]).
+ */
+sealed interface ThreadItemsListCursor {
+    data class Opaque(val value: String) : ThreadItemsListCursor
+
+    /** Ascending lists items after [itemId]; descending lists items before it. */
+    data class Anchor(val itemId: String) : ThreadItemsListCursor
+}
 
 data class ThreadTurnsListParams(
     val threadId: String,
@@ -364,6 +375,8 @@ data class McpServerStatusEntry(
     val error: String? = null,
     /** How the server authenticates; `null` when an older server did not report it. */
     val authStatus: McpAuthStatus? = null,
+    /** HTTP origin of the effective endpoint (no credentials/path/query); null for stdio servers. */
+    val httpOrigin: String? = null,
 )
 
 /** Mirrors upstream `McpServerConnectionStatus`. */

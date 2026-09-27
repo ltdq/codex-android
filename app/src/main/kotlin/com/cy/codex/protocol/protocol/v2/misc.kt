@@ -444,6 +444,8 @@ data class ThreadEnvironment(
 data class EnvironmentAddParams(
     val environmentId: String,
     val execServerUrl: String,
+    /** Raw bearer token for executor auth, including reconnects; requires TLS or a loopback URL. */
+    val authBearerToken: String? = null,
     val connectTimeoutMs: Long? = null,
 )
 

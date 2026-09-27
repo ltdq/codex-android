@@ -28,6 +28,8 @@ import com.cy.codex.protocol.protocol.v2.EnvironmentInfoResponse
 import com.cy.codex.protocol.protocol.v2.EnvironmentStatusResponse
 import com.cy.codex.protocol.protocol.v2.ErrorNotification
 import com.cy.codex.protocol.protocol.v2.ExperimentalFeatureEntry
+import com.cy.codex.protocol.protocol.v2.GatewayOAuthChangedNotification
+import com.cy.codex.protocol.protocol.v2.GatewayOAuthReadResponse
 import com.cy.codex.protocol.protocol.v2.ExternalAgentConfigImportHistory
 import com.cy.codex.protocol.protocol.v2.ExternalAgentConfigMigrationItem
 import com.cy.codex.protocol.protocol.v2.FileChangeOutputDelta
@@ -52,6 +54,7 @@ import com.cy.codex.protocol.protocol.v2.LoginAccountResponse
 import com.cy.codex.protocol.protocol.v2.MarketplaceEntry
 import com.cy.codex.protocol.protocol.v2.McpElicitationRequest
 import com.cy.codex.protocol.protocol.v2.McpResourceReadResponse
+import com.cy.codex.protocol.protocol.v2.McpResourceReadTarget
 import com.cy.codex.protocol.protocol.v2.McpServerEventStreamNotification
 import com.cy.codex.protocol.protocol.v2.McpServerOauthLoginCompletedNotification
 import com.cy.codex.protocol.protocol.v2.McpServerStatusEntry
@@ -313,6 +316,11 @@ sealed interface AppServerEvent {
     }
 
     data class AccountLoginCompleted(val delta: AccountLoginCompletedNotification) : AppServerEvent {
+        override val threadId: String? get() = null
+    }
+
+    /** `account/gatewayOAuth/changed`; only the connection that started login receives the URL. */
+    data class GatewayOAuthChanged(val delta: GatewayOAuthChangedNotification) : AppServerEvent {
         override val threadId: String? get() = null
     }
 
@@ -727,6 +735,10 @@ interface AppServerClient {
     suspend fun bedrockDiscover(): Result<BedrockDiscoverResponse> = unsupported("bedrockDiscover")
     suspend fun bedrockSetup(params: BedrockSetupParams): Result<Unit> = unsupported("bedrockSetup")
 
+    suspend fun readGatewayOAuth(): Result<GatewayOAuthReadResponse> = unsupported("readGatewayOAuth")
+    suspend fun loginGatewayOAuth(): Result<Unit> = unsupported("loginGatewayOAuth")
+    suspend fun cancelGatewayOAuth(): Result<Unit> = unsupported("cancelGatewayOAuth")
+
     suspend fun readFile(path: String): Result<ByteArray> = unsupported("readFile")
     suspend fun writeFile(path: String, bytes: ByteArray): Result<Unit> = unsupported("writeFile")
     suspend fun readDirectory(path: String): Result<List<FileMetadata>> = unsupported("readDirectory")
@@ -773,7 +785,12 @@ interface AppServerClient {
 
     suspend fun listMcpServers(): Result<List<McpServerStatusEntry>> = unsupported("listMcpServers")
     suspend fun mcpOauthLogin(name: String): Result<String> = unsupported("mcpOauthLogin")
-    suspend fun readMcpResource(server: String, uri: String): Result<McpResourceReadResponse> = unsupported("readMcpResource")
+    suspend fun readMcpResource(
+        server: String,
+        uri: String,
+        /** Hosted app/account to read through; omit for legacy resource discovery. */
+        target: McpResourceReadTarget? = null,
+    ): Result<McpResourceReadResponse> = unsupported("readMcpResource")
 
     suspend fun callMcpTool(
         server: String,
@@ -850,6 +867,8 @@ interface AppServerClient {
         environmentId: String,
         execServerUrl: String,
         connectTimeoutMs: Long? = null,
+        /** Raw executor bearer token; requires TLS or a loopback URL. */
+        authBearerToken: String? = null,
     ): Result<Unit> = unsupported("addEnvironment")
 
     suspend fun readEnvironmentInfo(environmentId: String): Result<EnvironmentInfoResponse> = unsupported("readEnvironmentInfo")

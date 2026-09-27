@@ -288,6 +288,14 @@ internal object WireCodec {
         return AccountReadResponse(requires, account)
     }
 
+    fun gatewayOAuthRead(o: JsonObject) = GatewayOAuthReadResponse(
+        providerId = o.required("providerId"),
+        providerName = o.required("providerName"),
+        required = o.bool("required") == true,
+        status = GatewayOAuthStatus.fromWire(o.text("status")),
+        error = o.text("error"),
+    )
+
     fun rateLimitWindow(o: JsonObject): RateLimitWindow = RateLimitWindow(
         usedPercent = o.long("usedPercent") ?: 0L,
         windowDurationMins = o.long("windowDurationMins"),

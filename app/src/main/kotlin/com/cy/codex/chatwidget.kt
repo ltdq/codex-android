@@ -1266,6 +1266,7 @@ class ChatWidget(
             is AppServerEvent.AppListUpdated,
             is AppServerEvent.AccountUpdated,
             is AppServerEvent.AccountLoginCompleted,
+            is AppServerEvent.GatewayOAuthChanged,
             is AppServerEvent.RateLimitsUpdatedEvent,
             is AppServerEvent.ThreadAttachmentUpdated,
             is AppServerEvent.TurnModerationMetadata,
