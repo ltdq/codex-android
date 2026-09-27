@@ -7,55 +7,24 @@ slash 命令），
 [docs/toolchain.md](toolchain.md)；终端专有、平台与工具链约束项见第 6 节。
 
 约定：路径相对仓库根；引用上游一律用 `codex/codex-rs/...`；改协议同步 wire 类型、
-`json_rpc_app_server_client.kt` 绑定与 JVM 测试三处；每条完成后删除。
+`json_rpc_app_server_client.kt` 绑定与 JVM 测试三处；每条只写问题与证据，不写修复方向；
+完成后删除。
 
-## 0. 协议解析与绑定缺陷（改动小、用户直接可见，优先）
+## 0. 协议解析与绑定缺陷
 
 `wire_codec.kt` 的 `item()` 变体与字段解析已逐条对齐上游（19 个变体、字段名与 camelCase
 拼写、`UserInput.Image` 的 `{url} | {fileId}` 联合）；`app/src/test/.../wire_codec_tests.kt`
-覆盖这些解析点。以下为仍未接线的部分。
+覆盖这些解析点。审批 `_meta`（persist 双形态、`tool_params_display`、`tool_suggestion`）、
+elicitation 五变体、permission profile、workspace messages、`rateLimitUpsell`/backend banner、
+MCP 元数据、web search results 与 hook 输出均已接线并有 JVM 测试覆盖。
 
-- [ ] **审批 display params 与持久化选择未解析**：`_meta` 本身已读取并回显（elicitation 路径，
-      `json_rpc_app_server_client.kt`、`bottom_pane/mcp_server_elicitation.kt`），但尚未按 `_meta`
-      派生专门的审批卡片。缺的是 `codex_approval_kind=mcp_tool_call`
-      的空表单派生（Allow / Allow for this session / Always allow，由 `persist` 决定出现哪些）、
-      `tool_suggestion` + `tool_type`/`suggest_type`/`install_url` 的 Install/Enable 卡片和
-      `tool_params_display` 明细。Exec/ApplyPatch/Permissions/DynamicTool 四族审批已分别渲染并
-      发送各自 decision，不是缺口。上游 `tui/src/bottom_pane/approval_overlay.rs`、
-      `mcp_server_elicitation.rs`。
-- [ ] **elicitation 的 userVerification 路由未解析**：上游 `McpServerElicitationRequest` 有
-      `UserVerification`、`Form`、`OpenAiForm`、`OpenAiElicitationForm`、`Url` 五个变体；Kotlin
-      只区分 `url` 与普通 form，`openai/userVerification`、`openai/form`、`openaiForm` 都会落成
-      空表单，无法把 challenge 交给验证流程。`app/user_verification.kt` 的 status/enroll/verify/
-      cancel/delete 页面和 RPC 已存在，但还没有把 elicitation request 接到该页面，也没有 Android
-      Keystore 的 P-256/SHA-256 凭据签名提供方。上游 `tui/src/bottom_pane/user_verification.rs`、
-      `app/user_verification_requests.rs`、`app-server-protocol/src/protocol/v2/mcp.rs`。
-- [ ] **权限 profile 选择器缺失**：`permissionProfile/list` 已绑定但零调用
-      （`protocol/app_server_client.kt`），设置里只有 approval policy/reviewer。绑定本身也要修：
-      `PermissionProfileEntry` 把 `id` 当 `name`（wire 没有 `name`）、未解析 `allowed`，
-      而 `ThreadSessionState.activePermissionProfile` 从未被 `WireCodec.session()` 赋值，
-      `status/card.kt` 的展示分支是死代码。上游 `tui/src/chatwidget/permissions_menu.rs`、
-      `permission_discovery.rs`。
-- [ ] **workspace headline/banner 不显示**：`account/workspaceMessages/read` 已绑定但零调用；
-      上游 `tui/src/workspace_messages.rs`（取第一条 `Headline`，`featureEnabled=false` 时降级）。
-- [ ] **Luna Reserve 的模型侧未接线**：`account/rateLimits/read` 已带 `supportsLunaReserve`
-      并对老服务端的 -32600/-32602 回退到无参重试；仍缺 Reserve 专用模型选择、按 thread 保存的
-      return model、自动 fallback/恢复提示。响应中的 `ordinaryUsageAllowed` 已解析但没有消费，
-      `rateLimitUpsell` 在 backend-client payload 中存在而 Kotlin 类型和 UI 仍没有；
-      `RateLimitNudgeSheet` 只是接近限额时的普通模型切换提示。上游
-      `tui/src/chatwidget/luna_reserve_model.rs`、`luna_reserve_return.rs`、`backend_banners.rs`。
-- [ ] **MCP 调用新字段未渲染**：`appContext/mcpAppUi/pluginId/readOnlyHint/mcpAppResourceUri`
-      已解析进 `McpToolCallItem`（含 `appResourceUri` 派生），`history_cell/mcp.kt` 尚未据此
-      渲染 app/插件/只读标记；上游 `tui/src/history_cell/mcp.rs` 也没有对应渲染，属超越上游的增强。
-- [ ] **web search 结果渲染属增强**：`results` 已解析进 `WebSearchItem`（元素按 `title`/`url`/
-      `snippet`/`type` 投影），上游 TUI 只把 results 用于遥测、不渲染，因此这是 Android 侧增强；
-      若上游将来返回既无 title 又无 url 的结果类型（如纯图片结果），当前会在解析处丢弃。
-- [ ] **hook cell 仍不显示 hook 名**：wire 只给 opaque `hookRunId`，`notices.kt` 现只在有 id 时
-      显示该 id。要显示真正的 hook 名需要与 `hooks/list` 的 `HookMetadata` 建立映射（wire 两侧
-      没有共享键）；上游 `tui/src/history_cell/hook_cell.rs` 用 `HookRunSummary` 的
-      `status_message`/`entries`，还缺 `HookOutputEntry` 的逐条渲染。
+- [ ] **userVerification 端到端仍受上游限制**：Kotlin 侧就绪层已齐（`openai/userVerification`
+      变体解析与路由、verify/cancel 卡、Android Keystore P-256/SHA-256 提供方、proof 经
+      elicitation content 回传），但真实 challenge 不会出现——上游 `user-verification` crate
+      只有 macOS provider，app-server 激活门也只放行 codex-tui/Codex Desktop 且要求
+      `device_supported()`。
 备注：`MemoryCitationEntry` 的全部字段与 `HookPromptFragment.hookRunId` 在上游为必填，Kotlin
-侧给了默认值——沿用本仓既有的宽松解析风格，不是 wire 错误，无需改动。
+侧给了默认值——沿用本仓既有的宽松解析风格，不是 wire 错误。
 
 ## 1. 交互能力
 
@@ -94,9 +63,9 @@ slash 命令），
       `tui/src/inline_visualization.rs`）；Kotlin 只处理 `:codex-file-citation{…}`。
 - [ ] **数学排版**：上游对受支持的 TeX 子集做有界排版（`tui/src/markdown_render/math/`）；
       Kotlin 显示为 mono 斜体源码。
-- [ ] **hook cell**：上游持久显示 Hook completed/failed/Blocked/stopped 及每条
-      `HookOutputEntry`，且不依赖 turn 状态行（`tui/src/history_cell/hook_cell.rs`）；
-      Kotlin 只有 hook 文本与失败诊断，`entries` 逐条内容仍被丢弃。
+- [ ] **后台线程的 hook 结果回放**：`HookCompleted` 只落到当时的会话态，后台子线程的
+      hook 运行不会回放进它的 transcript；hook 标识靠 `hooks/list` 元数据按
+      (event, displayOrder, sourcePath) join，会话中途改 hook 配置会静默错配。
 - [ ] **compaction 进度**：上游有实时标题与「Context compacted · 3s」
       （`tui/src/chatwidget/compaction.rs`）；Kotlin 只有静态通知。
 - [ ] **unified exec 等待/交互 cell**：上游区分「Waited for background terminal」与
@@ -107,21 +76,20 @@ slash 命令），
 - [ ] **启动警告 cell**：上游在 transcript 顶部提示「N startup issues」
       （`tui/src/history_cell/startup_warnings.rs`）；Kotlin 只在 `/mcp` 页可见。
 - [ ] **turn 分隔符的 runtime metrics**（工具/推理调用数、TTFT/TBT，
-      `tui/src/history_cell/separators.rs`）：wire 没有该数据，需要本地统计。
+      `tui/src/history_cell/separators.rs`）：wire 没有该数据。
 
 ## 3. 会话与工作区
 
-- [ ] **resume picker**：补排序键（Created/Updated/Recency/Section）与 All/Cwd/来源过滤；
-      展开预览改为完整 transcript（上游 `tui/src/resume_picker/`）；删除加二次确认；
-      打开归档会话时给「解档并恢复」（上游 `tui/src/unarchive_prompt.rs`）。
-- [ ] **worktree**：补 owner/thread 绑定、remove/copy、以及新会话/fork 的「在哪运行」选择
-      （上游 `tui/src/worktree_browser.rs`、`chatwidget/worktree_picker.rs`）；Kotlin
+- [ ] **resume picker**：上游可按 Created/Updated/Recency/Section 排序、按 All/Cwd/来源过滤，
+      展开预览是完整 transcript，删除前有二次确认，打开归档会话时给「解档并恢复」
+      （`tui/src/resume_picker/`、`tui/src/unarchive_prompt.rs`）；Kotlin 只按最近活动排序，
+      过滤只有搜索词与归档/活跃两项，预览只取用户消息文本与助手文本。
+- [ ] **worktree**：上游有 owner/thread 绑定、remove/copy 与新建会话/fork 的「在哪运行」选择
+      （`tui/src/worktree_browser.rs`、`chatwidget/worktree_picker.rs`）；Kotlin
       `app/worktrees.kt` 只有 `git worktree list/add`。
-- [ ] **新工作区信任时机**：信任确认应在添加工作区的确认动作触发：`WorkspacePickerScreen`
-      的「确认」先弹 `TrustProjectSheet`，同意后才把工作区加入并返回，拒绝则不添加；
-      `ProjectsScreen.CreateProject`/UpdateProject 修改路径时也应同样确认。当前 picker 的
-      `onPicked` 直接 `NewThread(path)`，信任门槛只在 `createThread`/`openThread` 前出现，
-      添加工作区本身没有确认。
+- [ ] **新工作区缺少信任确认**：`WorkspacePickerScreen` 的 `onPicked` 直接 `NewThread(path)`，
+      `ProjectsScreen.CreateProject`/`UpdateProject` 改路径时也不确认；信任门槛只在
+      `createThread`/`openThread` 前出现（`TrustProjectSheet`）。
 - [ ] **`/cd` 语义**：上游在当前会话内换目录（`tui/src/app/working_directory.rs`）；
       Kotlin 会新开空会话（`app.kt`），`/pwd` 也会打开目录选择器。
 - [ ] **resume/fork 的 cwd 提示**：上游问「用会话 cwd 还是当前 cwd」并记住选择
@@ -141,39 +109,38 @@ slash 命令），
       Kotlin 只能选 System/Light/Dark。
 - [ ] **experimental 开关**：失败后保留意图可重试、按 stage 门控、发现失败提示
       （上游 `tui/src/bottom_pane/experimental_features_view.rs`）；Compose 已在写入失败时显示
-      snackbar 并回读列表，但仍没有 stage 门控、失败后的重试意图或发现失败提示。
-- [ ] **skills 展示与搜索**：用 `interface.displayName/shortDescription` 并支持模糊过滤
-      （上游 `tui/src/skills_helpers.rs`）；Kotlin 当前使用 raw `name`/`description`，未读取
-      `interface.displayName/shortDescription`，也没有搜索框。
-- [ ] **`@` 提及**：补 skills 与已授权 connector（`app://`）、搜索模式切换、footer 提示与
-      高亮（上游 `tui/src/task_mentions.rs`、`bottom_pane/mentions_v2/`）；Kotlin 只有
+      snackbar 并回读列表，但没有 stage 门控、失败后的重试意图或发现失败提示。
+- [ ] **skills 展示与搜索**：上游用 `interface.displayName/shortDescription` 并支持模糊过滤
+      （`tui/src/skills_helpers.rs`）；Kotlin 用 raw `name`/`description`，没有搜索框。
+- [ ] **`@` 提及**：上游含 skills 与已授权 connector（`app://`）、搜索模式切换、footer 提示与
+      高亮（`tui/src/task_mentions.rs`、`bottom_pane/mentions_v2/`）；Kotlin 只有
       plugins/tasks/files/directories。
-- [ ] **模型/effort 默认值**：会话打开时也能「设为默认」，Plan 模式单独覆盖
-      （上游 `tui/src/chatwidget/model_popups.rs`）；补 auto-model 分组与 Ultra 并发警告。
-- [ ] **review 分支/commit 选择器**：上游列出真实分支与 commit（`chatwidget/review_popups.rs`）；
-      Kotlin 要求手输。
-- [ ] **feedback**：区分内外部受众的披露、上传后给 issue 链接、附件选择
-      （上游 `tui/src/bottom_pane/feedback_view.rs`）；Kotlin 只有分类/理由/日志同意。
+- [ ] **模型/effort 默认值**：上游在模型弹层里可「设为默认」、Plan 模式单独覆盖、auto-model
+      分组与 Ultra 并发警告（`tui/src/chatwidget/model_popups.rs`）；Compose 侧没有对应入口。
+- [ ] **review 分支/commit 选择器**：上游列出真实分支与 commit
+      （`chatwidget/review_popups.rs`）；Kotlin 要求手输。
+- [ ] **feedback**：上游区分内外部受众的披露、上传后给 issue 链接、附件选择
+      （`tui/src/bottom_pane/feedback_view.rs`）；Kotlin 只有分类/理由/日志同意。
 - [ ] **backend/workspace banner 通用化**：上游 `actionable_banner.rs` 支持标题/描述/CTA/关闭
       （account mismatch、用量恢复、workspace owner 提示等）；Kotlin 的
       `app/session_status.kt` 明确不解析 banner，只有硬编码横幅与连接中断横幅。
 - [ ] **model migration 一次性提示**：上游在启动流程里提示模型迁移
-      （`tui/src/model_migration.rs`），Compose 目前没有对应提示。上游 welcome、
+      （`tui/src/model_migration.rs`）；Compose 没有对应提示。上游 welcome、
       `directory_trust.rs`/`trust_directory.rs` 和 `startup_orchestration.rs` 是终端启动时先确定
-      目标项目的 CLI 流程；Compose 更像 Desktop 端，对应能力由 WorkspacePicker/Projects 与
-      `TrustProjectSheet` 承担；其中添加工作区的信任时机另见第 3 节，不把 CLI welcome 当作缺口。
+      目标项目的 CLI 流程，Compose 的对应能力由 WorkspacePicker/Projects 与
+      `TrustProjectSheet` 承担，不计入缺口；添加工作区的信任时机见第 3 节。
 - [ ] **slash 命令目录未与上游对齐**：`slash_command.kt` 漏了上游 `/delete`、`/experimental`、
       `/approve`（auto-review denial 的一次重试入口）、`/debug-config`、`/statusline`、`/title`、
       `/rollout`、`/ps` 等命令；已有 Session/Settings/BackgroundTerminals 页面的命令也没有对应
-      入口。另有语义差异：Compose `/stop` 当前调用 `InterruptTurn`，上游 `/stop`（`/clean`）是清理
-      background terminals，不能继续沿用同名不同动作。Android 扩展的 `/shell`、`/revert`、
-      `/settings`、`/approvals` 需要和上游命令明确区分，终端专有项见第 6 节。
+      入口。另有语义差异：Compose `/stop` 调用 `InterruptTurn`，上游 `/stop`（`/clean`）是清理
+      background terminals，同名不同动作。Android 扩展的 `/shell`、`/revert`、`/settings`、
+      `/approvals` 在上游没有对应命令，终端专有项见第 6 节。
 
 ## 5. 暂缓与待定
 
 - [ ] **账户分析仪表盘**：上游 `tui/src/analytics/` 直连 ChatGPT 私有 HTTP 接口
-      （`backend-client` 的 analytics 路由），app-server 无对应方法；补齐按模型/功能/
-      日期范围的报表需要上游先加协议。已有 `account/usage/read` 的每日用量与 summary。
+      （`backend-client` 的 analytics 路由），app-server 无对应方法；已有 `account/usage/read`
+      的每日用量与 summary。
 - [ ] **APK 更新提示**：上游 `tui/src/updates.rs` 面向自更新安装；Android 走应用分发，
       是否在应用内做检查/提示待定。
 - [ ] **本地模型 provider（Ollama/LM Studio）**：上游 `tui/src/oss_selection.rs`；手机上
@@ -181,26 +148,24 @@ slash 命令），
 
 ## 6. 终端专有、平台与工具链
 
-以下机制在终端形态下才有直接对应物，或受 Android 平台约束尚未提供；均作为待办跟踪，
-多数需要先确定 Android 上的等价交互或前置能力。
+以下机制在终端形态下才有直接对应物，或受 Android 平台约束尚未提供。
 
-- [ ] **vim 模态与键位重绑**：上游 `tui/src/bottom_pane/vim_*.rs`、`keymap/`；在 Compose
-      输入层实现，硬件键盘场景可用。
+- [ ] **vim 模态与键位重绑**：上游 `tui/src/bottom_pane/vim_*.rs`、`keymap/`；Compose 输入层
+      没有对应实现。
 - [ ] **终端按键语义**：Compose 已有硬件快捷键适配（`keymap/key_event_adapter.kt`），但没有
-      crossterm 原始键事件、Kitty 键盘协议或 bracketed paste 语义；需先定义终端事件到 Compose
+      crossterm 原始键事件、Kitty 键盘协议或 bracketed paste 语义，也没有终端事件到 Compose
       输入层的映射。
-- [ ] **光标与 scrollback 重排**：Compose 列表没有终端 scrollback，需确定等价交互
-      （保持阅读位置、跳转等）。
+- [ ] **光标与 scrollback 重排**：Compose 列表没有终端 scrollback（保持阅读位置、跳转等）。
 - [ ] **ANSI/OSC 与终端元信息**：ANSI/OSC 标记、终端标题与调色板、BEL/OSC 9、OSC-52；
-      需要通知、剪贴板与标题的等价物。
-- [ ] **sixel 内联图片**：改为 Compose 图片渲染路径。
-- [ ] **pager overlay**：在 Ctrl+T 只读历史页（`app/history_ui.kt`）基础上扩展为通用
-      全屏分页视图。
-- [ ] **PTY 终端网格渲染与 daemon 菜单**：依赖下一条的 PTY 支持。
-- [ ] **IDE context IPC**：上游 `tui/src/ide_context.rs`；需要 IDE 侧协议配合。
-- [ ] **`$EDITOR` → PTY**：可用系统编辑器 Intent 近似，语义不同。
-- [ ] **`/raw`、`/title`、pets**：上游 `tui/src/chatwidget/pets.rs` 等；需定 Android
-      表现形式。
+      Compose 侧没有通知、剪贴板与标题的等价物。
+- [ ] **sixel 内联图片**：Compose 没有对应的内联图片渲染路径。
+- [ ] **pager overlay**：上游有通用全屏分页视图；Compose 只有 Ctrl+T 只读历史页
+      （`app/history_ui.kt`）。
+- [ ] **PTY 终端网格渲染与 daemon 菜单**：随下面的 PTY 支持一起缺失。
+- [ ] **IDE context IPC**：上游 `tui/src/ide_context.rs`；没有 IDE 侧协议。
+- [ ] **`$EDITOR` → PTY**：系统编辑器 Intent 与 PTY 语义不同。
+- [ ] **`/raw`、`/title`、pets**：上游 `tui/src/chatwidget/pets.rs` 等；Compose 侧没有对应的
+      Android 表现形式。
 - [ ] **PTY / 交互式命令**：`process/spawn|write|resize|kill`；当前
       `json_rpc_app_server_client.kt` 保留 `require(!tty)`，命令只走 `command/exec`
       的非交互流。
@@ -212,12 +177,11 @@ slash 命令），
       （`session_log.rs`）、`/app`（上游仅 macOS/Windows，需 Android 等价物）、`/ide`、
       `/daemon`、`/keymap`、`/vim`、`/elevate-sandbox`。
 - [ ] **设备端编译工具链**：clang/rustc/cmake/ninja/perl 与 JDK、Android 构建工具
-      （aapt2/d8/apksigner/Gradle）受 bionic/glibc 限制，需先评估可行路径。
+      （aapt2/d8/apksigner/Gradle）受 bionic/glibc 限制。
 - [ ] **缺失工具**：node/npm（现由 bun 取代）、wget（现由 curl 取代）、
       vi/less/top/watch、nc/ping/traceroute（依赖 PTY 或额外权限）。
 - [ ] **登录与凭据**：系统浏览器回跳的自定义 scheme（现由 app-server localhost 回调
-      替代）、`auth.json` 的 Keystore 保护（内嵌 Rust 直接读写该文件，需要上游支持
-      外部密钥回调）。
+      替代）、`auth.json` 的 Keystore 保护（内嵌 Rust 直接读写该文件）。
 - [ ] **屏幕阅读器与无障碍语义**：上游 `tui/src/screen_reader.rs`、
       `screen_reader_windows.rs` 会检测屏幕阅读器并调整输出；Compose 侧只有零散的图标
       `contentDescription`，尚未给 transcript、审批表单、状态卡和动态活动行补齐语义角色、
