@@ -52,6 +52,10 @@ data class WorkspaceHeadlineCache(
 val AccountReadResponse.hasCodexBackendAuth: Boolean
     get() = account is Account.Chatgpt
 
+/** Upstream `should_show_login_screen` (codex-rs/tui/src/lib.rs): OSS/custom providers skip login. */
+val AccountReadResponse.requiresSignIn: Boolean
+    get() = requiresOpenaiAuth && account == null
+
 /** Upstream `status_line_workspace_headline_should_fetch` (codex-rs/tui/src/chatwidget/status_surfaces.rs). */
 fun workspaceHeadlineShouldFetch(
     cache: WorkspaceHeadlineCache,

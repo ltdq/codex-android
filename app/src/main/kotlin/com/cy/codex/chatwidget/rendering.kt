@@ -71,6 +71,7 @@ import com.cy.codex.bottom_pane.ComposerHistory
 import com.cy.codex.MarkdownStream
 import com.cy.codex.Motion
 import com.cy.codex.R
+import com.cy.codex.requiresSignIn
 import com.cy.codex.SessionDiagnostic
 import com.cy.codex.SessionState
 import com.cy.codex.Surface
@@ -772,7 +773,7 @@ private fun RuntimeTranscript(app: CodexApp, modifier: Modifier) {
                         )
                     }
                 }
-                app.catalog.account.account == null -> {
+                app.catalog.account.requiresSignIn -> {
                     Button(
                         onClick = { app.openSurface(Surface.Account) },
                         colors = ButtonDefaults.buttonColorsPrimary(),

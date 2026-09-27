@@ -373,7 +373,7 @@ class CodexApp(
                         return
                     }
                 }
-                if (catalog.account.account == null) {
+                if (catalog.account.requiresSignIn) {
                     openSurface(Surface.Account)
                 } else if (!widget.state.open) {
                     // A new turn collapses a dismissible banner (codex-rs/tui/src/chatwidget/input_submission.rs).

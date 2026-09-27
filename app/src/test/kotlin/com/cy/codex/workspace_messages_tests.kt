@@ -286,4 +286,11 @@ class WorkspaceMessagesTest {
             ).hasCodexBackendAuth,
         )
     }
+
+    @Test
+    fun `only a provider that requires openai auth asks a signed-out user to sign in`() {
+        assertTrue(AccountReadResponse(requiresOpenaiAuth = true).requiresSignIn)
+        assertFalse(AccountReadResponse(requiresOpenaiAuth = false).requiresSignIn)
+        assertFalse(AccountReadResponse(requiresOpenaiAuth = true, account = Account.ApiKey).requiresSignIn)
+    }
 }

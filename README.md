@@ -59,8 +59,9 @@ bash scripts/device-smoke-test.sh -PskipNativeBuild                       # 真�
 - 只构建 arm64-v8a，`minSdk 36`。
 - Android 没有上游的 Linux namespace 沙箱，嵌入运行时使用 `danger-full-access`；命令仍受
   App UID 权限边界限制，没有 root，也读不到其他 App 的私有数据。
-- 未登录也能启动，模型请求需要有效账户：账户页面提供 ChatGPT 设备码与 API key 两种登录。
-  宿主机 Codex 凭据不会复制到设备。
+- 未登录也能启动。只有需要 OpenAI 认证的 provider 在提交消息时引导到账户页面（ChatGPT
+  设备码或 API key 登录）；自带凭据的第三方 provider（`requires_openai_auth = false`）
+  不要求登录，与上游 `should_show_login_screen` 一致。宿主机 Codex 凭据不会复制到设备。
 - 配置、认证与会话记录在 `files/home/.codex/`（`CODEX_HOME`），不参与 Android 自动备份。
 - Android 进程被系统终止后，下次启动重新连接并读取磁盘上的会话；没有后台常驻保证。
 
