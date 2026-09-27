@@ -186,3 +186,65 @@ MCP 元数据、web search results 与 hook 输出均已接线并有 JVM 测试�
       `screen_reader_windows.rs` 会检测屏幕阅读器并调整输出；Compose 侧只有零散的图标
       `contentDescription`，尚未给 transcript、审批表单、状态卡和动态活动行补齐语义角色、
       状态描述与朗读顺序，也未做屏幕阅读器模式的布局降级。
+
+## 7. 账户与登录门控
+
+与上游 TUI 的账户门控逐点对照（`requires_openai_auth`、`has_chatgpt_account`/
+`has_codex_backend_auth`、plan 与登录方式）。提交与输入区现按上游 `should_show_login_screen`
+语义门控（`requiresSignIn`，`workspace_messages.kt`）；同一链路上仍不一致的门控如下。
+
+- [ ] **`/usage` 与账户页不区分账户类型**：上游 `/usage` 由 `has_codex_backend_auth` 门控，
+      否则报 "Sign in with ChatGPT to use /usage."
+      （`codex/codex-rs/tui/src/chatwidget/slash_dispatch.rs:1198`），命令列表对它隐藏
+      （`codex/codex-rs/tui/src/bottom_pane/slash_commands.rs:78`）。Compose 的 `usage` 命令
+      无门控、直接打开账户页（`app.kt:946`），账户页在 `account == null` 时一律渲染「未登录」
+      与 ChatGPT/设备码/API key 登录表单（`status/account.kt:151`、`:230`）。对
+      `requires_openai_auth = false` 的 provider，上游不显示登录界面
+      （`codex/codex-rs/tui/src/lib.rs:2296`），`/status` 也不输出账户行
+      （`codex/codex-rs/tui/src/status/card.rs:861`）。
+- [ ] **rate limit 轮询/刷新门控偏松**：上游 `should_prefetch_rate_limits() =
+      requires_openai_auth && has_chatgpt_account`
+      （`codex/codex-rs/tui/src/chatwidget/rate_limits.rs:420`），并连带关掉轮询间隔（`:193`）、
+      `/status` 刷新（`codex/codex-rs/tui/src/chatwidget/slash_dispatch.rs:510`）与启动预取
+      （`codex/codex-rs/tui/src/app/startup.rs:987`）；限流失败后的输入保持与
+      `RefreshRateLimits(Recovery)` 也只对 ChatGPT 账户生效
+      （`codex/codex-rs/tui/src/chatwidget/turn_runtime.rs:416`、`:462`）。Compose 轮询只看
+      `account == null`（`app.kt:1111`），账户页打开/刷新只看 `signedIn`（`app.kt:1662`、
+      `status/account.kt:124`），限流恢复不查账户（`app.kt:1219`、`:1544`）：API key 账户仍会
+      轮询、刷新并保持输入，上游不会。
+- [ ] **usage / thread usage / Agents 用量门控**：上游用量入口统一要 `has_codex_backend_auth`，
+      线程用量与 Agents 概览用量还要求 plan ∈ {Business, EnterpriseCbpUsageBased,
+      EnterpriseCbpAutomation}（`codex/codex-rs/tui/src/chatwidget/thread_usage.rs:358`、
+      `codex/codex-rs/tui/src/app/agents_overview_usage.rs:45`）。Compose 的 `ReloadUsage`
+      无门控（`app.kt:398`），会话状态页的 `readThreadUsage`（`app/session_status.kt:91`）不查
+      账户与 plan；Agents 概览没有对应的用量读取（只用 `thread/tokenUsage/updated` 事件，
+      `agents_overview.kt`）。
+- [ ] **状态页的账户行、plan 行与 token 用量行**：上游账户行只在有账户显示值时输出（API key
+      文案 "API key configured (run codex login to use ChatGPT)"，无账户时整行省略，
+      `codex/codex-rs/tui/src/status/card.rs:747`、`:861`），plan 只在 ChatGPT 账户行内出现，
+      `Token usage` 行对 ChatGPT 订阅者隐藏（`:881`），"ChatGPT usage" 链接只随
+      `requires_openai_auth` 显示（`:354`、`:819`）。Compose 会话状态页始终输出 Plan 行
+      （`account == null` → 「未登录」，`app/session_status.kt:582`、`:766`）与 token 用量行
+      （`app/session_status.kt:426`、`:747`），且没有 ChatGPT usage 链接。
+- [ ] **连接器（`/apps`）不按账户门控**：上游 `connectors_enabled = Feature::Apps &&
+      has_chatgpt_account`（`codex/codex-rs/tui/src/chatwidget/connectors.rs:151`），门控
+      `/apps` 命令、连接器缓存刷新与 `@` 提及；Compose 的 `apps` 命令与 `Surface.Apps` 无账户
+      判断（`app.kt:930`、`:1672`）。
+- [ ] **登录方式与 Bedrock 入口不完整**：上游按 `allowed_login_methods` 决定展示哪些登录方式
+      （`codex/codex-rs/tui/src/onboarding/auth.rs:352`），Bedrock 选项还需
+      `should_show_bedrock_setup_wizard` 的全部条件（Embedded + `requires_openai_auth` +
+      feature 门控 + `model_provider == "openai"` + 未显式配置 provider + 允许 API 登录，
+      `codex/codex-rs/tui/src/lib.rs:2306`）。Compose 账户页固定展示 ChatGPT/设备码/API key
+      （`status/account.kt:230`），`configRequirements/read` 只解析审批人与权限配置、未读
+      `allowedLoginMethods`（`protocol/protocol/v2/config.kt:183`），`Surface.Bedrock` 是设置页
+      常驻入口（`chatwidget/settings_popups.kt:674`），不满足上述条件也可见。
+- [ ] **线程标题模型不按账户选择**：上游仅当 `model_provider == "openai" &&
+      has_chatgpt_account` 且模型目录含 `THREAD_TITLE_MODEL` 时用专用小模型生成标题，否则用
+      当前模型（`codex/codex-rs/tui/src/app/thread_title.rs:89`）；Compose 一律用当前模型
+      （`chatwidget.kt:1499`）。
+- [ ] **账户切换时的失效范围不全**：上游把每条账户更新当身份边界，`update_account_state`
+      （`codex/codex-rs/tui/src/chatwidget/settings.rs:193`）除 headline/backend banner 外还重置
+      rate-limit 警告、reset-credit 请求、usage notice 与线程用量等账户级状态；Compose 在
+      `AccountUpdated`/`AccountLoginCompleted` 只重置 headline 与 backend banner
+      （`app.kt:1552`、`:1565`），`rateLimitWarnings`（`app.kt:273`）、`catalog.threadUsage` 与
+      账户页的 `usage`/`usageLoaded` 仍保留上一个账户的数据，切号后先显示旧值直到下一次读取。
