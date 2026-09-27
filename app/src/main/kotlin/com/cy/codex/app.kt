@@ -40,6 +40,7 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -77,6 +78,7 @@ import com.cy.codex.bottom_pane.chat_composer.classifySlashInput
 import com.cy.codex.bottom_pane.mentions_v2.MentionKind
 import com.cy.codex.bottom_pane.mentions_v2.MentionSuggestion
 import com.cy.codex.bottom_pane.mentions_v2.mentionMatches
+import com.cy.codex.bottom_pane.userVerificationAnswer
 import com.cy.codex.chatwidget.ChatScreen
 import com.cy.codex.chatwidget.AgentNotice
 import com.cy.codex.chatwidget.AgentNotification
@@ -88,10 +90,12 @@ import com.cy.codex.chatwidget.PluginsScreen
 import com.cy.codex.chatwidget.RealtimeScreen
 import com.cy.codex.chatwidget.ReviewScreen
 import com.cy.codex.chatwidget.SettingsScreen
+import com.cy.codex.chatwidget.SettingsSection
 import com.cy.codex.chatwidget.WindowsSandboxScreen
 import com.cy.codex.chatwidget.WorkspacePickerScreen
 import com.cy.codex.chatwidget.openSurfaceFor
 import com.cy.codex.external_agent_config_migration.ExternalAgentImportScreen
+import com.cy.codex.history_cell.LocalHookMetadata
 import com.cy.codex.keymap.CodexKeymap
 import com.cy.codex.keymap.CodexKeys
 import com.cy.codex.keymap.KeyAction
@@ -121,6 +125,7 @@ import com.cy.codex.protocol.protocol.v2.ThreadSessionState
 import com.cy.codex.protocol.protocol.v2.TurnStatus
 import com.cy.codex.protocol.protocol.v2.UserVerificationVerifyParams
 import com.cy.codex.status.AccountScreen
+import com.cy.codex.status.LocalWorkspaceHeadline
 import com.cy.codex.status.RemoteControlScreen
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CancellationException
@@ -164,8 +169,19 @@ class CodexApp(
     /** Where a failed request is reported; owned here so the reducer can reach it. */
     val snackbar = SnackbarHostState()
 
-    var widget by mutableStateOf(ChatWidget(client, scope))
+    /** Per-thread Reserve return targets; shared with the reducer so both clear the same cache. */
+    private val reserveReturns = com.cy.codex.chatwidget.SharedPrefsReserveReturnStore(preferences)
+
+    var widget by mutableStateOf(
+        ChatWidget(client, scope, hookMetadata = { catalog.hooks }, reserveReturns = reserveReturns),
+    )
         private set
+
+    /**
+     * Last session key that warmed the hook join; `hooks/list` renumbers entries per call
+     * (codex-rs/hooks/src/engine/discovery.rs), so run ids would otherwise join stale metadata.
+     */
+    private var hookJoinWarmedFor = ""
 
     /**
      * The page stack ([Surface.Chat] at the root), a `miuix-nav` back stack so the shell can hand it
@@ -198,6 +214,16 @@ class CodexApp(
 
     private var recoverySubmission: List<com.cy.codex.protocol.protocol.v2.UserInput>? = null
 
+    /**
+     * Account-banner lifecycle folded from each full usage read (codex-rs/tui/src/chatwidget/backend_banners.rs);
+     * account-scoped here rather than on the reducer so switching tasks keeps it.
+     */
+    var backendBanner by mutableStateOf(com.cy.codex.chatwidget.BackendBannerState())
+        private set
+
+    /** Account whose Reserve entry notice was already shown (`luna_reserve_notice_account_id`). */
+    private var lunaNoticeAccountId: String? = preferences.getString(KeyLunaNoticeAccount, null)
+
     /** The in-flight recovery read; new input queues behind it instead of starting a turn. */
     private var rateLimitRecoveryJob: Job? = null
 
@@ -213,6 +239,16 @@ class CodexApp(
     fun sideParentOf(threadId: String): String? = sideThreadParents[threadId]
 
     var copyMenuOpen by mutableStateOf(false)
+
+    /**
+     * Section `/permissions` asked the settings page to open at (`Surface.Settings` carries no
+     * payload and the page owns its nav stack); consumed by the page's first composition.
+     */
+    private var pendingSettingsSection: SettingsSection? = null
+
+    /** One-shot read of [pendingSettingsSection]; later recompositions see `null`. */
+    fun consumePendingSettingsSection(): SettingsSection? =
+        pendingSettingsSection.also { pendingSettingsSection = null }
 
     var mentionQuery by mutableStateOf<String?>(null)
         private set
@@ -236,10 +272,19 @@ class CodexApp(
      */
     private val rateLimitWarnings = mutableMapOf<String, Long>()
 
+    /**
+     * Generation of each in-flight user verification, keyed by elicitation id (codex-rs/tui/src/app/user_verification.rs):
+     * a late proof must not answer a request a newer attempt or a user decision already closed.
+     */
+    private val userVerificationAttempts =
+        mutableMapOf<com.cy.codex.protocol.protocol.RequestId, String>()
+
     init {
         widget.state.applyConfig(ThreadSessionState(threadId = "", cwd = defaultWorkspace))
         // Forks carry no specs of their own; refuse delegation via the parent map.
         widget.isSideThread = { sideThreadParents.containsKey(it) }
+        // A request leaving the queue retires its attempt; a late proof must find nothing to answer.
+        widget.onApprovalRetired = { userVerificationAttempts.remove(it) }
     }
 
     /**
@@ -268,11 +313,21 @@ class CodexApp(
             is AppEvent.SetApprovalsReviewer -> if (widget.state.open) widget.action(event) else {
                 onAppEvent(AppEvent.WriteConfigValue("approvals_reviewer", JsonPrimitive(event.reviewer.wire)))
             }
+
+            is AppEvent.SetPermissionProfile -> if (widget.state.open) widget.action(event) else {
+                // Without a thread there is no `thread/settings/update`
+                // (codex-rs/tui/src/app/config_persistence.rs), so nothing is written to config.
+                scope.launch {
+                    snackbar.showSnackbar(context.getString(R.string.settings_permission_select_no_thread))
+                }
+            }
             is AppEvent.SubmitUserMessage -> {
                 if (!startupReady || creatingThread || widget.state.loading) return
-                // Input arriving during the post-limit recovery read is held and submitted once
-                // fresh numbers are in (hold_rate_limit_recovery).
-                if (rateLimitRecoveryJob?.isActive == true) {
+                // Input during the recovery read, or while Reserve is offered but not taken, is held
+                // until the model settles (hold_rate_limit_recovery, codex-rs/tui/src/chatwidget/rate_limits.rs).
+                if (rateLimitRecoveryJob?.isActive == true ||
+                    com.cy.codex.chatwidget.waitingForLunaReserve(backendBanner, widget.state.config.model)
+                ) {
                     recoverySubmission = event.inputs
                     return
                 }
@@ -321,17 +376,25 @@ class CodexApp(
                 if (catalog.account.account == null) {
                     openSurface(Surface.Account)
                 } else if (!widget.state.open) {
+                    // A new turn collapses a dismissible banner (codex-rs/tui/src/chatwidget/input_submission.rs).
+                    backendBanner = com.cy.codex.chatwidget.dismissBackendBannerForNewTurn(
+                        backendBanner,
+                        widget.state.config.model,
+                    )
                     createThread(inputs = event.inputs)
                 } else {
+                    backendBanner = com.cy.codex.chatwidget.dismissBackendBannerForNewTurn(
+                        backendBanner,
+                        widget.state.config.model,
+                    )
                     widget.action(event)
                 }
             }
-            AppEvent.ReloadAccount -> load({ client.readAccount() }) { catalog.account = it }
-            AppEvent.ReloadRateLimits -> load({ client.readRateLimits() }) {
-                catalog.rateLimits = it
-                catalog.rateLimitsUpdatedAtMs = System.currentTimeMillis()
-                warnRateLimits()
+            AppEvent.ReloadAccount -> load({ client.readAccount() }) {
+                catalog.account = it
+                requestWorkspaceHeadlineIfDue()
             }
+            AppEvent.ReloadRateLimits -> load({ client.readRateLimits() }, ::applyRateLimitsRead)
             AppEvent.ReloadUsage -> load({ client.readUsage() }) { catalog.usage = it; catalog.usageLoaded = true }
 
             AppEvent.ReloadConfig -> request { reloadConfig() }
@@ -519,6 +582,8 @@ class CodexApp(
                                 }
                                 client.readAccount().onSuccess { catalog.account = it }
                                 client.listModels().onSuccess { catalog.models = it }
+                                // A new sign-in is an identity change: drop the old account's headline.
+                                resetWorkspaceHeadline()
                             }
                             .onFailure { catalog.loginError = it.message }
                     } finally {
@@ -536,6 +601,9 @@ class CodexApp(
                     catalog.pendingLogin = null
                     catalog.usageLoaded = false
                     catalog.rateLimits = com.cy.codex.protocol.protocol.v2.AccountRateLimits()
+                    // Identity gone: drop the account-scoped headline, aging out any in-flight response.
+                    catalog.workspaceHeadlineCache =
+                        resetWorkspaceHeadlineCache(catalog.workspaceHeadlineCache)
                     client.readAccount().onSuccess { fresh -> catalog.account = fresh }
                 }
             }
@@ -634,9 +702,33 @@ class CodexApp(
                 }
             }
 
-            is AppEvent.VerifyUserVerification -> load(
-                { client.verifyUserVerification(event.params) },
-            ) { /* no state to fold the proof into */ }
+            is AppEvent.VerifyUserVerification -> {
+                val elicitationId = event.elicitationRequestId
+                if (elicitationId == null) {
+                    // The page's practice sheet signs for itself; there is no request to answer.
+                    load({ client.verifyUserVerification(event.params) }) {
+                        /* no state to fold the proof into */
+                    }
+                } else {
+                    // The proof goes back as the elicitation accept: content is exactly
+                    // credentialId and signature (codex-rs/tui/src/app/user_verification.rs).
+                    val attempt = java.util.UUID.randomUUID().toString()
+                    userVerificationAttempts[elicitationId] = attempt
+                    scope.launch {
+                        val result = client.verifyUserVerification(event.params)
+                        // A superseded attempt or a decision taken meanwhile owns the request;
+                        // answering again would fail a resolved elicitation.
+                        if (userVerificationAttempts[elicitationId] != attempt) return@launch
+                        userVerificationAttempts.remove(elicitationId)
+                        onAppEvent(
+                            AppEvent.ResolveApproval(
+                                elicitationId,
+                                userVerificationAnswer(result.getOrNull()?.proof),
+                            ),
+                        )
+                    }
+                }
+            }
 
             // This client cannot name the transport's request id, so it sends an id the server has
             // never seen; the protocol defines that as a no-op rather than an error.
@@ -793,6 +885,13 @@ class CodexApp(
             is AppEvent.SubmitSlashCommand -> runSlashCommand(event)
 
             is AppEvent.ToggleSideConversation -> toggleSideConversation(event.message)
+            is AppEvent.ResolveApproval -> {
+                // A user decision retires any verification in flight; its proof must not
+                // resurrect an answer the user already gave.
+                userVerificationAttempts.remove(event.requestId)
+                widget.action(event)
+            }
+
             else -> widget.action(event)
         }
     }
@@ -847,7 +946,13 @@ class CodexApp(
             "usage" -> openSurface(Surface.Account)
             "status" -> openSurface(Surface.SessionStatus)
             "copy" -> copyMenuOpen = true
-            "model", "approvals", "permissions" -> openSurface(Surface.Settings)
+            "model", "approvals" -> openSurface(Surface.Settings)
+            // The settings page's own nav stack wins when it is already open; otherwise the deep
+            // link seeds it at the profile picker.
+            "permissions" -> {
+                if (Surface.Settings !in surfaces) pendingSettingsSection = SettingsSection.Permissions
+                openSurface(Surface.Settings)
+            }
             "memories" -> openSurface(Surface.Memories)
 
             // `/plan` toggles: the phone has no mode-cycle binding, so one command must do both or
@@ -1004,12 +1109,52 @@ class CodexApp(
         while (true) {
             delay(rateLimitRefreshIntervalMs())
             if (!startupReady || catalog.account.account == null) continue
-            client.readRateLimits().onSuccess { fresh ->
-                catalog.rateLimits = fresh
-                catalog.rateLimitsUpdatedAtMs = System.currentTimeMillis()
-                warnRateLimits()
-            }
+            client.readRateLimits().onSuccess { fresh -> applyRateLimitsRead(fresh) }
         }
+    }
+
+    /**
+     * Ticks the workspace-headline gate (codex-rs/tui/src/chatwidget.rs
+     * `refresh_status_line_if_workspace_headline_due`); the gate itself enforces the refresh interval.
+     */
+    private suspend fun pollWorkspaceHeadline() {
+        while (true) {
+            delay(WORKSPACE_HEADLINE_REFRESH_INTERVAL_MS)
+            if (!startupReady) continue
+            requestWorkspaceHeadlineIfDue()
+        }
+    }
+
+    /**
+     * Fetches the workspace headline when the gate allows (codex-rs/tui/src/chatwidget/status_surfaces.rs):
+     * non-ChatGPT clients never ask (the server rejects them), and `FeatureDisabled` stops asking.
+     */
+    private fun requestWorkspaceHeadlineIfDue() {
+        val request = beginWorkspaceHeadlineFetch(
+            cache = catalog.workspaceHeadlineCache,
+            nowMs = System.currentTimeMillis(),
+            hasCodexBackendAuth = catalog.account.hasCodexBackendAuth,
+        ) ?: return
+        catalog.workspaceHeadlineCache = request.cache
+        scope.launch {
+            // A failed read keeps the previously shown headline; the next interval retries.
+            val result = client.readWorkspaceMessages().map { workspaceHeadlineFromResponse(it) }
+            catalog.workspaceHeadlineCache = applyWorkspaceHeadlineResponse(
+                catalog.workspaceHeadlineCache,
+                request.requestId,
+                result,
+            )
+        }
+    }
+
+    /**
+     * Identity change for the headline (codex-rs/tui/src/chatwidget/settings.rs `update_account_state`):
+     * drop the cache unconditionally — visible account fields can match across two accounts.
+     */
+    private fun resetWorkspaceHeadline() {
+        catalog.workspaceHeadlineCache =
+            resetWorkspaceHeadlineCache(catalog.workspaceHeadlineCache)
+        requestWorkspaceHeadlineIfDue()
     }
 
     private fun rateLimitRefreshIntervalMs(): Long {
@@ -1033,12 +1178,20 @@ class CodexApp(
     private fun maybeShowRateLimitNudge() {
         if (rateLimitNudge != null || rateLimitNudgeShown) return
         if (catalog.config.snapshot.hideRateLimitModelNudge == true) return
+        // A banner owns the remedy; the Luna models are exactly this prompt's offer
+        // (codex-rs/tui/src/chatwidget/rate_limits.rs).
+        if (com.cy.codex.chatwidget.rateLimitNudgeBlocked(
+                com.cy.codex.chatwidget.hasApplicableBackendBanner(backendBanner, widget.state.config.model),
+                widget.state.config.model,
+            )
+        ) {
+            return
+        }
         val snapshot = catalog.rateLimits.rateLimits
         if (snapshot.credits?.hasCredits == true) return
         val used = snapshot.primary?.usedPercent ?: snapshot.secondary?.usedPercent ?: 0L
         if (used < RateLimitNudgeThresholdPercent) return
         val preset = catalog.models.firstOrNull { it.model == RateLimitNudgeModel } ?: return
-        if (widget.state.config.model == RateLimitNudgeModel) return
         rateLimitNudgeShown = true
         rateLimitNudge = RateLimitNudge(preset.model, preset.displayName)
     }
@@ -1066,16 +1219,161 @@ class CodexApp(
     private fun beginRateLimitRecovery() {
         if (rateLimitRecoveryJob?.isActive == true) return
         rateLimitRecoveryJob = scope.launch {
-            client.readRateLimits().onSuccess { fresh ->
-                catalog.rateLimits = fresh
-                catalog.rateLimitsUpdatedAtMs = System.currentTimeMillis()
-                warnRateLimits()
-            }
+            client.readRateLimits().onSuccess { fresh -> applyRateLimitsRead(fresh) }
             delay(RateLimitRecoveryDelayMs)
-            val held = recoverySubmission
-            recoverySubmission = null
-            if (held != null && widget.state.open) widget.action(AppEvent.SubmitUserMessage(held))
+            releaseHeldSubmissionIfDue()
         }
+    }
+
+    /**
+     * Folds one full usage read into the banner lifecycle, then runs the fallback
+     * (codex-rs/tui/src/app/event_dispatch.rs); only a full read can authorize recovery.
+     */
+    private fun applyRateLimitsRead(fresh: com.cy.codex.protocol.protocol.v2.AccountRateLimits) {
+        catalog.rateLimits = fresh
+        catalog.rateLimitsUpdatedAtMs = System.currentTimeMillis()
+        val update = com.cy.codex.chatwidget.updateBackendBanner(
+            backendBanner,
+            fresh,
+            lunaNoticeAccountId,
+            widget.state.config.model,
+        )
+        backendBanner = update.state
+        if (update.noticeAccountId != lunaNoticeAccountId) {
+            lunaNoticeAccountId = update.noticeAccountId
+            preferences.edit().apply {
+                if (update.noticeAccountId == null) remove(KeyLunaNoticeAccount)
+                else putString(KeyLunaNoticeAccount, update.noticeAccountId)
+            }.apply()
+        }
+        warnRateLimits()
+        maybeShowRateLimitNudge()
+        scope.launch {
+            applyBackendBannerFallback()
+            releaseHeldSubmissionIfDue()
+        }
+    }
+
+    /**
+     * `apply_backend_banner_fallback` (codex-rs/tui/src/app/backend_banner_fallback.rs); the model
+     * moves only when `thread/settings/update` lands, never behind the server's back.
+     */
+    private suspend fun applyBackendBannerFallback() {
+        // Reserve is a ChatGPT-account entitlement (codex-rs/tui/src/chatwidget/backend_banners.rs).
+        if (!catalog.account.hasCodexBackendAuth || !catalog.account.requiresOpenaiAuth) return
+        val threadId = widget.state.config.threadId
+        if (threadId.isEmpty()) return
+        val outcome = com.cy.codex.app.bannerFallback(
+            store = reserveReturns,
+            context = com.cy.codex.app.BannerFallbackContext(
+                threadId = threadId,
+                forkedFromId = widget.state.config.forkedFromId,
+                accountId = backendBanner.accountId,
+                currentModel = widget.state.config.model,
+                currentEffort = widget.state.config.reasoningEffort,
+                collaborationMode = widget.state.config.collaborationMode,
+                ordinaryUsageRecovered = backendBanner.ordinaryUsageRecovered,
+                banner = backendBanner.banner,
+                models = catalog.models,
+            ),
+            prepareReturn = {
+                com.cy.codex.chatwidget.prepareReserveReturn(
+                    reserveReturns,
+                    threadId,
+                    backendBanner.accountId,
+                    widget.state.config.model,
+                    widget.state.config.reasoningEffort,
+                )
+            },
+            switchedToTemplate = context.getString(R.string.luna_auto_switched_to),
+            switchedBackTemplate = context.getString(R.string.luna_auto_switched_back),
+        )
+        when (outcome) {
+            com.cy.codex.app.BannerFallbackOutcome.None -> Unit
+            com.cy.codex.app.BannerFallbackOutcome.UnavailableRecovery ->
+                backendBanner = com.cy.codex.chatwidget.showUnavailableReserveRecovery(
+                    backendBanner,
+                    reserveReturns,
+                    threadId,
+                )
+
+            is com.cy.codex.app.BannerFallbackOutcome.Apply -> {
+                val plan = outcome.plan
+                client.updateThreadSettingsFull(plan.params).onSuccess {
+                    if (widget.state.config.model == com.cy.codex.chatwidget.LUNA_RESERVE_MODEL &&
+                        plan.target.model != com.cy.codex.chatwidget.LUNA_RESERVE_MODEL
+                    ) {
+                        // Leaving Reserve drops the saved return target (codex-rs/tui/src/chatwidget/settings.rs).
+                        com.cy.codex.chatwidget.clearReserveReturn(reserveReturns, threadId)
+                    }
+                    widget.state.applyConfig(
+                        widget.state.config.copy(
+                            model = plan.target.model,
+                            modelDisplayName = com.cy.codex.chatwidget.lunaReserveDisplayName(plan.target.model),
+                            reasoningEffort = plan.effort,
+                        ),
+                    )
+                    backendBanner = com.cy.codex.chatwidget.finishBackendBannerFallback(
+                        backendBanner,
+                        plan.target.model,
+                        lunaNoticeAccountId,
+                    )
+                    rememberReserveNoticeAccount()
+                    widget.state.addDiagnostic(
+                        SessionDiagnostic(
+                            severity = com.cy.codex.protocol.protocol.v2.DiagnosticSeverity.Info,
+                            message = plan.notice,
+                        ),
+                    )
+                }.onFailure {
+                    if (plan.enteringReserve) {
+                        backendBanner = com.cy.codex.chatwidget.showUnavailableReserveRecovery(
+                            backendBanner,
+                            reserveReturns,
+                            threadId,
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    /** Records the Reserve entry notice for this account (codex-rs/tui/src/chatwidget/backend_banners.rs). */
+    private fun rememberReserveNoticeAccount() {
+        val account = com.cy.codex.chatwidget.reserveNoticeAccountToRemember(
+            backendBanner,
+            widget.state.config.model,
+        ) ?: return
+        if (account == lunaNoticeAccountId) return
+        lunaNoticeAccountId = account
+        preferences.edit().putString(KeyLunaNoticeAccount, account).apply()
+    }
+
+    /**
+     * A local dismissal — the panel's cancel, a `dismissible` close, or "Continue with Luna
+     * Reserve"; separate from the backend's purchase CTAs (codex-rs/tui/src/chatwidget/backend_banners.rs).
+     */
+    fun dismissBackendBanner() {
+        backendBanner = backendBanner.copy(dismissed = true, pickerDismissed = true)
+        rememberReserveNoticeAccount()
+    }
+
+    /** finish_rate_limit_recovery (codex-rs/tui/src/chatwidget/rate_limits.rs); Reserve still pending holds the input. */
+    private fun releaseHeldSubmissionIfDue() {
+        val held = recoverySubmission ?: return
+        if (com.cy.codex.chatwidget.waitingForLunaReserve(backendBanner, widget.state.config.model)) return
+        recoverySubmission = null
+        if (widget.state.open) widget.action(AppEvent.SubmitUserMessage(held))
+    }
+
+    /**
+     * Account change wipes banners and the remembered notice (codex-rs/tui/src/chatwidget/settings.rs
+     * `update_account_state`): both belong to the account that produced them.
+     */
+    private fun resetBackendBannerForAccountChange() {
+        backendBanner = com.cy.codex.chatwidget.BackendBannerState()
+        lunaNoticeAccountId = null
+        preferences.edit().remove(KeyLunaNoticeAccount).apply()
     }
 
     private fun reportUnavailableCommand(name: String) {
@@ -1102,6 +1400,29 @@ class CodexApp(
 
     private fun <T> load(block: suspend () -> Result<T>, into: suspend (T) -> Unit) {
         request(block, into)
+    }
+
+    /**
+     * Refreshes `permissionProfile/list` into the catalog (codex-rs/tui/src/permission_discovery.rs);
+     * an unsupported server gets the discovery verdict instead of a snack bar (the picker words it).
+     */
+    private fun loadPermissionProfiles() {
+        scope.launch {
+            client.listPermissionProfiles(widget.state.config.cwd.ifBlank { defaultWorkspace })
+                .onSuccess {
+                    catalog.permissionProfiles = it
+                    catalog.permissionDiscoveryUnsupported = false
+                }
+                .onFailure { error ->
+                    if (isPermissionDiscoveryUnsupported(error)) {
+                        catalog.permissionDiscoveryUnsupported = true
+                    } else {
+                        snackbar.showSnackbar(
+                            error.message ?: context.getString(R.string.shell_request_failed),
+                        )
+                    }
+                }
+        }
     }
 
     private fun refreshThreads() {
@@ -1150,6 +1471,16 @@ class CodexApp(
         return client.listRemoteControlClients(environmentId).onSuccess {
             catalog.remoteControlClients = it.data
         }
+    }
+
+    /**
+     * Warms the `hooks/list` mirror the hook-identity joins read (history_cell/hook_cell.kt) once
+     * per [sessionKey], so a run id arriving early can still name its hook.
+     */
+    private fun warmHookJoinCache(sessionKey: String) {
+        if (hookJoinWarmedFor == sessionKey) return
+        hookJoinWarmedFor = sessionKey
+        onAppEvent(AppEvent.ReloadHooks)
     }
 
     /** Catalog-level notifications; a second collector on the same `SharedFlow` the widget reads. */
@@ -1219,7 +1550,13 @@ class CodexApp(
                     maybeShowRateLimitNudge()
                 }
 
-                is AppServerEvent.AccountUpdated -> catalog.account = event.account
+                is AppServerEvent.AccountUpdated -> {
+                    catalog.account = event.account
+                    // Upstream treats every account update as the identity boundary and resets the
+                    // headline cache (codex-rs/tui/src/chatwidget/settings.rs).
+                    resetWorkspaceHeadline()
+                    resetBackendBannerForAccountChange()
+                }
                 is AppServerEvent.RateLimitsUpdatedEvent -> {
                     catalog.rateLimits = catalog.rateLimits.copy(rateLimits = catalog.rateLimits.rateLimits.mergedWith(event.rateLimits))
                     catalog.rateLimitsUpdatedAtMs = System.currentTimeMillis()
@@ -1228,7 +1565,15 @@ class CodexApp(
                 is AppServerEvent.AccountLoginCompleted -> {
                     catalog.pendingLogin = null
                     catalog.loginError = event.delta.error
-                    client.readAccount().onSuccess { catalog.account = it }
+                    // A completed sign-in is an identity change: drop the old account's headline
+                    // unconditionally, then fetch once the new account reads back.
+                    catalog.workspaceHeadlineCache =
+                        resetWorkspaceHeadlineCache(catalog.workspaceHeadlineCache)
+                    resetBackendBannerForAccountChange()
+                    client.readAccount().onSuccess {
+                        catalog.account = it
+                        requestWorkspaceHeadlineIfDue()
+                    }
                     client.listModels().onSuccess { catalog.models = it }
                 }
 
@@ -1266,6 +1611,10 @@ class CodexApp(
                 }
 
                 is AppServerEvent.ConfigWarningEvent -> reloadConfig()
+
+                // Sessions that never passed open/create still need the mirror before a run id joins.
+                is AppServerEvent.HookStarted,
+                is AppServerEvent.HookCompleted -> warmHookJoinCache("hook-event")
 
                 is AppServerEvent.ProjectChanged ->
                     client.listProjects().onSuccess { catalog.projects = it }
@@ -1325,6 +1674,7 @@ class CodexApp(
             Surface.Settings -> {
                 onAppEvent(AppEvent.ReloadConfig)
                 load({ client.listExperimentalFeatures() }) { catalog.experimentalFeatures = it }
+                loadPermissionProfiles()
             }
             Surface.Sessions -> {
                 onAppEvent(AppEvent.RefreshThreadList)
@@ -1447,6 +1797,7 @@ class CodexApp(
             result.onSuccess { response ->
                 preferences.edit().putString(KeySelectedSession, threadId).apply()
                 threads.threads = listOf(response.thread) + threads.threads.filterNot { it.id == threadId }
+                warmHookJoinCache(threadId)
             }.onFailure { onFailure() }
         }
         closeAllSurfaces()
@@ -1519,7 +1870,7 @@ class CodexApp(
         scope.launch {
             val result = runCatching {
                 withContext(Dispatchers.IO) {
-                    val markdown = com.cy.codex.app.transcriptMarkdown(widget.state.items)
+                    val markdown = com.cy.codex.app.transcriptMarkdown(widget.state.items, hooks = catalog.hooks)
                         ?: error(context.getString(R.string.transcript_export_empty))
                     val cwd = widget.state.config.cwd.ifBlank { defaultWorkspace }
                     val raw = java.io.File(requested)
@@ -1545,7 +1896,7 @@ class CodexApp(
         scope.launch {
             val result = runCatching {
                 withContext(Dispatchers.IO) {
-                    val markdown = com.cy.codex.app.transcriptMarkdown(widget.state.items)
+                    val markdown = com.cy.codex.app.transcriptMarkdown(widget.state.items, hooks = catalog.hooks)
                         ?: error(context.getString(R.string.transcript_export_empty))
                     val stream = context.contentResolver.openOutputStream(uri)
                         ?: error(context.getString(R.string.transcript_export_failed))
@@ -1671,6 +2022,7 @@ class CodexApp(
                 )
                     .onSuccess { session ->
                         widget.bind(session)
+                        warmHookJoinCache(session.threadId)
                         preferences.edit().putString(KeySelectedSession, session.threadId).apply()
                         closeAllSurfaces()
                         if (inputs != null) widget.action(AppEvent.SubmitUserMessage(inputs))
@@ -1711,6 +2063,7 @@ class CodexApp(
                 }
             }
             scope.launch { pollRateLimits() }
+            scope.launch { pollWorkspaceHeadline() }
             scope.launch(start = CoroutineStart.UNDISPATCHED) {
                 client.connection.collect { connection ->
                     when (connection) {
@@ -1742,10 +2095,13 @@ class CodexApp(
                 ).getOrThrow()
                 threads.applyListing(client.listThreads().getOrThrow())
                 catalog.account = client.readAccount().getOrThrow()
+                requestWorkspaceHeadlineIfDue()
                 client.listModels().onSuccess { catalog.models = it }
                 client.listCollaborationModes().onSuccess { catalog.collaborationModes = it }
+                loadPermissionProfiles()
                 client.readConfigRequirements().onSuccess {
                     catalog.allowedApprovalsReviewers = it.allowedApprovalsReviewers
+                    catalog.allowedPermissionProfiles = it.allowedPermissionProfiles
                 }
                 reloadConfig()
                 check(client.connection.first() == ConnectionState.Ready) {
@@ -1787,6 +2143,9 @@ class CodexApp(
         const val KeySelectedSession = "session_selected"
         const val KeyExpandedProjects = "projects_expanded"
         const val KeyProjectsCollapsed = "projects_collapsed"
+
+        /** Cross-session `luna_reserve_notice_account_id` (chatwidget/backend_banners.rs). */
+        const val KeyLunaNoticeAccount = "luna_reserve_notice_account_id"
 
         /** The recognized commands; derived from [SlashCommands.All] so popup and dispatch cannot drift apart. */
         val ComposerCommands: Set<String> = SlashCommands.Known
@@ -1926,6 +2285,12 @@ fun CodexScreen(
                     CompositionLocalProvider(
                         LocalChatKeyFocus provides chatKeys,
                         LocalShortcutsHelp provides shortcutsHelp,
+                        // Hook cells join run ids against this mirror to name hooks.
+                        LocalHookMetadata provides app.catalog.hooks,
+                        // The approval card raises verification events with no callback of its own
+                        // (LocalAppEvent in app_event.kt).
+                        LocalAppEvent provides app::onAppEvent,
+                        LocalWorkspaceHeadline provides app.catalog.workspaceHeadlineCache.headline,
                     ) {
                         Box(
                             modifier = Modifier
@@ -1969,6 +2334,49 @@ fun CodexScreen(
                                         .apply()
                                 },
                             )
+                            // Account banners ride above the composer (codex-rs/tui/src/chatwidget/backend_banners.rs).
+                            val bannerSurface = com.cy.codex.chatwidget.backendBannerSurface(
+                                state = app.backendBanner,
+                                currentModel = app.widget.state.config.model,
+                                resetTime = com.cy.codex.chatwidget.bannerResetTime(
+                                    app.backendBanner.banner?.resetAt,
+                                    System.currentTimeMillis(),
+                                ),
+                                planType = app.catalog.rateLimits.rateLimits.planType,
+                                usageLimitTitle = stringResource(R.string.luna_recovery_title),
+                                usageLimitDescription = stringResource(R.string.luna_recovery_description),
+                                continueWithReserveLabel = stringResource(R.string.luna_continue_reserve),
+                            )
+                            val bannerUriHandler = LocalUriHandler.current
+                            com.cy.codex.chatwidget.BackendBannerSurface(
+                                surface = bannerSurface,
+                                onAction = { action ->
+                                    when (action) {
+                                        is com.cy.codex.chatwidget.BannerAction.OpenUrl ->
+                                            runCatching { bannerUriHandler.openUri(action.url) }
+
+                                        is com.cy.codex.chatwidget.BannerAction.NotifyOwner ->
+                                            app.onAppEvent(
+                                                AppEvent.SendAddCreditsNudgeEmail(action.creditType),
+                                            )
+
+                                        com.cy.codex.chatwidget.BannerAction.ResetUsage ->
+                                            // The account screen's reset-credit rows keep the
+                                            // explicit confirmation before consuming one.
+                                            app.openSurface(Surface.Account)
+                                    }
+                                },
+                                onDismiss = app::dismissBackendBanner,
+                                modifier = Modifier
+                                    .align(Alignment.BottomCenter)
+                                    .padding(
+                                        start = UiConsts.ScreenMargin,
+                                        end = UiConsts.ScreenMargin,
+                                        bottom = bottomInset +
+                                            UiConsts.PromptBarHeight +
+                                            UiConsts.ScreenMargin * 2,
+                                    ),
+                            )
                         }
                     }
                 }
@@ -1984,6 +2392,9 @@ fun CodexScreen(
                             onOpenEntry = { id -> openSurfaceFor(app, id) },
                             onOpenShortcuts = { shortcutsHelp.toggle() },
                             configPath = runtime.configPath,
+                            ordinaryUsageRecovered = app.backendBanner.ordinaryUsageRecovered,
+                            // Read-and-clear: the deep link is one-shot.
+                            initialSection = app.consumePendingSettingsSection(),
                         )
                     }
                 }
@@ -2282,16 +2693,18 @@ fun CodexScreen(
                                 subAgentNameFormat = nameFormat,
                             )
                         }
-                        SubAgentThreadScreen(
-                            threadId = route.threadId,
-                            client = app.client,
-                            onBack = app::closeSurface,
-                            roster = roster,
-                            onSwitchAgent = { threadId ->
-                                app.closeSurface()
-                                app.openSurface(Surface.SubAgentThread(threadId))
-                            },
-                        )
+                        CompositionLocalProvider(LocalHookMetadata provides app.catalog.hooks) {
+                            SubAgentThreadScreen(
+                                threadId = route.threadId,
+                                client = app.client,
+                                onBack = app::closeSurface,
+                                roster = roster,
+                                onSwitchAgent = { threadId ->
+                                    app.closeSurface()
+                                    app.openSurface(Surface.SubAgentThread(threadId))
+                                },
+                            )
+                        }
                     }
                 }
 

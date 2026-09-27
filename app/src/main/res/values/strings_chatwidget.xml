@@ -165,4 +165,15 @@
     <string name="trust_project_body">Codex can read, edit, and run files here. Trust it only if this is your own workspace.</string>
     <string name="trust_project_confirm">Trust and continue</string>
     <string name="trust_project_cancel">Cancel</string>
+
+    <!-- Luna Reserve (backend_banner.kt, luna_reserve_model.kt) -->
+    <string name="luna_recovery_title">Usage limit reached</string>
+    <string name="luna_recovery_description">Your included usage is exhausted. Choose an option below to continue.</string>
+    <string name="luna_continue_reserve">Continue with Luna Reserve</string>
+    <string name="luna_auto_switched_to">Automatically switched to %1$s due to usage limits.</string>
+    <string name="luna_auto_switched_back">Automatically switched back to %1$s because ordinary usage is available again.</string>
+    <string name="luna_picker_header">Select Model</string>
+    <string name="luna_picker_subtitle">Other models return when ordinary usage is available again.</string>
+    <string name="luna_picker_unavailable">Luna model settings are unavailable; please try /model again in a moment.</string>
+    <string name="luna_banner_dismiss">Dismiss</string>
 </resources>

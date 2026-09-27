@@ -15,8 +15,17 @@ import com.cy.codex.protocol.protocol.v2.ApprovalsReviewer
 import com.cy.codex.protocol.protocol.v2.AttachmentType
 import com.cy.codex.protocol.protocol.v2.ClientInfo
 import com.cy.codex.protocol.protocol.v2.CommandExecutionApprovalDecision
+import com.cy.codex.protocol.protocol.v2.McpApprovalKind
+import com.cy.codex.protocol.protocol.v2.McpApprovalMeta
+import com.cy.codex.protocol.protocol.v2.McpApprovalPersist
+import com.cy.codex.protocol.protocol.v2.McpElicitationRequest
+import com.cy.codex.protocol.protocol.v2.McpToolSuggestionToolType
+import com.cy.codex.protocol.protocol.v2.McpToolSuggestionType
 import com.cy.codex.protocol.protocol.v2.PatchChangeKind
+import com.cy.codex.protocol.protocol.v2.ReasoningEffort
+import com.cy.codex.protocol.protocol.v2.SettingsField
 import com.cy.codex.protocol.protocol.v2.ThreadSettingsUpdateParams
+import com.cy.codex.protocol.protocol.v2.ThreadSettingsUpdated
 import com.cy.codex.protocol.protocol.v2.TimelineEntry
 import com.cy.codex.protocol.protocol.v2.TurnStatus
 import com.cy.codex.protocol.protocol.v2.UserInput
@@ -890,6 +899,167 @@ class JsonRpcAppServerClientTest {
     }
 
     @Test
+    fun `thread params carry the experimental permissions profile id`() = runTest {
+        val transport = HarnessTransport()
+        val client = JsonRpcAppServerClient(transport, backgroundScope)
+        client.initialize(ClientInfo("android", version = "1")).getOrThrow()
+        fun sessionResponse() = obj("thread" to obj("id" to "t"), "model" to "gpt-5", "modelProvider" to "openai")
+
+        val started = async {
+            client.startThread(com.cy.codex.protocol.protocol.v2.ThreadStartParams(cwd = "/w", permissions = "work")).getOrThrow()
+        }
+        val start = transport.request()
+        assertEquals("work", start.objectOrNull("params")!!.text("permissions"))
+        transport.response(start, sessionResponse())
+        started.await()
+
+        val resumed = async {
+            client.resumeThread(com.cy.codex.protocol.protocol.v2.ThreadResumeParams(threadId = "t", permissions = "work")).getOrThrow()
+        }
+        val resume = transport.request()
+        assertEquals("work", resume.objectOrNull("params")!!.text("permissions"))
+        transport.response(resume, sessionResponse())
+        resumed.await()
+
+        val forked = async {
+            client.forkThread(com.cy.codex.protocol.protocol.v2.ThreadForkParams(threadId = "t", permissions = "work")).getOrThrow()
+        }
+        val fork = transport.request()
+        assertEquals("work", fork.objectOrNull("params")!!.text("permissions"))
+        transport.response(fork, sessionResponse())
+        forked.await()
+        client.close()
+    }
+
+    @Test
+    fun `session responses carry the active permission profile`() = runTest {
+        val transport = HarnessTransport()
+        val client = JsonRpcAppServerClient(transport, backgroundScope)
+        client.initialize(ClientInfo("android", version = "1")).getOrThrow()
+        val resumed = async {
+            client.resumeThread(com.cy.codex.protocol.protocol.v2.ThreadResumeParams(threadId = "t")).getOrThrow()
+        }
+        transport.response(transport.request(), obj("thread" to obj("id" to "t"), "model" to "gpt-5", "modelProvider" to "openai",
+            "activePermissionProfile" to obj("id" to "work", "extends" to "base")))
+        assertEquals(com.cy.codex.protocol.protocol.v2.ActivePermissionProfile("work", "base"), resumed.await().activePermissionProfile)
+
+        val bare = async {
+            client.resumeThread(com.cy.codex.protocol.protocol.v2.ThreadResumeParams(threadId = "t")).getOrThrow()
+        }
+        transport.response(transport.request(), obj("thread" to obj("id" to "t"), "model" to "gpt-5", "modelProvider" to "openai"))
+        assertNull(bare.await().activePermissionProfile)
+        client.close()
+    }
+
+    @Test
+    fun `permission profiles map allowed and send the catalog cwd`() = runTest {
+        val transport = HarnessTransport()
+        val client = JsonRpcAppServerClient(transport, backgroundScope, "/default-workspace")
+        client.initialize(ClientInfo("android", version = "1")).getOrThrow()
+        val profiles = async { client.listPermissionProfiles().getOrThrow() }
+        val first = transport.request()
+        assertEquals("permissionProfile/list", first.required("method"))
+        val params = first.objectOrNull("params")!!
+        assertEquals("/default-workspace", params.text("cwd"))
+        assertEquals(100, params.int("limit"))
+        transport.response(first, obj("data" to listOf(
+            obj("id" to "work", "description" to "Work profile", "allowed" to true),
+            obj("id" to "locked", "allowed" to false),
+        ), "nextCursor" to "page-two"))
+        val second = transport.request()
+        assertEquals("page-two", second.objectOrNull("params")!!.text("cursor"))
+        transport.response(second, obj("data" to listOf(obj("id" to "custom", "allowed" to true))))
+        val decoded = profiles.await()
+        assertEquals(listOf("work", "locked", "custom"), decoded.map { it.id })
+        assertEquals("Work profile", decoded[0].description)
+        assertNull(decoded[1].description)
+        assertTrue(decoded[0].allowed)
+        assertFalse(decoded[1].allowed)
+
+        val scoped = async { client.listPermissionProfiles("/project").getOrThrow() }
+        val scopedRequest = transport.request()
+        assertEquals("/project", scopedRequest.objectOrNull("params")!!.text("cwd"))
+        transport.response(scopedRequest, obj("data" to emptyList<JsonElement>()))
+        assertTrue(scoped.await().isEmpty())
+        client.close()
+    }
+
+    @Test
+    fun `thread settings updates carry the active permission profile`() = runTest {
+        val transport = HarnessTransport()
+        val client = JsonRpcAppServerClient(transport, backgroundScope)
+        client.initialize(ClientInfo("android", version = "1")).getOrThrow()
+        val update = async {
+            client.updateThreadSettingsFull(ThreadSettingsUpdateParams("t", permissions = "work")).getOrThrow()
+        }
+        val request = transport.request()
+        assertEquals("thread/settings/update", request.required("method"))
+        assertEquals("work", request.objectOrNull("params")!!.required("permissions"))
+        transport.response(request, obj())
+        update.await()
+
+        val settings = async(UnconfinedTestDispatcher(testScheduler)) { client.events.first() }
+        transport.push(
+            """{"method":"thread/settings/updated","params":{"threadId":"t","threadSettings":{"model":"gpt","activePermissionProfile":{"id":"work","extends":"base"}}}}""",
+        )
+        val event = assertIs<AppServerEvent.ThreadSettingsUpdatedEvent>(settings.await())
+        assertEquals(
+            SettingsField.Present(com.cy.codex.protocol.protocol.v2.ActivePermissionProfile("work", "base")),
+            event.delta.activePermissionProfile,
+        )
+        client.close()
+    }
+
+    @Test
+    fun `thread settings updates tell a cleared field from one an older server omitted`() = runTest {
+        val transport = HarnessTransport()
+        val client = JsonRpcAppServerClient(transport, backgroundScope)
+        client.initialize(ClientInfo("android", version = "1")).getOrThrow()
+
+        suspend fun settingsOf(body: String): ThreadSettingsUpdated {
+            val settings = async(UnconfinedTestDispatcher(testScheduler)) { client.events.first() }
+            transport.push("""{"method":"thread/settings/updated","params":{"threadId":"t","threadSettings":$body}}""")
+            return assertIs<AppServerEvent.ThreadSettingsUpdatedEvent>(settings.await()).delta
+        }
+
+        val cleared = settingsOf("""{"model":"gpt","activePermissionProfile":null,"effort":null,"serviceTier":null}""")
+        assertEquals(SettingsField.Present(null), cleared.activePermissionProfile)
+        assertEquals(SettingsField.Present(null), cleared.reasoningEffort)
+        assertEquals(SettingsField.Present(null), cleared.serviceTier)
+
+        val missing = settingsOf("""{"model":"gpt"}""")
+        assertEquals(SettingsField.Missing, missing.activePermissionProfile)
+        assertEquals(SettingsField.Missing, missing.reasoningEffort)
+        assertEquals(SettingsField.Missing, missing.serviceTier)
+
+        val values = settingsOf("""{"model":"gpt","activePermissionProfile":{"id":"work"},"effort":"high","serviceTier":"fast"}""")
+        assertEquals(
+            SettingsField.Present(com.cy.codex.protocol.protocol.v2.ActivePermissionProfile("work")),
+            values.activePermissionProfile,
+        )
+        assertEquals(SettingsField.Present(ReasoningEffort.High), values.reasoningEffort)
+        assertEquals(SettingsField.Present("fast"), values.serviceTier)
+        client.close()
+    }
+
+    @Test
+    fun `config requirements expose the allowed permission profile map`() = runTest {
+        val transport = HarnessTransport()
+        val client = JsonRpcAppServerClient(transport, backgroundScope)
+        client.initialize(ClientInfo("android", version = "1")).getOrThrow()
+        val restricted = async { client.readConfigRequirements().getOrThrow() }
+        transport.response(transport.request(), obj("requirements" to obj(
+            "allowedPermissionProfiles" to obj("work" to true, "locked" to false),
+        )))
+        assertEquals(mapOf("work" to true, "locked" to false), restricted.await().allowedPermissionProfiles)
+
+        val unrestricted = async { client.readConfigRequirements().getOrThrow() }
+        transport.response(transport.request(), obj("requirements" to obj()))
+        assertNull(unrestricted.await().allowedPermissionProfiles, "an absent map means no restriction")
+        client.close()
+    }
+
+    @Test
     fun `guardian review notification carries the judged action`() = runTest {
         val transport = HarnessTransport()
         val client = JsonRpcAppServerClient(transport, backgroundScope)
@@ -991,6 +1161,223 @@ class JsonRpcAppServerClientTest {
             "Calendar",
             com.cy.codex.bottom_pane.connectorAuthFailure(result["_meta"])?.connectorName,
         )
+        client.close()
+    }
+
+    @Test
+    fun `approval meta keys parse into the typed model`() {
+        val meta = McpApprovalMeta.parse(obj(
+            "codex_approval_kind" to "mcp_tool_call", "persist" to "session",
+            "tool_params" to mapOf("a" to "1"), "unknown_key" to "ignored"))
+        assertEquals(McpApprovalKind.McpToolCall, meta?.kind)
+        assertEquals(setOf(McpApprovalPersist.Session), meta?.persist)
+        assertNull(meta?.toolSuggestion)
+        assertEquals(Json.parse("""{"a":"1"}"""), meta?.toolParams)
+        assertEquals(
+            McpApprovalKind.BrowserAuth,
+            McpApprovalMeta.parse(obj("codex_approval_kind" to "browser_auth"))?.kind,
+        )
+        assertEquals(
+            McpApprovalKind.ToolSuggestion,
+            McpApprovalMeta.parse(obj("codex_approval_kind" to "tool_suggestion"))?.kind,
+        )
+        assertNull(McpApprovalMeta.parse(null))
+        assertNull(McpApprovalMeta.parse(JsonNull), "a JSON null is not an approval payload")
+        assertNull(McpApprovalMeta.parse(obj()), "meta without the privileged kind stays opaque")
+        assertNull(McpApprovalMeta.parse(obj("codex_approval_kind" to "unknown_kind")))
+    }
+
+    @Test
+    fun `persist accepts the string and array wire shapes`() {
+        fun persist(value: Any?) =
+            McpApprovalMeta.parse(obj("codex_approval_kind" to "mcp_tool_call", "persist" to value))?.persist
+        assertEquals(setOf(McpApprovalPersist.Session), persist("session"))
+        assertEquals(setOf(McpApprovalPersist.Always), persist("always"))
+        assertEquals(setOf(McpApprovalPersist.Session, McpApprovalPersist.Always), persist(listOf("session", "always")))
+        assertEquals(setOf(McpApprovalPersist.Session), persist(listOf("bogus", "session")), "unknown members are skipped")
+        assertEquals(emptySet<McpApprovalPersist>(), persist(listOf("bogus")), "nothing recognized means no persist choice")
+        assertEquals(emptySet<McpApprovalPersist>(), persist(42), "a shape upstream never sends reads as no persist choice")
+        assertEquals(
+            emptySet<McpApprovalPersist>(),
+            McpApprovalMeta.parse(obj("codex_approval_kind" to "mcp_tool_call"))?.persist,
+            "the key is omitted entirely when no persist choice is offered",
+        )
+    }
+
+    @Test
+    fun `tool params display keeps good entries and falls back to tool params`() {
+        val explicit = McpApprovalMeta.parse(obj(
+            "codex_approval_kind" to "mcp_tool_call",
+            "tool_params" to mapOf("zebra" to "z", "apple" to "a"),
+            "tool_params_display" to listOf(
+                obj("name" to "second", "value" to "2", "display_name" to "Second"),
+                obj("name" to "  ", "value" to "x"),
+                "not-an-object",
+                obj("name" to "blank_display", "value" to "x", "display_name" to "   "),
+                obj("name" to "no_value", "display_name" to "No value"),
+                obj("name" to "first", "value" to obj("nested" to true)),
+            ),
+        ))!!
+        assertEquals(
+            listOf("second", "first"),
+            explicit.toolParamsDisplay.map { it.name },
+            "explicit order survives and unusable entries drop",
+        )
+        assertEquals("Second", explicit.toolParamsDisplay[0].displayName)
+        assertEquals("first", explicit.toolParamsDisplay[1].displayName, "a missing display_name falls back to the name")
+        assertEquals(listOf("second", "first"), explicit.displayParams.map { it.name }, "a parsed display list is never reordered")
+
+        val fallback = McpApprovalMeta.parse(obj(
+            "codex_approval_kind" to "mcp_tool_call",
+            "tool_params" to mapOf("zebra" to "z", "apple" to "a"),
+            "tool_params_display" to listOf(obj("name" to "dropped", "value" to "x", "display_name" to "")),
+        ))!!
+        assertEquals(
+            listOf("apple", "zebra"),
+            fallback.displayParams.map { it.name },
+            "an all-bad display list falls back to tool_params sorted by name",
+        )
+        assertEquals("apple", fallback.displayParams[0].displayName)
+        assertEquals(JsonPrimitive("a"), fallback.displayParams[0].value)
+
+        val noDisplay = McpApprovalMeta.parse(obj(
+            "codex_approval_kind" to "mcp_tool_call",
+            "tool_params" to mapOf("b" to "2", "a" to "1"),
+        ))!!
+        assertEquals(listOf("a", "b"), noDisplay.displayParams.map { it.name })
+    }
+
+    @Test
+    fun `tool suggestion parses all or nothing`() {
+        fun suggestion(vararg fields: Pair<String, Any?>) =
+            McpApprovalMeta.parse(obj("codex_approval_kind" to "tool_suggestion", *fields))?.toolSuggestion
+        val connector = suggestion(
+            "tool_type" to "connector", "suggest_type" to "install", "suggest_reason" to "Calendar needs it",
+            "tool_id" to "cal", "tool_name" to "Calendar", "install_url" to "https://chatgpt.com/apps/install",
+        )!!
+        assertEquals(McpToolSuggestionToolType.Connector, connector.toolType)
+        assertEquals(McpToolSuggestionType.Install, connector.suggestType)
+        assertEquals("Calendar needs it", connector.suggestReason)
+        assertEquals("cal", connector.toolId)
+        assertEquals("Calendar", connector.toolName)
+        assertEquals("https://chatgpt.com/apps/install", connector.installUrl)
+
+        val plugin = suggestion(
+            "tool_type" to "plugin", "suggest_type" to "enable", "suggest_reason" to "for this request",
+            "tool_id" to "p", "tool_name" to "Superpowers",
+        )!!
+        assertEquals(McpToolSuggestionToolType.Plugin, plugin.toolType)
+        assertEquals(McpToolSuggestionType.Enable, plugin.suggestType)
+        assertNull(plugin.installUrl, "install_url is the one optional field")
+
+        assertNull(suggestion("tool_type" to "mystery", "suggest_type" to "install", "suggest_reason" to "r", "tool_id" to "t", "tool_name" to "T"), "unknown tool_type drops the suggestion")
+        assertNull(suggestion("tool_type" to "plugin", "suggest_type" to "remove", "suggest_reason" to "r", "tool_id" to "t", "tool_name" to "T"), "unknown suggest_type drops the suggestion")
+        assertNull(suggestion("tool_type" to "plugin", "suggest_type" to "enable", "tool_id" to "t", "tool_name" to "T"), "a missing suggest_reason drops the suggestion")
+        assertNull(suggestion("tool_type" to "plugin", "suggest_type" to "enable", "suggest_reason" to "r", "tool_id" to "", "tool_name" to "T"), "an empty tool_id drops the suggestion")
+        assertNull(suggestion("tool_type" to "plugin", "suggest_type" to "enable", "suggest_reason" to "r", "tool_id" to "t"), "a missing tool_name drops the suggestion")
+
+        assertNull(
+            McpApprovalMeta.parse(obj(
+                "codex_approval_kind" to "mcp_tool_call", "tool_type" to "plugin", "suggest_type" to "enable",
+                "suggest_reason" to "r", "tool_id" to "t", "tool_name" to "T"))?.toolSuggestion,
+            "suggestion keys are only read behind the tool_suggestion kind",
+        )
+    }
+
+    @Test
+    fun `elicitation modes discriminate user verification from folded schema forms`() = runTest {
+        val transport = HarnessTransport()
+        val client = JsonRpcAppServerClient(transport, backgroundScope)
+        client.initialize(ClientInfo("android", version = "1")).getOrThrow()
+        val approval = async { client.requests.first() }
+        transport.push("""{"id":"uv","method":"mcpServer/elicitation/request","params":{"threadId":"t","serverName":"test","mode":"openai/userVerification","title":"Approve purchase","description":"Pay $200","challenge":"AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8"}}""")
+        val received = assertIs<ApprovalRequest.Elicitation>(approval.await())
+        val verification = assertIs<McpElicitationRequest.UserVerification>(received.params)
+        assertEquals("Approve purchase", verification.title)
+        assertEquals("Pay $200", verification.description)
+        assertEquals("AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8", verification.challenge)
+        assertEquals("", verification.message, "the variant carries no message on the wire")
+        assertNull(verification.meta, "the variant carries no _meta on the wire")
+
+        for (mode in listOf("openai/form", "openaiForm")) {
+            val next = async { client.requests.first() }
+            transport.push("""{"id":"$mode","method":"mcpServer/elicitation/request","params":{"threadId":"t","serverName":"test","mode":"$mode","message":"Settings","requestedSchema":{"properties":{"enabled":{"type":"boolean"}}}}}""")
+            val folded = assertIs<McpElicitationRequest.Form>(assertIs<ApprovalRequest.Elicitation>(next.await()).params)
+            assertEquals("Settings", folded.message)
+            assertEquals(listOf("enabled"), folded.fields.map { it.name })
+        }
+        client.close()
+    }
+
+    @Test
+    fun `elicitation responses echo the persist meta and keep empty content null`() = runTest {
+        val transport = HarnessTransport()
+        val client = JsonRpcAppServerClient(transport, backgroundScope)
+        client.initialize(ClientInfo("android", version = "1")).getOrThrow()
+        val approval = async { client.requests.first() }
+        transport.push("""{"id":"form","method":"mcpServer/elicitation/request","params":{"threadId":"t","serverName":"test","mode":"form","message":"Run the tool?","requestedSchema":{"type":"object","properties":{}},"_meta":{"codex_approval_kind":"mcp_tool_call","persist":["session","always"],"tool_params":{"path":"/w"},"tool_params_display":[{"name":"path","value":"/w","display_name":"Path"}]}}}""")
+        val received = assertIs<ApprovalRequest.Elicitation>(approval.await())
+        val form = assertIs<McpElicitationRequest.Form>(received.params)
+        val typed = assertIs<McpApprovalMeta>(form.approval)
+        assertEquals(setOf(McpApprovalPersist.Session, McpApprovalPersist.Always), typed.persist)
+        assertEquals("Path", typed.displayParams.single().displayName)
+        assertIs<kotlinx.serialization.json.JsonObject>(form.meta, "the raw meta survives for the echo paths")
+
+        client.respond(received.requestId, ApprovalResponse.Elicitation(ElicitationAction.Accept, meta = obj("persist" to "session")))
+        val accepted = transport.sentResponse().objectOrNull("result")!!
+        assertEquals("accept", accepted.text("action"))
+        assertEquals(JsonNull, accepted["content"], "an approval accept has no form content")
+        assertEquals("session", accepted.objectOrNull("_meta")!!.text("persist"))
+
+        val cancelApproval = async { client.requests.first() }
+        transport.push("""{"id":"form-2","method":"mcpServer/elicitation/request","params":{"threadId":"t","serverName":"test","mode":"form","message":"Run the tool?","requestedSchema":{"type":"object","properties":{}},"_meta":{"codex_approval_kind":"mcp_tool_call","persist":"always"}}}""")
+        val cancelled = assertIs<ApprovalRequest.Elicitation>(cancelApproval.await())
+        client.respond(cancelled.requestId, ApprovalResponse.Elicitation(ElicitationAction.Cancel))
+        val declined = transport.sentResponse().objectOrNull("result")!!
+        assertEquals("cancel", declined.text("action"))
+        assertEquals(JsonNull, declined["content"], "a non-accept answer carries no content")
+        assertEquals(JsonNull, declined["_meta"], "an un-echoed meta is sent as JSON null")
+        client.close()
+    }
+
+    @Test
+    fun `user verification proof rides elicitation content as strings`() = runTest {
+        val transport = HarnessTransport()
+        val client = JsonRpcAppServerClient(transport, backgroundScope)
+        client.initialize(ClientInfo("android", version = "1")).getOrThrow()
+        val approval = async { client.requests.first() }
+        transport.push("""{"id":"uv","method":"mcpServer/elicitation/request","params":{"threadId":"t","serverName":"test","mode":"openai/userVerification","title":"Approve purchase","description":"Pay","challenge":"AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8"}}""")
+        val received = assertIs<ApprovalRequest.Elicitation>(approval.await())
+        client.respond(
+            received.requestId,
+            ApprovalResponse.Elicitation(ElicitationAction.Accept, mapOf("credentialId" to "AQID", "signature" to "BAUG")),
+        )
+        val result = transport.sentResponse().objectOrNull("result")!!
+        assertEquals("accept", result.text("action"))
+        val content = result.objectOrNull("content")!!
+        assertEquals(JsonPrimitive("AQID"), content["credentialId"])
+        assertEquals(JsonPrimitive("BAUG"), content["signature"])
+        assertEquals(JsonNull, result["_meta"])
+        client.close()
+    }
+
+    @Test
+    fun `connector auth meta stays raw beside the typed approval view`() = runTest {
+        val transport = HarnessTransport()
+        val client = JsonRpcAppServerClient(transport, backgroundScope)
+        client.initialize(ClientInfo("android", version = "1")).getOrThrow()
+        val approval = async { client.requests.first() }
+        transport.push("""{"id":"auth","method":"mcpServer/elicitation/request","params":{"threadId":"t","serverName":"codex_apps","mode":"form","message":"Sign in","requestedSchema":{"properties":{}},"_meta":{"_codex_apps":{"connector_auth_failure":{"is_auth_failure":true,"connector_id":"abc","connector_name":"Calendar"}}}}}""")
+        val received = assertIs<ApprovalRequest.Elicitation>(approval.await())
+        val form = assertIs<McpElicitationRequest.Form>(received.params)
+        assertNull(form.approval, "connector auth meta is not an approval payload")
+        assertEquals("abc", com.cy.codex.bottom_pane.connectorAuthFailure(form.meta)?.connectorId)
+
+        client.respond(received.requestId, ApprovalResponse.Elicitation(ElicitationAction.Accept, meta = form.meta))
+        val result = transport.sentResponse().objectOrNull("result")!!
+        assertEquals("accept", result.text("action"))
+        assertEquals(JsonNull, result["content"])
+        assertEquals("Calendar", com.cy.codex.bottom_pane.connectorAuthFailure(result["_meta"])?.connectorName)
         client.close()
     }
 
@@ -1125,12 +1512,25 @@ class JsonRpcAppServerClientTest {
         val client = JsonRpcAppServerClient(transport, backgroundScope)
         client.initialize(ClientInfo("android", version = "1")).getOrThrow()
         val messages = async { client.readWorkspaceMessages().getOrThrow() }
-        transport.response(transport.request(), obj("messages" to listOf(obj("messageId" to "m1", "messageType" to "headline",
-            "messageBody" to "hi", "createdAt" to 5))))
-        val message = messages.await().single()
+        transport.response(transport.request(), obj("featureEnabled" to true, "messages" to listOf(
+            obj("messageId" to "m1", "messageType" to "headline", "messageBody" to "hi", "createdAt" to 5, "archivedAt" to 9),
+            obj("messageId" to "m2", "messageType" to "announcement", "messageBody" to "plan"),
+        )))
+        val response = messages.await()
+        assertTrue(response.featureEnabled)
+        val message = response.messages.first()
         assertEquals("m1", message.messageId)
         assertEquals(com.cy.codex.protocol.protocol.v2.WorkspaceMessageType.Headline, message.messageType)
+        assertEquals("hi", message.messageBody)
         assertEquals(5_000L, message.createdAt)
+        assertEquals(9_000L, message.archivedAt)
+        assertEquals(com.cy.codex.protocol.protocol.v2.WorkspaceMessageType.Announcement, response.messages[1].messageType)
+
+        val disabled = async { client.readWorkspaceMessages().getOrThrow() }
+        transport.response(transport.request(), obj("featureEnabled" to false, "messages" to emptyList<JsonElement>()))
+        val off = disabled.await()
+        assertFalse(off.featureEnabled)
+        assertTrue(off.messages.isEmpty())
         client.close()
     }
 
@@ -1150,6 +1550,26 @@ class JsonRpcAppServerClientTest {
         assertEquals("Fast", preset.serviceTiers.single().name)
         assertEquals(listOf(com.cy.codex.protocol.protocol.v2.InputModality.Text,
             com.cy.codex.protocol.protocol.v2.InputModality.Image), preset.inputModalities)
+        client.close()
+    }
+
+    @Test
+    fun `model list always asks for hidden presets`() = runTest {
+        val transport = HarnessTransport()
+        val client = JsonRpcAppServerClient(transport, backgroundScope)
+        client.initialize(ClientInfo("android", version = "1")).getOrThrow()
+        val models = async { client.listModels().getOrThrow() }
+        val request = transport.request()
+        assertEquals("model/list", request.required("method"))
+        assertEquals(true, request.objectOrNull("params")!!.bool("includeHidden"),
+            "hidden presets (Luna Reserve) must reach the catalog; the picker filters `hidden` itself")
+        transport.response(request, obj("data" to listOf(obj("id" to "gpt-reserve", "model" to "gpt-reserve",
+            "displayName" to "Luna Reserve", "description" to "reserve", "defaultReasoningEffort" to "medium",
+            "supportedReasoningEfforts" to listOf(obj("reasoningEffort" to "medium")), "isDefault" to false,
+            "hidden" to true))))
+        val preset = models.await().single()
+        assertTrue(preset.hidden)
+        assertEquals("gpt-reserve", preset.id)
         client.close()
     }
 

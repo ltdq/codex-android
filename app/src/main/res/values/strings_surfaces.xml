@@ -217,6 +217,12 @@
     <string name="settings_screen_granular_auto">Auto-approved</string>
     <string name="settings_group_permissions">Permission profiles</string>
     <string name="settings_screen_permissions_empty">No permission profiles returned by the server.</string>
+    <string name="settings_permission_disabled_requirements">Disabled by requirements.</string>
+    <string name="settings_permission_disabled_unavailable">Not available on this server.</string>
+    <string name="settings_permission_discovery_unsupported">This server does not support permission discovery. Upgrade the Codex server to use this menu.</string>
+    <string name="settings_permission_select_requires_newer_server">Permission selection requires a newer app server.</string>
+    <string name="settings_permission_select_failed">Failed to select permissions: %1$s</string>
+    <string name="settings_permission_select_no_thread">Wait for the task to connect before selecting permissions.</string>
     <string name="settings_group_session">Session</string>
     <string name="settings_screen_session_id">Session</string>
     <string name="settings_screen_session_not_started">(not started)</string>

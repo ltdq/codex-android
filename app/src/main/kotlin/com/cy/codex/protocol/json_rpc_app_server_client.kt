@@ -297,7 +297,7 @@ class JsonRpcAppServerClient(
         "personality" to params.personality?.wire, "serviceTier" to params.serviceTier, "ephemeral" to params.ephemeral,
         "developerInstructions" to params.developerInstructions, "baseInstructions" to params.baseInstructions,
         "sessionStartSource" to params.sessionStartSource, "config" to params.config,
-        "dynamicTools" to params.dynamicTools,
+        "dynamicTools" to params.dynamicTools, "permissions" to params.permissions,
     ))
     override suspend fun resumeThread(params: ThreadResumeParams) = session("thread/resume", obj(
         "threadId" to params.threadId,
@@ -305,6 +305,7 @@ class JsonRpcAppServerClient(
         "initialTurnsPage" to params.initialTurnsPage?.let {
             obj("limit" to it.limit, "sortDirection" to it.sortDirection?.wire, "itemsView" to it.itemsView?.wire)
         },
+        "permissions" to params.permissions,
     ))
     override suspend fun forkThread(params: com.cy.codex.protocol.protocol.v2.ThreadForkParams) =
         session("thread/fork", obj(
@@ -322,6 +323,7 @@ class JsonRpcAppServerClient(
             "developerInstructions" to params.developerInstructions,
             "ephemeral" to params.ephemeral,
             "excludeTurns" to params.excludeTurns,
+            "permissions" to params.permissions,
         ))
     override suspend fun archiveThread(threadId: String) = call("thread/archive", obj("threadId" to threadId))
     override suspend fun unarchiveThread(threadId: String) = call("thread/unarchive", obj("threadId" to threadId))
@@ -483,7 +485,9 @@ class JsonRpcAppServerClient(
         if (current != null) sessions[params.threadId] = current.copy(model = params.model ?: current.model, reasoningEffort = params.effort ?: current.reasoningEffort,
             approvalPolicy = params.approvalPolicy ?: current.approvalPolicy, approvalsReviewer = params.approvalsReviewer ?: current.approvalsReviewer,
             collaborationMode = params.collaborationMode ?: current.collaborationMode,
-            serviceTier = (params.serviceTier ?: current.serviceTier)?.takeUnless { it == "default" })
+            serviceTier = (params.serviceTier ?: current.serviceTier)?.takeUnless { it == "default" },
+            // Id-only here; the authoritative shape (with `extends`) echoes on thread/settings/updated.
+            activePermissionProfile = params.permissions?.let { ActivePermissionProfile(it) } ?: current.activePermissionProfile)
         Unit
     }
     override suspend fun updateTurnSettings(params: TurnSettingsUpdateParams) = result {
@@ -589,10 +593,7 @@ class JsonRpcAppServerClient(
         val o = rpc("account/usage/read", obj("threadId" to threadId))
         WireCodec.threadUsage(o.objectOrNull("threadUsage") ?: error("account/usage/read answered without threadUsage"))
     }
-    override suspend fun readWorkspaceMessages() = result { rpc("account/workspaceMessages/read", null).array("messages").map { value -> value.objectValue().let {
-        WorkspaceMessage(it.required("messageId"), WorkspaceMessageType.fromWire(it.text("messageType")), it.required("messageBody"),
-            it.long("createdAt")?.times(1000), it.long("archivedAt")?.times(1000))
-    } } }
+    override suspend fun readWorkspaceMessages() = result { WireCodec.workspaceMessages(rpc("account/workspaceMessages/read", null)) }
 
     override suspend fun readConfig(cwd: String?, includeLayers: Boolean) = result { WireCodec.config(rpc("config/read", obj("cwd" to cwd, "includeLayers" to includeLayers))) }
     override suspend fun readConfigLayers() = readConfig().map { it.layers.orEmpty() }
@@ -611,7 +612,9 @@ class JsonRpcAppServerClient(
         val models = mutableListOf<ModelPreset>()
         var cursor: String? = null
         do {
-            val page = rpc("model/list", obj("limit" to 100, "cursor" to cursor))
+            // includeHidden mirrors the TUI (codex-rs/tui/src/app_server_session/models.rs): hidden
+            // presets must reach the catalog; the picker filters `hidden` itself (codex-rs/app-server/src/models.rs).
+            val page = rpc("model/list", obj("limit" to 100, "cursor" to cursor, "includeHidden" to true))
             models += page.array("data").map { value -> value.objectValue().let { o -> ModelPreset(
                 id = o.required("id"), model = o.required("model"), displayName = o.required("displayName"), description = o.required("description"),
                 defaultReasoningEffort = ReasoningEffort.fromWire(o.required("defaultReasoningEffort")),
@@ -628,11 +631,15 @@ class JsonRpcAppServerClient(
         models
     }
 
-    private suspend fun catalog(method: String, params: JsonObject = obj()): List<JsonObject> {
+    /**
+     * Walk every page of a `…/list` catalog method. [cwd] rides along because some catalogs resolve
+     * project config layers against a working directory (codex-rs/app-server-protocol/src/protocol/v2/permissions.rs).
+     */
+    private suspend fun catalog(method: String, params: JsonObject = obj(), cwd: String? = null): List<JsonObject> {
         val values = mutableListOf<JsonObject>()
         var cursor: String? = null
         do {
-            val page = rpc(method, JsonObject(params + obj("limit" to 100, "cursor" to cursor)))
+            val page = rpc(method, JsonObject(params + obj("limit" to 100, "cursor" to cursor, "cwd" to cwd)))
             values += page.array("data").map { it.objectValue() }
             val next = page.text("nextCursor")
             check(next == null || next != cursor) { "Catalog pagination did not advance: $method" }
@@ -643,8 +650,11 @@ class JsonRpcAppServerClient(
     override suspend fun readModelProviderCapabilities() = result { rpc("modelProvider/capabilities/read").mapNotNull { (name, value) ->
         (value as? JsonPrimitive)?.takeIf { !it.isString }?.booleanOrNull?.let { name to it }
     }.toMap() }
-    override suspend fun listPermissionProfiles() = result {
-        catalog("permissionProfile/list").map { o -> PermissionProfileEntry(o.required("id"), o.required("id"), o.text("description").orEmpty()) }
+    override suspend fun listPermissionProfiles(cwd: String?) = result {
+        // Fall back to the default workspace: a bare request would answer with user-level state only.
+        catalog("permissionProfile/list", cwd = cwd ?: defaultWorkspace).map { o ->
+            PermissionProfileEntry(o.required("id"), o.text("description"), o.bool("allowed") == true)
+        }
     }
     override suspend fun listExperimentalFeatures() = result {
         catalog("experimentalFeature/list").map { o -> ExperimentalFeatureEntry(o.required("name"), o.text("displayName") ?: o.required("name"),
@@ -1044,11 +1054,21 @@ class JsonRpcAppServerClient(
             "thread/status/changed" -> AppServerEvent.ThreadStatusChangedEvent(threadId, ThreadStatusChanged(threadId, WireCodec.status(p["status"])))
             "thread/settings/updated" -> {
                 val settings = p.objectOrNull("threadSettings") ?: p
+                // Full ThreadSettings (codex-rs/app-server-protocol/src/protocol/v2/thread.rs): a
+                // present null is an explicit clear, distinct from a key an older server never sends.
+                fun <T> field(key: String, decode: (JsonElement) -> T?): SettingsField<T> =
+                    when (val raw = settings[key]) {
+                        null -> SettingsField.Missing
+                        is JsonNull -> SettingsField.Present(null)
+                        else -> SettingsField.Present(decode(raw))
+                    }
                 AppServerEvent.ThreadSettingsUpdatedEvent(threadId, ThreadSettingsUpdated(threadId, settings.text("model"),
-                    settings.text("effort")?.let(ReasoningEffort::fromWire), settings.text("approvalPolicy")?.let(AskForApproval::fromWire),
+                    field("effort") { it.stringOrNull()?.let(ReasoningEffort::fromWire) },
+                    settings.text("approvalPolicy")?.let(AskForApproval::fromWire),
                     settings.text("approvalsReviewer")?.let(ApprovalsReviewer::fromWire),
                     settings.objectOrNull("collaborationMode")?.text("mode")?.let(CollaborationMode::fromWire),
-                    settings.text("serviceTier")))
+                    field("serviceTier") { it.stringOrNull() },
+                    field("activePermissionProfile") { (it as? JsonObject)?.let(WireCodec::activePermissionProfile) }))
             }
             "thread/tokenUsage/updated" -> {
                 val usage = p.objectOrNull("tokenUsage")!!
@@ -1256,28 +1276,36 @@ class JsonRpcAppServerClient(
                 ApprovalRequest.UserInput(requestId, thread, turn, item, time, ToolRequestUserInputParams(thread, turn, item, questions, p.bool("isBlocking") != false))
             }
             "mcpServer/elicitation/request" -> {
-                val schema = p.objectOrNull("requestedSchema") ?: obj()
-                val fields = schema.objectOrNull("properties").orEmpty().map { (name, value) ->
-                    val field = value.objectValue()
-                    val options = field.strings("enum")
-                    val kind = when {
-                        options.isNotEmpty() -> McpElicitationFieldKind.Enum
-                        field.text("type") == "boolean" -> McpElicitationFieldKind.Boolean
-                        field.text("type") in listOf("number", "integer") -> McpElicitationFieldKind.Number
-                        else -> McpElicitationFieldKind.Text
-                    }
-                    McpElicitationField(name, field.text("title") ?: name, field.text("description").orEmpty(), kind,
-                        name in schema.strings("required"), options, field["default"]?.wireText().orEmpty())
-                }
                 val serverName = p.required("serverName")
                 val message = p.text("message").orEmpty()
-                // The union flattens `_meta` next to `mode`/`message`; it carries the
-                // `_codex_apps.connector_auth_failure` payload the app-link flow reads.
+                // The union flattens `_meta` next to `mode`/`message` (codex-rs/app-server-protocol/src/protocol/v2/mcp.rs).
                 val meta = p["_meta"]
-                val payload = if (p.text("mode") == "url") {
-                    McpElicitationRequest.Url(serverName, message, p.required("url"), p.required("elicitationId"), meta)
-                } else {
-                    McpElicitationRequest.Form(serverName, message, McpElicitationSchema(schema.text("title").orEmpty(), fields), meta)
+                // "form", "openai/form" and "openaiForm" fold into Form; "url" and
+                // "openai/userVerification" are their own variants (codex-rs/app-server-protocol/src/protocol/v2/mcp.rs).
+                val payload = when (p.text("mode")) {
+                    "url" -> McpElicitationRequest.Url(serverName, message, p.required("url"), p.required("elicitationId"), meta)
+                    "openai/userVerification" -> McpElicitationRequest.UserVerification(
+                        serverName = serverName,
+                        title = p.required("title"),
+                        description = p.text("description").orEmpty(),
+                        challenge = p.required("challenge"),
+                    )
+                    else -> {
+                        val schema = p.objectOrNull("requestedSchema") ?: obj()
+                        val fields = schema.objectOrNull("properties").orEmpty().map { (name, value) ->
+                            val field = value.objectValue()
+                            val options = field.strings("enum")
+                            val kind = when {
+                                options.isNotEmpty() -> McpElicitationFieldKind.Enum
+                                field.text("type") == "boolean" -> McpElicitationFieldKind.Boolean
+                                field.text("type") in listOf("number", "integer") -> McpElicitationFieldKind.Number
+                                else -> McpElicitationFieldKind.Text
+                            }
+                            McpElicitationField(name, field.text("title") ?: name, field.text("description").orEmpty(), kind,
+                                name in schema.strings("required"), options, field["default"]?.wireText().orEmpty())
+                        }
+                        McpElicitationRequest.Form(serverName, message, McpElicitationSchema(schema.text("title").orEmpty(), fields), meta)
+                    }
                 }
                 ApprovalRequest.Elicitation(requestId, thread, p.text("turnId"), item, time, payload)
             }
@@ -1309,11 +1337,13 @@ class JsonRpcAppServerClient(
                         else -> json(value)
                     }
                 }
-                // A URL-mode accept carries no content: the accept *is* the answer. A form accept
-                // with no fields is the same shape, so an empty map is sent as null, not `{}`.
+                // Empty content goes as null, not {}: a URL-mode or empty-form accept *is* the
+                // answer. Declines and cancels also send null (codex-rs/app-server/src/user_verification.rs).
                 obj("action" to response.action.wire,
                     "content" to if (response.action == ElicitationAction.Accept && content.isNotEmpty()) JsonObject(content) else JsonNull,
-                    "_meta" to response.meta)
+                    // `_meta` stays on the wire even un-echoed (as JSON null); a persist choice
+                    // rides back here (codex-rs/tui/src/bottom_pane/mcp_server_elicitation.rs).
+                    "_meta" to (response.meta ?: JsonNull))
             }
             is ApprovalResponse.DynamicTool -> obj("success" to response.result.success, "contentItems" to response.result.contentItems.map { obj("type" to "inputText", "text" to it) })
             is ApprovalResponse.Tokens -> obj("accessToken" to response.accessToken, "chatgptAccountId" to response.chatgptAccountId, "chatgptPlanType" to response.chatgptPlanType)

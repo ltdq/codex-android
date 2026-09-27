@@ -1,6 +1,8 @@
 package com.cy.codex.bottom_pane
 
 import com.cy.codex.protocol.protocol.v2.McpElicitationRequest
+import com.cy.codex.protocol.protocol.v2.McpToolSuggestion
+import com.cy.codex.protocol.protocol.v2.McpToolSuggestionType
 import java.net.URI
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
@@ -91,3 +93,26 @@ internal fun appLinkPrompt(payload: McpElicitationRequest.Url): AppLinkPrompt? {
 
 internal fun McpElicitationRequest.isConnectorAuth(): Boolean =
     serverName == CodexAppsServerName && connectorAuthFailure(meta) != null
+
+internal enum class AppLinkSuggestionInstructions { Install, Enable }
+
+/** The card a `tool_suggestion` with an install URL derives (codex-rs/tui/src/bottom_pane/mod.rs). */
+internal data class AppLinkSuggestion(
+    val title: String,
+    val instructions: AppLinkSuggestionInstructions,
+    /** Enable means already installed: enable directly, while install walks the browser flow first. */
+    val isInstalled: Boolean,
+    val url: String?,
+)
+
+internal fun appLinkSuggestion(suggestion: McpToolSuggestion): AppLinkSuggestion =
+    AppLinkSuggestion(
+        title = suggestion.toolName,
+        instructions =
+            when (suggestion.suggestType) {
+                McpToolSuggestionType.Install -> AppLinkSuggestionInstructions.Install
+                McpToolSuggestionType.Enable -> AppLinkSuggestionInstructions.Enable
+            },
+        isInstalled = suggestion.suggestType == McpToolSuggestionType.Enable,
+        url = suggestion.installUrl?.let { validateAppLinkUrl(it, requireChatgptHost = false) },
+    )

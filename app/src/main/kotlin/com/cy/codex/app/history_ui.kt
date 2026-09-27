@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import com.cy.codex.AppEvent
@@ -14,6 +15,7 @@ import com.cy.codex.R
 import com.cy.codex.Surface
 import com.cy.codex.UiConsts
 import com.cy.codex.chatwidget.Transcript
+import com.cy.codex.history_cell.LocalHookMetadata
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
@@ -45,29 +47,33 @@ fun ThreadHistoryScreen(app: CodexApp, onBack: () -> Unit) {
                 }
             },
         )
-        Transcript(
-            items = session.items,
-            diagnostics = session.diagnostics,
-            // Snapshot of the live transcript behind it: nothing streams into the overlay.
-            isStreaming = { false },
-            streamFor = { null },
-            plan = session.plan,
-            loading = false,
-            empty = session.items.isEmpty() && session.diagnostics.isEmpty(),
-            cwd = session.config.cwd,
-            onOpenAgent = { threadId -> app.openSurface(Surface.SubAgentThread(threadId)) },
-            onOpenAgentInfo = { threadId -> app.openSurface(Surface.SubAgent(threadId)) },
-            onAnswerQuestion = { text -> app.onAppEvent(AppEvent.AnswerAsyncQuestion(text)) },
-            canLoadEarlier = app.widget.canLoadEarlier,
-            loadingEarlier = app.widget.loadingEarlier,
-            onLoadEarlier = app.widget::loadEarlier,
-            contentPadding =
-                PaddingValues(
-                    start = UiConsts.TranscriptGutter,
-                    end = UiConsts.TranscriptGutter,
-                    top = UiConsts.Space8,
-                    bottom = UiConsts.PageBottomInset,
-                ),
-        )
+        // Hook cells join run ids against LocalHookMetadata (app.kt); without it the overlay shows hooks unnamed.
+        CompositionLocalProvider(LocalHookMetadata provides app.catalog.hooks) {
+            Transcript(
+                items = session.items,
+                diagnostics = session.diagnostics,
+                hookRuns = session.hookRuns,
+                // Snapshot of the live transcript behind it: nothing streams into the overlay.
+                isStreaming = { false },
+                streamFor = { null },
+                plan = session.plan,
+                loading = false,
+                empty = session.items.isEmpty() && session.diagnostics.isEmpty() && session.hookRuns.isEmpty(),
+                cwd = session.config.cwd,
+                onOpenAgent = { threadId -> app.openSurface(Surface.SubAgentThread(threadId)) },
+                onOpenAgentInfo = { threadId -> app.openSurface(Surface.SubAgent(threadId)) },
+                onAnswerQuestion = { text -> app.onAppEvent(AppEvent.AnswerAsyncQuestion(text)) },
+                canLoadEarlier = app.widget.canLoadEarlier,
+                loadingEarlier = app.widget.loadingEarlier,
+                onLoadEarlier = app.widget::loadEarlier,
+                contentPadding =
+                    PaddingValues(
+                        start = UiConsts.TranscriptGutter,
+                        end = UiConsts.TranscriptGutter,
+                        top = UiConsts.Space8,
+                        bottom = UiConsts.PageBottomInset,
+                    ),
+            )
+        }
     }
 }

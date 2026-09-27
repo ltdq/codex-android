@@ -200,6 +200,19 @@ data class ConfigRequirementsReadResponse(
                 }
             }
         }
+
+    /**
+     * Managed-policy allowlist (codex-rs/app-server-protocol/src/protocol/v2/config.rs). Kept
+     * verbatim: `false` entries stay listed but disabled, and null ("any") differs from empty ("none").
+     */
+    val allowedPermissionProfiles: Map<String, Boolean>?
+        get() {
+            val raw = (requirements as? JsonObject)?.get("allowedPermissionProfiles") as? JsonObject
+                ?: return null
+            return raw.mapNotNull { (id, value) ->
+                (value as? JsonPrimitive)?.takeIf { !it.isString }?.booleanOrNull?.let { id to it }
+            }.toMap()
+        }
 }
 
 /**

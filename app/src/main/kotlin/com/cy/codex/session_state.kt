@@ -8,6 +8,7 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.referentialEqualityPolicy
 import androidx.compose.runtime.setValue
+import com.cy.codex.protocol.AppServerRpcException
 import com.cy.codex.protocol.protocol.item.AgentMessageItem
 import com.cy.codex.protocol.protocol.item.CollabAgentToolCallItem
 import com.cy.codex.protocol.protocol.item.CommandExecutionItem
@@ -38,12 +39,14 @@ import com.cy.codex.protocol.protocol.v2.ExternalAgentConfigMigrationItem
 import com.cy.codex.protocol.protocol.v2.FuzzyFileSearchResult
 import com.cy.codex.protocol.protocol.v2.HookErrorInfo
 import com.cy.codex.protocol.protocol.v2.HookMetadata
+import com.cy.codex.protocol.protocol.v2.HookRunSummary
 import com.cy.codex.protocol.protocol.v2.LoginAccountResponse
 import com.cy.codex.protocol.protocol.v2.MarketplaceEntry
 import com.cy.codex.protocol.protocol.v2.McpServerStatusEntry
 import com.cy.codex.protocol.protocol.v2.MemoryStatusResponse
 import com.cy.codex.protocol.protocol.v2.ModelPreset
 import com.cy.codex.protocol.protocol.v2.AppSummary
+import com.cy.codex.protocol.protocol.v2.PermissionProfileEntry
 import com.cy.codex.protocol.protocol.v2.PlanStep
 import com.cy.codex.protocol.protocol.v2.PluginAuthPolicy
 import com.cy.codex.protocol.protocol.v2.PluginEntry
@@ -51,6 +54,7 @@ import com.cy.codex.protocol.protocol.v2.PluginShareEntry
 import com.cy.codex.protocol.protocol.v2.ProjectEntry
 import com.cy.codex.protocol.protocol.v2.QueuedSubmission
 import com.cy.codex.protocol.protocol.v2.AccountRateLimits
+import com.cy.codex.protocol.protocol.v2.ActivePermissionProfile
 import com.cy.codex.protocol.protocol.v2.RemoteControlClient
 import com.cy.codex.protocol.protocol.v2.RemoteControlStatus
 import com.cy.codex.protocol.protocol.v2.ServerDiagnosticsResponse
@@ -177,6 +181,20 @@ class SessionState {
 
     /** Diagnostics surfaced as transcript notices. */
     val diagnostics = mutableStateListOf<SessionDiagnostic>()
+
+    /**
+     * The last rejected permission-profile selection, or null while selections land. The reducer has
+     * no Context, so it records the failure kind and the settings picker resolves the wording (like [DiagnosticCode]).
+     */
+    var permissionSelectionError by mutableStateOf<PermissionSelectionFailure?>(null)
+        private set
+
+    fun applyPermissionSelectionError(value: PermissionSelectionFailure?) {
+        permissionSelectionError = value
+    }
+
+    /** Finished hook runs kept as persistent transcript cells; a quiet success never lands (codex-rs/tui/src/history_cell/hook_cell.rs). */
+    val hookRuns = mutableStateListOf<HookRunSummary>()
 
     /** Server repeats the fallback-metadata warning per turn; dedup by slug (chatwidget/warnings.rs). */
     private val fallbackModelMetadataSlugs = mutableSetOf<String>()
@@ -370,6 +388,8 @@ class SessionState {
         goal = null
         queued.clear()
         diagnostics.clear()
+        permissionSelectionError = null
+        hookRuns.clear()
         fallbackModelMetadataSlugs.clear()
         misalignment = null
         gitSummary = null
@@ -401,9 +421,15 @@ class SessionState {
         hookStatus = name?.takeIf { it.isNotBlank() }
     }
 
-    /** The named hook finished; clear it only when it is still the one on display. */
-    fun applyHookCompleted() {
+    /**
+     * A hook finished: clear the indicator and keep the run in [hookRuns]; quiet successes are
+     * dropped entirely (upstream `add_completed_run`, codex-rs/tui/src/history_cell/hook_cell.rs).
+     */
+    fun applyHookCompleted(run: HookRunSummary) {
         hookStatus = null
+        if (com.cy.codex.history_cell.hookRunIsQuietSuccess(run)) return
+        val index = hookRuns.indexOfFirst { existing -> existing.id == run.id }
+        if (index < 0) hookRuns.add(run) else hookRuns[index] = run
     }
 
     fun applyConfig(value: ThreadSessionState) {
@@ -619,6 +645,81 @@ data class SessionDiagnostic(
 /** Another thread blocked on a decision the open transcript cannot answer. */
 data class ForeignApproval(val threadId: String, val count: Int)
 
+/**
+ * Why one permission-profile row cannot be picked; mirrors upstream `disabled_reason`
+ * (codex-rs/tui/src/permission_discovery.rs), minus the TUI's approval/reviewer legs (their own settings groups here).
+ */
+enum class PermissionProfileDisabled {
+    /** Requirements refuse the profile: "Disabled by requirements." */
+    ByRequirements,
+
+    /** The id is not in the discovered catalog at all: "Not available on this server." */
+    NotOnServer,
+}
+
+/** One radio row of the profile picker. */
+data class PermissionProfileRowModel(
+    val id: String,
+    val description: String?,
+    val selected: Boolean,
+    val disabledReason: PermissionProfileDisabled?,
+)
+
+/**
+ * Why the last profile selection did not land; mirrors `select_permission_profile`
+ * (codex-rs/tui/src/app/config_persistence.rs): an unsupported server gets the "newer app server" wording, else "Failed to select permissions".
+ */
+sealed interface PermissionSelectionFailure {
+    /** `thread/settings/update` or its experimental `permissions` field is missing on this server. */
+    data object RequiresNewerServer : PermissionSelectionFailure
+
+    /** Any other rejection; [detail] is the transport error text. */
+    data class Failed(val detail: String?) : PermissionSelectionFailure
+}
+
+/** Map one failed selection onto its wording branch (codex-rs/tui/src/app/config_persistence.rs). */
+internal fun permissionSelectionFailure(error: Throwable): PermissionSelectionFailure =
+    if (isPermissionSelectionUnsupported(error)) {
+        PermissionSelectionFailure.RequiresNewerServer
+    } else {
+        PermissionSelectionFailure.Failed(error.message)
+    }
+
+/**
+ * Upstream `is_thread_settings_update_unsupported` (codex-rs/tui/src/app_server_session.rs): an older
+ * server rejects as method-not-found or as invalid-request naming the method, and the experimental gate names the field path only.
+ */
+internal fun isPermissionSelectionUnsupported(error: Throwable): Boolean {
+    val rpc = error as? AppServerRpcException ?: return false
+    val message = rpc.message.orEmpty()
+    return rpc.code == RpcMethodNotFound ||
+        (
+            rpc.code == RpcInvalidRequest &&
+                (
+                    message.contains("thread/settings/update") ||
+                        message.contains("requires experimentalApi capability")
+                    )
+            )
+}
+
+/** Upstream `discovery_error` (codex-rs/tui/src/permission_discovery.rs): catalog methods missing wholesale, not merely empty. */
+internal fun isPermissionDiscoveryUnsupported(error: Throwable): Boolean {
+    val rpc = error as? AppServerRpcException ?: return false
+    val message = rpc.message.orEmpty()
+    return rpc.code == RpcMethodNotFound ||
+        (
+            rpc.code == RpcInvalidRequest &&
+                (
+                    message.contains("permissionProfile/list") ||
+                        message.contains("configRequirements/read") ||
+                        message.contains("config/read")
+                    )
+            )
+}
+
+private const val RpcMethodNotFound = -32601
+private const val RpcInvalidRequest = -32600
+
 /** One auto-review that is deciding a request right now. */
 data class PendingReview(val id: String, val detail: String)
 
@@ -703,6 +804,9 @@ class CatalogState {
     var account by mutableStateOf(AccountReadResponse(requiresOpenaiAuth = false))
     var rateLimits by mutableStateOf(AccountRateLimits())
 
+    /** Account-scoped headline cache beside [account]; an account change resets it via [resetWorkspaceHeadlineCache]. */
+    var workspaceHeadlineCache by mutableStateOf(WorkspaceHeadlineCache())
+
     /**
      * When [rateLimits] was last refreshed, on the wall clock.
      *
@@ -753,6 +857,57 @@ class CatalogState {
      * no reviewer at all.
      */
     var allowedApprovalsReviewers by mutableStateOf<List<ApprovalsReviewer>?>(null)
+
+    /** Profiles `permissionProfile/list` returned, built-ins included; empty until the catalog loads (codex-rs/tui/src/permission_discovery.rs). */
+    var permissionProfiles by mutableStateOf<List<PermissionProfileEntry>>(emptyList())
+
+    /**
+     * `allowedPermissionProfiles` from `configRequirements/read`, or null when policy does not restrict
+     * (codex-rs/app-server-protocol/src/protocol/v2/config.rs). The map is a whitelist — only an explicit `true` passes, so an empty map means none.
+     */
+    var allowedPermissionProfiles by mutableStateOf<Map<String, Boolean>?>(null)
+
+    /** Set when the catalog methods are missing on this server (upstream `discovery_error`). */
+    var permissionDiscoveryUnsupported by mutableStateOf(false)
+
+    /**
+     * Why the picker must grey out [id], or null when it may be selected; mirrors upstream `disabled_reason`
+     * (codex-rs/tui/src/permission_discovery.rs). The map is re-checked though the list folds it: requirements can move between the two calls.
+     */
+    fun permissionProfileDisabledReason(id: String): PermissionProfileDisabled? {
+        val listed = permissionProfiles.find { it.id == id }
+            ?: return PermissionProfileDisabled.NotOnServer
+        val blockedByRequirements = allowedPermissionProfiles?.let { allowed -> allowed[id] != true } ?: false
+        return if (!listed.allowed || blockedByRequirements) {
+            PermissionProfileDisabled.ByRequirements
+        } else {
+            null
+        }
+    }
+
+    /**
+     * The settings picker's rows: named profiles only (built-in `:…` modes belong to the sandbox and
+     * approval controls), plus a vanished active profile kept as a greyed-out row instead of vanishing.
+     */
+    fun permissionProfileRows(active: ActivePermissionProfile?): List<PermissionProfileRowModel> {
+        val named = permissionProfiles.filterNot { it.id.startsWith(':') }
+        val rows = named.map { entry ->
+            PermissionProfileRowModel(
+                id = entry.id,
+                description = entry.description,
+                selected = entry.id == active?.id,
+                disabledReason = permissionProfileDisabledReason(entry.id),
+            )
+        }
+        val missingActive = active?.id?.takeIf { id -> !id.startsWith(':') && named.none { it.id == id } }
+            ?: return rows
+        return rows + PermissionProfileRowModel(
+            id = missingActive,
+            description = null,
+            selected = true,
+            disabledReason = permissionProfileDisabledReason(missingActive),
+        )
+    }
 
     val guardianApprovalEnabled: Boolean get() = configSnapshot.features["guardian_approval"] == true
 

@@ -45,4 +45,11 @@
     <string name="user_verification_page_cancel">Cancel the current verification</string>
     <string name="user_verification_page_delete">Delete the credential</string>
     <string name="user_verification_page_cancel_note">Cancel stops a verification that is still running. It is not an undo: a signature that already came back is not rolled back, and deleting the credential is what stops this device signing at all.</string>
+
+    <!-- The verify/cancel prompt of an `openai/userVerification` elicitation
+         (bottom_pane/mcp_server_elicitation.kt, mirroring bottom_pane/user_verification.rs:34-258). -->
+    <string name="user_verification_prompt_server">Server: %1$s</string>
+    <string name="user_verification_prompt_verify">Verify and approve</string>
+    <string name="user_verification_prompt_cancel">Cancel this request</string>
+    <string name="user_verification_prompt_waiting">Waiting for verification…</string>
 </resources>

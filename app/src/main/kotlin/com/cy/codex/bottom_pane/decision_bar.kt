@@ -38,6 +38,7 @@ enum class DecisionRole {
 data class DecisionAction(
     val label: String,
     val role: DecisionRole = DecisionRole.Secondary,
+    val enabled: Boolean = true,
     val onClick: () -> Unit,
 )
 
@@ -68,7 +69,7 @@ fun DecisionRow(
                             )
                         else Modifier
                     ),
-                enabled = !busy,
+                enabled = !busy && action.enabled,
                 colors =
                     when (action.role) {
                         DecisionRole.Primary -> ButtonDefaults.buttonColorsPrimary()

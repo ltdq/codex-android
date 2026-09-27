@@ -44,4 +44,11 @@
     <string name="user_verification_page_cancel">取消当前验证</string>
     <string name="user_verification_page_delete">删除凭证</string>
     <string name="user_verification_page_cancel_note">「取消」只中止还在进行中的验证，它不是撤销：已经返回的签名不会被收回；要让这台设备彻底不再能签名，用的是「删除凭证」。</string>
+
+    <!-- `openai/userVerification` elicitation 的验证/取消提示
+         （bottom_pane/mcp_server_elicitation.kt，对齐 bottom_pane/user_verification.rs:34-258）。 -->
+    <string name="user_verification_prompt_server">服务器：%1$s</string>
+    <string name="user_verification_prompt_verify">验证并批准</string>
+    <string name="user_verification_prompt_cancel">取消该请求</string>
+    <string name="user_verification_prompt_waiting">等待验证…</string>
 </resources>

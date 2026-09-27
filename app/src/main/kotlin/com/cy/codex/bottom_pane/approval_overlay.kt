@@ -46,7 +46,6 @@ import com.cy.codex.parseUnifiedDiff
 import com.cy.codex.protocol.ApprovalRequest
 import com.cy.codex.bottom_pane.request_user_input.RequestUserInputForm
 import com.cy.codex.protocol.ApprovalResponse
-import com.cy.codex.protocol.ElicitationAction
 import com.cy.codex.protocol.protocol.v2.CommandAction
 import com.cy.codex.protocol.protocol.v2.CommandExecutionApprovalDecision
 import com.cy.codex.protocol.protocol.v2.CommandExecutionApprovalParams
@@ -191,10 +190,7 @@ private fun ApprovalBody(
             is ApprovalRequest.Elicitation ->
                 McpElicitationForm(
                     request = request,
-                    onSubmit = {
-                        decide(ApprovalResponse.Elicitation(ElicitationAction.Accept, it))
-                    },
-                    onDecline = { decide(ApprovalResponse.Elicitation(ElicitationAction.Decline)) },
+                    onDecide = { decide(it) },
                     busy = busy,
                 )
 

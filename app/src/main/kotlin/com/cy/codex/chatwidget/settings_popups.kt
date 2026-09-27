@@ -42,6 +42,9 @@ import com.cy.codex.AppEvent
 import com.cy.codex.BuildConfig
 import com.cy.codex.CatalogState
 import com.cy.codex.DestinationCatalog
+import com.cy.codex.PermissionProfileDisabled
+import com.cy.codex.PermissionProfileRowModel
+import com.cy.codex.PermissionSelectionFailure
 import com.cy.codex.R
 import com.cy.codex.SessionState
 import com.cy.codex.UiConsts
@@ -107,13 +110,20 @@ fun SettingsScreen(
     onOpenEntry: (String) -> Unit,
     onOpenShortcuts: () -> Unit,
     configPath: String,
+    /** The account read's recovery verdict; gates the model group to Reserve-only (codex-rs/tui/src/chatwidget/luna_reserve_model.rs). */
+    ordinaryUsageRecovered: Boolean = false,
+    /** Where `/permissions` asked this page to open; `null` starts at the home list. */
+    initialSection: SettingsSection? = null,
     modifier: Modifier = Modifier,
 ) {
     val config = session.config
     val preset =
         catalog.modelPreset(config.model)
             ?: catalog.models.firstOrNull { it.isDefault && !it.hidden }
-    val backStack = remember { mutableStateListOf<NavKey>(SettingsRoute.Home) }
+    // `remember` without keys: the deep link seeds the stack once and never rewinds later navigation.
+    val backStack = remember {
+        mutableStateListOf<NavKey>(initialSection?.let { SettingsRoute.Detail(it) } ?: SettingsRoute.Home)
+    }
 
     NavDisplay(
         backStack = backStack,
@@ -152,6 +162,7 @@ fun SettingsScreen(
                             preset,
                             config.model,
                             config.reasoningEffort,
+                            ordinaryUsageRecovered,
                             onEvent,
                         )
                         SettingsMemorySection(catalog, onEvent)
@@ -159,7 +170,7 @@ fun SettingsScreen(
                     }
 
                     SettingsSection.Permissions ->
-                        SettingsApprovalSection(config, catalog.autoReviewAvailable, onEvent)
+                        SettingsApprovalSection(config, catalog, session.permissionSelectionError, onEvent)
 
                     SettingsSection.Workspace -> {
                         SettingsWorkspaceSection(config.cwd, config.workspaceRoots, onOpenWorkspacePicker)
@@ -246,7 +257,8 @@ private fun SettingsPage(
     }
 }
 
-private enum class SettingsSection(
+/** The settings page's two-level nav; [Permissions] is where `/permissions` deep-links. */
+enum class SettingsSection(
     @StringRes val titleRes: Int,
     @StringRes val descriptionRes: Int,
     val icon: ImageVector,
@@ -731,33 +743,68 @@ private fun SettingsModelSection(
     catalog: CatalogState,
     preset: ModelPreset?,
     currentModel: String,
-    effort: ReasoningEffort,
+    effort: ReasoningEffort?,
+    ordinaryUsageRecovered: Boolean,
     onEvent: (AppEvent) -> Unit,
 ) {
-    SettingsGroup(stringResource(R.string.settings_group_model)) {
-        if (catalog.models.isEmpty()) {
-            BasicComponent(
-                title = stringResource(R.string.settings_screen_models_empty),
+    // While ordinary usage is blocked the group collapses to one borrowed row
+    // (codex-rs/tui/src/chatwidget/luna_reserve_model.rs); Reserve selections stay session-only.
+    val mode = modelPickerMode(
+        catalog.models,
+        currentModel,
+        ordinaryUsageRecovered,
+        catalog.rateLimits.rateLimitsByLimitId,
+    )
+    SettingsGroup(
+        stringResource(
+            if (mode is ModelPickerMode.Normal) R.string.settings_group_model else R.string.luna_picker_header,
+        ),
+    ) {
+        when (mode) {
+            ModelPickerMode.RestrictedUnavailable -> BasicComponent(
+                title = stringResource(R.string.luna_picker_unavailable),
                 enabled = false,
             )
-            return@SettingsGroup
-        }
-        catalog.models.filterNot { it.hidden }.forEach { model ->
-            RadioButtonPreference(
-                title = model.displayName,
-                summary =
-                    listOfNotNull(
-                            model.description.ifEmpty { model.model },
-                            stringResource(R.string.settings_screen_model_default).takeIf {
-                                model.isDefault
-                            },
-                        )
-                        .joinToString(" · "),
-                selected = model.model == currentModel,
-                onClick = {
-                    onEvent(AppEvent.WriteConfigValue("model", JsonPrimitive(model.model)))
-                },
-            )
+
+            is ModelPickerMode.Restricted -> {
+                RadioButtonPreference(
+                    title = mode.row.displayName,
+                    summary = mode.row.description.ifEmpty { mode.row.model },
+                    selected = true,
+                    onClick = { onEvent(AppEvent.SetModel(LUNA_RESERVE_MODEL)) },
+                )
+                BasicComponent(
+                    title = stringResource(R.string.luna_picker_subtitle),
+                    enabled = false,
+                )
+            }
+
+            is ModelPickerMode.Normal -> {
+                if (mode.rows.isEmpty()) {
+                    BasicComponent(
+                        title = stringResource(R.string.settings_screen_models_empty),
+                        enabled = false,
+                    )
+                    return@SettingsGroup
+                }
+                mode.rows.forEach { model ->
+                    RadioButtonPreference(
+                        title = model.displayName,
+                        summary =
+                            listOfNotNull(
+                                    model.description.ifEmpty { model.model },
+                                    stringResource(R.string.settings_screen_model_default).takeIf {
+                                        model.isDefault
+                                    },
+                                )
+                                .joinToString(" · "),
+                        selected = model.model == currentModel,
+                        onClick = {
+                            onEvent(AppEvent.WriteConfigValue("model", JsonPrimitive(model.model)))
+                        },
+                    )
+                }
+            }
         }
     }
 
@@ -786,9 +833,12 @@ private fun SettingsModelSection(
         }
     }
 
-    val efforts = preset?.supportedReasoningEfforts.orEmpty()
+    // The Reserve row borrows the normal model's efforts; an effort pick stays on the thread to
+    // keep Reserve routing and the saved return target.
+    val efforts = (mode as? ModelPickerMode.Restricted)?.row?.supportedReasoningEfforts
+        ?: preset?.supportedReasoningEfforts.orEmpty()
     if (efforts.isNotEmpty()) {
-        val selectedIndex = efforts.indexOf(effort).coerceAtLeast(0)
+        val selectedIndex = effort?.let(efforts::indexOf)?.coerceAtLeast(0) ?: 0
         SettingsGroup(stringResource(R.string.settings_group_effort)) {
             OverlaySpinnerPreference(
                 items = efforts.map { option -> DropdownItem(text = option.label()) },
@@ -796,11 +846,16 @@ private fun SettingsModelSection(
                 title = stringResource(R.string.settings_screen_effort_title),
                 summary = stringResource(R.string.settings_screen_effort_summary),
                 onSelectedIndexChange = {
+                    val selected = efforts[it]
                     onEvent(
-                        AppEvent.WriteConfigValue(
-                            "model_reasoning_effort",
-                            JsonPrimitive(efforts[it].wire),
-                        ),
+                        if (mode is ModelPickerMode.Restricted) {
+                            AppEvent.SetReasoningEffort(selected)
+                        } else {
+                            AppEvent.WriteConfigValue(
+                                "model_reasoning_effort",
+                                JsonPrimitive(selected.wire),
+                            )
+                        },
                     )
                 },
             )
@@ -811,9 +866,11 @@ private fun SettingsModelSection(
 @Composable
 private fun SettingsApprovalSection(
     config: ThreadSessionState,
-    autoReviewAvailable: Boolean,
+    catalog: CatalogState,
+    selectionError: PermissionSelectionFailure?,
     onEvent: (AppEvent) -> Unit,
 ) {
+    val autoReviewAvailable = catalog.autoReviewAvailable
     SettingsGroup(stringResource(R.string.settings_group_approval)) {
         AskForApproval.entries.forEach { option ->
             RadioButtonPreference(
@@ -860,6 +917,8 @@ private fun SettingsApprovalSection(
             }
     }
 
+    SettingsPermissionProfilesGroup(config, catalog, selectionError, onEvent)
+
     if (config.approvalPolicy == AskForApproval.Granular) {
         val granular = config.granularApproval
         SettingsGroup(stringResource(R.string.settings_group_granular)) {
@@ -893,6 +952,67 @@ private fun SettingsApprovalSection(
                 }
         }
     }
+}
+
+/**
+ * Named permission profiles of `permissionProfile/list`, one radio row each. Android-only scope: built-in
+ * sandbox modes stay on the rows above; the TUI preset matrix (codex-rs/tui/src/chatwidget/permissions_menu.rs) is not ported.
+ */
+@Composable
+private fun SettingsPermissionProfilesGroup(
+    config: ThreadSessionState,
+    catalog: CatalogState,
+    selectionError: PermissionSelectionFailure?,
+    onEvent: (AppEvent) -> Unit,
+) {
+    val rows = catalog.permissionProfileRows(config.activePermissionProfile)
+    SettingsGroup(stringResource(R.string.settings_group_permissions)) {
+        when {
+            catalog.permissionDiscoveryUnsupported -> BasicComponent(
+                title = stringResource(R.string.settings_permission_discovery_unsupported),
+            )
+
+            rows.isEmpty() -> BasicComponent(
+                title = stringResource(R.string.settings_screen_permissions_empty),
+            )
+
+            else -> rows.forEach { row -> PermissionProfileRow(row, onEvent) }
+        }
+        selectionError?.let { error ->
+            val message = when (error) {
+                PermissionSelectionFailure.RequiresNewerServer ->
+                    stringResource(R.string.settings_permission_select_requires_newer_server)
+
+                is PermissionSelectionFailure.Failed ->
+                    stringResource(R.string.settings_permission_select_failed, error.detail.orEmpty())
+            }
+            BasicComponent(title = message)
+        }
+    }
+}
+
+/** One profile row; a disabled row states the upstream `disabled_reason` wording as its summary. */
+@Composable
+private fun PermissionProfileRow(
+    row: PermissionProfileRowModel,
+    onEvent: (AppEvent) -> Unit,
+) {
+    val reason = when (row.disabledReason) {
+        PermissionProfileDisabled.ByRequirements ->
+            stringResource(R.string.settings_permission_disabled_requirements)
+
+        PermissionProfileDisabled.NotOnServer ->
+            stringResource(R.string.settings_permission_disabled_unavailable)
+
+        null -> null
+    }
+    RadioButtonPreference(
+        title = row.id,
+        summary = listOfNotNull(row.description?.takeIf { it.isNotBlank() }, reason).joinToString(" · "),
+        selected = row.selected,
+        enabled = row.disabledReason == null,
+        onClick = { onEvent(AppEvent.SetPermissionProfile(row.id)) },
+    )
 }
 
 /** Monospace by convention so ids, paths and counts line up. */

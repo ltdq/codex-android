@@ -60,6 +60,9 @@
     <string name="mcp_cell_dynamic_status_calling">Calling</string>
     <string name="mcp_cell_dynamic_status_completed">Completed</string>
     <string name="mcp_cell_dynamic_status_failed">Failed</string>
+    <string name="mcp_cell_plugin_badge">plugin: %1$s</string>
+    <string name="mcp_cell_read_only">read-only</string>
+    <string name="mcp_cell_resource_uri">Resource URI</string>
 
     <!-- NoticesCell.kt -->
     <string name="notices_cell_context_compacted">Context compacted</string>
@@ -67,6 +70,14 @@
     <string name="notices_cell_entered_review_mode">Entered review mode</string>
     <string name="notices_cell_exited_review_mode">Exited review mode</string>
     <string name="notices_cell_hook">Hook</string>
+
+    <!-- HookCell.kt -->
+    <string name="hook_cell_completed">Hook completed</string>
+    <string name="hook_cell_failed">Hook failed</string>
+    <string name="hook_cell_blocked">Blocked by hook</string>
+    <string name="hook_cell_stopped">Hook stopped</string>
+    <string name="hook_cell_running">Hook running</string>
+    <string name="hook_cell_provenance">↳ Hook · %1$s</string>
 
     <!-- PatchesCell.kt -->
     <string name="patches_cell_title">File changes</string>
@@ -106,6 +117,7 @@
     <string name="search_cell_searched_web_for">Searched the web for %1$s</string>
     <string name="search_cell_result_count">%1$d results</string>
     <string name="search_cell_no_results">No results</string>
+    <string name="search_cell_result_type_unknown">type: %1$s</string>
     <string name="search_cell_view_image">Viewed Image</string>
     <string name="search_cell_image_generation">Generated Image</string>
     <string name="search_cell_image_generation_failed">Image generation failed</string>

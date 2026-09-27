@@ -132,7 +132,7 @@ import com.cy.codex.protocol.protocol.v2.WindowsSandboxReadinessResponse
 import com.cy.codex.protocol.protocol.v2.WindowsSandboxSetupCompletedNotification
 import com.cy.codex.protocol.protocol.v2.WindowsSandboxSetupMode
 import com.cy.codex.protocol.protocol.v2.WindowsSandboxSetupStartResponse
-import com.cy.codex.protocol.protocol.v2.WorkspaceMessage
+import com.cy.codex.protocol.protocol.v2.WorkspaceMessagesResponse
 import com.cy.codex.protocol.protocol.v2.WorldWritableWarningNotification
 import kotlinx.coroutines.flow.Flow
 import kotlinx.serialization.json.JsonElement
@@ -531,8 +531,15 @@ sealed interface ApprovalResponse {
 
     data class Elicitation(
         val action: ElicitationAction,
+        /**
+         * Accepted form answers keyed by field name; a userVerification accept carries its
+         * `credentialId`/`signature` proof here instead (codex-rs/app-server-protocol/src/protocol/v2/user_verification.rs).
+         */
         val content: Map<String, String> = emptyMap(),
-        /** The `_meta` object to echo back, for servers that asked for one. */
+        /**
+         * The `_meta` object to echo back. A persist choice rides here as `{"persist":"session"}`
+         * or `{"persist":"always"}` (codex-rs/tui/src/bottom_pane/mcp_server_elicitation.rs).
+         */
         val meta: JsonElement? = null,
     ) : ApprovalResponse
 
@@ -710,7 +717,8 @@ interface AppServerClient {
 
     /** Estimated credits/USD for one thread; `account/usage/read` with a `threadId`. */
     suspend fun readThreadUsage(threadId: String): Result<ThreadUsage> = unsupported("readThreadUsage")
-    suspend fun readWorkspaceMessages(): Result<List<WorkspaceMessage>> = unsupported("readWorkspaceMessages")
+    /** `account/workspaceMessages/read`: the full response — `featureEnabled` gates the surface. */
+    suspend fun readWorkspaceMessages(): Result<WorkspaceMessagesResponse> = unsupported("readWorkspaceMessages")
     suspend fun consumeRateLimitResetCredit(creditId: String? = null): Result<ConsumeRateLimitResetCreditResponse> = unsupported("consumeRateLimitResetCredit")
     suspend fun sendAddCreditsNudgeEmail(
         creditType: com.cy.codex.protocol.protocol.v2.AddCreditsNudgeCreditType,
@@ -757,7 +765,8 @@ interface AppServerClient {
 
     suspend fun listModels(): Result<List<ModelPreset>> = unsupported("listModels")
     suspend fun readModelProviderCapabilities(): Result<Map<String, Boolean>> = unsupported("readModelProviderCapabilities")
-    suspend fun listPermissionProfiles(): Result<List<PermissionProfileEntry>> = unsupported("listPermissionProfiles")
+    /** `permissionProfile/list`; [cwd] resolves the project config layers that gate `allowed`. */
+    suspend fun listPermissionProfiles(cwd: String? = null): Result<List<PermissionProfileEntry>> = unsupported("listPermissionProfiles")
     suspend fun listExperimentalFeatures(): Result<List<ExperimentalFeatureEntry>> = unsupported("listExperimentalFeatures")
     suspend fun setExperimentalFeature(id: String, enabled: Boolean): Result<Unit> = unsupported("setExperimentalFeature")
     suspend fun listCollaborationModes(): Result<List<CollaborationModeEntry>> = unsupported("listCollaborationModes")

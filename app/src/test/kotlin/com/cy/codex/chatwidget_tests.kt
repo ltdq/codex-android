@@ -2,6 +2,7 @@ package com.cy.codex
 
 import com.cy.codex.protocol.AppServerClient
 import com.cy.codex.protocol.AppServerEvent
+import com.cy.codex.protocol.AppServerRpcException
 import com.cy.codex.protocol.ApprovalRequest
 import com.cy.codex.protocol.ApprovalResponse
 import com.cy.codex.protocol.ConnectionState
@@ -16,10 +17,20 @@ import com.cy.codex.protocol.protocol.v2.CommandExecutionOutputDelta
 import com.cy.codex.protocol.protocol.v2.FileChangeApprovalParams
 import com.cy.codex.protocol.protocol.v2.FileChangePatchUpdatedNotification
 import com.cy.codex.protocol.protocol.v2.FileUpdateChange
+import com.cy.codex.protocol.protocol.v2.ActivePermissionProfile
 import com.cy.codex.protocol.protocol.v2.GuardianApprovalReviewNotification
+import com.cy.codex.protocol.protocol.v2.HookCompletedNotification
+import com.cy.codex.protocol.protocol.v2.HookMetadata
+import com.cy.codex.protocol.protocol.v2.HookOutputEntry
+import com.cy.codex.protocol.protocol.v2.HookRunSummary
+import com.cy.codex.protocol.protocol.v2.McpElicitationRequest
 import com.cy.codex.protocol.protocol.v2.PatchApplyStatus
 import com.cy.codex.protocol.protocol.v2.PatchChangeKind
 import com.cy.codex.protocol.protocol.v2.ThreadSessionState
+import com.cy.codex.protocol.protocol.v2.ServerRequestResolved
+import com.cy.codex.protocol.protocol.v2.SettingsField
+import com.cy.codex.protocol.protocol.v2.ThreadSettingsUpdateParams
+import com.cy.codex.protocol.protocol.v2.ThreadSettingsUpdated
 import com.cy.codex.protocol.protocol.v2.ThreadStatus
 import com.cy.codex.protocol.protocol.v2.Thread
 import com.cy.codex.protocol.protocol.v2.ThreadReadResponse
@@ -638,6 +649,260 @@ class ChatWidgetTest {
         assertTrue(response.result.contentItems.single().contains("side conversation"))
     }
 
+    @Test
+    fun `quiet hook success leaves no history cell`() = runTest {
+        val client = TestClient()
+        val widget = ChatWidget(client, backgroundScope)
+        widget.bind(ThreadSessionState(threadId = "thread"))
+        widget.attach()
+        client.events.emit(
+            AppServerEvent.HookCompleted(
+                "thread",
+                HookCompletedNotification(
+                    threadId = "thread",
+                    run = HookRunSummary(
+                        id = "run",
+                        status = "completed",
+                        entries = listOf(HookOutputEntry(kind = "context", text = "model only")),
+                    ),
+                ),
+            ),
+        )
+        runCurrent()
+
+        assertTrue(widget.state.hookRuns.isEmpty())
+        assertTrue(widget.state.diagnostics.isEmpty())
+    }
+
+    @Test
+    fun `failed hook run keeps its entries and reports them as the failure detail`() = runTest {
+        val client = TestClient()
+        val widget = ChatWidget(client, backgroundScope)
+        widget.bind(ThreadSessionState(threadId = "thread"))
+        widget.attach()
+        val entries = listOf(HookOutputEntry(kind = "error", text = "boom\nmore"))
+        client.events.emit(
+            AppServerEvent.HookCompleted(
+                "thread",
+                HookCompletedNotification(
+                    threadId = "thread",
+                    run = HookRunSummary(
+                        id = "run",
+                        eventName = "preToolUse",
+                        status = "failed",
+                        statusMessage = "static label",
+                        entries = entries,
+                    ),
+                ),
+            ),
+        )
+        runCurrent()
+
+        assertEquals(entries, widget.state.hookRuns.single().entries)
+        val diagnostic = widget.state.diagnostics.single()
+        assertEquals(DiagnosticCode.HookFailed, diagnostic.code)
+        assertEquals("boom", diagnostic.message)
+        assertEquals("more", diagnostic.detail)
+    }
+
+    @Test
+    fun `hook failure without entries falls back to the configured status message`() = runTest {
+        val client = TestClient()
+        val widget = ChatWidget(client, backgroundScope)
+        widget.bind(ThreadSessionState(threadId = "thread"))
+        widget.attach()
+        client.events.emit(
+            AppServerEvent.HookCompleted(
+                "thread",
+                HookCompletedNotification(
+                    threadId = "thread",
+                    run = HookRunSummary(
+                        id = "run",
+                        eventName = "preToolUse",
+                        status = "failed",
+                        statusMessage = "Linting",
+                    ),
+                ),
+            ),
+        )
+        runCurrent()
+
+        assertEquals("Linting", widget.state.diagnostics.single().message)
+        assertEquals(listOf("preToolUse"), widget.state.diagnostics.single().args)
+    }
+
+    @Test
+    fun `hook failure notice names the joined hook`() = runTest {
+        val client = TestClient()
+        val hook = HookMetadata(
+            key = "k1",
+            eventName = "preToolUse",
+            command = "lint.sh",
+            displayOrder = 2,
+            sourcePath = "/w/hooks.json",
+        )
+        val widget = ChatWidget(client, backgroundScope, hookMetadata = { listOf(hook) })
+        widget.bind(ThreadSessionState(threadId = "thread"))
+        widget.attach()
+        client.events.emit(
+            AppServerEvent.HookCompleted(
+                "thread",
+                HookCompletedNotification(
+                    threadId = "thread",
+                    run = HookRunSummary(
+                        id = "pre-tool-use:2:/w/hooks.json",
+                        eventName = "preToolUse",
+                        displayOrder = 2,
+                        sourcePath = "/w/hooks.json",
+                        status = "failed",
+                    ),
+                ),
+            ),
+        )
+        runCurrent()
+
+        val diagnostic = widget.state.diagnostics.single()
+        assertNull(diagnostic.message)
+        assertEquals(listOf("lint.sh"), diagnostic.args)
+    }
+
+    @Test
+    fun `completed hook with warning output stays in the history cell`() = runTest {
+        val client = TestClient()
+        val widget = ChatWidget(client, backgroundScope)
+        widget.bind(ThreadSessionState(threadId = "thread"))
+        widget.attach()
+        client.events.emit(
+            AppServerEvent.HookCompleted(
+                "thread",
+                HookCompletedNotification(
+                    threadId = "thread",
+                    run = HookRunSummary(
+                        id = "run",
+                        status = "completed",
+                        entries = listOf(HookOutputEntry(kind = "warning", text = "remember this")),
+                    ),
+                ),
+            ),
+        )
+        runCurrent()
+
+        assertEquals(1, widget.state.hookRuns.size)
+        assertTrue(widget.state.diagnostics.isEmpty())
+    }
+
+    @Test
+    fun `selecting a permission profile sends permissions without a sandbox policy`() = runTest {
+        val client = TestClient()
+        val widget = ChatWidget(client, backgroundScope)
+        widget.bind(ThreadSessionState(threadId = "thread"))
+        widget.action(AppEvent.SetPermissionProfile("work"))
+        runCurrent()
+        val params = client.settingsUpdates.single()
+        assertEquals("thread", params.threadId)
+        assertEquals("work", params.permissions)
+        assertNull(params.sandboxPolicy)
+        assertEquals(ActivePermissionProfile("work"), widget.state.config.activePermissionProfile)
+        assertNull(widget.state.permissionSelectionError)
+    }
+
+    @Test
+    fun `a rejected profile selection reports the degraded server verdict`() = runTest {
+        val client = TestClient().apply {
+            settingsResult = Result.failure(
+                AppServerRpcException(-32600, "thread/settings/update.permissions requires experimentalApi capability"),
+            )
+        }
+        val widget = ChatWidget(client, backgroundScope)
+        widget.bind(ThreadSessionState(threadId = "thread"))
+        widget.action(AppEvent.SetPermissionProfile("work"))
+        runCurrent()
+        assertEquals(PermissionSelectionFailure.RequiresNewerServer, widget.state.permissionSelectionError)
+    }
+
+    @Test
+    fun `thread settings updates carry the active permission profile into the session`() = runTest {
+        val client = TestClient()
+        val widget = ChatWidget(client, backgroundScope)
+        widget.bind(ThreadSessionState(threadId = "thread"))
+        widget.attach()
+        client.events.emit(
+            AppServerEvent.ThreadSettingsUpdatedEvent(
+                "thread",
+                ThreadSettingsUpdated(
+                    "thread",
+                    model = "gpt",
+                    reasoningEffort = SettingsField.Present(com.cy.codex.protocol.protocol.v2.ReasoningEffort.High),
+                    serviceTier = SettingsField.Present("fast"),
+                    activePermissionProfile = SettingsField.Present(ActivePermissionProfile("work", "base")),
+                ),
+            ),
+        )
+        runCurrent()
+        assertEquals(ActivePermissionProfile("work", "base"), widget.state.config.activePermissionProfile)
+        assertEquals("gpt", widget.state.config.model)
+
+        // An older server's notification omits the fields; the known values are kept, not cleared.
+        client.events.emit(
+            AppServerEvent.ThreadSettingsUpdatedEvent("thread", ThreadSettingsUpdated("thread", model = "gpt")),
+        )
+        runCurrent()
+        assertEquals(ActivePermissionProfile("work", "base"), widget.state.config.activePermissionProfile)
+        assertEquals(com.cy.codex.protocol.protocol.v2.ReasoningEffort.High, widget.state.config.reasoningEffort)
+        assertEquals("fast", widget.state.config.serviceTier)
+
+        // An explicit null is the thread's cleared value and replaces ours
+        // (codex-rs/tui/src/chatwidget/settings.rs `apply_thread_settings`).
+        client.events.emit(
+            AppServerEvent.ThreadSettingsUpdatedEvent(
+                "thread",
+                ThreadSettingsUpdated(
+                    "thread",
+                    model = "gpt",
+                    reasoningEffort = SettingsField.Present(null),
+                    serviceTier = SettingsField.Present(null),
+                    activePermissionProfile = SettingsField.Present(null),
+                ),
+            ),
+        )
+        runCurrent()
+        assertNull(widget.state.config.activePermissionProfile)
+        assertNull(widget.state.config.reasoningEffort)
+        assertNull(widget.state.config.serviceTier)
+    }
+
+    @Test
+    fun `a verification proof arriving after its request settled never reaches respond`() = runTest {
+        val client = TestClient()
+        val retired = mutableListOf<RequestId>()
+        val widget = ChatWidget(client, backgroundScope).apply { onApprovalRetired = { retired += it } }
+        widget.bind(ThreadSessionState(threadId = "thread"))
+        widget.attach()
+        val request = ApprovalRequest.Elicitation(
+            RequestId("verify"), "thread", "turn", "item", 0,
+            McpElicitationRequest.UserVerification(serverName = "test", title = "Verify", description = "", challenge = "c"),
+        )
+        client.requests.emit(request)
+        runCurrent()
+        assertEquals(request, widget.currentApproval)
+
+        client.events.emit(AppServerEvent.RequestResolved("thread", ServerRequestResolved("verify", "thread")))
+        runCurrent()
+        assertNull(widget.currentApproval)
+        assertEquals(listOf(RequestId("verify")), retired)
+
+        widget.action(
+            AppEvent.ResolveApproval(
+                request.requestId,
+                com.cy.codex.bottom_pane.userVerificationAnswer(
+                    com.cy.codex.protocol.protocol.v2.UserVerificationProof("credential", "signature"),
+                ),
+            ),
+        )
+        runCurrent()
+        assertTrue(client.responses.isEmpty())
+    }
+
     private class TestClient : AppServerClient {
         override val events = MutableSharedFlow<AppServerEvent>()
         override val requests = MutableSharedFlow<ApprovalRequest>()
@@ -651,6 +916,12 @@ class ChatWidgetTest {
             Result.failure(IllegalStateException("unavailable"))
         override suspend fun listThreads(params: com.cy.codex.protocol.protocol.v2.ThreadListParams) =
             listThreadsResult
+        var settingsResult: Result<Unit> = Result.success(Unit)
+        val settingsUpdates = mutableListOf<ThreadSettingsUpdateParams>()
+        override suspend fun updateThreadSettingsFull(params: ThreadSettingsUpdateParams): Result<Unit> {
+            settingsUpdates += params
+            return settingsResult
+        }
         override suspend fun initialize(clientInfo: ClientInfo) = Result.success(Unit)
         override suspend fun startTurn(
             threadId: String,

@@ -54,23 +54,60 @@ fun WebSearchCell(
         icon = MiuixIcons.Basic.Search,
         title = webSearchTitle(item),
         // No count without results: a payload-less server is not a search that found nothing.
-        subtitle = item.results.takeIf { it.isNotEmpty() }
+        subtitle = item.results?.takeIf { it.isNotEmpty() }
             ?.let { stringResource(R.string.search_cell_result_count, it.size) },
         modifier = modifier,
     ) {
-        if (item.results.isEmpty()) {
-            Text(
+        when (val body = projectWebSearchBody(item.results)) {
+            // `null` is a missing payload (older endpoints, codex-rs/codex-api/src/endpoint/search.rs), not "found nothing".
+            WebSearchBody.NoPayload -> Unit
+            WebSearchBody.NoResults -> Text(
                 text = stringResource(R.string.search_cell_no_results),
                 fontSize = emptyFontSize,
                 lineHeight = emptyLineHeight,
                 color = colors.onSurfaceVariantSummary,
             )
-        } else {
-            Column(verticalArrangement = Arrangement.spacedBy(resultSpacing)) {
-                item.results.forEach { result -> SearchResultRow(result) }
+
+            is WebSearchBody.Rows -> Column(verticalArrangement = Arrangement.spacedBy(resultSpacing)) {
+                body.rows.forEach { row -> SearchResultRow(row) }
             }
         }
     }
+}
+
+/** What a search cell's body draws: no payload, no results, or one row per result. */
+sealed interface WebSearchBody {
+    data object NoPayload : WebSearchBody
+    data object NoResults : WebSearchBody
+    data class Rows(val rows: List<SearchResultRowView>) : WebSearchBody
+}
+
+/** Display projection of one web search result row. */
+data class SearchResultRowView(
+    val title: String,
+    val url: String,
+    val snippet: String?,
+    val typeBadge: String?,
+)
+
+/** The only result kind upstream fixtures name (codex-rs/app-server/tests/suite/v2/web_search.rs); the norm earns no badge. */
+private const val TextResultType = "text_result"
+
+/**
+ * Projects one result element (codex-rs/ext/items/src/web_search.rs) for the row UI; the ref id is
+ * the last-resort title so a row kept by ref id alone is never blank.
+ */
+fun projectSearchResultRow(result: WebSearchResult): SearchResultRowView = SearchResultRowView(
+    title = result.title.ifBlank { result.url }.ifBlank { result.refId.orEmpty() },
+    url = result.url,
+    snippet = result.snippet?.takeIf { it.isNotBlank() },
+    typeBadge = result.type?.takeIf { it.isNotBlank() && it != TextResultType },
+)
+
+fun projectWebSearchBody(results: List<WebSearchResult>?): WebSearchBody = when {
+    results == null -> WebSearchBody.NoPayload
+    results.isEmpty() -> WebSearchBody.NoResults
+    else -> WebSearchBody.Rows(results.map(::projectSearchResultRow))
 }
 
 /** Mirrors `web_search_action_detail` and `WebSearchCell::summary` in
@@ -183,30 +220,55 @@ fun SleepCell(item: SleepItem, modifier: Modifier = Modifier) {
 
 @Composable
 private fun SearchResultRow(
-    result: WebSearchResult,
+    row: SearchResultRowView,
     titleFontSize: TextUnit = UiType.SheetRowTitle,
     titleLineHeight: TextUnit = UiType.SheetRowTitleLine,
     urlFontSize: TextUnit = UiType.Meta,
     urlLineHeight: TextUnit = UiType.Message,
+    badgeSpacing: Dp = 6.dp,
 ) {
     val colors = MiuixTheme.colorScheme
     Column(modifier = Modifier.fillMaxWidth()) {
-        Text(
-            text = result.title.ifBlank { result.url },
-            fontSize = titleFontSize,
-            lineHeight = titleLineHeight,
-            color = colors.onSurface,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-        )
-        Text(
-            text = result.url,
-            fontSize = urlFontSize,
-            lineHeight = urlLineHeight,
-            color = colors.onSurfaceVariantSummary,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
+        Row(verticalAlignment = Alignment.Top) {
+            Text(
+                text = row.title,
+                modifier = Modifier.weight(1f),
+                fontSize = titleFontSize,
+                lineHeight = titleLineHeight,
+                color = colors.onSurface,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            row.typeBadge?.let { type ->
+                Spacer(Modifier.width(badgeSpacing))
+                // The raw discriminator is shown as-is; never prettify a value this client cannot interpret.
+                StatusChip(
+                    label = stringResource(R.string.search_cell_result_type_unknown, type),
+                    tone = ThreadStatusTone.Idle,
+                )
+            }
+        }
+        // Blank urls (ref-id-only rows) stay out rather than leaving an empty line.
+        if (row.url.isNotBlank()) {
+            Text(
+                text = row.url,
+                fontSize = urlFontSize,
+                lineHeight = urlLineHeight,
+                color = colors.onSurfaceVariantSummary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        row.snippet?.let { snippet ->
+            Text(
+                text = snippet,
+                fontSize = urlFontSize,
+                lineHeight = urlLineHeight,
+                color = colors.onSurfaceVariantSummary,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
     }
 }
 

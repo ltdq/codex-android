@@ -1,5 +1,6 @@
 package com.cy.codex
 
+import androidx.compose.runtime.staticCompositionLocalOf
 import com.cy.codex.protocol.ApprovalResponse
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
@@ -99,6 +100,12 @@ sealed interface AppEvent {
     data class SetReasoningEffort(val effort: ReasoningEffort) : AppEvent
     data class SetApprovalPolicy(val policy: AskForApproval) : AppEvent
     data class SetApprovalsReviewer(val reviewer: ApprovalsReviewer) : AppEvent
+
+    /**
+     * Named permission profiles only: the built-in sandbox modes stay expressed by the sandbox and
+     * approval controls, so [profileId] is the `permissions` value of `thread/settings/update`.
+     */
+    data class SetPermissionProfile(val profileId: String) : AppEvent
 
     data class SetCollaborationMode(val mode: CollaborationMode) : AppEvent
 
@@ -208,9 +215,14 @@ sealed interface AppEvent {
 
     data object EnrollUserVerification : AppEvent
 
-    /** Sign a challenge; the whole parameter object, since `userVerification/verify` also takes display context. */
+    /**
+     * Sign a challenge; the whole parameter object, since `userVerification/verify` also takes
+     * display context. [elicitationRequestId] is the elicitation to fold the proof into; null means
+     * the practice sheet (codex-rs/tui/src/app/user_verification.rs).
+     */
     data class VerifyUserVerification(
         val params: com.cy.codex.protocol.protocol.v2.UserVerificationVerifyParams,
+        val elicitationRequestId: RequestId? = null,
     ) : AppEvent
     data object CancelUserVerification : AppEvent
     data object DeleteUserVerification : AppEvent
@@ -275,3 +287,9 @@ sealed interface AppEvent {
     data class SubmitSlashCommand(val command: String, val args: String) : AppEvent
 
 }
+
+/**
+ * Event dispatch for UI no callback reaches (the approval dialog takes only `onDecision`).
+ * Null means the wiring is missing; the prompt must not pretend to verify.
+ */
+val LocalAppEvent = staticCompositionLocalOf<((AppEvent) -> Unit)?> { null }

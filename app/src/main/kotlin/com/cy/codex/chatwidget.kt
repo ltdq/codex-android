@@ -8,6 +8,8 @@ import androidx.compose.runtime.setValue
 import com.cy.codex.chatwidget.AgentNotice
 import com.cy.codex.chatwidget.ApprovalNoticeKind
 import com.cy.codex.diff.TurnDiffAccumulator
+import com.cy.codex.history_cell.hookFailureLines
+import com.cy.codex.history_cell.resolveHookLabel
 import com.cy.codex.protocol.AppServerClient
 import com.cy.codex.protocol.AppServerEvent
 import com.cy.codex.protocol.ApprovalRequest
@@ -19,6 +21,7 @@ import com.cy.codex.protocol.protocol.item.McpToolCallItem
 import com.cy.codex.protocol.protocol.item.PlanItem
 import com.cy.codex.protocol.protocol.item.ReasoningItem
 import com.cy.codex.protocol.protocol.item.ThreadItem
+import com.cy.codex.protocol.protocol.v2.ActivePermissionProfile
 import com.cy.codex.protocol.protocol.v2.DiagnosticSeverity
 import com.cy.codex.protocol.protocol.v2.FileUpdateChange
 import com.cy.codex.protocol.protocol.v2.QueuedSubmission
@@ -28,6 +31,7 @@ import com.cy.codex.protocol.protocol.v2.ThreadResumeParams
 import com.cy.codex.protocol.protocol.v2.ThreadSettingsUpdateParams
 import com.cy.codex.protocol.protocol.v2.ThreadReadResponse
 import com.cy.codex.protocol.protocol.v2.ThreadStatus
+import com.cy.codex.protocol.protocol.v2.orKeep
 import com.cy.codex.protocol.protocol.v2.ThreadTurnsListParams
 import com.cy.codex.protocol.protocol.v2.TurnItemsView
 import com.cy.codex.protocol.protocol.v2.TurnStatus
@@ -55,6 +59,11 @@ class ChatWidget(
     private val client: AppServerClient,
     private val scope: CoroutineScope,
     val state: SessionState = SessionState(),
+    /** The `hooks/list` mirror used to name hook runs (Android-only: upstream names no hook). */
+    private val hookMetadata: () -> List<com.cy.codex.protocol.protocol.v2.HookMetadata> = { emptyList() },
+    /** Per-thread Reserve return targets; shared with `CodexApp` so both clear the same cache. */
+    private val reserveReturns: com.cy.codex.chatwidget.ReserveReturnStore =
+        com.cy.codex.chatwidget.InMemoryReserveReturnStore(),
 ) {
     /** Server requests waiting for a decision, oldest first; snapshot-backed so composables observe the queue. */
     private val pendingApprovals = mutableStateListOf<ApprovalRequest>()
@@ -189,6 +198,12 @@ class ChatWidget(
     /** Side threads inherit the parent's tool specs; `thread/fork` has no `dynamicTools` field. */
     var isSideThread: (String) -> Boolean = { false }
 
+    /**
+     * A request leaving the approval queue ends its lifecycle (codex-rs/tui/src/app/user_verification.rs);
+     * anything still tracking it must not answer a request that is already gone.
+     */
+    var onApprovalRetired: (com.cy.codex.protocol.protocol.RequestId) -> Unit = {}
+
     val otherThreadApprovals: List<ForeignApproval>
         get() = otherApprovals.groupBy { it.threadId }.map { (threadId, requests) ->
             ForeignApproval(threadId, requests.size)
@@ -273,6 +288,7 @@ class ChatWidget(
     private fun resetApprovalState() {
         promotionJob?.cancel()
         promotionJob = null
+        (pendingApprovals + otherApprovals).forEach { onApprovalRetired(it.requestId) }
         pendingApprovals.clear()
         currentApproval = null
         otherApprovals.clear()
@@ -289,6 +305,7 @@ class ChatWidget(
         // `otherApprovals` survives the reset by one step so the opening thread adopts its requests back.
         promotionJob?.cancel()
         promotionJob = null
+        pendingApprovals.forEach { onApprovalRetired(it.requestId) }
         pendingApprovals.clear()
         currentApproval = null
         reviewsInFlight.clear()
@@ -552,6 +569,12 @@ class ChatWidget(
             is AppEvent.SetModel -> request({
                 client.updateThreadSettings(state.threadId, model = event.model)
             }) {
+                if (event.model != state.config.model &&
+                    state.config.model == com.cy.codex.chatwidget.LUNA_RESERVE_MODEL
+                ) {
+                    // Leaving Reserve drops the thread's saved return target (codex-rs/tui/src/chatwidget/settings.rs).
+                    com.cy.codex.chatwidget.clearReserveReturn(reserveReturns, state.threadId)
+                }
                 state.applyConfig(state.config.copy(model = event.model, modelDisplayName = event.model))
             }
 
@@ -571,6 +594,28 @@ class ChatWidget(
                     ),
                 )
             }) { state.applyConfig(state.config.copy(approvalsReviewer = event.reviewer)) }
+
+            is AppEvent.SetPermissionProfile -> {
+                val profileId = event.profileId
+                // `permissions` must never share a request with `sandboxPolicy`
+                // (codex-rs/app-server-protocol/src/protocol/v2/thread.rs).
+                scope.launch {
+                    client.updateThreadSettingsFull(
+                        ThreadSettingsUpdateParams(threadId = state.threadId, permissions = profileId),
+                    ).onSuccess {
+                        state.applyPermissionSelectionError(null)
+                        // The authoritative shape (including `extends`) arrives on
+                        // thread/settings/updated; this only moves the selected row now.
+                        state.applyConfig(
+                            state.config.copy(activePermissionProfile = ActivePermissionProfile(profileId)),
+                        )
+                    }.onFailure { error ->
+                        // The picker words failures itself (codex-rs/tui/src/app/config_persistence.rs),
+                        // so only the failure kind is recorded.
+                        state.applyPermissionSelectionError(permissionSelectionFailure(error))
+                    }
+                }
+            }
 
             is AppEvent.SetCollaborationMode -> request({
                 client.updateThreadSettingsFull(
@@ -886,6 +931,9 @@ class ChatWidget(
 
     private fun resolve(requestId: com.cy.codex.protocol.protocol.RequestId, response: ApprovalResponse) {
         if (answeringApproval) return
+        // A proof can land after the request left the queue (server-resolved, turn ended, thread
+        // switched); answering then is a silent no-op, not an error.
+        if (pendingApprovals.none { it.requestId == requestId } && otherApprovals.none { it.requestId == requestId }) return
         answeringApproval = true
         approvalError = null
         scope.launch {
@@ -900,11 +948,15 @@ class ChatWidget(
                 approvalError = error.message
             } finally {
                 answeringApproval = false
+                // Retired whether or not the respond landed; any verification that produced this
+                // response is over even when the card stays up for a retry.
+                onApprovalRetired(requestId)
             }
         }
     }
 
     private fun dismiss(requestId: com.cy.codex.protocol.protocol.RequestId) {
+        onApprovalRetired(requestId)
         pendingApprovals.removeAll { it.requestId == requestId }
         otherApprovals.removeAll { it.requestId == requestId }
         if (currentApproval?.requestId == requestId) currentApproval = pendingApprovals.firstOrNull()
@@ -1066,11 +1118,15 @@ class ChatWidget(
                     state.config.copy(
                         model = delta.model ?: state.config.model,
                         modelDisplayName = delta.model ?: state.config.modelDisplayName,
-                        reasoningEffort = delta.reasoningEffort ?: state.config.reasoningEffort,
+                        // `apply_thread_settings` (codex-rs/tui/src/chatwidget/settings.rs): a present
+                        // null is the thread's cleared value; only a missing key keeps ours.
+                        reasoningEffort = delta.reasoningEffort.orKeep(state.config.reasoningEffort),
                         approvalPolicy = delta.approvalPolicy ?: state.config.approvalPolicy,
                         approvalsReviewer = delta.approvalsReviewer ?: state.config.approvalsReviewer,
                         collaborationMode = delta.collaborationMode ?: state.config.collaborationMode,
-                        serviceTier = delta.serviceTier ?: state.config.serviceTier,
+                        serviceTier = delta.serviceTier.orKeep(state.config.serviceTier),
+                        activePermissionProfile =
+                            delta.activePermissionProfile.orKeep(state.config.activePermissionProfile),
                     ),
                 )
             }
@@ -1162,16 +1218,27 @@ class ChatWidget(
                 ),
             )
 
-            // Only failed hooks get a notice; a session with hooks on would otherwise fill the transcript.
+            // Every run but a quiet success becomes a persistent cell
+            // (codex-rs/tui/src/history_cell/hook_cell.rs `add_completed_run`); failures also raise a notice.
             is AppServerEvent.HookCompleted -> {
-                state.applyHookCompleted()
-                if (event.delta.run.failed) {
+                val run = event.delta.run
+                state.applyHookCompleted(run)
+                if (run.failed) {
+                    // Failure detail lives in the run's entries; `statusMessage` is the hook's static
+                    // label (config/…/hook_config.rs), so it only fills when no entry carries detail.
+                    val failureLines = hookFailureLines(run)
                     state.addDiagnostic(
                         SessionDiagnostic(
                             severity = DiagnosticSeverity.Warning,
-                            message = event.delta.run.statusMessage,
+                            message = failureLines.firstOrNull() ?: run.statusMessage,
+                            detail = failureLines.drop(1).joinToString("\n").ifBlank { null },
                             code = DiagnosticCode.HookFailed,
-                            args = listOf(event.delta.run.eventName.ifEmpty { event.delta.run.id }),
+                            args = listOf(
+                                resolveHookLabel(run, hookMetadata())
+                                    // The template already says "Hook", so an unjoinable run keeps
+                                    // its event/id instead of echoing the generic word.
+                                    ?: run.eventName.ifEmpty { run.id },
+                            ),
                         ),
                     )
                 }
@@ -1307,6 +1374,7 @@ class ChatWidget(
             else -> false
         }
         if (!settled) return
+        pendingApprovals.filter { it.itemId == item.id }.forEach { onApprovalRetired(it.requestId) }
         pendingApprovals.removeAll { it.itemId == item.id }
         syncCurrentApproval()
     }
@@ -1518,6 +1586,7 @@ class ChatWidget(
         refreshQueue(event.threadId)
         finishedTurns.addLast(event.turnId)
         while (finishedTurns.size > MaxRememberedTurns) finishedTurns.removeFirst()
+        pendingApprovals.filter { it.turnId == event.turnId }.forEach { onApprovalRetired(it.requestId) }
         pendingApprovals.removeAll { it.turnId == event.turnId }
         syncCurrentApproval()
         if (event.status != TurnStatus.Completed) {

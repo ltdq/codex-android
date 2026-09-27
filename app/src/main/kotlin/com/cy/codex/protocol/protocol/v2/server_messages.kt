@@ -203,22 +203,20 @@ enum class PermissionsApprovalDecision(val wire: String) {
 data class UserInputAnswer(val questionId: String, val answers: List<String>)
 
 /**
- * `McpServerElicitationRequestParams`, split by the `mode` tag.
- *
- * The wire is a four-variant union (three schema flavours plus the URL redirect); the schema
- * flavours collapse into [Form] because this client renders the flattened schema either way, while
- * [Url] must stay its own variant: it has no fields to submit, only a page to open and an accept.
+ * `McpServerElicitationRequestParams`, split by the `mode` tag (codex-rs/app-server-protocol/src/protocol/v2/mcp.rs).
+ * The three schema flavours fold into [Form]; [Url] and [UserVerification] stay separate: nothing to submit.
  */
 sealed interface McpElicitationRequest {
     val serverName: String
-    val message: String
+
+    /** Prompt; the userVerification variant carries none on the wire, hence the default. */
+    val message: String get() = ""
 
     /**
-     * The wire `_meta` object, or null when the server sent none. Opaque to the client except for
-     * the `_codex_apps.connector_auth_failure` keys the app-link flow reads; keeping it around also
-     * lets an accept echo it back.
+     * Wire `_meta`, opaque except for the `_codex_apps.connector_auth_failure` keys and the accept
+     * echo; null by default because userVerification carries none.
      */
-    val meta: JsonElement?
+    val meta: JsonElement? get() = null
 
     data class Form(
         override val serverName: String,
@@ -227,6 +225,12 @@ sealed interface McpElicitationRequest {
         override val meta: JsonElement? = null,
     ) : McpElicitationRequest {
         val fields: List<McpElicitationField> get() = requestedSchema.fields
+
+        /**
+         * Typed approval view of [meta], null when it is not an approval payload. [meta] stays raw
+         * for the connector-auth echo.
+         */
+        val approval: McpApprovalMeta? = McpApprovalMeta.parse(meta)
     }
 
     data class Url(
@@ -235,6 +239,17 @@ sealed interface McpElicitationRequest {
         val url: String,
         val elicitationId: String,
         override val meta: JsonElement? = null,
+    ) : McpElicitationRequest
+
+    /**
+     * `mode: "openai/userVerification"` (codex-rs/app-server-protocol/src/protocol/v2/mcp.rs): no
+     * message or meta on the wire; an accept carries a `credentialId`/`signature` proof as content.
+     */
+    data class UserVerification(
+        override val serverName: String,
+        val title: String,
+        val description: String,
+        val challenge: String,
     ) : McpElicitationRequest
 }
 

@@ -175,6 +175,14 @@ class UpstreamSchemaTest {
         ModelSafetyBufferingUpdatedNotification::class to "ModelSafetyBufferingUpdatedNotification",
     )
 
+    /**
+     * Decode-time-derived parameters: upstream keeps `rate_limit_upsell` schema-less
+     * (Option<serde_json::Value>), so its raw presence is a local observation, not a schema field.
+     */
+    private val locallyDerivedFields: Map<KClass<*>, Set<String>> = mapOf(
+        AccountRateLimits::class to setOf("rateLimitUpsellPresent"),
+    )
+
     @Test
     fun `Kotlin fields exist upstream and never demand more than the schema promises`() {
         val failures = mutableListOf<String>()
@@ -186,8 +194,9 @@ class UpstreamSchemaTest {
             val parameters = kotlinType.primaryConstructor?.parameters
                 ?: fail("${kotlinType.simpleName} has no primary constructor")
             val names = parameters.mapNotNull { it.name }.toSet()
+            val derived = locallyDerivedFields[kotlinType].orEmpty()
 
-            (names - shape.properties).takeIf { it.isNotEmpty() }?.let {
+            (names - shape.properties - derived).takeIf { it.isNotEmpty() }?.let {
                 failures += "${kotlinType.simpleName} declares field(s) $upstreamName does not have: ${it.sorted()}"
             }
             val required = parameters.filterNot { it.isOptional }.mapNotNull { it.name }.toSet()

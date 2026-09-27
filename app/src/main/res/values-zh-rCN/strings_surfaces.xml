@@ -192,6 +192,12 @@
     <string name="settings_screen_granular_auto">自动通过</string>
     <string name="settings_group_permissions">权限档位</string>
     <string name="settings_screen_permissions_empty">还没有权限档位，等待 permissionProfile/list 返回。</string>
+    <string name="settings_permission_disabled_requirements">已被配置要求禁用。</string>
+    <string name="settings_permission_disabled_unavailable">该服务器上不可用。</string>
+    <string name="settings_permission_discovery_unsupported">该服务器不支持权限发现。请升级 Codex 服务器以使用此菜单。</string>
+    <string name="settings_permission_select_requires_newer_server">选择权限档位需要更新版本的 app server。</string>
+    <string name="settings_permission_select_failed">选择权限档位失败：%1$s</string>
+    <string name="settings_permission_select_no_thread">请等待任务建立连接后再选择权限档位。</string>
     <string name="settings_group_session">会话</string>
     <string name="settings_screen_session_id">会话 ID</string>
     <string name="settings_screen_session_not_started">（未开始）</string>

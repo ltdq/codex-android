@@ -83,14 +83,40 @@ data class ThreadTokenUsageUpdated(
 
 data class ThreadNameUpdated(val threadId: String, val name: String?)
 
+/**
+ * One clearable `ThreadSettings` field of `thread/settings/updated` (codex-rs/app-server-protocol/src/protocol/v2/thread.rs):
+ * a present null is an explicit clear, a missing key is an older server staying silent.
+ */
+sealed interface SettingsField<out T> {
+    /** The key is absent: an older server does not report this field. */
+    data object Missing : SettingsField<Nothing>
+
+    /** The key is present; [value] `null` is an explicit clear. */
+    data class Present<T>(val value: T?) : SettingsField<T>
+}
+
+/**
+ * The value this field dictates for [current]; Missing keeps it. A free function because a method
+ * would erase its parameter on `SettingsField<Nothing>` to `java.lang.Void` and throw.
+ */
+fun <T> SettingsField<T>.orKeep(current: T?): T? = when (this) {
+    SettingsField.Missing -> current
+    is SettingsField.Present -> value
+}
+
 data class ThreadSettingsUpdated(
     val threadId: String,
     val model: String? = null,
-    val reasoningEffort: ReasoningEffort? = null,
+    val reasoningEffort: SettingsField<ReasoningEffort> = SettingsField.Missing,
     val approvalPolicy: AskForApproval? = null,
     val approvalsReviewer: ApprovalsReviewer? = null,
     val collaborationMode: CollaborationMode? = null,
-    val serviceTier: String? = null,
+    val serviceTier: SettingsField<String> = SettingsField.Missing,
+    /**
+     * Profile switches made elsewhere land here (codex-rs/app-server-protocol/src/protocol/v2/thread.rs);
+     * a return to built-in permissions arrives as an explicit null.
+     */
+    val activePermissionProfile: SettingsField<ActivePermissionProfile> = SettingsField.Missing,
 )
 
 /**

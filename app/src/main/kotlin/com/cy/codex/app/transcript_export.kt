@@ -1,5 +1,6 @@
 package com.cy.codex.app
 
+import com.cy.codex.history_cell.resolveHookLabel
 import com.cy.codex.protocol.protocol.item.AgentMessageItem
 import com.cy.codex.protocol.protocol.item.CollabAgentToolCallItem
 import com.cy.codex.protocol.protocol.item.CommandExecutionItem
@@ -29,7 +30,10 @@ import com.cy.codex.protocol.protocol.v2.UserInput
  * `/export`: whole conversation as markdown, mirroring
  * `codex-rs/.../app/transcript_export.rs`; activity bodies indent four spaces.
  */
-internal fun transcriptMarkdown(items: List<ThreadItem>): String? {
+internal fun transcriptMarkdown(
+    items: List<ThreadItem>,
+    hooks: List<com.cy.codex.protocol.protocol.v2.HookMetadata> = emptyList(),
+): String? {
     val markdown = StringBuilder("# Codex conversation\n")
     for (item in items) {
         val (heading, indent) = when (item) {
@@ -40,7 +44,7 @@ internal fun transcriptMarkdown(items: List<ThreadItem>): String? {
             is TurnSeparatorItem, is RecapItem -> continue
             else -> "Activity" to true
         }
-        val lines = transcriptLines(item)
+        val lines = transcriptLines(item, hooks)
         if (lines.isEmpty()) continue
         markdown.append("\n## ").append(heading).append("\n\n")
         for (line in lines) {
@@ -51,7 +55,10 @@ internal fun transcriptMarkdown(items: List<ThreadItem>): String? {
     return markdown.toString().takeIf { it != "# Codex conversation\n" }
 }
 
-private fun transcriptLines(item: ThreadItem): List<String> = when (item) {
+private fun transcriptLines(
+    item: ThreadItem,
+    hooks: List<com.cy.codex.protocol.protocol.v2.HookMetadata>,
+): List<String> = when (item) {
     is UserMessageItem -> {
         val text = item.content.filterIsInstance<UserInput.Text>().joinToString("\n") { it.text }
         val images = item.content.count { it is UserInput.LocalImage || it is UserInput.Image }
@@ -69,7 +76,12 @@ private fun transcriptLines(item: ThreadItem): List<String> = when (item) {
     is ReasoningItem -> item.summary + item.content
     is FunctionCallOutputItem -> item.output.lines()
     is HookPromptItem -> item.fragments.flatMap { fragment ->
-        val header = fragment.hookRunId.takeIf { it.isNotBlank() }?.let { "hook $it:" } ?: "hook:"
+        // Android-only: upstream (codex-rs/tui/src/thread_transcript.rs) prints no identity; name the
+        // hook via `hooks/list`, and keep the plain `hook:` prefix when unjoinable rather than leak the id.
+        val header = when (val label = resolveHookLabel(fragment.hookRunId, hooks)) {
+            null -> "hook:"
+            else -> "hook $label:"
+        }
         listOf(header) + fragment.text.lines()
     }
 

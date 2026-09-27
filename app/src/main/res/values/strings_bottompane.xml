@@ -118,6 +118,33 @@
     <string name="app_link_finish_auth_body">Then return here and select “I already signed in”.</string>
     <string name="app_link_finish_browser_body">Then return here and select “I finished”.</string>
 
+    <!-- McpServerElicitation.kt: the synthetic `__approval` option group of a message-only schema
+         (codex-rs/tui/src/bottom_pane/mcp_server_elicitation.rs:271-325). The descriptions are the
+         upstream literals, one wording for a tool call and one for any other request. -->
+    <string name="mcp_server_elicitation_allow">Allow</string>
+    <string name="mcp_server_elicitation_allow_tool">Run the tool and continue.</string>
+    <string name="mcp_server_elicitation_allow_request">Allow this request and continue.</string>
+    <string name="mcp_server_elicitation_allow_session">Allow for this session</string>
+    <string name="mcp_server_elicitation_allow_session_tool">Run the tool and remember this choice for this session.</string>
+    <string name="mcp_server_elicitation_allow_session_request">Allow this request and remember this choice for this session.</string>
+    <string name="mcp_server_elicitation_allow_always">Always allow</string>
+    <string name="mcp_server_elicitation_allow_always_tool">Run the tool and remember this choice for future tool calls.</string>
+    <string name="mcp_server_elicitation_allow_always_request">Allow this request and remember this choice for future requests.</string>
+    <string name="mcp_server_elicitation_deny">Deny</string>
+    <string name="mcp_server_elicitation_deny_description">Decline this request and continue.</string>
+    <string name="mcp_server_elicitation_cancel">Cancel</string>
+    <string name="mcp_server_elicitation_cancel_tool">Cancel this tool call</string>
+    <string name="mcp_server_elicitation_cancel_request">Cancel this request</string>
+
+    <!-- McpServerElicitation.kt: the install/enable card of a tool suggestion
+         (codex-rs/tui/src/bottom_pane/mod.rs:1760-1811, app_link_view.rs:287-417). -->
+    <string name="mcp_server_elicitation_suggestion_install_instructions">Install this app in your browser, then return here.</string>
+    <string name="mcp_server_elicitation_suggestion_enable_instructions">Enable this app to use it for the current request.</string>
+    <string name="mcp_server_elicitation_suggestion_install_button">Install on ChatGPT</string>
+    <string name="mcp_server_elicitation_suggestion_enable_button">Enable app</string>
+    <string name="mcp_server_elicitation_suggestion_installed_button">I already Installed it</string>
+    <string name="mcp_server_elicitation_suggestion_return_body">Then return here and select “I already Installed it”.</string>
+
     <!-- RequestUserInputView.kt -->
     <string name="request_user_input_view_other">None of the above</string>
     <string name="request_user_input_view_your_answer">Type your answer</string>

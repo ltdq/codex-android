@@ -163,4 +163,15 @@
     <string name="trust_project_body">Codex 可以读取、修改并在这里运行文件。只有确认这是你自己的项目目录时才信任它。</string>
     <string name="trust_project_confirm">信任并继续</string>
     <string name="trust_project_cancel">取消</string>
+
+    <!-- Luna Reserve (backend_banner.kt, luna_reserve_model.kt) -->
+    <string name="luna_recovery_title">已达用量上限</string>
+    <string name="luna_recovery_description">你的包含用量已用尽。请选择以下选项继续。</string>
+    <string name="luna_continue_reserve">继续使用 Luna Reserve</string>
+    <string name="luna_auto_switched_to">已达用量上限，已自动切换到 %1$s。</string>
+    <string name="luna_auto_switched_back">常规用量已恢复，已自动切换回 %1$s。</string>
+    <string name="luna_picker_header">选择模型</string>
+    <string name="luna_picker_subtitle">常规用量恢复后会重新显示其他模型。</string>
+    <string name="luna_picker_unavailable">Luna 模型设置暂不可用；请稍后重试 /model。</string>
+    <string name="luna_banner_dismiss">关闭</string>
 </resources>

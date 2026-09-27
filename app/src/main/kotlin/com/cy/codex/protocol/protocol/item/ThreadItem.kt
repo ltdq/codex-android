@@ -220,24 +220,27 @@ data class SubAgentActivityItem(
 data class WebSearchItem(
     override val id: String,
     val query: String,
-    val results: List<WebSearchResult> = emptyList(),
+    /**
+     * Null when the server sent no results payload (older endpoints), vs. an empty list for a
+     * search that found nothing (codex-rs/codex-api/src/endpoint/search.rs).
+     */
+    val results: List<WebSearchResult>? = null,
     /** What the web tool actually did; `null` on servers that do not model the action yet. */
     val action: WebSearchAction? = null,
 ) : ThreadItem
 
 /**
- * One element of a web search result list.
- *
- * The wire keeps these as opaque JSON so new result types pass through without a protocol change
- * (`ext/items/src/web_search.rs`); only title/url are projected, and an element carrying neither
- * is dropped rather than shown as an empty row.
+ * One `webSearch.results` element (opaque JSON, codex-rs/ext/items/src/web_search.rs); kept when it
+ * names any known field so new result shapes pass through.
  */
 data class WebSearchResult(
     val title: String,
     val url: String,
     val snippet: String? = null,
-    /** The server's own result discriminator (`text_result` today), kept for export fidelity. */
+    /** The server's own result discriminator (`text_result` today); no surface renders it yet. */
     val type: String? = null,
+    /** The wire's `ref_id`: the server's stable per-result id. */
+    val refId: String? = null,
 )
 
 /**

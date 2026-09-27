@@ -34,6 +34,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -119,6 +120,12 @@ import top.yukonga.miuix.kmp.icon.extended.Tune
 import top.yukonga.miuix.kmp.overlay.OverlayListPopup
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
+/**
+ * The workspace headline the status card shows, or null when there is none. Upstream hides it behind
+ * a configurable status line (off by default, tui/src/bottom_pane/status_line_setup.rs); Android always shows it.
+ */
+val LocalWorkspaceHeadline = staticCompositionLocalOf<String?> { null }
+
 /** Floating status card; mirrors `codex-rs/tui/src/status/card.rs` +
  * `chatwidget/status_surfaces.rs`. Fixed size: a diff opens a second card ([DiffCard]). */
 @Composable
@@ -153,6 +160,7 @@ fun StatusCard(
     modifier: Modifier = Modifier,
     panelElevation: Dp = UiConsts.PanelElevation,
     rateLimitsUpdatedAt: Long? = null,
+    workspaceHeadline: String? = LocalWorkspaceHeadline.current,
 ) {
     val shape = RoundedCornerShape(UiConsts.PanelCorner)
     Surface(
@@ -177,6 +185,7 @@ fun StatusCard(
             models = models,
             rateLimits = rateLimits,
             rateLimitsUpdatedAt = rateLimitsUpdatedAt,
+            workspaceHeadline = workspaceHeadline,
             onModel = onModel,
             onEffort = onEffort,
             onPolicy = onPolicy,
@@ -239,6 +248,7 @@ private fun SectionsColumn(
     models: List<ModelPreset>,
     rateLimits: AccountRateLimits,
     rateLimitsUpdatedAt: Long?,
+    workspaceHeadline: String?,
     onModel: (String) -> Unit,
     onEffort: (ReasoningEffort) -> Unit,
     onPolicy: (AskForApproval) -> Unit,
@@ -269,6 +279,20 @@ private fun SectionsColumn(
             gitSummary = gitSummary,
             onOpenAgents = onOpenAgents,
         )
+
+        // Upstream's status-line segment is exactly this text in the thread-emphasis color (tui/src/chatwidget/status_surfaces.rs);
+        // no headline means no node, so the card keeps its no-headline layout.
+        if (workspaceHeadline != null) {
+            Text(
+                text = workspaceHeadline,
+                modifier = Modifier.fillMaxWidth(),
+                fontSize = UiType.Footnote,
+                lineHeight = UiType.FootnoteLine,
+                color = MiuixTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
 
         UsageSection(
             usage = usage,
@@ -1091,9 +1115,9 @@ private fun ModelSection(
                 if (efforts.isNotEmpty()) {
                     PickerRow(
                         label = stringResource(R.string.status_card_reasoning_label),
-                        value = session.reasoningEffort.label(),
+                        value = session.reasoningEffort?.label() ?: "—",
                         items = efforts.map { effort -> DropdownItem(text = effort.label()) },
-                        selectedIndex = efforts.indexOf(session.reasoningEffort).coerceAtLeast(0),
+                        selectedIndex = session.reasoningEffort?.let(efforts::indexOf)?.coerceAtLeast(0) ?: 0,
                         onSelectedIndexChange = { onEffort(efforts[it]) },
                     )
                 }
@@ -1276,7 +1300,7 @@ internal fun accessSummary(session: ThreadSessionState): String {
         if (session.sandboxPolicy.networkAccess) {
             add(stringResource(R.string.status_card_access_network))
         }
-        session.activePermissionProfile?.let { add(it.name) }
+        session.activePermissionProfile?.let { add(it.id) }
     }
     return parts.joinToString(" · ")
 }

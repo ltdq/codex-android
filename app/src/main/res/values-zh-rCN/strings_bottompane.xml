@@ -118,6 +118,31 @@
     <string name="app_link_finish_auth_body">然后回到这里并选择“我已登录”。</string>
     <string name="app_link_finish_browser_body">然后回到这里并选择“我已完成”。</string>
 
+    <!-- 空 schema 派生出的 `__approval` 选项组（codex-rs/tui/src/bottom_pane/mcp_server_elicitation.rs:271-325），
+         说明文案沿用上游原文，工具调用与普通请求各一套措辞。 -->
+    <string name="mcp_server_elicitation_allow">允许</string>
+    <string name="mcp_server_elicitation_allow_tool">运行该工具并继续。</string>
+    <string name="mcp_server_elicitation_allow_request">允许该请求并继续。</string>
+    <string name="mcp_server_elicitation_allow_session">本次会话内允许</string>
+    <string name="mcp_server_elicitation_allow_session_tool">运行该工具，并在本次会话中记住该选择。</string>
+    <string name="mcp_server_elicitation_allow_session_request">允许该请求，并在本次会话中记住该选择。</string>
+    <string name="mcp_server_elicitation_allow_always">始终允许</string>
+    <string name="mcp_server_elicitation_allow_always_tool">运行该工具，并在以后的工具调用中记住该选择。</string>
+    <string name="mcp_server_elicitation_allow_always_request">允许该请求，并在以后的请求中记住该选择。</string>
+    <string name="mcp_server_elicitation_deny">拒绝</string>
+    <string name="mcp_server_elicitation_deny_description">拒绝该请求并继续。</string>
+    <string name="mcp_server_elicitation_cancel">取消</string>
+    <string name="mcp_server_elicitation_cancel_tool">取消这次工具调用</string>
+    <string name="mcp_server_elicitation_cancel_request">取消该请求</string>
+
+    <!-- 工具建议的安装/启用卡（codex-rs/tui/src/bottom_pane/mod.rs:1760-1811、app_link_view.rs:287-417）。 -->
+    <string name="mcp_server_elicitation_suggestion_install_instructions">在浏览器中安装此应用，然后返回这里。</string>
+    <string name="mcp_server_elicitation_suggestion_enable_instructions">启用此应用以在当前请求中使用。</string>
+    <string name="mcp_server_elicitation_suggestion_install_button">在 ChatGPT 上安装</string>
+    <string name="mcp_server_elicitation_suggestion_enable_button">启用应用</string>
+    <string name="mcp_server_elicitation_suggestion_installed_button">我已安装</string>
+    <string name="mcp_server_elicitation_suggestion_return_body">然后回到这里并选择“我已安装”。</string>
+
     <!-- RequestUserInputView.kt -->
     <string name="request_user_input_view_other">其他（自行填写）</string>
     <string name="request_user_input_view_your_answer">你的回答</string>

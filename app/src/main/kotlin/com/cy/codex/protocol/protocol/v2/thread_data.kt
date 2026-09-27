@@ -204,6 +204,8 @@ data class ThreadResumeParams(
     val excludeTurns: Boolean? = null,
     /** Experimental `thread/resume.initialTurnsPage`: embed one bounded turns page. */
     val initialTurnsPage: ThreadResumeInitialTurnsPageParams? = null,
+    /** Experimental `thread/resume.permissions`: named permissions profile id (codex-rs/app-server-protocol/src/protocol/v2/thread.rs). */
+    val permissions: String? = null,
 )
 
 /** Experimental `thread/resume.initialTurnsPage`; defaults to descending order and `summary`. */
@@ -258,6 +260,8 @@ data class ThreadStartParams(
     val config: JsonElement? = null,
     /** Experimental `thread/start.dynamicTools`: client-hosted tool specs the model may call. */
     val dynamicTools: JsonElement? = null,
+    /** Experimental `thread/start.permissions`: named permissions profile id (codex-rs/app-server-protocol/src/protocol/v2/thread.rs). */
+    val permissions: String? = null,
 )
 
 /**
@@ -279,6 +283,8 @@ data class ThreadForkParams(
     val developerInstructions: String? = null,
     val ephemeral: Boolean? = null,
     val excludeTurns: Boolean? = null,
+    /** Experimental `thread/fork.permissions`: named permissions profile id (codex-rs/app-server-protocol/src/protocol/v2/thread.rs). */
+    val permissions: String? = null,
 )
 
 /** `threadSection/…`: a user-defined group of threads in the sidebar. */
@@ -321,12 +327,23 @@ enum class InputModality(val wire: String) {
     Audio("audio"),
 }
 
-/** `permissionProfile/list` entry. */
+/**
+ * `permissionProfile/list` entry (codex-rs/app-server-protocol/src/protocol/v2/permissions.rs).
+ * [allowed] is the requirements verdict, not the user's choice: disallowed profiles stay listed.
+ */
 data class PermissionProfileEntry(
     val id: String,
-    val name: String,
-    val description: String = "",
-    val active: Boolean = false,
+    val description: String? = null,
+    val allowed: Boolean = false,
+)
+
+/**
+ * The profile behind a session's active permissions (codex-rs/app-server-protocol/src/protocol/v2/permissions.rs),
+ * distinct from [PermissionProfileEntry]. [extends] is the parent when the profile chains.
+ */
+data class ActivePermissionProfile(
+    val id: String,
+    val extends: String? = null,
 )
 
 /** `experimentalFeature/list` entry. */
@@ -523,7 +540,52 @@ data class AccountRateLimits(
     val accountId: String? = null,
     val rateLimitResetCredits: RateLimitResetCreditsSummary? = null,
     val ordinaryUsageAllowed: Boolean? = null,
+    /**
+     * `rate_limit_upsell` of the same usage read (codex-rs/app-server-protocol/src/protocol/v2/account.rs);
+     * null both when absent and when banner validation drops it — see [rateLimitUpsellPresent].
+     */
+    val rateLimitUpsell: BackendBanner? = null,
+    /**
+     * Whether the wire carried a non-null `rateLimitUpsell` before parsing. Recovery keys on this,
+     * not [rateLimitUpsell]: upstream tests is_none() on the raw field
+     * (codex-rs/tui/src/chatwidget/backend_banners.rs).
+     */
+    val rateLimitUpsellPresent: Boolean = rateLimitUpsell != null,
 )
+
+/**
+ * One `rate_limit_upsell` banner; keys stay snake_case inside the camelCase response
+ * (codex-rs/app-server-protocol/src/protocol/v2/account.rs). Wire projection only.
+ */
+data class BackendBanner(
+    val bannerType: String,
+    val title: String,
+    val description: String,
+    val ctas: List<BackendBannerCta> = emptyList(),
+    /** Unix seconds on the wire, decoded to epoch millis. */
+    val resetAt: Long? = null,
+    val modelSlug: String? = null,
+    val blockedModelSlug: String? = null,
+    val fallbackModelSlugs: List<String> = emptyList(),
+    val presentation: BannerPresentation = BannerPresentation.Inline,
+    val requestUrl: String? = null,
+)
+
+data class BackendBannerCta(
+    val action: String,
+    val label: String,
+)
+
+/** `presentation` on a [BackendBanner] (codex-rs/tui/src/backend_banners.rs); `dismissible` collapses on a new turn. */
+enum class BannerPresentation(val wire: String) {
+    Inline("inline"),
+    Dismissible("dismissible");
+
+    companion object {
+        fun fromWire(value: String): BannerPresentation? =
+            entries.find { it.wire == value }
+    }
+}
 
 /** One rate-limit bucket. Mirrors `RateLimitSnapshot`; every field is optional. */
 data class RateLimitSnapshot(

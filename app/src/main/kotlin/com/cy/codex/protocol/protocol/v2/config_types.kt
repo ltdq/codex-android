@@ -97,12 +97,14 @@ data class ThreadSessionState(
     val model: String = "",
     val modelDisplayName: String = "",
     val modelProviderId: String = "openai",
-    val reasoningEffort: ReasoningEffort = ReasoningEffort.High,
+    /** Null when the thread has no explicit effort: the model default applies. */
+    val reasoningEffort: ReasoningEffort? = ReasoningEffort.High,
     val approvalPolicy: AskForApproval = AskForApproval.OnRequest,
     val approvalsReviewer: ApprovalsReviewer = ApprovalsReviewer.User,
     val granularApproval: GranularApprovalConfig = GranularApprovalConfig(),
     val sandboxPolicy: SandboxPolicy = SandboxPolicy(),
-    val activePermissionProfile: PermissionProfileEntry? = null,
+    /** Named or implicit built-in profile that produced the active permissions, when known. */
+    val activePermissionProfile: ActivePermissionProfile? = null,
     val collaborationMode: CollaborationMode = CollaborationMode.Default,
     val personality: Personality = Personality.None,
     /** Effective `serviceTier`; `null` means the server is on its default. */

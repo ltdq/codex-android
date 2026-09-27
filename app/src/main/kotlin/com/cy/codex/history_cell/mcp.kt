@@ -1,14 +1,25 @@
 package com.cy.codex.history_cell
 
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.ReadOnlyComposable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
@@ -21,10 +32,13 @@ import com.cy.codex.protocol.protocol.item.McpToolCallItem
 import com.cy.codex.protocol.protocol.v2.DynamicToolCallStatus
 import com.cy.codex.protocol.protocol.v2.McpToolCallStatus
 import com.cy.codex.CodeBlock
+import com.cy.codex.markdown_render.LinkTarget
+import com.cy.codex.markdown_render.openLink
 import com.cy.codex.ToolCard
 import com.cy.codex.ThreadStatusTone
 import com.cy.codex.statusDotColor
 import com.cy.codex.UiType
+import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Link
@@ -49,6 +63,10 @@ fun McpToolCallCell(item: McpToolCallItem, modifier: Modifier = Modifier) {
         accent = statusDotColor(tone),
         trailing = { StatusChip(label = mcpLabel(item.status), tone = tone) },
     ) {
+        // Both render nothing when the call carries no metadata, so a plain MCP card is unchanged.
+        val meta = projectMcpMeta(item)
+        McpMetaBadges(meta.badges)
+        meta.resourceUri?.let { uri -> McpResourceUriRow(uri) }
         val error = item.error
         val blocks = projectMcpResult(item.result)
         Arguments(item.arguments)
@@ -143,6 +161,81 @@ fun FunctionCallOutputCell(item: FunctionCallOutputItem, modifier: Modifier = Mo
             LimitedCodeBlock(text = output)
         }
     }
+}
+
+/** Metadata chips, styled like the command-action chips of exec.kt; order fixed by [projectMcpMeta]. */
+@Composable
+private fun McpMetaBadges(
+    badges: List<McpMetaBadge>,
+    chipSpacing: Dp = 6.dp,
+    blockSpacing: Dp = 8.dp,
+) {
+    if (badges.isEmpty()) return
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(chipSpacing),
+    ) {
+        badges.forEach { badge -> MetaChip(text = mcpMetaBadgeLabel(badge)) }
+    }
+    Spacer(Modifier.height(blockSpacing))
+}
+
+@Composable
+@ReadOnlyComposable
+private fun mcpMetaBadgeLabel(badge: McpMetaBadge): String = when (badge) {
+    is McpMetaBadge.App -> badge.label
+    is McpMetaBadge.Action -> badge.actionName
+    is McpMetaBadge.Plugin -> stringResource(R.string.mcp_cell_plugin_badge, badge.pluginId)
+    McpMetaBadge.ReadOnly -> stringResource(R.string.mcp_cell_read_only)
+}
+
+/**
+ * The app resource the call acted on; tapping follows openLink (markdown_render/local_links.kt).
+ * Non-web schemes (app://, plugin://) have no Android handler and must never crash the cell.
+ */
+@Composable
+private fun McpResourceUriRow(
+    uri: String,
+    iconSpacing: Dp = 6.dp,
+    blockSpacing: Dp = 8.dp,
+    iconSize: Dp = 13.dp,
+) {
+    val context = LocalContext.current
+    val uriHandler = LocalUriHandler.current
+    val colors = MiuixTheme.colorScheme
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable {
+                val target = if (uri.startsWith("http://") || uri.startsWith("https://")) {
+                    LinkTarget.Web(uri)
+                } else {
+                    LinkTarget.Local(uri, null, uri)
+                }
+                openLink(context, uriHandler, target)
+            },
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            imageVector = MiuixIcons.Link,
+            contentDescription = stringResource(R.string.mcp_cell_resource_uri),
+            modifier = Modifier.size(iconSize),
+            tint = colors.onSurfaceVariantSummary,
+        )
+        Spacer(Modifier.width(iconSpacing))
+        Text(
+            text = uri,
+            fontFamily = FontFamily.Monospace,
+            fontSize = UiType.Caption,
+            lineHeight = UiType.CaptionLine,
+            color = colors.onSurfaceVariantSummary,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+    Spacer(Modifier.height(blockSpacing))
 }
 
 @Composable

@@ -1,6 +1,11 @@
 package com.cy.codex.protocol
 
 import com.cy.codex.protocol.protocol.Json
+import com.cy.codex.protocol.protocol.objectValue
+import com.cy.codex.protocol.protocol.v2.ActivePermissionProfile
+import com.cy.codex.protocol.protocol.v2.BackendBannerCta
+import com.cy.codex.protocol.protocol.v2.BannerPresentation
+import com.cy.codex.protocol.protocol.v2.WorkspaceMessageType
 import com.cy.codex.protocol.protocol.item.AgentMessageDelivery
 import com.cy.codex.protocol.protocol.item.AgentMessageItem
 import com.cy.codex.protocol.protocol.item.CommandExecutionItem
@@ -16,6 +21,7 @@ import org.junit.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -36,22 +42,49 @@ class WireCodecTest {
     }
 
     @Test
-    fun `web search projects results and drops elements with neither title nor url`() {
+    fun `web search keeps result elements naming a known field and drops the rest`() {
         val parsed = item(
             """{"type":"webSearch","id":"w","query":"kotlin","action":{"type":"search","query":"kotlin"},
                  "results":[
-                   {"type":"text_result","url":"https://example.com/a","title":"A","snippet":"s",
+                   {"type":"text_result","ref_id":"turn0search0","url":"https://example.com/a","title":"A","snippet":"s",
                     "future_field":"ignored"},
-                   {"type":"text_result","ref_id":"only-an-id"}]}"""
+                   {"type":"text_result","ref_id":"only-an-id"},
+                   {"url":"only-a-url"},
+                   {"snippet":"only-a-snippet"},
+                   {"title":""},
+                   {"future_field":{"preserved":true}},
+                   {},
+                   "not-an-object"]}"""
         )
         val search = assertIs<WebSearchItem>(parsed)
-        val results = search.results
-        assertEquals(1, results.size, "an element with no title and no url is not a renderable result")
+        val results = search.results!!
+        assertEquals(5, results.size, "an element must name at least one of title/url/snippet/ref_id to be kept")
+        assertEquals("turn0search0", results[0].refId)
         assertEquals("A", results[0].title)
         assertEquals("https://example.com/a", results[0].url)
         assertEquals("s", results[0].snippet)
         assertEquals("text_result", results[0].type)
+        assertEquals("only-an-id", results[1].refId)
+        assertEquals("only-a-url", results[2].url)
+        assertEquals("only-a-snippet", results[3].snippet)
+        assertEquals("", results[4].title, "a blank title is still a named field, unlike an object naming none")
         assertEquals(WebSearchAction.Search(query = "kotlin", queries = null), search.action)
+    }
+
+    @Test
+    fun `web search keeps a missing results payload distinct from an explicit empty list`() {
+        assertNull(
+            assertIs<WebSearchItem>(item("""{"type":"webSearch","id":"w","query":"k"}""")).results,
+            "an older server sends no results payload at all",
+        )
+        assertNull(
+            assertIs<WebSearchItem>(item("""{"type":"webSearch","id":"w","query":"k","results":null}""")).results,
+        )
+        assertEquals(
+            emptyList(),
+            assertIs<WebSearchItem>(item("""{"type":"webSearch","id":"w","query":"k","results":[]}""")).results,
+            "an explicit empty list is a search that found nothing",
+        )
     }
 
     @Test
@@ -165,5 +198,162 @@ class WireCodecTest {
         assertEquals("x", fallback.id)
         assertEquals("brandNewThing", fallback.name)
         assertTrue(fallback.output.contains("\"payload\""), "the raw item is kept so an unknown type is still visible")
+    }
+
+    @Test
+    fun `session keeps the active permission profile and tolerates its absence`() {
+        val decoded = WireCodec.session(
+            Json.parse(
+                """{"thread":{"id":"t","cwd":"/w"},"model":"gpt-5","modelProvider":"openai",
+                   "activePermissionProfile":{"id":"work","extends":"base"}}""",
+            ).objectValue(),
+        )
+        assertEquals(ActivePermissionProfile("work", "base"), decoded.activePermissionProfile)
+
+        assertNull(
+            WireCodec.session(
+                Json.parse("""{"thread":{"id":"t","cwd":"/w"},"model":"gpt-5","modelProvider":"openai"}""").objectValue(),
+            ).activePermissionProfile,
+        )
+        assertNull(
+            WireCodec.session(
+                Json.parse("""{"thread":{"id":"t"},"model":"m","modelProvider":"openai","activePermissionProfile":null}""").objectValue(),
+            ).activePermissionProfile,
+        )
+        assertNull(
+            WireCodec.session(
+                Json.parse("""{"thread":{"id":"t"},"model":"m","modelProvider":"openai","activePermissionProfile":{}}""").objectValue(),
+            ).activePermissionProfile,
+            "an object without an id cannot name a profile",
+        )
+    }
+
+    @Test
+    fun `workspace messages keep the feature flag and convert seconds to millis`() {
+        val decoded = WireCodec.workspaceMessages(
+            Json.parse(
+                """{"featureEnabled":true,"messages":[
+                   {"messageId":"m1","messageType":"headline","messageBody":"Deploy freeze","createdAt":5,"archivedAt":7},
+                   {"messageId":"m2","messageType":"announcement","messageBody":"Lunch"},
+                   {"messageId":"m3","messageType":"future-kind","messageBody":"?"}]}""",
+            ).objectValue(),
+        )
+        assertTrue(decoded.featureEnabled)
+        val headline = decoded.messages[0]
+        assertEquals("m1", headline.messageId)
+        assertEquals(WorkspaceMessageType.Headline, headline.messageType)
+        assertEquals("Deploy freeze", headline.messageBody)
+        assertEquals(5_000L, headline.createdAt)
+        assertEquals(7_000L, headline.archivedAt)
+        assertEquals(WorkspaceMessageType.Announcement, decoded.messages[1].messageType)
+        assertEquals(WorkspaceMessageType.Unknown, decoded.messages[2].messageType)
+
+        val disabled = WireCodec.workspaceMessages(
+            Json.parse("""{"featureEnabled":false,"messages":[{"messageId":"m","messageType":"headline","messageBody":"x"}]}""").objectValue(),
+        )
+        assertFalse(disabled.featureEnabled, "the flag is the degradation switch, not decoration")
+        assertTrue(
+            WireCodec.workspaceMessages(Json.parse("""{"messages":[]}""").objectValue()).featureEnabled,
+            "a payload missing the required flag still scans its messages",
+        )
+    }
+
+    private fun rateLimits(json: String) = WireCodec.accountRateLimits(Json.parse(json).objectValue())
+
+    private fun upsell(banner: String) =
+        rateLimits("""{"rateLimits":{},"rateLimitUpsell":$banner}""").rateLimitUpsell
+
+    @Test
+    fun `rate limit upsell decodes the snake_case banner contract`() {
+        val banner = upsell(
+            """{"banner_type":"selected_model_limit","title":"Selected model usage exhausted",
+               "description":"Switch to another model or contact your owner.",
+               "ctas":[{"action":"notify_owner","label":"Notify owner"},
+                       {"action":"request_increase","label":"Request increase"}],
+               "reset_at":1760000000,"model_slug":"test-model-a","blocked_model_slug":"test-model-a",
+               "fallback_model_slugs":["model-b","model-c"],"presentation":"dismissible",
+               "request_url":"https://example.test/limits"}""",
+        )!!
+        assertEquals("selected_model_limit", banner.bannerType)
+        assertEquals("Selected model usage exhausted", banner.title)
+        assertEquals("Switch to another model or contact your owner.", banner.description)
+        assertEquals(
+            listOf(BackendBannerCta("notify_owner", "Notify owner"), BackendBannerCta("request_increase", "Request increase")),
+            banner.ctas,
+        )
+        assertEquals(1_760_000_000_000L, banner.resetAt, "reset_at is Unix seconds on the wire")
+        assertEquals("test-model-a", banner.modelSlug)
+        assertEquals("test-model-a", banner.blockedModelSlug)
+        assertEquals(listOf("model-b", "model-c"), banner.fallbackModelSlugs)
+        assertEquals(BannerPresentation.Dismissible, banner.presentation)
+        assertEquals("https://example.test/limits", banner.requestUrl)
+
+        val plain = upsell("""{"banner_type":"b","title":"t","description":"d","ctas":[]}""")!!
+        assertEquals(BannerPresentation.Inline, plain.presentation, "presentation defaults to inline")
+        assertNull(plain.resetAt)
+        assertNull(plain.modelSlug)
+        assertNull(plain.blockedModelSlug)
+        assertEquals(emptyList(), plain.fallbackModelSlugs)
+        assertNull(plain.requestUrl)
+    }
+
+    @Test
+    fun `a banner failing the parse bounds is dropped whole`() {
+        val fourLines = "l1\\nl2\\nl3\\nl4"
+        val thirteenLines = (1..13).joinToString("\\n") { "line$it" }
+        val controlSlug = "a\\u0007b"
+        val tooManyCtas = (1..9).joinToString(",") { """{"action":"a","label":"l"}""" }
+        val tooManySlugs = (1..17).joinToString(",") { "\"slug$it\"" }
+        val cases = mapOf(
+            "blank title" to """{"banner_type":"b","title":"  ","description":"d","ctas":[]}""",
+            "title over three lines" to """{"banner_type":"b","title":"$fourLines","description":"d","ctas":[]}""",
+            "title over 1024 bytes" to """{"banner_type":"b","title":"${"x".repeat(1025)}","description":"d","ctas":[]}""",
+            "description over twelve lines" to """{"banner_type":"b","title":"t","description":"$thirteenLines","ctas":[]}""",
+            "description over 4096 bytes" to """{"banner_type":"b","title":"t","description":"${"x".repeat(4097)}","ctas":[]}""",
+            "more than eight ctas" to """{"banner_type":"b","title":"t","description":"d","ctas":[$tooManyCtas]}""",
+            "more than sixteen fallback slugs" to """{"banner_type":"b","title":"t","description":"d","ctas":[],"fallback_model_slugs":[$tooManySlugs]}""",
+            "empty fallback slug" to """{"banner_type":"b","title":"t","description":"d","ctas":[],"fallback_model_slugs":[""]}""",
+            "fallback slug of spaces" to """{"banner_type":"b","title":"t","description":"d","ctas":[],"fallback_model_slugs":["  "]}""",
+            "fallback slug with a control char" to """{"banner_type":"b","title":"t","description":"d","ctas":[],"fallback_model_slugs":["$controlSlug"]}""",
+            "fallback slug over 256 bytes" to """{"banner_type":"b","title":"t","description":"d","ctas":[],"fallback_model_slugs":["${"y".repeat(257)}"]}""",
+            "blocked slug with a control char" to """{"banner_type":"b","title":"t","description":"d","ctas":[],"blocked_model_slug":"$controlSlug"}""",
+            "ctas of the wrong type" to """{"banner_type":"b","title":"t","description":"d","ctas":"nope"}""",
+            "a cta missing its label" to """{"banner_type":"b","title":"t","description":"d","ctas":[{"action":"a"}]}""",
+            "unknown presentation" to """{"banner_type":"b","title":"t","description":"d","ctas":[],"presentation":"popup"}""",
+            "presentation of the wrong type" to """{"banner_type":"b","title":"t","description":"d","ctas":[],"presentation":1}""",
+            "reset_at of the wrong type" to """{"banner_type":"b","title":"t","description":"d","ctas":[],"reset_at":"soon"}""",
+            "an optional slug of the wrong type" to """{"banner_type":"b","title":"t","description":"d","ctas":[],"model_slug":7}""",
+            "a banner that is not an object" to "[]",
+        )
+        for ((name, banner) in cases) {
+            assertNull(upsell(banner), name)
+        }
+
+        val fullCtas = (1..8).joinToString(",") { """{"action":"a","label":"l"}""" }
+        val fullSlugs = (1..16).joinToString(",") { "\"ok$it\"" }
+        assertNotNull(
+            upsell(
+                """{"banner_type":"b","title":"${"t".repeat(1024)}","description":"${"d".repeat(4096)}",
+                   "ctas":[$fullCtas],
+                   "blocked_model_slug":"${"s".repeat(256)}",
+                   "fallback_model_slugs":[$fullSlugs]}""",
+            ),
+            "a banner at every bound still parses",
+        )
+    }
+
+    @Test
+    fun `raw upsell presence survives parse failure`() {
+        val invalid = """{"banner_type":"b","title":"  ","description":"d","ctas":[]}"""
+        val dropped = rateLimits("""{"rateLimits":{},"rateLimitUpsell":$invalid,"ordinaryUsageAllowed":true}""")
+        assertNull(dropped.rateLimitUpsell)
+        assertTrue(dropped.rateLimitUpsellPresent, "the wire field is present even though parsing failed")
+        val absent = rateLimits("""{"rateLimits":{},"ordinaryUsageAllowed":true}""")
+        assertFalse(absent.rateLimitUpsellPresent)
+        val nulled = rateLimits("""{"rateLimits":{},"rateLimitUpsell":null,"ordinaryUsageAllowed":true}""")
+        assertFalse(nulled.rateLimitUpsellPresent, "an explicit null is Option::None upstream")
+        val valid = rateLimits("""{"rateLimits":{},"rateLimitUpsell":{"banner_type":"b","title":"t","description":"d","ctas":[]}}""")
+        assertTrue(valid.rateLimitUpsellPresent)
+        assertNotNull(valid.rateLimitUpsell)
     }
 }

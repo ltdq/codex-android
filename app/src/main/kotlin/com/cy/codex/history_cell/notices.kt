@@ -182,6 +182,12 @@ fun HookPromptCell(
 ) {
     val colors = MiuixTheme.colorScheme
     val shape = remember(corner) { RoundedCornerShape(corner) }
+    // The wire carries no hook name; join the run id onto `hooks/list` (Android-only: upstream
+    // names no hook) and fall back to the generic label rather than leaking the opaque id.
+    val hooks = LocalHookMetadata.current
+    val identity = item.fragments.firstNotNullOfOrNull { fragment ->
+        resolveHookLabel(fragment.hookRunId, hooks)
+    }
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -199,7 +205,7 @@ fun HookPromptCell(
             )
             Spacer(Modifier.width(iconSpacing))
             Text(
-                text = stringResource(R.string.notices_cell_hook),
+                text = identity ?: stringResource(R.string.notices_cell_hook),
                 fontSize = headerFontSize,
                 lineHeight = headerLineHeight,
                 color = colors.onSurfaceVariantSummary,
@@ -208,7 +214,6 @@ fun HookPromptCell(
         }
         item.fragments.forEach { fragment ->
             Column(verticalArrangement = Arrangement.spacedBy(fragmentSpacing)) {
-                // The wire carries only the opaque `hookRunId` and no name; the header already credits the hook.
                 Text(
                     text = fragment.text,
                     fontSize = fragmentFontSize,

@@ -92,6 +92,7 @@ import com.cy.codex.copyToClipboard
 import com.cy.codex.glassTint
 import com.cy.codex.history_cell.CommandExecutionCell
 import com.cy.codex.history_cell.DiagnosticCell
+import com.cy.codex.history_cell.HookRunCell
 import com.cy.codex.history_cell.ThreadItemCell
 import com.cy.codex.history_cell.commandActionLabel
 import com.cy.codex.history_cell.isExploringCall
@@ -101,6 +102,7 @@ import com.cy.codex.protocol.ApprovalResponse
 import com.cy.codex.protocol.protocol.item.AgentMessageItem
 import com.cy.codex.protocol.protocol.item.CommandExecutionItem
 import com.cy.codex.protocol.protocol.item.ThreadItem
+import com.cy.codex.protocol.protocol.v2.HookRunSummary
 import com.cy.codex.protocol.protocol.v2.AttachmentType
 import com.cy.codex.protocol.protocol.v2.CollaborationMode
 import com.cy.codex.protocol.protocol.v2.CommandExecutionStatus
@@ -531,6 +533,16 @@ fun ChatScreen(
 }
 
 /**
+ * Whether a transcript has nothing to draw; hook runs count as content, so a session whose only
+ * history is a hook cell is not empty.
+ */
+internal fun transcriptIsEmpty(
+    items: List<ThreadItem>,
+    diagnostics: List<SessionDiagnostic>,
+    hookRuns: List<HookRunSummary>,
+): Boolean = items.isEmpty() && diagnostics.isEmpty() && hookRuns.isEmpty()
+
+/**
  * The transcript surface, split out of [ChatScreen] so a streaming write invalidates only this
  * pane, not the composer, panels and drawer around it.
  */
@@ -549,7 +561,9 @@ private fun TranscriptPane(
         remember(session) {
             derivedStateOf {
                 (!session.open && !session.loading) ||
-                    (session.open && items.isEmpty() && diagnostics.isEmpty() && !session.running)
+                    (session.open &&
+                        transcriptIsEmpty(items, diagnostics, session.hookRuns) &&
+                        !session.running)
             }
         }
     if (!app.startupReady || runtimeEmpty) {
@@ -573,6 +587,7 @@ private fun TranscriptPane(
     Transcript(
         items = items,
         diagnostics = diagnostics,
+        hookRuns = session.hookRuns,
         isStreaming = isStreaming,
         streamFor = streamFor,
         plan = session.plan,
@@ -892,6 +907,13 @@ internal fun foldTranscriptRows(items: List<ThreadItem>): List<TranscriptRow> {
     return rows
 }
 
+/**
+ * Row keys of the trailing hook-run section of [Transcript] (codex-rs/tui/src/history_cell/hook_cell.rs
+ * `output_lines`); the gap between rows plays the blank line between run blocks.
+ */
+internal fun hookRunRowKeys(hookRuns: List<HookRunSummary>): List<String> =
+    hookRuns.map { run -> "hook-run:${run.id}" }
+
 @Composable
 private fun ExploredGroupRow(
     commands: List<CommandExecutionItem>,
@@ -926,6 +948,7 @@ private fun ExploredGroupRow(
 internal fun Transcript(
     items: List<ThreadItem>,
     diagnostics: List<SessionDiagnostic>,
+    hookRuns: List<HookRunSummary> = emptyList(),
     isStreaming: (ThreadItem) -> Boolean,
     streamFor: (String) -> MarkdownStream?,
     plan: List<com.cy.codex.protocol.protocol.v2.PlanStep>,
@@ -955,6 +978,9 @@ internal fun Transcript(
     // Derived fold: a streaming write inside a row must not rewrite it.
     val rowsState = remember(items) { derivedStateOf { foldTranscriptRows(items) } }
     val rows = rowsState.value
+    // Not remembered: a SnapshotStateList keeps its identity as runs land, so reading it here is
+    // what subscribes the transcript to new runs.
+    val hookRunKeys = hookRunRowKeys(hookRuns)
 
     LazyColumn(
         state = listState,
@@ -994,6 +1020,10 @@ internal fun Transcript(
                     PlanTimeline(steps = plan)
                 }
             }
+        }
+        // Finished hook runs trail the items as their own cells (codex-rs/tui/src/history_cell/hook_cell.rs).
+        items(count = hookRunKeys.size, key = { hookRunKeys[it] }) { index ->
+            HookRunCell(run = hookRuns[index])
         }
         items(
             count = diagnostics.size,

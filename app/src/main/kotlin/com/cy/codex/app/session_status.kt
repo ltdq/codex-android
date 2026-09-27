@@ -339,7 +339,7 @@ fun SessionStatusScreen(
                     title = stringResource(R.string.status_card_reasoning_label),
                     endActions = {
                         Text(
-                            text = config.reasoningEffort.label().ifEmpty { "—" },
+                            text = config.reasoningEffort?.label().orEmpty().ifEmpty { "—" },
                             color = MiuixTheme.colorScheme.onSurface,
                             textAlign = TextAlign.End,
                         )
@@ -739,7 +739,7 @@ fun sessionStatusReport(app: CodexApp): String? {
         )
         appendLine("${text(R.string.status_card_model_provider_label)}: ${config.modelProviderId}")
         appendLine(
-            "${text(R.string.status_card_reasoning_label)}: ${config.reasoningEffort.label()}"
+            "${text(R.string.status_card_reasoning_label)}: ${config.reasoningEffort?.label() ?: "—"}"
         )
         appendLine("${text(R.string.status_card_approval_label)}: ${config.approvalPolicy.label()}")
         appendLine("${text(R.string.status_card_access_label)}: ${accessSummary(config)}")

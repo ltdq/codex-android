@@ -148,6 +148,7 @@ internal object WireCodec {
             approvalPolicy = AskForApproval.fromWire(value.text("approvalPolicy").orEmpty()),
             approvalsReviewer = ApprovalsReviewer.fromWire(value.text("approvalsReviewer")),
             sandboxPolicy = SandboxPolicy(mode, sandbox?.strings("writableRoots").orEmpty(), sandbox?.bool("networkAccess") ?: (mode == SandboxMode.DangerFullAccess)),
+            activePermissionProfile = value.objectOrNull("activePermissionProfile")?.let(::activePermissionProfile),
             collaborationMode = value.objectOrNull("collaborationMode")?.text("mode")?.let(CollaborationMode::fromWire)
                 ?: CollaborationMode.Default,
             serviceTier = value.text("serviceTier"),
@@ -159,6 +160,28 @@ internal object WireCodec {
             thread = row,
         )
     }
+
+    /**
+     * `activePermissionProfile` (codex-rs/app-server-protocol/src/protocol/v2/permissions.rs).
+     * A payload without an id decodes to null rather than to a nameless profile.
+     */
+    fun activePermissionProfile(o: JsonObject): ActivePermissionProfile? {
+        val id = o.text("id") ?: return null
+        return ActivePermissionProfile(id, o.text("extends"))
+    }
+
+    /**
+     * `account/workspaceMessages/read` response (codex-rs/app-server-protocol/src/protocol/v2/account.rs);
+     * timestamps arrive as Unix seconds and decode to epoch millis.
+     */
+    fun workspaceMessages(o: JsonObject): WorkspaceMessagesResponse = WorkspaceMessagesResponse(
+        // A missing flag reads as enabled so a malformed payload cannot silently disable the surface.
+        featureEnabled = o.bool("featureEnabled") != false,
+        messages = o.array("messages").map { value -> value.objectValue().let {
+            WorkspaceMessage(it.required("messageId"), WorkspaceMessageType.fromWire(it.text("messageType")), it.required("messageBody"),
+                it.long("createdAt")?.times(1000), it.long("archivedAt")?.times(1000))
+        } },
+    )
 
     fun changes(value: JsonObject): List<FileUpdateChange> = value.array("changes").map {
         val o = it.objectValue()
@@ -202,7 +225,9 @@ internal object WireCodec {
             "webSearch" -> WebSearchItem(
                 id,
                 o.text("query") ?: o.objectOrNull("action")?.text("query").orEmpty(),
-                results = o.array("results").mapNotNull(::webSearchResult),
+                // Absent/null stays null so a payload-less server is not read as a search that
+                // found nothing (codex-rs/codex-api/src/endpoint/search.rs).
+                results = (o["results"] as? JsonArray)?.mapNotNull(::webSearchResult),
                 action = o.objectOrNull("action")?.let(::webSearchAction),
             )
             "imageView" -> ImageViewItem(id, o.required("path"))
@@ -305,21 +330,106 @@ internal object WireCodec {
         } },
     )
 
-    fun accountRateLimits(o: JsonObject): AccountRateLimits = AccountRateLimits(
-        rateLimits = o.objectOrNull("rateLimits")?.let(::rateLimitSnapshot) ?: RateLimitSnapshot(),
-        rateLimitsByLimitId = o.objectOrNull("rateLimitsByLimitId")?.mapValues { (_, value) -> rateLimitSnapshot(value.objectValue()) },
-        accountId = o.text("accountId"),
-        rateLimitResetCredits = o.objectOrNull("rateLimitResetCredits")?.let { summary ->
-            RateLimitResetCreditsSummary(
-                availableCount = summary.long("availableCount") ?: 0L,
-                credits = (summary["credits"] as? JsonArray)?.map { value -> value.objectValue().let { credit ->
-                    RateLimitResetCredit(credit.required("id"), credit.text("status").orEmpty(), credit.text("resetType").orEmpty(),
-                        credit.long("grantedAt") ?: 0L, credit.text("title"), credit.text("description"), credit.long("expiresAt"))
-                } },
-            )
-        },
-        ordinaryUsageAllowed = o.bool("ordinaryUsageAllowed"),
-    )
+    fun accountRateLimits(o: JsonObject): AccountRateLimits {
+        // Raw presence must survive parse failure: recovery keys on the wire field's is_none()
+        // (codex-rs/tui/src/chatwidget/backend_banners.rs), not on a parsed banner.
+        val rawUpsell = o["rateLimitUpsell"]?.takeUnless { it is JsonNull }
+        return AccountRateLimits(
+            rateLimits = o.objectOrNull("rateLimits")?.let(::rateLimitSnapshot) ?: RateLimitSnapshot(),
+            rateLimitsByLimitId = o.objectOrNull("rateLimitsByLimitId")?.mapValues { (_, value) -> rateLimitSnapshot(value.objectValue()) },
+            accountId = o.text("accountId"),
+            rateLimitResetCredits = o.objectOrNull("rateLimitResetCredits")?.let { summary ->
+                RateLimitResetCreditsSummary(
+                    availableCount = summary.long("availableCount") ?: 0L,
+                    credits = (summary["credits"] as? JsonArray)?.map { value -> value.objectValue().let { credit ->
+                        RateLimitResetCredit(credit.required("id"), credit.text("status").orEmpty(), credit.text("resetType").orEmpty(),
+                            credit.long("grantedAt") ?: 0L, credit.text("title"), credit.text("description"), credit.long("expiresAt"))
+                    } },
+                )
+            },
+            ordinaryUsageAllowed = o.bool("ordinaryUsageAllowed"),
+            rateLimitUpsell = rawUpsell?.let(::backendBanner),
+            rateLimitUpsellPresent = rawUpsell != null,
+        )
+    }
+
+    /**
+     * One `rate_limit_upsell` banner (snake_case keys, codex-rs/app-server-protocol/src/protocol/v2/account.rs);
+     * dropped whole on any shape or bounds failure, like `BackendBanner::parse` in codex-rs/tui/src/backend_banners.rs.
+     */
+    private fun backendBanner(value: JsonElement): BackendBanner? {
+        val o = value as? JsonObject ?: return null
+        // Upstream serde rejects explicit null on required fields too, so `?: return null` matches.
+        val bannerType = o.text("banner_type") ?: return null
+        val title = o.text("title") ?: return null
+        val description = o.text("description") ?: return null
+        val rawCtas = o["ctas"] as? JsonArray ?: return null
+        val ctas = mutableListOf<BackendBannerCta>()
+        for (raw in rawCtas) {
+            val cta = raw as? JsonObject ?: return null
+            ctas += BackendBannerCta(cta.text("action") ?: return null, cta.text("label") ?: return null)
+        }
+        // Optional fields accept absent or null but not a wrong type: serde fails the whole banner.
+        for (key in listOf("model_slug", "blocked_model_slug", "request_url")) {
+            val raw = o[key]
+            if (raw != null && raw !is JsonNull && raw.stringOrNull() == null) return null
+        }
+        // Unix seconds on the wire, widened to epoch millis like `RateLimitWindow.resetsAt`.
+        val resetAt = when (val raw = o["reset_at"]) {
+            null, JsonNull -> null
+            else -> o.long("reset_at")?.times(1000) ?: return null
+        }
+        // `#[serde(default)]`: an absent key is the empty list, an explicit null fails like a wrong type.
+        val fallbackModelSlugs = when (val raw = o["fallback_model_slugs"]) {
+            null -> emptyList()
+            is JsonArray -> raw.map { it.stringOrNull() ?: return null }
+            else -> return null
+        }
+        val presentation = when (val raw = o["presentation"]) {
+            null -> BannerPresentation.Inline
+            else -> BannerPresentation.fromWire(raw.stringOrNull() ?: return null) ?: return null
+        }
+        val banner = BackendBanner(
+            bannerType = bannerType,
+            title = title,
+            description = description,
+            ctas = ctas,
+            resetAt = resetAt,
+            modelSlug = o.text("model_slug"),
+            blockedModelSlug = o.text("blocked_model_slug"),
+            fallbackModelSlugs = fallbackModelSlugs,
+            presentation = presentation,
+            requestUrl = o.text("request_url"),
+        )
+        return banner.takeIf(::validBackendBanner)
+    }
+
+    /**
+     * Bounds of `BackendBanner::parse` (codex-rs/tui/src/backend_banners.rs). Counts mirror Rust:
+     * `str::len` is UTF-8 bytes, `str::lines` drops a trailing empty line.
+     */
+    private fun validBackendBanner(banner: BackendBanner): Boolean {
+        val validSlug: (String) -> Boolean = { slug ->
+            slug.isNotBlank() && utf8Bytes(slug) <= 256 && slug.none { it.isISOControl() }
+        }
+        return utf8Bytes(banner.title) <= 1024 &&
+            banner.title.isNotBlank() &&
+            rustLines(banner.title) <= 3 &&
+            utf8Bytes(banner.description) <= 4096 &&
+            rustLines(banner.description) <= 12 &&
+            banner.ctas.size <= 8 &&
+            banner.fallbackModelSlugs.size <= 16 &&
+            banner.fallbackModelSlugs.all(validSlug) &&
+            (banner.blockedModelSlug == null || validSlug(banner.blockedModelSlug))
+    }
+
+    private fun utf8Bytes(text: String): Int = text.encodeToByteArray().size
+
+    /** Rust `str::lines().count()`: a trailing newline adds no line. */
+    private fun rustLines(text: String): Int {
+        if (text.isEmpty()) return 0
+        return text.split('\n').size - (if (text.endsWith('\n')) 1 else 0)
+    }
 
     fun attachment(o: JsonObject) = ThreadAttachment(
         id = o.required("id"),
@@ -369,16 +479,19 @@ internal object WireCodec {
     }
 
     /**
-     * One element of `webSearch.results`. The wire type is opaque JSON
-     * (codex-rs/ext/items/src/web_search.rs), so a result with neither title nor url is dropped
-     * rather than rendered as a blank row.
+     * One `webSearch.results` element (opaque JSON, codex-rs/ext/items/src/web_search.rs). Kept when
+     * it names any known field; an object naming none carries nothing a row could show.
      */
     private fun webSearchResult(value: JsonElement): WebSearchResult? {
         val o = value as? JsonObject ?: return null
-        val url = o.text("url").orEmpty()
-        val title = o.text("title").orEmpty()
-        if (url.isBlank() && title.isBlank()) return null
-        return WebSearchResult(title = title, url = url, snippet = o.text("snippet"), type = o.text("type"))
+        if (listOf("title", "url", "snippet", "ref_id").none { it in o }) return null
+        return WebSearchResult(
+            title = o.text("title").orEmpty(),
+            url = o.text("url").orEmpty(),
+            snippet = o.text("snippet"),
+            type = o.text("type"),
+            refId = o.text("ref_id"),
+        )
     }
 
     /**
