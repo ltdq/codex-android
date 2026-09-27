@@ -15,7 +15,7 @@ val DIFFUTILS_VER = "3.12"
 val FINDUTILS_VER = "4.11.0"
 val GAWK_VER = "5.4.1"
 val GREP_VER = "3.12"
-val GZIP_VER = "1.14"
+val GZIP_VER = "1.15"
 val MAKE_VER = "4.4.1"
 val PATCH_VER = "2.8"
 val SED_VER = "4.10"
@@ -145,7 +145,7 @@ toolchain {
     }
 
     tool("clang-format") {
-        source = SourceSpec.submodule("llvm", tag = "llvmorg-23.1.1")
+        source = SourceSpec.submodule("llvm", tag = "llvmorg-23.1.2")
         recipe {
             val hostFlags = listOf(
                 "-DCMAKE_BUILD_TYPE=Release", "-DLLVM_ENABLE_PROJECTS=clang",
