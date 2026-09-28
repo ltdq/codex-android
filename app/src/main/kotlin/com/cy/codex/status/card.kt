@@ -155,8 +155,6 @@ fun StatusCard(
     onCollaborationMode: (CollaborationMode) -> Unit,
     onCompact: () -> Unit,
     onOpenAgents: () -> Unit,
-    onOpenAgent: (String) -> Unit,
-    onOpenAgentInfo: (String) -> Unit,
     modifier: Modifier = Modifier,
     panelElevation: Dp = UiConsts.PanelElevation,
     rateLimitsUpdatedAt: Long? = null,
@@ -196,8 +194,6 @@ fun StatusCard(
             onCollaborationMode = onCollaborationMode,
             onCompact = onCompact,
             onOpenAgents = onOpenAgents,
-            onOpenAgent = onOpenAgent,
-            onOpenAgentInfo = onOpenAgentInfo,
         )
     }
 }
@@ -259,8 +255,6 @@ private fun SectionsColumn(
     onCollaborationMode: (CollaborationMode) -> Unit,
     onCompact: () -> Unit,
     onOpenAgents: () -> Unit,
-    onOpenAgent: (String) -> Unit,
-    onOpenAgentInfo: (String) -> Unit,
     modifier: Modifier = Modifier,
     contentPadding: PaddingValues = PaddingValues(horizontal = 11.dp, vertical = 8.dp),
     sectionGap: Dp = 7.dp,
@@ -413,8 +407,6 @@ private fun SectionsColumn(
                 collapsed = state.isFolded(StatusSection.Agents),
                 onToggle = { state.toggleSection(StatusSection.Agents) },
                 onOpenAgents = onOpenAgents,
-                onOpenAgent = onOpenAgent,
-                onOpenAgentInfo = onOpenAgentInfo,
                 modifier = Modifier.weight(1.12f).fillMaxHeight(),
             )
 
@@ -1503,8 +1495,6 @@ private fun AgentsSection(
     collapsed: Boolean,
     onToggle: () -> Unit,
     onOpenAgents: () -> Unit,
-    onOpenAgent: (String) -> Unit,
-    onOpenAgentInfo: (String) -> Unit,
     modifier: Modifier = Modifier,
     rowGap: Dp = 1.dp,
 ) {
@@ -1571,13 +1561,7 @@ private fun AgentsSection(
         if (!collapsed) {
 
             Column(verticalArrangement = Arrangement.spacedBy(rowGap)) {
-                roster.forEach { agent ->
-                    AgentRow(
-                        agent = agent,
-                        onClick = { onOpenAgent(agent.threadId) },
-                        onLongClick = { onOpenAgentInfo(agent.threadId) },
-                    )
-                }
+                roster.forEach { agent -> AgentRow(agent = agent) }
             }
         }
     }
@@ -1586,8 +1570,6 @@ private fun AgentsSection(
 @Composable
 private fun AgentRow(
     agent: AgentRosterEntry,
-    onClick: () -> Unit,
-    onLongClick: () -> Unit,
     contentPadding: PaddingValues = PaddingValues(horizontal = 9.dp, vertical = 5.dp),
     dotSize: Dp = 7.dp,
     dotGap: Dp = 9.dp,
@@ -1601,36 +1583,10 @@ private fun AgentRow(
     statusGap: Dp = 8.dp,
     statusSize: TextUnit = UiType.Footnote,
     statusLineHeight: TextUnit = UiType.CardTitle,
-    chevronGap: Dp = 3.dp,
-    chevronSize: Dp = 12.dp,
 ) {
     val colors = MiuixTheme.colorScheme
-    val shape = remember { RoundedCornerShape(UiConsts.RowCorner) }
-    // Only a subagent opens; the main agent is the thread this card describes.
-    val opens = agent.role != AgentRole.Main
     Row(
-        modifier =
-            Modifier.fillMaxWidth()
-                .then(
-                    if (opens) {
-                        Modifier.clip(shape)
-                            .background(Color.Transparent, shape)
-                            .combinedClickable(
-                                onClick = onClick,
-                                onLongClick = onLongClick,
-                                onClickLabel =
-                                    stringResource(
-                                        R.string.status_card_open_agent_session,
-                                        agent.name,
-                                    ),
-                                onLongClickLabel =
-                                    stringResource(R.string.status_card_agent_details, agent.name),
-                            )
-                    } else {
-                        Modifier.clip(shape)
-                    }
-                )
-                .padding(contentPadding),
+        modifier = Modifier.fillMaxWidth().padding(contentPadding),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
@@ -1669,15 +1625,6 @@ private fun AgentRow(
             color = colors.onSurfaceVariantSummary,
             maxLines = 1,
         )
-        if (opens) {
-            Spacer(Modifier.width(chevronGap))
-            Icon(
-                imageVector = MiuixIcons.ChevronForward,
-                contentDescription = stringResource(R.string.status_card_open_agent, agent.name),
-                modifier = Modifier.size(chevronSize),
-                tint = colors.onSurfaceVariantSummary,
-            )
-        }
     }
 }
 

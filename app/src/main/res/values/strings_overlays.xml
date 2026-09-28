@@ -5,14 +5,9 @@
     its own phrases.
 -->
 <resources>
-    <!-- AgentPickerSheet.kt: the shared sheet shell and the agent picker. -->
-    <string name="agent_picker_sheet_close">Cancel</string>
+    <!-- Agent roster naming and the empty state of a filtered roster. -->
     <string name="agent_picker_title">Agents</string>
-    <string name="agent_picker_subtitle">%1$d agents · subagents come from collab tool calls</string>
-    <string name="agent_picker_filter_hint">Filter by name or task</string>
-    <string name="agent_picker_filter_clear">Clear filter</string>
     <string name="agent_picker_empty">No matching agents</string>
-    <string name="agent_picker_current">Current agent</string>
 
     <!-- AgentsOverview.kt: the agent dashboard and the roster presentation helpers. -->
     <string name="agents_overview_title">Agents</string>

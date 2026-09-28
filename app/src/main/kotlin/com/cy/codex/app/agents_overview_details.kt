@@ -9,9 +9,9 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -24,13 +24,16 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import com.cy.codex.R
+import com.cy.codex.SessionState
 import com.cy.codex.ThreadStatusTone
 import com.cy.codex.UiConsts
 import com.cy.codex.UiType
@@ -42,67 +45,91 @@ import com.cy.codex.protocol.protocol.item.SubAgentActivityItem
 import com.cy.codex.protocol.protocol.item.ThreadItem
 import com.cy.codex.protocol.protocol.v2.CollabAgentTool
 import com.cy.codex.protocol.protocol.v2.SubAgentActivityKind
+import com.cy.codex.protocol.protocol.v2.Thread
 import com.cy.codex.raisedSurface
+import com.cy.codex.sheetColor
+import com.cy.codex.sheetSideMargin
 import com.cy.codex.statusDotColor
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CardDefaults
 import top.yukonga.miuix.kmp.basic.Icon
-import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.icon.MiuixIcons
-import top.yukonga.miuix.kmp.icon.extended.ChevronBackward
 import top.yukonga.miuix.kmp.icon.extended.Community
 import top.yukonga.miuix.kmp.icon.extended.Info
 import top.yukonga.miuix.kmp.icon.extended.Notes
 import top.yukonga.miuix.kmp.icon.extended.Tasks
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+import top.yukonga.miuix.kmp.window.WindowBottomSheet
 
 /**
- * A subagent as a page: the server keeps no thread for it, so everything is folded out of
- * the parent transcript.
+ * A subagent's summary as a bottom sheet: status, task, run metadata and the parent-transcript
+ * activity that mentions it. The conversation itself is a page of the chat pager.
  */
 @Composable
-fun SubAgentScreen(
+fun SubAgentSummarySheet(
+    show: Boolean,
     threadId: String,
-    items: List<ThreadItem>,
-    mainThreadId: String,
-    onBack: () -> Unit,
-    modifier: Modifier = Modifier,
+    session: SessionState,
+    descendants: List<Thread>,
+    onDismissRequest: () -> Unit,
+    onDismissFinished: () -> Unit,
 ) {
     val colors = MiuixTheme.colorScheme
     val mainAgentLabel = stringResource(R.string.agent_roster_main_label)
     val subAgentNameFormat = stringResource(R.string.agent_roster_sub_agent_name)
-    val entry =
-        remember(items, threadId, mainThreadId, mainAgentLabel, subAgentNameFormat) {
-            deriveAgentRoster(items, mainThreadId, mainAgentLabel, subAgentNameFormat).firstOrNull {
-                it.threadId == threadId
-            }
+    val roster = rememberAgentRoster(session, mainAgentLabel, subAgentNameFormat, descendants)
+    val entry = roster.firstOrNull { it.threadId == threadId }
+    val timeline =
+        remember(session.itemsRevision, threadId) {
+            deriveSubAgentTimeline(session.items, threadId)
         }
-    val timeline = remember(items, threadId) { deriveSubAgentTimeline(items, threadId) }
     val name =
         entry?.name ?: stringResource(R.string.sub_agent_screen_fallback_name, threadId.takeLast(4))
+    val mainThreadId = session.threadId
 
-    Column(modifier = modifier.fillMaxSize().background(colors.background)) {
-        BasicComponent(
-            title = name,
-            summary =
-                if (entry == null) stringResource(R.string.sub_agent_screen_missing)
-                else entry.statusLabel(),
-            startAction = { SubAgentBackButton(onBack) },
-        )
+    WindowBottomSheet(
+        show = show,
+        onDismissRequest = onDismissRequest,
+        onDismissFinished = onDismissFinished,
+        title = name,
+        backgroundColor = sheetColor(),
+        cornerRadius = UiConsts.SheetCorner,
+        sheetMaxWidth = UiConsts.SheetMaxWidth,
+        outsideMargin = DpSize(sheetSideMargin(), 0.dp),
+        insideMargin = DpSize(UiConsts.SheetPadding, 0.dp),
+    ) {
         Column(
             modifier =
-                Modifier.weight(1f)
-                    .fillMaxWidth()
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = UiConsts.ScreenMargin)
-                    .padding(bottom = UiConsts.PageBottomInset),
-            verticalArrangement = Arrangement.spacedBy(UiConsts.SectionGap),
+                Modifier.fillMaxWidth()
+                    .heightIn(
+                        max =
+                            LocalWindowInfo.current.containerDpSize.height *
+                                UiConsts.SheetHeightFractionTall
+                    )
         ) {
-            SubAgentTaskCard(entry)
-            SubAgentRunCard(entry, threadId, mainThreadId)
-            SubAgentTimelineCard(timeline)
+            Text(
+                text =
+                    if (entry == null) stringResource(R.string.sub_agent_screen_missing)
+                    else entry.statusLabel(),
+                fontSize = UiType.RowDetail,
+                lineHeight = UiType.RowDetailLine,
+                color = colors.onSurfaceVariantSummary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Column(
+                modifier =
+                    Modifier.fillMaxWidth()
+                        .verticalScroll(rememberScrollState())
+                        .padding(bottom = UiConsts.SheetPadding),
+                verticalArrangement = Arrangement.spacedBy(UiConsts.SectionGap),
+            ) {
+                SubAgentTaskCard(entry)
+                SubAgentRunCard(entry, threadId, mainThreadId)
+                SubAgentTimelineCard(timeline)
+            }
         }
     }
 }
@@ -369,22 +396,6 @@ private fun SubAgentInfoLine(
             color = colors.onSurface,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
-        )
-    }
-}
-
-@Composable
-private fun SubAgentBackButton(onBack: () -> Unit) {
-    IconButton(
-        onClick = onBack,
-        minWidth = UiConsts.IconButtonSize,
-        minHeight = UiConsts.IconButtonSize,
-    ) {
-        Icon(
-            MiuixIcons.ChevronBackward,
-            stringResource(R.string.sub_agent_screen_back),
-            Modifier.size(UiConsts.IconHeader),
-            MiuixTheme.colorScheme.primary,
         )
     }
 }

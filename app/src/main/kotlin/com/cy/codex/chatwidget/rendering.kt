@@ -37,6 +37,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.PagerDefaults
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -80,8 +83,12 @@ import com.cy.codex.UiConsts
 import com.cy.codex.UiType
 import com.cy.codex.app.AgentRosterEntry
 import com.cy.codex.app.AgentsOverview
+import com.cy.codex.app.StatusDot
+import com.cy.codex.app.SubAgentTranscriptPane
+import com.cy.codex.app.agentPageThreads
 import com.cy.codex.app.rememberAgentRoster
 import com.cy.codex.app.sessionStatusReport
+import com.cy.codex.app.tone
 import com.cy.codex.app.withThreadMetadata
 import com.cy.codex.bottom_pane.ApprovalDialog
 import com.cy.codex.bottom_pane.ApprovalNoticeBar
@@ -125,6 +132,9 @@ import com.cy.codex.status.formatTokensCompact
 import com.cy.codex.statusDotColor
 import com.cy.codex.statusPillSurface
 import java.io.File
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
@@ -141,12 +151,28 @@ import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.basic.Close
 import top.yukonga.miuix.kmp.icon.extended.Community
+import top.yukonga.miuix.kmp.icon.extended.Info
 import top.yukonga.miuix.kmp.icon.extended.Refresh
+import top.yukonga.miuix.kmp.nav.gesture.PredictiveBackHandler
 import top.yukonga.miuix.kmp.squircle.squircleClip
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+import top.yukonga.miuix.kmp.utils.PagerGestureNestedScrollConnection
+import top.yukonga.miuix.kmp.utils.PagerNavigationSpringSpec
+import top.yukonga.miuix.kmp.utils.pagerGestureOverride
+import top.yukonga.miuix.kmp.utils.springAnimateToPage
+
+/** Ignore the pager's initial settled page while a restored agent selection animates. */
+internal fun agentPageSelections(
+    settledPages: Flow<Int>,
+    pageThreads: List<String>,
+    mainThreadId: String,
+): Flow<String?> = settledPages.drop(1).map { page ->
+    pageThreads.getOrNull(page)?.takeIf { it != mainThreadId }
+}
 
 /**
- * The chat surface: transcript, drawer, status card, approval cards and composer, mirroring
+ * The chat surface: a pager whose first page is the open thread and whose later pages are the
+ * agents it spawned, plus the drawer, status card, approval cards and composer, mirroring
  * `codex-rs/tui/src/chatwidget.rs`. Owns only presentation state; everything else is an
  * [com.cy.codex.AppEvent].
  */
@@ -206,6 +232,7 @@ fun ChatScreen(
         }
     }
     val colors = MiuixTheme.colorScheme
+    val scope = rememberCoroutineScope()
     var overviewOpen by remember { mutableStateOf(false) }
     // `show` stays true through the exit animation; clearing on the request would cut it mid-slide.
     var overviewLeaving by remember { mutableStateOf(false) }
@@ -215,7 +242,36 @@ fun ChatScreen(
     val subAgentNameFormat = stringResource(R.string.agent_roster_sub_agent_name)
     // Folded via [rememberAgentRoster]: reading the items list here subscribes the whole screen to
     // every streaming delta.
-    val roster = rememberAgentRoster(session, mainAgentLabel, subAgentNameFormat)
+    val agentThreads = app.catalog.agentThreadsFor(session.threadId)
+    val roster = rememberAgentRoster(session, mainAgentLabel, subAgentNameFormat, agentThreads)
+    LaunchedEffect(session.threadId) {
+        if (session.threadId.isNotBlank()) {
+            app.onAppEvent(AppEvent.ReloadAgentThreads(session.threadId))
+        }
+    }
+    // The chat itself is the agent pager: page 0 is the bound thread, the pages after it are the
+    // spawned agents in its transcript and thread listing. Only page 0 is writable; the rest are reads.
+    val agentPages = remember(session.threadId, roster) { agentPageThreads(session.threadId, roster) }
+    val pagerState = rememberPagerState { agentPages.size }
+    val selectedPage = agentPages.indexOf(app.selectedAgent ?: session.threadId).coerceAtLeast(0)
+    LaunchedEffect(selectedPage, agentPages.size) {
+        if (pagerState.currentPage != selectedPage) pagerState.springAnimateToPage(selectedPage)
+    }
+    LaunchedEffect(pagerState, agentPages) {
+        agentPageSelections(snapshotFlow { pagerState.settledPage }, agentPages, session.threadId)
+            .collect { threadId ->
+                app.selectAgentPage(threadId)
+            }
+    }
+    // Back leaves an agent page for the parent page first; the shell only owns back once a page is
+    // pushed above the chat. Open sheets register their own handlers after this one and win.
+    PredictiveBackHandler(
+        enabled = pagerState.currentPage > 0 && app.surfaces.size == 1,
+        onProgress = {},
+        onCommit = { scope.launch { pagerState.springAnimateToPage(0) } },
+        onCancel = {},
+    )
+    val viewedAgent = agentPages.getOrNull(pagerState.currentPage)?.takeIf { it != session.threadId }
     val approval = app.widget.currentApproval
     val threadNameOf: (String) -> String = { threadId ->
         threads.threads
@@ -262,13 +318,40 @@ fun ChatScreen(
                         .fillMaxHeight()
                         .graphicsLayer { translationX = contentShift.toPx() }
             ) {
-                TranscriptPane(
-                    app = app,
-                    session = session,
-                    topInset = topInset,
-                    bottomInset = bottomInset,
-                    modifier = Modifier.fillMaxSize(),
-                )
+                HorizontalPager(
+                    state = pagerState,
+                    // The pages scroll vertically, so the pager owner reads horizontal drags
+                    // itself; native pager input would fight the transcripts for the pointer.
+                    modifier = Modifier.fillMaxSize().pagerGestureOverride(pagerState),
+                    userScrollEnabled = false,
+                    pageNestedScrollConnection = PagerGestureNestedScrollConnection,
+                    flingBehavior =
+                        PagerDefaults.flingBehavior(
+                            state = pagerState,
+                            snapAnimationSpec = PagerNavigationSpringSpec,
+                        ),
+                    key = { agentPages.getOrNull(it) ?: it },
+                ) { page ->
+                    val threadId = agentPages.getOrNull(page)
+                    if (threadId == null || threadId == session.threadId) {
+                        TranscriptPane(
+                            app = app,
+                            session = session,
+                            topInset = topInset,
+                            bottomInset = bottomInset,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    } else {
+                        SubAgentTranscriptPane(
+                            threadId = threadId,
+                            client = app.client,
+                            topInset = topInset,
+                            // Clear the read-only bar that replaces the composer on this page.
+                            bottomInset = bottomInset + UiConsts.PromptBarHeight + UiConsts.ScreenMargin,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
+                }
             }
         }
 
@@ -413,12 +496,6 @@ fun ChatScreen(
                         onCollaborationMode = { app.onAppEvent(AppEvent.SetCollaborationMode(it)) },
                         onCompact = { app.onAppEvent(AppEvent.CompactThread(session.threadId)) },
                         onOpenAgents = { overviewOpen = true },
-                        onOpenAgent = { threadId ->
-                            app.openSurface(Surface.SubAgentThread(threadId))
-                        },
-                        onOpenAgentInfo = { threadId ->
-                            app.openSurface(Surface.SubAgent(threadId))
-                        },
                         modifier =
                             Modifier.onSizeChanged {
                                 statusHeight.value = with(density) { it.height.toDp() }
@@ -436,26 +513,83 @@ fun ChatScreen(
                 label = "promptBarStartInset",
             )
 
-        ComposerDock(
-            app = app,
-            session = session,
-            threadNameOf = threadNameOf,
-            promptBarStartInset = promptBarStartInset,
-            backdrop = backdrop,
-            onAttach = { attachmentPicker.launch(arrayOf("*/*")) },
-            composerGap = composerGap,
-            queuedEnterDurationMs = queuedEnterDurationMs,
-            queuedExitDurationMs = queuedExitDurationMs,
+        // The composer belongs to the bound thread; an agent page is read-only and retracts it.
+        AnimatedVisibility(
+            visible = viewedAgent == null,
+            enter =
+                fadeIn(tween(Motion.EnterMs, easing = Motion.EnterEasing)) +
+                    expandVertically(
+                        expandFrom = Alignment.Bottom,
+                        animationSpec = tween(Motion.EnterMs, easing = Motion.EnterEasing),
+                    ),
+            exit =
+                fadeOut(tween(Motion.ExitMs, easing = Motion.ExitEasing)) +
+                    shrinkVertically(
+                        shrinkTowards = Alignment.Bottom,
+                        animationSpec = tween(Motion.ExitMs, easing = Motion.ExitEasing),
+                    ),
             modifier = Modifier.align(Alignment.BottomCenter),
-        )
+        ) {
+            ComposerDock(
+                app = app,
+                session = session,
+                threadNameOf = threadNameOf,
+                promptBarStartInset = promptBarStartInset,
+                backdrop = backdrop,
+                onAttach = { attachmentPicker.launch(arrayOf("*/*")) },
+                composerGap = composerGap,
+                queuedEnterDurationMs = queuedEnterDurationMs,
+                queuedExitDurationMs = queuedExitDurationMs,
+                modifier = Modifier,
+            )
+        }
+
+        // Kept through the exit animation so the bar does not pop out from under the returning
+        // composer.
+        var lastAgentPage by remember { mutableStateOf<String?>(null) }
+        LaunchedEffect(viewedAgent) {
+            if (viewedAgent != null) lastAgentPage = viewedAgent
+        }
+        AnimatedVisibility(
+            visible = viewedAgent != null,
+            enter =
+                fadeIn(tween(Motion.EnterMs, easing = Motion.EnterEasing)) +
+                    expandVertically(
+                        expandFrom = Alignment.Bottom,
+                        animationSpec = tween(Motion.EnterMs, easing = Motion.EnterEasing),
+                    ),
+            exit =
+                fadeOut(tween(Motion.ExitMs, easing = Motion.ExitEasing)) +
+                    shrinkVertically(
+                        shrinkTowards = Alignment.Bottom,
+                        animationSpec = tween(Motion.ExitMs, easing = Motion.ExitEasing),
+                    ),
+            modifier = Modifier.align(Alignment.BottomCenter),
+        ) {
+            lastAgentPage?.let { threadId ->
+                SubAgentPageBar(
+                    entry = roster.firstOrNull { it.threadId == threadId },
+                    onOpenDetails = { app.openAgentSummary(threadId) },
+                    modifier =
+                        Modifier.fillMaxWidth()
+                            .padding(
+                                start = (promptBarStartInset + UiConsts.ScreenMargin)
+                                    .coerceAtLeast(0.dp),
+                                end = UiConsts.ScreenMargin,
+                                bottom = UiConsts.ScreenMargin,
+                            ),
+                )
+            }
+        }
 
         AgentsOverviewPane(
             app = app,
             session = session,
             roster = roster,
+            activeThreadId = viewedAgent ?: session.threadId,
             show = overviewOpen || overviewLeaving,
-            onSelect = { threadId ->
-                app.openSurface(Surface.SubAgentThread(threadId))
+            onOpenAgent = { threadId ->
+                app.openAgentSummary(threadId)
                 overviewLeaving = true
             },
             onDismiss = { overviewLeaving = true },
@@ -629,8 +763,8 @@ private fun TranscriptPane(
         loading = session.loading,
         empty = !session.open && !session.loading,
         cwd = session.config.cwd,
-        onOpenAgent = { threadId -> app.openSurface(Surface.SubAgentThread(threadId)) },
-        onOpenAgentInfo = { threadId -> app.openSurface(Surface.SubAgent(threadId)) },
+        onOpenAgent = { threadId -> app.selectAgentPage(threadId) },
+        onOpenAgentInfo = { threadId -> app.openAgentSummary(threadId) },
         onAnswerQuestion = { text -> app.onAppEvent(AppEvent.AnswerAsyncQuestion(text)) },
         onEditPrompt = if (session.open && !session.loading && !session.running &&
             !app.widget.backtracking && !session.config.blocksDirectInput && app.sideParentOf(session.threadId) == null
@@ -1635,13 +1769,14 @@ private fun AgentsOverviewPane(
     app: CodexApp,
     session: SessionState,
     roster: List<AgentRosterEntry>,
+    activeThreadId: String,
     show: Boolean,
-    onSelect: (String) -> Unit,
+    onOpenAgent: (String) -> Unit,
     onDismiss: () -> Unit,
     onDismissFinished: () -> Unit,
 ) {
     val usage = app.catalog.threadUsage
-    val listedThreads = app.catalog.agentThreads + app.threads.threads
+    val listedThreads = app.catalog.agentThreadsFor(session.threadId) + app.threads.threads
     val entries =
         remember(roster, usage, listedThreads) {
             val byId = listedThreads.associateBy { it.id }
@@ -1652,12 +1787,75 @@ private fun AgentsOverviewPane(
     AgentsOverview(
         show = show,
         roster = entries,
-        activeThreadId = session.threadId,
-        onSelect = onSelect,
+        activeThreadId = activeThreadId,
+        onOpenAgent = onOpenAgent,
         onDismiss = onDismiss,
         onDismissFinished = onDismissFinished,
         totalTokens = entries.sumOf { it.tokens.toLong() },
     )
+}
+
+/**
+ * Replaces the composer on an agent page: it names the agent being read and opens the summary
+ * sheet. Switching pages is the swipe gesture, so the bar carries no page controls.
+ */
+@Composable
+private fun SubAgentPageBar(
+    entry: AgentRosterEntry?,
+    onOpenDetails: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val colors = MiuixTheme.colorScheme
+    Row(
+        modifier =
+            modifier
+                .clip(RoundedCornerShape(UiConsts.CornerChip))
+                .background(glassTint(0.94f))
+                .padding(
+                    start = UiConsts.Space12,
+                    end = UiConsts.Space4,
+                    top = UiConsts.Space8,
+                    bottom = UiConsts.Space8,
+                ),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (entry != null) {
+            StatusDot(entry.tone())
+            Spacer(Modifier.width(UiConsts.Space8))
+        }
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text =
+                    entry?.name ?: stringResource(R.string.sub_agent_thread_fallback_title),
+                fontSize = UiType.RowTitle,
+                lineHeight = UiType.RowTitleLine,
+                fontWeight = FontWeight.Medium,
+                color = colors.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = stringResource(R.string.sub_agent_page_read_only),
+                fontSize = UiType.Footnote,
+                lineHeight = UiType.FootnoteLine,
+                color = colors.onSurfaceVariantSummary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        IconButton(
+            onClick = onOpenDetails,
+            minWidth = UiConsts.IconButtonSize,
+            minHeight = UiConsts.IconButtonSize,
+        ) {
+            Icon(
+                imageVector = MiuixIcons.Info,
+                contentDescription = stringResource(R.string.sub_agent_page_details),
+                modifier = Modifier.size(UiConsts.IconHeader),
+                tint = colors.primary,
+            )
+        }
+    }
 }
 
 @Composable

@@ -84,9 +84,9 @@ fun AgentsScreen(
     val session = app.widget.state
     val mainLabel = stringResource(R.string.agent_roster_main_label)
     val nameFormat = stringResource(R.string.agent_roster_sub_agent_name)
-    val roster = rememberAgentRoster(session, mainLabel, nameFormat)
+    val agentThreads = app.catalog.agentThreadsFor(session.threadId)
+    val roster = rememberAgentRoster(session, mainLabel, nameFormat, agentThreads)
     val usage = app.catalog.threadUsage
-    val agentThreads = app.catalog.agentThreads
     val listedThreads = app.threads.threads
     val entries =
         remember(roster, usage, agentThreads, listedThreads) {
@@ -190,8 +190,8 @@ fun AgentsScreen(
                 filtered.forEach { agent ->
                     AgentRosterRow(
                         entry = agent,
-                        selected = agent.threadId == session.threadId,
-                        onClick = { app.openThread(agent.threadId) },
+                        selected = agent.threadId == (app.selectedAgent ?: session.threadId),
+                        onClick = { app.openAgentSummary(agent.threadId) },
                         tokens = agent.tokens,
                         busiestTokens = busiest,
                     )

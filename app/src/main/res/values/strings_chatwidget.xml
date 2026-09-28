@@ -115,9 +115,6 @@
     <string name="status_card_files_count">%1$d</string>
     <string name="status_card_files_empty">No changes this turn</string>
     <string name="status_card_option_selected">Selected</string>
-    <string name="status_card_open_agent_session">Open %1$s\'s session</string>
-    <string name="status_card_agent_details">Show details for %1$s</string>
-    <string name="status_card_open_agent">Open %1$s</string>
     <string name="status_card_agent_main_badge">Main</string>
     <string name="status_card_diff_expand">View diff</string>
     <string name="status_card_diff_collapse">Hide diff</string>

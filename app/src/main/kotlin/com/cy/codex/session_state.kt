@@ -857,6 +857,10 @@ class CatalogState {
 
     /** Subagent threads of the open thread, from a `thread/list` scoped by `ancestorThreadId`. */
     var agentThreads by mutableStateOf<List<Thread>>(emptyList())
+    var agentThreadsAncestorId by mutableStateOf<String?>(null)
+
+    fun agentThreadsFor(threadId: String): List<Thread> =
+        if (agentThreadsAncestorId == threadId) agentThreads else emptyList()
 
     /**
      * The connector setup a `plugin/install` asked for, or null when none is pending.
@@ -1097,7 +1101,7 @@ class ThreadListState {
     var loading by mutableStateOf(false)
 
     fun applyListing(listing: ThreadListing) {
-        threads = listing.threads
+        threads = listing.threads.filter { it.isConversation }
         archivedIds = listing.archivedIds
     }
 

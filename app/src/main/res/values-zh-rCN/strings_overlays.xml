@@ -3,14 +3,9 @@
     悬浮面板（ui/overlays）的文案。中文值与改造前的 Kotlin 字面量逐字一致，不做重新翻译。
 -->
 <resources>
-    <!-- AgentPickerSheet.kt：共用面板外壳与代理选择器。 -->
-    <string name="agent_picker_sheet_close">关闭</string>
+    <!-- 代理名册命名与过滤为空时的提示。 -->
     <string name="agent_picker_title">切换代理</string>
-    <string name="agent_picker_subtitle">%1$d 个代理 · 子代理来自协作工具调用</string>
-    <string name="agent_picker_filter_hint">按名称或任务过滤</string>
-    <string name="agent_picker_filter_clear">清除过滤</string>
     <string name="agent_picker_empty">没有匹配的代理</string>
-    <string name="agent_picker_current">当前代理</string>
 
     <!-- AgentsOverview.kt：代理总览与名册展示辅助。 -->
     <string name="agents_overview_title">代理总览</string>

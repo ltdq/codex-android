@@ -46,14 +46,15 @@ import top.yukonga.miuix.kmp.window.WindowBottomSheet
 
 /**
  * Agent dashboard, one card per roster entry, mirroring
- * `codex-rs/.../app/agents_overview.rs`; token bars are relative to the busiest agent.
+ * `codex-rs/.../app/agents_overview.rs`; token bars are relative to the busiest agent. A row opens
+ * the agent's summary sheet instead of switching the viewed agent.
  */
 @Composable
 fun AgentsOverview(
     show: Boolean,
     roster: List<AgentRosterEntry>,
     activeThreadId: String,
-    onSelect: (String) -> Unit,
+    onOpenAgent: (String) -> Unit,
     onDismiss: () -> Unit,
     onDismissFinished: () -> Unit,
     totalTokens: Long = 0L,
@@ -118,7 +119,7 @@ fun AgentsOverview(
                             entry = agent,
                             selected = agent.threadId == activeThreadId,
                             onClick = {
-                                onSelect(agent.threadId)
+                                onOpenAgent(agent.threadId)
                                 close?.invoke()
                             },
                             tokens = agent.tokens,

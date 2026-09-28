@@ -113,9 +113,6 @@
     <string name="status_card_files_count">%1$d 个</string>
     <string name="status_card_files_empty">本轮还没有改动</string>
     <string name="status_card_option_selected">已选择</string>
-    <string name="status_card_open_agent_session">进入%1$s的会话</string>
-    <string name="status_card_agent_details">查看%1$s的详细信息</string>
-    <string name="status_card_open_agent">进入%1$s</string>
     <string name="status_card_agent_main_badge">主</string>
     <string name="status_card_diff_expand">查看改动</string>
     <string name="status_card_diff_collapse">收起改动</string>

@@ -12,6 +12,8 @@ import com.cy.codex.protocol.protocol.v2.ActivePermissionProfile
 import com.cy.codex.protocol.protocol.v2.CommandExecutionStatus
 import com.cy.codex.protocol.protocol.v2.McpToolCallStatus
 import com.cy.codex.protocol.protocol.v2.PermissionProfileEntry
+import com.cy.codex.protocol.protocol.v2.Thread
+import com.cy.codex.protocol.protocol.v2.ThreadListing
 import com.cy.codex.protocol.protocol.v2.ThreadStatus
 import org.junit.Test
 import kotlin.test.assertEquals
@@ -230,4 +232,59 @@ private fun catalogWith(
 ): CatalogState = CatalogState().apply {
     permissionProfiles = profiles
     allowedPermissionProfiles = requirements
+}
+
+class ThreadListStateTest {
+
+    @Test
+    fun `spawned agents never join the conversation list`() {
+        val list = ThreadListState()
+        list.applyListing(
+            ThreadListing(
+                threads = listOf(thread("th_main"), thread("th_sub", parentThreadId = "th_main")),
+            )
+        )
+        assertEquals(listOf("th_main"), list.threads.map { it.id })
+    }
+
+    private fun thread(id: String, parentThreadId: String? = null) = Thread(
+        id = id,
+        preview = "",
+        modelProvider = "openai",
+        createdAt = 0L,
+        updatedAt = 0L,
+        cwd = "/tmp",
+        status = ThreadStatus.Idle,
+        cliVersion = "0",
+        ephemeral = false,
+        projectId = null,
+        sessionId = id,
+        parentThreadId = parentThreadId,
+    )
+}
+
+class AgentThreadListingTest {
+    @Test
+    fun `descendants are exposed only to their owning conversation`() {
+        val catalog = CatalogState()
+        val child = Thread(
+            id = "child",
+            preview = "",
+            modelProvider = "openai",
+            createdAt = 0L,
+            updatedAt = 0L,
+            cwd = "/tmp",
+            status = ThreadStatus.Idle,
+            cliVersion = "0",
+            ephemeral = false,
+            projectId = null,
+            sessionId = "child",
+            parentThreadId = "main",
+        )
+        catalog.agentThreads = listOf(child)
+        catalog.agentThreadsAncestorId = "main"
+
+        assertEquals(listOf(child), catalog.agentThreadsFor("main"))
+        assertTrue(catalog.agentThreadsFor("another").isEmpty())
+    }
 }

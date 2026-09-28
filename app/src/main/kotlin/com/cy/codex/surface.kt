@@ -106,24 +106,11 @@ sealed interface Surface : NavKey {
     data class McpToolbox(val server: String) : Surface
 
     // ---- agents -------------------------------------------------------------
-    /** `/agents` and `/subagents`: the roster of agents spawned from the open thread. */
+    /**
+     * `/agents` and `/subagents`: the roster of agents spawned from the open thread.
+     *
+     * The roster is a page rather than part of the chat because it carries lifecycle actions; the
+     * conversations themselves are pages of the chat pager, not surfaces.
+     */
     data object Agents : Surface
-
-    /**
-     * One subagent of the open thread.
-     *
-     * A subagent is not a thread of its own: the item stream only ever mentions one through a
-     * `CollabAgentToolCallItem` receiver id or a `SubAgentActivityItem`, so the page is addressed
-     * by that id and its body is folded out of the parent transcript.
-     */
-    data class SubAgent(val threadId: String) : Surface
-
-    /**
-     * The same agent's conversation, read as a page.
-     *
-     * A separate route from [SubAgent] because they are separate questions — "what is this agent"
-     * and "what did this agent do" — and entering the conversation must not disturb the session it
-     * was spawned from.
-     */
-    data class SubAgentThread(val threadId: String) : Surface
 }

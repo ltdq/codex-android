@@ -250,7 +250,7 @@
     <string name="skills_screen_disabled">Disabled</string>
     <string name="skills_screen_back">Back</string>
 
-    <!-- SubAgentScreen -->
+    <!-- SubAgentSummarySheet: a subagent's summary, hosted over the chat pager. -->
     <string name="sub_agent_screen_fallback_name">Subagent · %1$s</string>
     <string name="sub_agent_screen_missing">No longer in this session\'s agent list</string>
     <string name="sub_agent_section_task">Prompt</string>
@@ -271,7 +271,6 @@
     <string name="sub_agent_screen_interacted">Interacted with</string>
     <string name="sub_agent_screen_interrupted">Interrupted</string>
     <string name="sub_agent_screen_completed">Completed</string>
-    <string name="sub_agent_screen_back">Back</string>
 
     <!-- WorkspacePickerScreen -->
     <string name="workspace_picker_title">Choose working directory</string>
@@ -282,14 +281,12 @@
     <string name="workspace_picker_footer">This directory will be the session workspace</string>
     <string name="workspace_picker_confirm">Use this directory</string>
     <string name="workspace_picker_back">Back</string>
-    <!-- SubAgentThreadScreen.kt: a subagent's own conversation. -->
+    <!-- ChatScreen/SubAgentTranscriptPane: an agent page of the chat pager. -->
+    <string name="sub_agent_page_read_only">Read-only · swipe to switch agents</string>
+    <string name="sub_agent_page_details">Show details</string>
     <string name="sub_agent_thread_fallback_title">Subagent session</string>
-    <string name="sub_agent_thread_subtitle">This agent\'s own session, read alongside the one it was spawned from</string>
     <string name="sub_agent_thread_empty">This agent\'s session has no items yet.</string>
     <string name="sub_agent_thread_assistant">Subagent</string>
-    <string name="sub_agent_thread_previous">Previous agent</string>
-    <string name="sub_agent_thread_next">Next agent</string>
-    <string name="sub_agent_thread_pick">Choose agent</string>
     <string name="session_list_sections">Sections</string>
     <string name="session_list_section_new">New section</string>
     <string name="session_list_section_new_detail">Group threads by what they are for, not only by directory</string>

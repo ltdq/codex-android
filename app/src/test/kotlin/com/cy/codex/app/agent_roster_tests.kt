@@ -10,6 +10,8 @@ import com.cy.codex.protocol.protocol.v2.CollabAgentTool
 import com.cy.codex.protocol.protocol.v2.CollabAgentToolCallStatus
 import com.cy.codex.protocol.protocol.v2.ReasoningEffort
 import com.cy.codex.protocol.protocol.v2.SubAgentActivityKind
+import com.cy.codex.protocol.protocol.v2.Thread
+import com.cy.codex.protocol.protocol.v2.ThreadStatus
 import com.cy.codex.protocol.protocol.v2.UserInput
 import org.junit.Test
 import kotlin.test.assertEquals
@@ -40,6 +42,27 @@ class AgentRosterTest {
         model = model,
         reasoningEffort = ReasoningEffort.Medium,
         agentsStates = states,
+    )
+
+    private fun thread(
+        id: String,
+        parent: String,
+        createdAt: Long,
+        name: String? = null,
+    ) = Thread(
+        id = id,
+        preview = "Work on $id",
+        modelProvider = "openai",
+        createdAt = createdAt,
+        updatedAt = createdAt,
+        cwd = "/tmp",
+        status = ThreadStatus.Idle,
+        cliVersion = "0",
+        ephemeral = false,
+        projectId = null,
+        sessionId = id,
+        name = name,
+        parentThreadId = parent,
     )
 
     @Test
@@ -178,5 +201,78 @@ class AgentRosterTest {
             SUB_FORMAT,
         )
         assertTrue(roster.all { it.tokens == 0 })
+    }
+
+    @Test
+    fun pagerPagesStartAtTheOpenThreadAndKeepSpawnOrder() {
+        val roster = deriveAgentRoster(
+            listOf(spawn("c1", listOf(sub)), spawn("c2", listOf("th_sub_2"))),
+            main,
+            MAIN_LABEL,
+            SUB_FORMAT,
+        )
+        assertEquals(listOf(main, sub, "th_sub_2"), agentPageThreads(main, roster))
+    }
+
+    @Test
+    fun descendantListingRestoresAgentsMissingFromLoadedParentHistory() {
+        val recent = "th_recent"
+        val older = "th_older"
+        val grandchild = "th_grandchild"
+        val transcript = deriveAgentRoster(
+            listOf(spawn("recent_spawn", listOf(recent), prompt = "Recent task")),
+            main,
+            MAIN_LABEL,
+            SUB_FORMAT,
+        )
+        val roster = mergeAgentRoster(
+            transcript,
+            listOf(
+                thread(recent, main, createdAt = 30),
+                thread(grandchild, older, createdAt = 20, name = "Nested agent"),
+                thread(older, main, createdAt = 10, name = "Earlier agent"),
+            ),
+            SUB_FORMAT,
+        )
+
+        assertEquals(listOf(main, older, grandchild, recent), agentPageThreads(main, roster))
+        assertEquals("Earlier agent", roster[1].name)
+        assertEquals("Nested agent", roster[2].name)
+        assertEquals("Recent task", roster[3].task)
+        assertEquals(ThreadStatus.Idle, roster[2].threadStatus)
+    }
+
+    @Test
+    fun recentSpawnRemainsVisibleBeforeTheDescendantListingRefreshes() {
+        val roster = deriveAgentRoster(
+            listOf(spawn("recent_spawn", listOf(sub))),
+            main,
+            MAIN_LABEL,
+            SUB_FORMAT,
+        )
+        assertEquals(listOf(main, sub), agentPageThreads(main, mergeAgentRoster(roster, emptyList(), SUB_FORMAT)))
+    }
+
+    @Test
+    fun descendantMetadataDoesNotReorderAgentsAlreadyInTheTranscript() {
+        val first = "th_first"
+        val second = "th_second"
+        val transcript = deriveAgentRoster(
+            listOf(spawn("first_spawn", listOf(first)), spawn("second_spawn", listOf(second))),
+            main,
+            MAIN_LABEL,
+            SUB_FORMAT,
+        )
+        val roster = mergeAgentRoster(
+            transcript,
+            listOf(
+                thread(first, main, createdAt = 40),
+                thread(second, main, createdAt = 30),
+                thread("th_older", main, createdAt = 10),
+            ),
+            SUB_FORMAT,
+        )
+
+        assertEquals(listOf(main, "th_older", first, second), agentPageThreads(main, roster))
     }
 }

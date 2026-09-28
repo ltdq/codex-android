@@ -54,12 +54,10 @@ import com.cy.codex.app.AgentsScreen
 import com.cy.codex.app.DiagnosticsScreen
 import com.cy.codex.app.SUB_AGENT_SOURCE_KINDS
 import com.cy.codex.app.EnvironmentDetailScreen
-import com.cy.codex.app.deriveAgentRoster
 import com.cy.codex.app.ProjectsScreen
 import com.cy.codex.app.isProjectTrusted
 import com.cy.codex.app.SessionStatusScreen
-import com.cy.codex.app.SubAgentScreen
-import com.cy.codex.app.SubAgentThreadScreen
+import com.cy.codex.app.SubAgentSummarySheet
 import com.cy.codex.app.ThreadHistoryScreen
 import com.cy.codex.app.UserVerificationScreen
 import com.cy.codex.app.WorktreesScreen
@@ -256,6 +254,30 @@ class CodexApp(
     private val sideThreadParents = mutableStateMapOf<String, String>()
 
     fun sideParentOf(threadId: String): String? = sideThreadParents[threadId]
+
+    /**
+     * Subagent whose conversation the chat pager shows, or null while the bound thread itself is
+     * shown. A spawned agent is a page of its parent, so this never rebinds [widget].
+     */
+    var selectedAgent by mutableStateOf<String?>(null)
+        private set
+
+    /** Thread id of the open subagent summary sheet, or null. */
+    var agentSummary by mutableStateOf<String?>(null)
+        private set
+
+    /** Land the chat pager on [threadId], or on the bound thread when it is null. */
+    fun selectAgentPage(threadId: String?) {
+        selectedAgent = threadId
+    }
+
+    fun openAgentSummary(threadId: String) {
+        agentSummary = threadId
+    }
+
+    fun dismissAgentSummary() {
+        agentSummary = null
+    }
 
     var copyMenuOpen by mutableStateOf(false)
 
@@ -536,7 +558,12 @@ class CodexApp(
                         sourceKinds = SUB_AGENT_SOURCE_KINDS,
                         useStateDbOnly = true,
                     ),
-                ).onSuccess { catalog.agentThreads = it.threads }
+                ).onSuccess {
+                    if (widget.state.threadId == event.ancestorThreadId) {
+                        catalog.agentThreads = it.threads
+                        catalog.agentThreadsAncestorId = event.ancestorThreadId
+                    }
+                }
             }
 
             is AppEvent.StopThreadTurn -> request { client.interruptTurn(event.threadId) }
@@ -1623,7 +1650,10 @@ class CodexApp(
         client.events.collect { event ->
             when (event) {
                 is AppServerEvent.ThreadStartedEvent -> {
-                    threads.threads = listOf(event.thread) + threads.threads.filterNot { it.id == event.threadId }
+                    if (event.thread.isConversation) {
+                        threads.threads =
+                            listOf(event.thread) + threads.threads.filterNot { it.id == event.threadId }
+                    }
                     if (catalog.agentThreads.any { it.id == event.threadId }) {
                         catalog.agentThreads = catalog.agentThreads.map {
                             if (it.id == event.threadId) event.thread else it
@@ -1923,22 +1953,46 @@ class CodexApp(
         openThread(threadId, onFailure = {})
     }
 
-    private fun openThread(threadId: String, onFailure: () -> Unit) {
+    /**
+     * Open a conversation, or land the pager on a spawned agent.
+     *
+     * [select] carries the agent the caller wanted to see once [threadId] turns out to be a
+     * descendant; the parent chain is followed to a conversation, which is the only thread ever
+     * bound. A child named by the stored session is the case where the parent is unknown until the
+     * resume answers.
+     */
+    private fun openThread(threadId: String, onFailure: () -> Unit, select: String? = null) {
         // Switching away discards an ephemeral side fork, like `app/side.rs`.
         val currentThread = widget.state.threadId
         if (currentThread != threadId && sideThreadParents.containsKey(currentThread)) {
             closeSideConversation(currentThread)
         }
+        val known = (threads.threads + catalog.agentThreads).firstOrNull { it.id == threadId }
+        // A spawned agent is not a conversation: bind its parent and select the agent's page
+        // instead of churning through a child session the composer can never write to.
+        if (known?.parentThreadId != null) {
+            openThread(known.parentThreadId, onFailure, select ?: threadId)
+            return
+        }
         // Ask before resuming into an untrusted folder; the read would only fail later.
-        val knownCwd = (threads.threads + catalog.agentThreads).firstOrNull { it.id == threadId }?.cwd
+        val knownCwd = known?.cwd
         if (!knownCwd.isNullOrBlank() && !isProjectTrusted(knownCwd)) {
-            trustRequest = TrustRequest(knownCwd) { openThread(threadId, onFailure) }
+            trustRequest = TrustRequest(knownCwd) { openThread(threadId, onFailure, select) }
             return
         }
         widget.open(threadId) { result ->
             result.onSuccess { response ->
+                val parent = response.thread.parentThreadId
+                if (parent != null) {
+                    openThread(parent, onFailure, select ?: response.thread.id)
+                    return@onSuccess
+                }
+                selectedAgent = select
                 preferences.edit().putString(KeySelectedSession, threadId).apply()
-                threads.threads = listOf(response.thread) + threads.threads.filterNot { it.id == threadId }
+                if (response.thread.isConversation) {
+                    threads.threads =
+                        listOf(response.thread) + threads.threads.filterNot { it.id == threadId }
+                }
                 warmHookJoinCache(threadId)
             }.onFailure { onFailure() }
         }
@@ -1981,6 +2035,7 @@ class CodexApp(
                 ),
             ).onSuccess { child ->
                 sideThreadParents[child.threadId] = current
+                selectedAgent = null
                 widget.bind(child)
                 preferences.edit().putString(KeySelectedSession, child.threadId).apply()
                 client.injectThreadItems(
@@ -2172,6 +2227,7 @@ class CodexApp(
                     ),
                 )
                     .onSuccess { session ->
+                        selectedAgent = null
                         widget.bind(session)
                         warmHookJoinCache(session.threadId)
                         preferences.edit().putString(KeySelectedSession, session.threadId).apply()
@@ -2269,9 +2325,10 @@ class CodexApp(
                     val threadId = candidates.getOrNull(index)
                     if (threadId == null) {
                         preferences.edit().remove(KeySelectedSession).apply()
+                        selectedAgent = null
                         widget.clear()
                     } else {
-                        openThread(threadId) { restore(index + 1) }
+                        openThread(threadId, onFailure = { restore(index + 1) })
                     }
                 }
                 restore(0)
@@ -2831,45 +2888,21 @@ fun CodexScreen(
                         AgentsScreen(app = app, onBack = app::closeSurface)
                     }
                 }
-
-                entry<Surface.SubAgentThread>(swipeDismiss = NavSwipeDirection.TopToBottom) { route ->
-                    SheetPage(onDismiss = app::closeSurface) {
-                        // A snapshot, not an observation: the parent transcript keeps streaming and would rebuild this page on every delta.
-                        val mainLabel = stringResource(R.string.agent_roster_main_label)
-                        val nameFormat = stringResource(R.string.agent_roster_sub_agent_name)
-                        val roster = remember(route.threadId, mainLabel, nameFormat) {
-                            deriveAgentRoster(
-                                items = app.widget.state.items,
-                                mainThreadId = app.widget.state.threadId,
-                                mainLabel = mainLabel,
-                                subAgentNameFormat = nameFormat,
-                            )
-                        }
-                        CompositionLocalProvider(LocalHookMetadata provides app.catalog.hooks) {
-                            SubAgentThreadScreen(
-                                threadId = route.threadId,
-                                client = app.client,
-                                onBack = app::closeSurface,
-                                roster = roster,
-                                onSwitchAgent = { threadId ->
-                                    app.closeSurface()
-                                    app.openSurface(Surface.SubAgentThread(threadId))
-                                },
-                            )
-                        }
-                    }
-                }
-
-                entry<Surface.SubAgent>(swipeDismiss = NavSwipeDirection.TopToBottom) { route ->
-                    SheetPage(onDismiss = app::closeSurface) {
-                        SubAgentScreen(
-                            threadId = route.threadId,
-                            items = app.widget.state.items.toList(),
-                            mainThreadId = app.widget.state.threadId,
-                            onBack = app::closeSurface,
-                        )
-                    }
-                }
+            }
+            app.agentSummary?.let { threadId ->
+                // `show` stays true through the exit animation; the sheet is composed until it reports finished.
+                var leaving by remember(threadId) { mutableStateOf(false) }
+                SubAgentSummarySheet(
+                    show = !leaving,
+                    threadId = threadId,
+                    session = app.widget.state,
+                    descendants = app.catalog.agentThreadsFor(app.widget.state.threadId),
+                    onDismissRequest = { leaving = true },
+                    onDismissFinished = {
+                        leaving = false
+                        app.dismissAgentSummary()
+                    },
+                )
             }
             ShortcutsOverlay(state = shortcutsHelp)
             app.trustRequest?.let { request ->

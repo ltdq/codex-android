@@ -41,7 +41,13 @@ data class Thread(
     val canAcceptDirectInput: Boolean? = null,
     val agentNickname: String? = null,
     val agentRole: String? = null,
-)
+) {
+    /**
+     * A spawned agent runs in a thread its parent owns; that thread is a page of the parent's
+     * chat, never a conversation row of its own.
+     */
+    val isConversation: Boolean get() = parentThreadId == null
+}
 
 data class GitInfo(
     val branch: String? = null,

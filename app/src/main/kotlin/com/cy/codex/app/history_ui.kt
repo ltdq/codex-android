@@ -12,7 +12,6 @@ import androidx.compose.ui.res.stringResource
 import com.cy.codex.AppEvent
 import com.cy.codex.CodexApp
 import com.cy.codex.R
-import com.cy.codex.Surface
 import com.cy.codex.UiConsts
 import com.cy.codex.chatwidget.Transcript
 import com.cy.codex.history_cell.LocalHookMetadata
@@ -62,8 +61,11 @@ fun ThreadHistoryScreen(app: CodexApp, onBack: () -> Unit) {
                 empty = session.items.isEmpty() && session.diagnostics.isEmpty() &&
                     session.hookRuns.isEmpty() && session.approvalReceipts.isEmpty(),
                 cwd = session.config.cwd,
-                onOpenAgent = { threadId -> app.openSurface(Surface.SubAgentThread(threadId)) },
-                onOpenAgentInfo = { threadId -> app.openSurface(Surface.SubAgent(threadId)) },
+                onOpenAgent = { threadId ->
+                    app.selectAgentPage(threadId)
+                    onBack()
+                },
+                onOpenAgentInfo = { threadId -> app.openAgentSummary(threadId) },
                 onAnswerQuestion = { text -> app.onAppEvent(AppEvent.AnswerAsyncQuestion(text)) },
                 onEditPrompt = if (session.open && !session.loading && !session.running &&
                     !app.widget.backtracking && !session.config.blocksDirectInput && app.sideParentOf(session.threadId) == null

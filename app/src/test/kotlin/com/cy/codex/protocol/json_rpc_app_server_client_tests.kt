@@ -155,6 +155,50 @@ class JsonRpcAppServerClientTest {
     }
 
     @Test
+    fun `ancestor listing includes early children and grandchildren across pages`() = runTest {
+        val transport = HarnessTransport()
+        val client = JsonRpcAppServerClient(transport, backgroundScope)
+        client.initialize(ClientInfo("android", version = "1")).getOrThrow()
+        val listing = async {
+            client.listThreads(
+                com.cy.codex.protocol.protocol.v2.ThreadListParams(
+                    ancestorThreadId = "main",
+                    sourceKinds = listOf("subAgent", "subAgentThreadSpawn"),
+                    useStateDbOnly = true,
+                ),
+            ).getOrThrow()
+        }
+        val first = transport.request()
+        val firstParams = first.objectOrNull("params")!!
+        assertEquals("main", firstParams.text("ancestorThreadId"))
+        assertEquals(listOf("subAgent", "subAgentThreadSpawn"), firstParams.strings("sourceKinds"))
+        transport.response(
+            first,
+            obj(
+                "data" to (1..25).map { obj("id" to "recent-$it", "parentThreadId" to "main") },
+                "nextCursor" to "older-page",
+            ),
+        )
+        val second = transport.request()
+        val secondParams = second.objectOrNull("params")!!
+        assertEquals("older-page", secondParams.text("cursor"))
+        assertEquals("main", secondParams.text("ancestorThreadId"))
+        assertEquals(firstParams.strings("sourceKinds"), secondParams.strings("sourceKinds"))
+        transport.response(
+            second,
+            obj("data" to listOf(
+                obj("id" to "early-child", "parentThreadId" to "main"),
+                obj("id" to "early-grandchild", "parentThreadId" to "early-child"),
+            )),
+        )
+
+        val threads = listing.await().threads
+        assertEquals(27, threads.size)
+        assertEquals(listOf("early-child", "early-grandchild"), threads.takeLast(2).map { it.id })
+        client.close()
+    }
+
+    @Test
     fun `history is decoded from nested turns and stream retains final text`() = runTest {
         val transport = HarnessTransport()
         val client = JsonRpcAppServerClient(transport, backgroundScope)

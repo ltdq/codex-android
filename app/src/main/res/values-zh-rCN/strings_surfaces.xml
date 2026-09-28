@@ -225,7 +225,7 @@
     <string name="skills_screen_disabled">已禁用</string>
     <string name="skills_screen_back">返回</string>
 
-    <!-- SubAgentScreen -->
+    <!-- SubAgentSummarySheet：子代理摘要，悬浮在聊天分页之上。 -->
     <string name="sub_agent_screen_fallback_name">子代理 · %1$s</string>
     <string name="sub_agent_screen_missing">已不在本会话的代理列表中</string>
     <string name="sub_agent_section_task">任务</string>
@@ -246,7 +246,6 @@
     <string name="sub_agent_screen_interacted">已交互</string>
     <string name="sub_agent_screen_interrupted">已中断</string>
     <string name="sub_agent_screen_completed">已完成</string>
-    <string name="sub_agent_screen_back">返回</string>
 
     <!-- WorkspacePickerScreen -->
     <string name="workspace_picker_title">选择工作目录</string>
@@ -257,9 +256,10 @@
     <string name="workspace_picker_footer">将以此目录作为会话工作区</string>
     <string name="workspace_picker_confirm">选择当前目录</string>
     <string name="workspace_picker_back">返回</string>
-    <!-- SubAgentThreadScreen.kt: a subagent's own conversation. -->
+    <!-- ChatScreen/SubAgentTranscriptPane：聊天分页里的一个代理页。 -->
+    <string name="sub_agent_page_read_only">只读 · 左右滑动切换代理</string>
+    <string name="sub_agent_page_details">查看详情</string>
     <string name="sub_agent_thread_fallback_title">子代理会话</string>
-    <string name="sub_agent_thread_subtitle">该代理自己的会话，与派生出它的会话并列查看</string>
     <string name="sub_agent_thread_empty">这个代理的会话还没有条目。</string>
     <string name="sub_agent_thread_assistant">子代理</string>
     <string name="session_list_sections">分组</string>
