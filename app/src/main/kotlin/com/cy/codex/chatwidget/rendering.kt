@@ -517,13 +517,6 @@ fun ChatScreen(
                 onDismiss = { app.copyMenuOpen = false },
             )
         }
-        app.trustRequest?.let { request ->
-            TrustProjectSheet(
-                path = request.path,
-                onTrust = app::grantTrust,
-                onDismiss = app::dismissTrust,
-            )
-        }
         app.rateLimitNudge?.let { nudge ->
             RateLimitNudgeSheet(
                 nudge = nudge,

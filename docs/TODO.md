@@ -77,9 +77,6 @@ MCP 元数据、web search results 与 hook 输出均已接线并有 JVM 测试�
 - [ ] **worktree**：上游有 owner/thread 绑定、remove/copy 与新建会话/fork 的「在哪运行」选择
       （`tui/src/worktree_browser.rs`、`chatwidget/worktree_picker.rs`）；Kotlin
       `app/worktrees.kt` 只有 `git worktree list/add`。
-- [ ] **新工作区缺少信任确认**：`WorkspacePickerScreen` 的 `onPicked` 直接 `NewThread(path)`，
-      `ProjectsScreen.CreateProject`/`UpdateProject` 改路径时也不确认；信任门槛只在
-      `createThread`/`openThread` 前出现（`TrustProjectSheet`）。
 - [ ] **`/cd` 语义**：上游在当前会话内换目录（`tui/src/app/working_directory.rs`）；
       Kotlin 会新开空会话（`app.kt`），`/pwd` 也会打开目录选择器。
 - [ ] **resume/fork 的 cwd 提示**：上游问「用会话 cwd 还是当前 cwd」并记住选择
@@ -118,7 +115,7 @@ MCP 元数据、web search results 与 hook 输出均已接线并有 JVM 测试�
       （`tui/src/model_migration.rs`）；Compose 没有对应提示。上游 welcome、
       `directory_trust.rs`/`trust_directory.rs` 和 `startup_orchestration.rs` 是终端启动时先确定
       目标项目的 CLI 流程，Compose 的对应能力由 WorkspacePicker/Projects 与
-      `TrustProjectSheet` 承担，不计入缺口；添加工作区的信任时机见第 3 节。
+      `TrustProjectSheet` 承担，不计入缺口。
 - [ ] **slash 命令目录未与上游对齐**：`slash_command.kt` 漏了上游 `/delete`、`/experimental`、
       `/approve`（auto-review denial 的一次重试入口）、`/debug-config`、`/statusline`、`/title`、
       `/rollout`、`/ps` 等命令；已有 Session/Settings/BackgroundTerminals 页面的命令也没有对应

@@ -1,5 +1,6 @@
 package com.cy.codex.protocol
 
+import com.cy.codex.app.isProjectTrusted
 import com.cy.codex.protocol.protocol.Json
 import com.cy.codex.protocol.protocol.array
 import com.cy.codex.protocol.protocol.bool
@@ -1576,6 +1577,76 @@ class JsonRpcAppServerClientTest {
         )
         assertEquals(false, snapshot.useMemories)
         assertEquals(true, snapshot.generateMemories)
+    }
+
+    @Test
+    fun `config read trusts only projects with an explicit trusted level`() = runTest {
+        val transport = HarnessTransport()
+        val client = JsonRpcAppServerClient(transport, backgroundScope)
+        client.initialize(ClientInfo("android", version = "1")).getOrThrow()
+        val config = async { client.readConfig().getOrThrow() }
+        val request = transport.request()
+        assertEquals("config/read", request.text("method"))
+        transport.response(request, obj("config" to obj("projects" to obj(
+            "/workspace/trusted" to obj("trust_level" to "trusted"),
+            "/workspace/untrusted" to obj("trust_level" to "untrusted"),
+            "/workspace/missing" to obj(),
+            "/workspace/null" to obj("trust_level" to JsonNull),
+            "/workspace/boolean" to obj("trust_level" to true),
+            "/workspace/number" to obj("trust_level" to 1),
+            "/workspace/array" to obj("trust_level" to listOf("trusted")),
+            "/workspace/object" to obj("trust_level" to obj("value" to "trusted")),
+            "/workspace/invalid-project" to "trusted",
+        ))))
+        assertEquals(
+            mapOf(
+                "/workspace/trusted" to true,
+                "/workspace/untrusted" to false,
+                "/workspace/missing" to false,
+                "/workspace/null" to false,
+                "/workspace/boolean" to false,
+                "/workspace/number" to false,
+                "/workspace/array" to false,
+                "/workspace/object" to false,
+                "/workspace/invalid-project" to false,
+            ),
+            config.await().snapshot.projectTrust,
+        )
+        client.close()
+    }
+
+    @Test
+    fun `config read grants no trust for missing or malformed projects`() = runTest {
+        val transport = HarnessTransport()
+        val client = JsonRpcAppServerClient(transport, backgroundScope)
+        client.initialize(ClientInfo("android", version = "1")).getOrThrow()
+        for (tree in listOf(obj(), obj("projects" to "trusted"), obj("projects" to listOf("/workspace")))) {
+            val config = async { client.readConfig().getOrThrow() }
+            transport.response(transport.request(), obj("config" to tree))
+            assertTrue(config.await().snapshot.projectTrust.isEmpty(), tree.toString())
+        }
+        client.close()
+    }
+
+    @Test
+    fun `config read preserves child entries that block inherited project trust`() = runTest {
+        val transport = HarnessTransport()
+        val client = JsonRpcAppServerClient(transport, backgroundScope)
+        client.initialize(ClientInfo("android", version = "1")).getOrThrow()
+        val config = async { client.readConfig().getOrThrow() }
+        transport.response(transport.request(), obj("config" to obj("projects" to obj(
+            "/workspace" to obj("trust_level" to "trusted"),
+            "/workspace/untrusted" to obj("trust_level" to "untrusted"),
+            "/workspace/unspecified" to obj(),
+        ))))
+        val projectTrust = config.await().snapshot.projectTrust
+        assertTrue(isProjectTrusted("/workspace", projectTrust))
+        assertTrue(isProjectTrusted("/workspace/other/src", projectTrust))
+        assertFalse(isProjectTrusted("/workspace/untrusted", projectTrust))
+        assertFalse(isProjectTrusted("/workspace/untrusted/src", projectTrust))
+        assertFalse(isProjectTrusted("/workspace/unspecified", projectTrust))
+        assertFalse(isProjectTrusted("/workspace/unspecified/src", projectTrust))
+        client.close()
     }
 
     @Test

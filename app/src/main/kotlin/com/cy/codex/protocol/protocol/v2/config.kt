@@ -257,8 +257,8 @@ data class ConfigSnapshot(
     val tuiAlternateScreen: String? = null,
     /** `[mcp_servers]` keys, in file order. */
     val mcpServerNames: List<String> = emptyList(),
-    /** `[projects]` keys — the trusted directories. */
-    val trustedProjects: List<String> = emptyList(),
+    /** `[projects]` trust decisions; entries without `trust_level = "trusted"` deny trust. */
+    val projectTrust: Map<String, Boolean> = emptyMap(),
     /** `oss_provider`: which local server an `oss` model provider talks to. */
     val ossProvider: String? = null,
     /** `[features]` entries. */
@@ -312,7 +312,9 @@ data class ConfigSnapshot(
                 reviewModel = str("review_model"),
                 tuiAlternateScreen = str("tui_alternate_screen"),
                 mcpServerNames = obj("mcp_servers")?.keys?.toList().orEmpty(),
-                trustedProjects = obj("projects")?.keys?.toList().orEmpty(),
+                projectTrust = obj("projects").orEmpty().mapValues { (_, project) ->
+                    (project as? JsonObject)?.get("trust_level")?.stringOrNull() == "trusted"
+                },
                 ossProvider = str("oss_provider"),
                 features = flags("features"),
                 notifications = bool("notifications"),

@@ -165,6 +165,7 @@
     <string name="trust_project_body">Codex can read, edit, and run files here. Trust it only if this is your own workspace.</string>
     <string name="trust_project_confirm">Trust and continue</string>
     <string name="trust_project_cancel">Cancel</string>
+    <string name="trust_project_not_applied">This folder is still untrusted in the effective configuration.</string>
 
     <!-- Luna Reserve (backend_banner.kt, luna_reserve_model.kt) -->
     <string name="luna_recovery_title">Usage limit reached</string>

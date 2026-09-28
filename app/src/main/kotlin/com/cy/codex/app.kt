@@ -56,6 +56,7 @@ import com.cy.codex.app.SUB_AGENT_SOURCE_KINDS
 import com.cy.codex.app.EnvironmentDetailScreen
 import com.cy.codex.app.deriveAgentRoster
 import com.cy.codex.app.ProjectsScreen
+import com.cy.codex.app.isProjectTrusted
 import com.cy.codex.app.SessionStatusScreen
 import com.cy.codex.app.SubAgentScreen
 import com.cy.codex.app.SubAgentThreadScreen
@@ -91,6 +92,7 @@ import com.cy.codex.chatwidget.RealtimeScreen
 import com.cy.codex.chatwidget.ReviewScreen
 import com.cy.codex.chatwidget.SettingsScreen
 import com.cy.codex.chatwidget.SettingsSection
+import com.cy.codex.chatwidget.TrustProjectSheet
 import com.cy.codex.chatwidget.WindowsSandboxScreen
 import com.cy.codex.chatwidget.WorkspacePickerScreen
 import com.cy.codex.chatwidget.openSurfaceFor
@@ -706,14 +708,22 @@ class CodexApp(
                     .onSuccess { client.listSections().onSuccess { threads.sections = it } }
             }
 
-            is AppEvent.CreateProject -> request {
-                client.createProject(event.name, event.path)
-                    .onSuccess { client.listProjects().onSuccess { fresh -> catalog.projects = fresh } }
+            is AppEvent.CreateProject -> withProjectTrust(event.path) {
+                request {
+                    client.createProject(event.name, event.path)
+                        .onSuccess { client.listProjects().onSuccess { fresh -> catalog.projects = fresh } }
+                }
             }
 
-            is AppEvent.UpdateProject -> request {
-                client.updateProject(event.projectId, event.name, event.path)
-                    .onSuccess { client.listProjects().onSuccess { fresh -> catalog.projects = fresh } }
+            is AppEvent.UpdateProject -> withProjectTrust(
+                event.path?.takeUnless { path ->
+                    path == catalog.projects.firstOrNull { it.id == event.projectId }?.path
+                },
+            ) {
+                request {
+                    client.updateProject(event.projectId, event.name, event.path)
+                        .onSuccess { client.listProjects().onSuccess { fresh -> catalog.projects = fresh } }
+                }
             }
 
             is AppEvent.DeleteProject -> request {
@@ -726,9 +736,11 @@ class CodexApp(
                     .onSuccess { client.listProjects().onSuccess { fresh -> catalog.projects = fresh } }
             }
 
-            is AppEvent.ImportProject -> request {
-                client.importProject(event.path)
-                    .onSuccess { client.listProjects().onSuccess { fresh -> catalog.projects = fresh } }
+            is AppEvent.ImportProject -> withProjectTrust(event.path) {
+                request {
+                    client.importProject(event.path)
+                        .onSuccess { client.listProjects().onSuccess { fresh -> catalog.projects = fresh } }
+                }
             }
 
             is AppEvent.AddEnvironment -> request {
@@ -2012,12 +2024,14 @@ class CodexApp(
         }
     }
 
-    /** A path is trusted when it is a `[projects]` entry or below one, per `resolve_root_git_project_for_trust` minus the git-root lookup. */
-    private fun isProjectTrusted(path: String): Boolean {
-        val normalized = path.replace('\\', '/').trimEnd('/')
-        return catalog.config.snapshot.trustedProjects.any { key ->
-            val base = key.replace('\\', '/').trimEnd('/')
-            base.isNotEmpty() && (normalized == base || normalized.startsWith("$base/"))
+    private fun isProjectTrusted(path: String): Boolean =
+        isProjectTrusted(path, catalog.config.snapshot.projectTrust)
+
+    private fun withProjectTrust(path: String?, action: () -> Unit) {
+        if (path == null || isProjectTrusted(path)) {
+            action()
+        } else {
+            trustRequest = TrustRequest(path, action)
         }
     }
 
@@ -2039,8 +2053,15 @@ class CodexApp(
                     reloadUserConfig = true,
                 ),
             ).onSuccess {
-                reloadConfig()
-                request.onTrust()
+                reloadConfig().onSuccess {
+                    if (isProjectTrusted(request.path)) {
+                        request.onTrust()
+                    } else {
+                        snackbar.showSnackbar(context.getString(R.string.trust_project_not_applied))
+                    }
+                }.onFailure {
+                    snackbar.showSnackbar(it.message ?: context.getString(R.string.shell_request_failed))
+                }
             }.onFailure {
                 snackbar.showSnackbar(it.message ?: context.getString(R.string.shell_request_failed))
             }
@@ -2547,7 +2568,6 @@ fun CodexScreen(
                             },
                             onPicked = { path ->
                                 app.onAppEvent(com.cy.codex.AppEvent.NewThread(path))
-                                app.closeAllSurfaces()
                             },
                             onBack = app::closeSurface,
                         )
@@ -2814,6 +2834,13 @@ fun CodexScreen(
                 }
             }
             ShortcutsOverlay(state = shortcutsHelp)
+            app.trustRequest?.let { request ->
+                TrustProjectSheet(
+                    path = request.path,
+                    onTrust = app::grantTrust,
+                    onDismiss = app::dismissTrust,
+                )
+            }
         }
     }
 }

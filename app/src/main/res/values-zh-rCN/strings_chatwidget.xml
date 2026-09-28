@@ -163,6 +163,7 @@
     <string name="trust_project_body">Codex 可以读取、修改并在这里运行文件。只有确认这是你自己的项目目录时才信任它。</string>
     <string name="trust_project_confirm">信任并继续</string>
     <string name="trust_project_cancel">取消</string>
+    <string name="trust_project_not_applied">当前生效的配置仍未信任此目录。</string>
 
     <!-- Luna Reserve (backend_banner.kt, luna_reserve_model.kt) -->
     <string name="luna_recovery_title">已达用量上限</string>
