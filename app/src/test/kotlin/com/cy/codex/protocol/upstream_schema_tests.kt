@@ -49,6 +49,7 @@ import com.cy.codex.protocol.protocol.v2.ThreadItemsListParams
 import com.cy.codex.protocol.protocol.v2.ThreadListParams
 import com.cy.codex.protocol.protocol.v2.ThreadMemoryMode
 import com.cy.codex.protocol.protocol.v2.ThreadReadParams
+import com.cy.codex.protocol.protocol.v2.ThreadQueueDeleteResponse
 import com.cy.codex.protocol.protocol.v2.ThreadResumeInitialTurnsPageParams
 import com.cy.codex.protocol.protocol.v2.ThreadResumeParams
 import com.cy.codex.protocol.protocol.v2.ThreadSection
@@ -61,6 +62,7 @@ import com.cy.codex.protocol.protocol.v2.TokenUsageBreakdown
 import com.cy.codex.protocol.protocol.v2.ToolRequestUserInputParams
 import com.cy.codex.protocol.protocol.v2.TurnItemsView
 import com.cy.codex.protocol.protocol.v2.TurnStatus
+import com.cy.codex.protocol.protocol.v2.TurnSteerParams
 import com.cy.codex.protocol.protocol.v2.TurnsPage
 import com.cy.codex.protocol.protocol.v2.WorkspaceMessage
 import com.cy.codex.protocol.protocol.v2.WorkspaceMessageType
@@ -163,6 +165,8 @@ class UpstreamSchemaTest {
         ThreadItemsListParams::class to "ThreadItemsListParams",
         ThreadTurnsListParams::class to "ThreadTurnsListParams",
         ThreadReadParams::class to "ThreadReadParams",
+        ThreadQueueDeleteResponse::class to "ThreadQueueDeleteResponse",
+        TurnSteerParams::class to "TurnSteerParams",
         ThreadResumeParams::class to "ThreadResumeParams",
         ThreadResumeInitialTurnsPageParams::class to "ThreadResumeInitialTurnsPageParams",
         TurnsPage::class to "TurnsPage",

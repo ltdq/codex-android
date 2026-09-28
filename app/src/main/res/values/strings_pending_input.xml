@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="pending_steer_header">Steering · %1$d pending</string>
+    <string name="pending_input_attachments">Attached input</string>
+    <string name="pending_input_queue">Queue for next turn</string>
+    <string name="pending_input_image">Image</string>
+    <string name="pending_input_audio">Audio</string>
+    <string name="pending_input_remove">Remove %1$s</string>
+    <string name="pending_input_hint">Send to steer, or queue for the next turn</string>
+</resources>

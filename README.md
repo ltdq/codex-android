@@ -64,6 +64,8 @@ bash scripts/device-smoke-test.sh -PskipNativeBuild                       # 真�
   不要求登录，与上游 `should_show_login_screen` 一致。宿主机 Codex 凭据不会复制到设备。
 - 配置、认证与会话记录在 `files/home/.codex/`（`CODEX_HOME`），不参与 Android 自动备份。
 - Android 进程被系统终止后，下次启动重新连接并读取磁盘上的会话；没有后台常驻保证。
+- 运行中发送消息会插话，并显示待接收预览；“排到下一轮”保留可编辑的服务端队列。
+  中断时，尚未接收的插话和确认移出队列的输入会并回草稿，保留图片、音频与提及。
 
 ## 文档
 

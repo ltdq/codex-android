@@ -163,6 +163,7 @@ fun Composer(
     modifier: Modifier = Modifier,
     hint: String = stringResource(R.string.composer_hint_idle),
     queuedCount: Int = 0,
+    hasAttachments: Boolean = false,
     slashSuggestions: List<SlashCommand> = emptyList(),
     onSuggestionPicked: (SlashCommand) -> Unit = {},
     mentionSuggestions: List<MentionSuggestion> = emptyList(),
@@ -393,7 +394,7 @@ fun Composer(
             KeyAction.Submit -> {
                 if (searchActive) {
                     acceptHistorySearch()
-                } else if (enabled && value.isNotBlank()) {
+                } else if (enabled && (value.isNotBlank() || hasAttachments)) {
                     onActivity()
                     onSubmit()
                     leaveField()
@@ -512,7 +513,7 @@ fun Composer(
     }
     val trailing: @Composable () -> Unit = {
         when {
-            running && value.isBlank() -> {
+            running && value.isBlank() && !hasAttachments -> {
                 val background by
                     animateColorAsState(
                         targetValue = colors.error,
@@ -535,7 +536,7 @@ fun Composer(
                 }
             }
 
-            value.isBlank() || !enabled ->
+            (value.isBlank() && !hasAttachments) || !enabled ->
                 IconButton(
                     onClick = {},
                     minWidth = buttonSize,

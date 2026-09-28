@@ -31,11 +31,6 @@ MCP 元数据、web search results 与 hook 输出均已接线并有 JVM 测试�
 - [ ] **回退重编辑（backtrack）**：上游 Esc-Esc 打开 transcript、选中用户消息后回退并把它
       重新填进输入框（`tui/src/app_backtrack.rs`）。Kotlin 只有只读 Ctrl+T
       （`app/history_ui.kt`）与 `/revert <itemId>`；用户消息 cell 没有可点击的回退入口。
-- [ ] **steer（运行中插话）**：上游运行中提交是 pending steer 并有预览/编辑
-      （`tui/src/bottom_pane/pending_input_preview.rs`）；Kotlin 运行中一律走
-      `thread/queue`（`chatwidget.kt` 的 `submitInput`），`steerTurn` 协议已绑定但无调用点。
-- [ ] **中断时恢复输入**：上游把 pending steer / 队列草稿并回 composer
-      （`tui/src/chatwidget/input_restore.rs`）；Kotlin 中断后只重读服务端队列，草稿不回流。
 - [ ] **审批决定回执**：上游在 transcript 里记「You approved … / denied / timed out」
       （`tui/src/history_cell/approvals.rs`）；Kotlin 只关弹窗并改状态，没有回执 cell。
 - [ ] **Plan 实施提示**：上游问「Implement this plan? / 清空上下文实施」

@@ -171,13 +171,7 @@ class SessionState {
     var goal by mutableStateOf<ThreadGoalUpdated?>(null)
         private set
 
-    /**
-     * Messages the user submitted while a turn was already running.
-     *
-     * The queue belongs to the server — `thread/queue/changed` is only a poke, so this list is
-     * whatever the last `thread/queue/list` returned. Keeping the ids (rather than bare text) is
-     * what lets the queue rows be reordered and deleted.
-     */
+    /** Server-owned follow-ups for later turns; queue IDs allow editing and removal. */
     val queued = mutableStateListOf<QueuedSubmission>()
 
     /** Diagnostics surfaced as transcript notices. */
@@ -209,13 +203,7 @@ class SessionState {
     val backgroundTerminals =
         mutableStateListOf<com.cy.codex.protocol.protocol.v2.ThreadBackgroundTerminal>()
 
-    /**
-     * Text the composer is holding.
-     *
-     * Held here rather than in the composer's own `remember` because two other things write it: a
-     * slash command that prefills an argument, and a transcript row that offers "quote this". Both
-     * outlive the composer's composition, so the draft has to.
-     */
+    /** The draft survives composer replacement and accepts restored input and slash prefills. */
     var composerDraft by mutableStateOf("")
         private set
 
@@ -228,62 +216,78 @@ class SessionState {
      */
     val composerImages = mutableStateListOf<ComposerImageAttachment>()
 
+    val composerRetainedInputs = mutableStateListOf<UserInput>()
+    private val composerTextElements = mutableStateListOf<com.cy.codex.protocol.protocol.v2.TextElement>()
+
+    /** Restored messages precede unsent edits, as in `codex/codex-rs/tui/src/chatwidget/input_restore.rs`. */
+    fun restoreComposerInputs(messages: List<List<UserInput>>) {
+        val restored = com.cy.codex.chatwidget.composeRestoredInputs(messages + listOf(pendingTurnInputs()))
+        applyComposerInputDraft(restored)
+    }
+
+    private fun applyComposerInputDraft(restored: com.cy.codex.chatwidget.ComposerInputDraft) {
+        composerDraft = restored.text
+        composerImages.clear()
+        composerImages.addAll(restored.images)
+        composerRetainedInputs.clear()
+        composerRetainedInputs.addAll(restored.retainedInputs)
+        composerTextElements.clear()
+        composerTextElements.addAll(restored.textElements)
+    }
+
     fun applyDraft(text: String) {
+        val stamped = composerImages.filter { image -> composerTextElements.any { it.placeholder == image.placeholder } }
+        val elements = com.cy.codex.chatwidget.rebaseComposerTextElements(composerDraft, text, composerTextElements)
+        composerTextElements.clear()
+        composerTextElements.addAll(elements)
         composerDraft = text
-        // A placeholder that was edited away drops its attachment, the way deleting the atomic
-        // element in the TUI's textarea does. Backspace over `[Image #1]` therefore detaches it
-        // without a separate gesture.
-        if (composerImages.any { it.placeholder !in text }) {
-            composerImages.removeAll { it.placeholder !in text }
+        composerImages.removeAll { image ->
+            image.placeholder !in text || (image in stamped && elements.none { it.placeholder == image.placeholder })
         }
+        composerTextElements.addAll(placeholderTextElements(text,
+            composerImages.filter { image -> elements.none { it.placeholder == image.placeholder } }.map { it.placeholder },
+        ))
     }
 
     /** Stage [path] and return the placeholder the caller inserts into the draft. */
     fun addComposerImage(path: String): String {
-        val placeholder = imagePlaceholder(composerImages.size + 1)
+        val lastImage = maxOf(composerRetainedInputs.count { it is UserInput.Image },
+            composerImages.maxOfOrNull { it.placeholder.removePrefix("[Image #").removeSuffix("]").toIntOrNull() ?: 0 } ?: 0)
+        val placeholder = generateSequence(lastImage + 1) { it + 1 }
+            .map(::imagePlaceholder).first { label -> composerImages.none { it.placeholder == label } && label !in composerDraft }
         composerImages.add(ComposerImageAttachment(path, placeholder))
         return placeholder
     }
 
-    /**
-     * Drop the image at [path] (if any) and renumber the rest.
-     *
-     * Renumbering rewrites every remaining placeholder in the draft, the way the TUI's
-     * `relabel_local_images` keeps the labels contiguous after a removal.
-     */
+    /** Removes the attachment span while preserving literal labels and other text elements. */
     fun removeComposerImage(path: String) {
-        val index = composerImages.indexOfFirst { it.path == path }
-        if (index < 0) return
-        val removed = composerImages.removeAt(index)
-        var text = composerDraft.replace(removed.placeholder, "")
-        for (i in composerImages.indices) {
-            val image = composerImages[i]
-            val next = imagePlaceholder(i + 1)
-            if (next != image.placeholder) {
-                text = text.replace(image.placeholder, next)
-                composerImages[i] = image.copy(placeholder = next)
-            }
-        }
-        applyDraft(text)
+        if (composerImages.none { it.path == path }) return
+        applyComposerInputDraft(com.cy.codex.chatwidget.removeComposerInputImage(pendingTurnInputs(), path))
     }
 
-    fun clearComposerImages() {
+    fun removeComposerRetainedInput(index: Int) {
+        val input = composerRetainedInputs.getOrNull(index) ?: return
+        val inputs = pendingTurnInputs().toMutableList()
+        inputs.remove(input)
+        applyComposerInputDraft(com.cy.codex.chatwidget.composeRestoredInputs(listOf(inputs)))
+    }
+
+    fun clearComposerAttachments() {
         composerImages.clear()
+        composerRetainedInputs.clear()
+        composerTextElements.clear()
     }
 
-    /**
-     * Build the inputs the current draft would submit.
-     *
-     * One `LocalImage` per placeholder still present in the text, then the text itself carrying the
-     * placeholder byte ranges. Empty text with no images yields an empty list, which is the
-     * "nothing to send" the submit path refuses.
-     */
+    /** Inputs for resubmission, preserving restored attachments and UTF-8 text spans. */
     fun pendingTurnInputs(): List<UserInput> {
         val text = composerDraft
-        val elements = placeholderTextElements(text, composerImages.map { it.placeholder })
+        val restored = composerTextElements.toList()
+        val elements = (restored + placeholderTextElements(text,
+            composerImages.map { it.placeholder }.filter { placeholder -> restored.none { it.placeholder == placeholder } },
+        )).sortedBy { it.byteRange.start }
         val kept = composerImages.filter { image -> elements.any { it.placeholder == image.placeholder } }
         val textInput = if (text.isEmpty()) emptyList() else listOf(UserInput.Text(text, elements))
-        return kept.map { UserInput.LocalImage(it.path) } + textInput
+        return composerRetainedInputs.toList() + kept.map { UserInput.LocalImage(it.path, it.detail) } + textInput
     }
 
     var streamingItemId by mutableStateOf<String?>(null)

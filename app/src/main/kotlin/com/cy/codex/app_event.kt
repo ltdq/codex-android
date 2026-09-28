@@ -60,6 +60,7 @@ sealed interface AppEvent {
 
     data class SubmitUserMessage(val inputs: List<UserInput>, val queued: Boolean = false) : AppEvent
     data object InterruptTurn : AppEvent
+    data class RemoveComposerRetainedInput(val index: Int) : AppEvent
 
     /** Answer an inline question as an ordinary user message, bypassing the composer so `/` options and the open draft survive (chatwidget/questions.rs). */
     data class AnswerAsyncQuestion(val text: String) : AppEvent

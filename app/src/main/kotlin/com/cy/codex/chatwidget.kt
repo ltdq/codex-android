@@ -7,6 +7,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.cy.codex.chatwidget.AgentNotice
 import com.cy.codex.chatwidget.ApprovalNoticeKind
+import com.cy.codex.chatwidget.PendingSteer
 import com.cy.codex.diff.TurnDiffAccumulator
 import com.cy.codex.history_cell.hookFailureLines
 import com.cy.codex.history_cell.resolveHookLabel
@@ -21,6 +22,7 @@ import com.cy.codex.protocol.protocol.item.McpToolCallItem
 import com.cy.codex.protocol.protocol.item.PlanItem
 import com.cy.codex.protocol.protocol.item.ReasoningItem
 import com.cy.codex.protocol.protocol.item.ThreadItem
+import com.cy.codex.protocol.protocol.item.UserMessageItem
 import com.cy.codex.protocol.protocol.v2.ActivePermissionProfile
 import com.cy.codex.protocol.protocol.v2.Account
 import com.cy.codex.protocol.protocol.v2.AccountReadResponse
@@ -82,6 +84,18 @@ class ChatWidget(
     private var loadJob: Job? = null
     private var loadVersion = 0
     private var eventRevision = 0L
+
+    private val uncommittedSteers = mutableStateListOf<PendingSteer>()
+    private val restoredInputs = mutableMapOf<String, MutableList<List<UserInput>>>()
+    private val composerDrafts = mutableMapOf<String, List<UserInput>>()
+    private val committedUserItems = LinkedHashSet<Pair<String, String>>()
+    private val restoredTurns = LinkedHashSet<Pair<String, String>>()
+    private val restoringInputThreads = mutableStateListOf<String>()
+    private val queueAdds = mutableMapOf<String, MutableSet<kotlinx.coroutines.CompletableDeferred<Unit>>>()
+    private val queueReadVersions = mutableMapOf<String, Long>()
+
+    val pendingSteers: List<PendingSteer> get() = uncommittedSteers.filter { it.threadId == state.threadId }
+    val restoringInputs: Boolean get() = state.threadId in restoringInputThreads
 
     /** Completed turns, bounded; used to drop approvals that arrive after their turn finished. */
     private val finishedTurns = ArrayDeque<String>()
@@ -304,6 +318,7 @@ class ChatWidget(
     }
 
     fun open(threadId: String, onLoaded: (Result<ThreadReadResponse>) -> Unit = {}) {
+        switchInputThread(threadId)
         loadJob?.cancel()
         val version = ++loadVersion
         dropDeltas()
@@ -407,6 +422,7 @@ class ChatWidget(
             recap.seedFromTurns(loadedTurns, monotonicMs())
             scheduleRecapCheck()
             refreshQueue(threadId)
+            restoreHeldInputs(threadId)
             client.getGoal(threadId).onSuccess {
                 if (version == loadVersion) state.applyGoal(it)
             }
@@ -416,6 +432,8 @@ class ChatWidget(
 
     /** A snapshot may only fill the gaps when the stream got there first; applied wholesale it would replace streamed bodies with older copies. */
     private fun applyLoadedTranscript(transcript: List<ThreadItem>) {
+        transcript.filterIsInstance<UserMessageItem>().filter { it.clientId != null }
+            .forEach { acknowledgeInput(state.threadId, it) }
         if (streamOvertookLoad) {
             transcript.forEach(state::addIfAbsent)
         } else {
@@ -527,7 +545,7 @@ class ChatWidget(
             is AppEvent.DismissAutoReviewDenial ->
                 autoReviewDenials.removeAll { it.itemId == event.itemId }
 
-            is AppEvent.SubmitUserMessage -> submitInput(event.inputs)
+            is AppEvent.SubmitUserMessage -> submitInput(event.inputs, queued = event.queued)
             is AppEvent.AnswerAsyncQuestion -> submitInput(listOf(UserInput.Text(event.text)), clearDraft = false)
             AppEvent.InterruptTurn -> interrupt()
             is AppEvent.ResolveApproval -> resolve(event.requestId, event.response)
@@ -682,6 +700,7 @@ class ChatWidget(
             }
 
             is AppEvent.RemoveComposerImage -> state.removeComposerImage(event.path)
+            is AppEvent.RemoveComposerRetainedInput -> state.removeComposerRetainedInput(event.index)
 
             is AppEvent.SubmitSlashCommand,
 
@@ -792,6 +811,7 @@ class ChatWidget(
     }
 
     fun bind(session: com.cy.codex.protocol.protocol.v2.ThreadSessionState) {
+        switchInputThread(session.threadId)
         loadJob?.cancel()
         loadVersion++
         dropDeltas()
@@ -801,6 +821,7 @@ class ChatWidget(
         patchChanges.clear()
         recap.resetForNewThread()
         state.bindThread(session.threadId, session)
+        restoreHeldInputs(session.threadId)
     }
 
     /** One random tip per fresh conversation, gated by `show_tooltips` (tui/src/tooltips.rs). */
@@ -814,6 +835,7 @@ class ChatWidget(
     }
 
     fun clear() {
+        switchInputThread("")
         loadJob?.cancel()
         loadVersion++
         resetApprovalState()
@@ -864,34 +886,128 @@ class ChatWidget(
         }
     }
 
-    private fun submitInput(inputs: List<UserInput>, clearDraft: Boolean = true) {
+    private fun submitInput(inputs: List<UserInput>, clearDraft: Boolean = true, queued: Boolean = false) {
         val hasText = inputs.filterIsInstance<UserInput.Text>().any { it.text.isNotBlank() }
         val hasMedia = inputs.any { it !is UserInput.Text }
-        if ((!hasText && !hasMedia) || !state.open || state.loading) return
+        if ((!hasText && !hasMedia) || !state.open || state.loading || restoringInputs) return
         // Viewing a parent-owned sub-agent: the transcript is readable, input is not.
-        if (state.config.blocksDirectInput) return
+        if (state.config.blocksDirectInput || state.misalignment != null) return
         val threadId = state.threadId
+        val version = loadVersion
+        if (clearDraft) clearComposer()
+        if (queued) {
+            val completed = kotlinx.coroutines.CompletableDeferred<Unit>()
+            queueAdds.getOrPut(threadId) { mutableSetOf() }.add(completed)
+            scope.launch(start = CoroutineStart.UNDISPATCHED) {
+                try {
+                    client.addToQueue(threadId, inputs).onFailure { error ->
+                        restoreInputs(threadId, listOf(inputs))
+                        reportInputFailure(threadId, error)
+                    }
+                    refreshQueue(threadId)
+                } finally {
+                    queueAdds[threadId]?.remove(completed)
+                    if (queueAdds[threadId].isNullOrEmpty()) queueAdds.remove(threadId)
+                    completed.complete(Unit)
+                }
+            }
+            return
+        }
         if (state.running) {
-            request({ client.addToQueue(threadId, inputs) }) {
-                if (clearDraft && state.threadId == threadId) clearComposer()
-                refreshQueue(threadId)
+            val pending = PendingSteer(java.util.UUID.randomUUID().toString(), threadId, inputs, client.activeTurnId(threadId))
+            uncommittedSteers.add(pending)
+            scope.launch(start = CoroutineStart.UNDISPATCHED) {
+                client.steerTurn(threadId, inputs, pending.id, pending.turnId).onFailure { error ->
+                    if (uncommittedSteers.remove(pending)) {
+                        restoreInputs(threadId, listOf(inputs))
+                        reportInputFailure(threadId, error)
+                    }
+                }
             }
             return
         }
         state.applyStatus(ThreadStatus.Active())
         scope.launch {
-            client.startTurn(threadId, inputs).onSuccess {
-                if (clearDraft && state.threadId == threadId) clearComposer()
-            }.onFailure { error ->
-                if (state.threadId != threadId) return@onFailure
-                state.applyStatus(ThreadStatus.Idle)
-                state.addDiagnostic(
-                    SessionDiagnostic(
-                        severity = DiagnosticSeverity.Error,
-                        code = DiagnosticCode.SendFailed,
-                        detail = error.message,
-                    ),
-                )
+            client.startTurn(threadId, inputs).onFailure { error ->
+                restoreInputs(threadId, listOf(inputs))
+                if (state.threadId == threadId && version == loadVersion) state.applyStatus(ThreadStatus.Idle)
+                reportInputFailure(threadId, error)
+            }
+        }
+    }
+
+    private fun reportInputFailure(threadId: String, error: Throwable) {
+        if (state.threadId != threadId) return
+        state.addDiagnostic(SessionDiagnostic(
+            severity = DiagnosticSeverity.Error,
+            code = DiagnosticCode.SendFailed,
+            detail = error.message,
+        ))
+    }
+
+    private fun restoreInputs(threadId: String, messages: List<List<UserInput>>) {
+        if (messages.isEmpty()) return
+        if (state.threadId == threadId && state.open && !state.loading) {
+            state.restoreComposerInputs(messages)
+        } else {
+            restoredInputs.getOrPut(threadId) { mutableListOf() }.addAll(messages)
+        }
+    }
+
+    private fun restoreHeldInputs(threadId: String) {
+        if (state.threadId == threadId && state.open) {
+            restoredInputs.remove(threadId)?.let { state.restoreComposerInputs(it) }
+        }
+    }
+
+    private fun switchInputThread(threadId: String) {
+        if (state.threadId == threadId) return
+        if (state.threadId.isNotEmpty()) {
+            val draft = state.pendingTurnInputs()
+            if (draft.isEmpty()) composerDrafts.remove(state.threadId) else composerDrafts[state.threadId] = draft
+            clearComposer()
+        }
+        composerDrafts.remove(threadId)?.let { state.restoreComposerInputs(listOf(it)) }
+    }
+
+    private fun acknowledgeInput(threadId: String, item: ThreadItem) {
+        if (item !is UserMessageItem || !committedUserItems.add(threadId to item.id)) return
+        while (committedUserItems.size > 512) committedUserItems.remove(committedUserItems.first())
+        val pending = uncommittedSteers.firstOrNull { it.threadId == threadId && it.matches(item) }
+        if (pending != null) uncommittedSteers.remove(pending)
+    }
+
+    /** Interrupted queues remain server-owned until deletion confirms recovery into the composer. */
+    private fun restoreTurnInputs(event: AppServerEvent.TurnCompleted) {
+        if (!restoredTurns.add(event.threadId to event.turnId)) return
+        while (restoredTurns.size > MaxRememberedTurns) restoredTurns.remove(restoredTurns.first())
+        val pending = uncommittedSteers.filter {
+            it.threadId == event.threadId && (it.turnId == null || it.turnId == event.turnId)
+        }
+        val messages = pending.map { it.inputs }.toMutableList()
+        uncommittedSteers.removeAll(pending.toSet())
+        val activeTurn = client.activeTurnId(event.threadId)
+        if (event.status != TurnStatus.Interrupted || (activeTurn != null && activeTurn != event.turnId)) {
+            restoreInputs(event.threadId, messages)
+            return
+        }
+        queueReadVersions[event.threadId] = (queueReadVersions[event.threadId] ?: 0L) + 1
+        restoringInputThreads.add(event.threadId)
+        val pendingAdds = queueAdds[event.threadId].orEmpty().toList()
+        scope.launch {
+            try {
+                pendingAdds.forEach { it.await() }
+                client.listQueue(event.threadId).onSuccess { entries ->
+                    for (entry in entries) {
+                        client.deleteQueued(event.threadId, entry.id).onSuccess { deleted ->
+                            if (deleted) messages.add(entry.input)
+                        }.onFailure { reportInputFailure(event.threadId, it) }
+                    }
+                }.onFailure { reportInputFailure(event.threadId, it) }
+                restoreInputs(event.threadId, messages)
+            } finally {
+                restoringInputThreads.remove(event.threadId)
+                refreshQueue(event.threadId)
             }
         }
     }
@@ -909,20 +1025,25 @@ class ChatWidget(
 
     private fun clearComposer() {
         state.applyDraft("")
-        state.clearComposerImages()
+        state.clearComposerAttachments()
     }
 
     private fun refreshQueue(threadId: String) {
+        if (threadId in restoringInputThreads) return
+        val version = (queueReadVersions[threadId] ?: 0L) + 1
+        queueReadVersions[threadId] = version
         scope.launch {
             client.listQueue(threadId).onSuccess {
-                if (state.threadId == threadId) replaceQueue(it)
+                if (state.threadId == threadId && version == queueReadVersions[threadId] && !restoringInputs) replaceQueue(it)
             }
         }
     }
 
     private fun interrupt() {
+        val threadId = state.threadId
         scope.launch {
-            client.interruptTurn(state.threadId).onFailure { error ->
+            client.interruptTurn(threadId).onFailure { error ->
+                if (state.threadId != threadId) return@onFailure
                 state.addDiagnostic(
                     SessionDiagnostic(
                         severity = DiagnosticSeverity.Warning,
@@ -1060,6 +1181,12 @@ class ChatWidget(
 
     private fun apply(event: AppServerEvent) {
         val eventThread = event.threadId
+        when (event) {
+            is AppServerEvent.ItemStarted -> acknowledgeInput(event.threadId, event.item)
+            is AppServerEvent.ItemCompleted -> acknowledgeInput(event.threadId, event.item)
+            is AppServerEvent.TurnCompleted -> restoreTurnInputs(event)
+            else -> Unit
+        }
         if (eventThread != null && eventThread != state.threadId) {
             foreignEvents.record(eventThread, event)
             return
@@ -1558,6 +1685,11 @@ class ChatWidget(
     }
 
     private fun onTurnCompleted(event: AppServerEvent.TurnCompleted) {
+        val activeTurn = client.activeTurnId(event.threadId)
+        if (activeTurn != null && activeTurn != event.turnId) {
+            retireTurnApprovals(event.turnId)
+            return
+        }
         flushDeltas()
         state.applyStatus(ThreadStatus.Idle)
         recap.noteTurnFinished(event.status, monotonicMs())
@@ -1598,11 +1730,7 @@ class ChatWidget(
             }
         }
         refreshQueue(event.threadId)
-        finishedTurns.addLast(event.turnId)
-        while (finishedTurns.size > MaxRememberedTurns) finishedTurns.removeFirst()
-        pendingApprovals.filter { it.turnId == event.turnId }.forEach { onApprovalRetired(it.requestId) }
-        pendingApprovals.removeAll { it.turnId == event.turnId }
-        syncCurrentApproval()
+        retireTurnApprovals(event.turnId)
         if (event.status != TurnStatus.Completed) {
             state.failInProgressItems()
             // Named by code; the transcript resolves the label.
@@ -1629,6 +1757,14 @@ class ChatWidget(
         refreshGitSummary(event.threadId)
     }
 
+    private fun retireTurnApprovals(turnId: String) {
+        finishedTurns.addLast(turnId)
+        while (finishedTurns.size > MaxRememberedTurns) finishedTurns.removeFirst()
+        pendingApprovals.filter { it.turnId == turnId }.forEach { onApprovalRetired(it.requestId) }
+        pendingApprovals.removeAll { it.turnId == turnId }
+        syncCurrentApproval()
+    }
+
     private fun refreshHistory(threadId: String) {
         val version = loadVersion
         scope.launch {
@@ -1643,6 +1779,8 @@ class ChatWidget(
                     return@launch
                 }
                 if (version != loadVersion || state.threadId != threadId) return@launch
+                response.items.filterIsInstance<UserMessageItem>().filter { it.clientId != null }
+                    .forEach { acknowledgeInput(threadId, it) }
                 if (revision == eventRevision) {
                     state.items.clear()
                     // Post-compact/revert: the old cursor may name a turn that no longer exists.

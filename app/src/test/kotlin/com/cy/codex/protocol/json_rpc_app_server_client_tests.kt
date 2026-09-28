@@ -231,6 +231,8 @@ class JsonRpcAppServerClientTest {
         val transport = HarnessTransport()
         val client = JsonRpcAppServerClient(transport, backgroundScope)
         client.initialize(ClientInfo("android", version = "1")).getOrThrow()
+        assertTrue(client.steerTurn("t", listOf(UserInput.Text("Too soon"))).isFailure)
+        assertTrue(transport.outgoing.tryReceive().isFailure)
         val input = "A \"quote\"\nnext line"
         val start = async { client.startTurn("t", listOf(UserInput.Text(input))).getOrThrow() }
         val request = transport.request()
@@ -239,11 +241,72 @@ class JsonRpcAppServerClientTest {
         assertEquals(emptyList(), params.array("input").single().objectValue().array("text_elements"))
         transport.response(request, obj("turn" to obj("id" to "turn", "status" to "inProgress")))
         assertEquals("turn", start.await())
+        assertEquals("turn", client.activeTurnId("t"))
         val steer = async { client.steerTurn("t", listOf(UserInput.Text("More"))).getOrThrow() }
         val steerRequest = transport.request()
+        assertEquals("turn/steer", steerRequest.text("method"))
         assertEquals("turn", steerRequest.objectOrNull("params")!!.text("expectedTurnId"))
+        assertNull(steerRequest.objectOrNull("params")!!["clientUserMessageId"])
         transport.response(steerRequest, obj("turnId" to "turn"))
         assertEquals("turn", steer.await())
+        val identified = async {
+            client.steerTurn("t", listOf(UserInput.Text(input)), clientUserMessageId = "pending-message",
+                expectedTurnId = "captured-turn").getOrThrow()
+        }
+        val identifiedRequest = transport.request()
+        val identifiedParams = identifiedRequest.objectOrNull("params")!!
+        assertEquals(setOf("threadId", "expectedTurnId", "input", "clientUserMessageId"), identifiedParams.keys)
+        assertEquals("pending-message", identifiedParams.text("clientUserMessageId"))
+        assertEquals("captured-turn", identifiedParams.text("expectedTurnId"))
+        assertEquals(input, identifiedParams.array("input").single().objectValue().text("text"))
+        transport.response(identifiedRequest, obj("turnId" to "turn"))
+        assertEquals("turn", identified.await())
+        client.close()
+    }
+
+    @Test
+    fun `resume restores the active turn for steering after reconnect`() = runTest {
+        val transport = HarnessTransport()
+        val client = JsonRpcAppServerClient(transport, backgroundScope)
+        val info = ClientInfo("android", version = "1")
+        client.initialize(info).getOrThrow()
+        val started = async { client.startTurn("t", listOf(UserInput.Text("first"))).getOrThrow() }
+        val startRequest = transport.request()
+        transport.response(startRequest, obj("turn" to obj("id" to "old-turn", "status" to "inProgress")))
+        assertEquals("old-turn", started.await())
+
+        transport.incoming.send(Result.failure(IOException("Disconnected")))
+        runCurrent()
+        assertIs<ConnectionState.Failed>(client.connection.value)
+        assertNull(client.activeTurnId("t"))
+        client.initialize(info).getOrThrow()
+
+        val resumed = async {
+            client.resumeThread(com.cy.codex.protocol.protocol.v2.ThreadResumeParams(
+                threadId = "t",
+                excludeTurns = true,
+                initialTurnsPage = com.cy.codex.protocol.protocol.v2.ThreadResumeInitialTurnsPageParams(limit = 20),
+            )).getOrThrow()
+        }
+        val resumeRequest = transport.request()
+        assertEquals("thread/resume", resumeRequest.text("method"))
+        transport.response(resumeRequest, obj(
+            "thread" to obj("id" to "t", "status" to obj("type" to "active")),
+            "model" to "gpt-5", "modelProvider" to "openai",
+            "initialTurnsPage" to obj("data" to listOf(
+                obj("id" to "current-turn", "status" to "inProgress", "items" to emptyList<String>()),
+                obj("id" to "completed-turn", "status" to "completed", "items" to emptyList<String>()),
+            )),
+        ))
+        assertEquals("t", resumed.await().threadId)
+        assertEquals("current-turn", client.activeTurnId("t"))
+
+        val steered = async { client.steerTurn("t", listOf(UserInput.Text("more"))).getOrThrow() }
+        val steerRequest = transport.request()
+        assertEquals("turn/steer", steerRequest.text("method"))
+        assertEquals("current-turn", steerRequest.objectOrNull("params")!!.text("expectedTurnId"))
+        transport.response(steerRequest, obj("turnId" to "current-turn"))
+        assertEquals("current-turn", steered.await())
         client.close()
     }
 
@@ -510,7 +573,7 @@ class JsonRpcAppServerClientTest {
         val params = request.objectOrNull("params")!!
         assertTrue(params.required("clientUserMessageId").isNotEmpty())
         transport.response(request, obj("queuedSubmission" to obj("id" to "q", "clientUserMessageId" to params.required("clientUserMessageId"), "input" to params["input"])))
-        assertEquals("Next", queue.await().preview)
+        assertEquals("Next", kotlin.test.assertNotNull(queue.await()).preview)
         val start = async { client.startQueued("t", "q").getOrThrow() }
         val startRequest = transport.request()
         assertEquals("q", startRequest.objectOrNull("params")!!.required("queuedSubmissionId"))
@@ -521,6 +584,38 @@ class JsonRpcAppServerClientTest {
         assertEquals("queued-turn", stopRequest.objectOrNull("params")!!.required("turnId"))
         transport.response(stopRequest, obj())
         stop.await()
+        client.close()
+    }
+
+    @Test
+    fun `queue deletion requires the server to confirm whether it deleted the entry`() = runTest {
+        val transport = HarnessTransport()
+        val client = JsonRpcAppServerClient(transport, backgroundScope)
+        client.initialize(ClientInfo("android", version = "1")).getOrThrow()
+        for (deleted in listOf(true, false)) {
+            val deletion = async { client.deleteQueued("thread", "queued").getOrThrow() }
+            val request = transport.request()
+            assertEquals("thread/queue/delete", request.text("method"))
+            assertEquals(obj("threadId" to "thread", "queuedSubmissionId" to "queued"), request["params"])
+            transport.response(request, obj("deleted" to deleted))
+            assertEquals(deleted, deletion.await())
+        }
+        val unconfirmed = async { client.deleteQueued("thread", "queued") }
+        transport.response(transport.request(), obj())
+        assertTrue(unconfirmed.await().isFailure)
+        client.close()
+    }
+
+    @Test
+    fun `an immediately consumed queue submission is a successful null result`() = runTest {
+        val transport = HarnessTransport()
+        val client = JsonRpcAppServerClient(transport, backgroundScope)
+        client.initialize(ClientInfo("android", version = "1")).getOrThrow()
+        val queued = async { client.addToQueue("thread", listOf(UserInput.Text("follow-up"))).getOrThrow() }
+        val request = transport.request()
+        assertEquals("thread/queue/add", request.text("method"))
+        transport.response(request, obj("queuedSubmission" to kotlinx.serialization.json.JsonNull))
+        assertNull(queued.await())
         client.close()
     }
 

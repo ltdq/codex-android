@@ -4,7 +4,7 @@ import com.cy.codex.protocol.protocol.v2.ByteRange
 import com.cy.codex.protocol.protocol.v2.TextElement
 
 /** A local image staged in the composer; [placeholder] marks it on the wire at submission. */
-data class ComposerImageAttachment(val path: String, val placeholder: String)
+data class ComposerImageAttachment(val path: String, val placeholder: String, val detail: String? = null)
 
 /** Matches upstream `MAX_IMAGE_BYTES` (chatwidget/image_submission.rs); larger files cannot fit in
  * the 32 MiB frame. */

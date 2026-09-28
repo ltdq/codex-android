@@ -188,6 +188,7 @@ class ClientRequestRegistryTest {
         "updateThreadSettingsFull",
         "readConfigLayers",
         "readThreadUsage",
+        "activeTurnId",
     )
 
     // Demangled: Kotlin appends a signature-hash suffix for value-class signatures (`Result<T>`).

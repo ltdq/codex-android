@@ -306,7 +306,10 @@ class JsonRpcAppServerClient(
             obj("limit" to it.limit, "sortDirection" to it.sortDirection?.wire, "itemsView" to it.itemsView?.wire)
         },
         "permissions" to params.permissions,
-    ))
+    )).onSuccess { resumed ->
+        resumed.initialTurnsPage?.turns?.firstOrNull { it.status == TurnStatus.InProgress }
+            ?.let { activeTurns[resumed.threadId] = it.id }
+    }
     override suspend fun forkThread(params: com.cy.codex.protocol.protocol.v2.ThreadForkParams) =
         session("thread/fork", obj(
             "threadId" to params.threadId,
@@ -444,11 +447,16 @@ class JsonRpcAppServerClient(
     } }
     override suspend fun listQueue(threadId: String) = result { catalog("thread/queue/list", obj("threadId" to threadId)).map(WireCatalogCodec::queued) }
     override suspend fun addToQueue(threadId: String, inputs: List<UserInput>) = result {
-        WireCatalogCodec.queued(rpc("thread/queue/add", obj("threadId" to threadId, "input" to inputs.map(WireCodec::input),
-            "clientUserMessageId" to UUID.randomUUID().toString())).objectOrNull("queuedSubmission")!!)
+        rpc("thread/queue/add", obj("threadId" to threadId, "input" to inputs.map(WireCodec::input),
+            "clientUserMessageId" to UUID.randomUUID().toString())).objectOrNull("queuedSubmission")?.let(WireCatalogCodec::queued)
     }
     override suspend fun updateQueued(threadId: String, id: String, inputs: List<UserInput>) = call("thread/queue/update", obj("threadId" to threadId, "queuedSubmissionId" to id, "input" to inputs.map(WireCodec::input)))
-    override suspend fun deleteQueued(threadId: String, id: String) = call("thread/queue/delete", obj("threadId" to threadId, "queuedSubmissionId" to id))
+    override suspend fun deleteQueued(threadId: String, id: String) = result {
+        com.cy.codex.protocol.protocol.v2.ThreadQueueDeleteResponse(
+            rpc("thread/queue/delete", obj("threadId" to threadId, "queuedSubmissionId" to id)).bool("deleted")
+                ?: error("Missing queue deletion result"),
+        ).deleted
+    }
     override suspend fun reorderQueue(threadId: String, ids: List<String>) = call("thread/queue/reorder", obj("threadId" to threadId, "queuedSubmissionIds" to ids))
     override suspend fun startQueued(threadId: String, id: String?) = result {
         val turn = rpc("thread/queue/start", obj("threadId" to threadId, "queuedSubmissionId" to id)).objectOrNull("turn")!!
@@ -522,9 +530,12 @@ class JsonRpcAppServerClient(
         )).objectOrNull("turn") ?: error("Missing turn")
         turn.required("id").also { activeTurns[threadId] = it }
     }
-    override suspend fun steerTurn(threadId: String, inputs: List<UserInput>) = result {
-        val id = activeTurns[threadId] ?: error("No active turn in this thread")
-        rpc("turn/steer", obj("threadId" to threadId, "expectedTurnId" to id, "input" to inputs.map(WireCodec::input))).required("turnId")
+    override fun activeTurnId(threadId: String): String? = activeTurns[threadId]
+    override suspend fun steerTurn(threadId: String, inputs: List<UserInput>, clientUserMessageId: String?, expectedTurnId: String?) = result {
+        val id = expectedTurnId ?: activeTurns[threadId] ?: error("No active turn in this thread")
+        val params = com.cy.codex.protocol.protocol.v2.TurnSteerParams(threadId, inputs, id, clientUserMessageId)
+        rpc("turn/steer", obj("threadId" to params.threadId, "expectedTurnId" to params.expectedTurnId,
+            "clientUserMessageId" to params.clientUserMessageId, "input" to params.input.map(WireCodec::input))).required("turnId")
     }
     override suspend fun interruptTurn(threadId: String) = result {
         val id = activeTurns[threadId] ?: error("No active turn in this thread")

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="pending_steer_header">插话 · %1$d 条待接收</string>
+    <string name="pending_input_attachments">附件消息</string>
+    <string name="pending_input_queue">排到下一轮</string>
+    <string name="pending_input_image">图片</string>
+    <string name="pending_input_audio">音频</string>
+    <string name="pending_input_remove">移除%1$s</string>
+    <string name="pending_input_hint">发送以插话，或排到下一轮</string>
+</resources>

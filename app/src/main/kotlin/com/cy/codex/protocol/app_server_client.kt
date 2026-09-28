@@ -668,7 +668,7 @@ interface AppServerClient {
     suspend fun listQueue(threadId: String): Result<List<QueuedSubmission>> = unsupported("listQueue")
     suspend fun addToQueue(threadId: String, inputs: List<UserInput>): Result<QueuedSubmission?> = unsupported("addToQueue")
     suspend fun updateQueued(threadId: String, id: String, inputs: List<UserInput>): Result<Unit> = unsupported("updateQueued")
-    suspend fun deleteQueued(threadId: String, id: String): Result<Unit> = unsupported("deleteQueued")
+    suspend fun deleteQueued(threadId: String, id: String): Result<Boolean> = unsupported("deleteQueued")
     suspend fun reorderQueue(threadId: String, ids: List<String>): Result<Unit> = unsupported("reorderQueue")
     suspend fun startQueued(threadId: String, id: String? = null): Result<Unit> = unsupported("startQueued")
 
@@ -707,7 +707,9 @@ interface AppServerClient {
         /** Experimental `responsesapiClientMetadata`; the misalignment override rides here. */
         clientMetadata: Map<String, String>? = null,
     ): Result<String> = unsupported("startTurn")
-    suspend fun steerTurn(threadId: String, inputs: List<UserInput>): Result<String> = unsupported("steerTurn")
+    fun activeTurnId(threadId: String): String? = null
+    suspend fun steerTurn(threadId: String, inputs: List<UserInput>, clientUserMessageId: String? = null,
+        expectedTurnId: String? = null): Result<String> = unsupported("steerTurn")
     suspend fun interruptTurn(threadId: String): Result<Unit> = unsupported("interruptTurn")
     suspend fun updateTurnSettings(params: TurnSettingsUpdateParams): Result<Unit> = unsupported("updateTurnSettings")
 

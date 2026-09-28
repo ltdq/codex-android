@@ -1416,6 +1416,25 @@ private fun ComposerDock(
             modifier = Modifier.padding(horizontal = UiConsts.ScreenMargin),
         )
 
+        com.cy.codex.bottom_pane.RestoredInputAttachments(
+            inputs = session.composerRetainedInputs,
+            onRemove = { app.onAppEvent(AppEvent.RemoveComposerRetainedInput(it)) },
+            modifier = Modifier.padding(horizontal = UiConsts.ScreenMargin),
+        )
+        com.cy.codex.bottom_pane.PendingInputPreview(
+            messages = app.widget.pendingSteers,
+            modifier = Modifier.padding(horizontal = UiConsts.ScreenMargin),
+        )
+        if (session.running && !session.config.blocksDirectInput) {
+            com.cy.codex.bottom_pane.RunningInputActions(
+                canQueue = session.pendingTurnInputs().isNotEmpty() && !app.widget.restoringInputs &&
+                    session.misalignment == null,
+                onQueue = { app.onAppEvent(AppEvent.SubmitUserMessage(session.pendingTurnInputs(), queued = true)) },
+                onInterrupt = { app.onAppEvent(AppEvent.InterruptTurn) },
+                modifier = Modifier.padding(horizontal = UiConsts.ScreenMargin),
+            )
+        }
+
         Composer(
             value = prompt,
             onValueChange = onPromptChange,
@@ -1477,8 +1496,10 @@ private fun ComposerDock(
                     }
             },
             running = session.running,
+            hasAttachments = session.composerRetainedInputs.isNotEmpty(),
             enabled =
                 app.startupReady &&
+                    !app.widget.restoringInputs &&
                     !session.loading &&
                     !app.creatingThread &&
                     !session.config.blocksDirectInput &&
@@ -1489,6 +1510,7 @@ private fun ComposerDock(
                         stringResource(R.string.chat_composer_hint_parent_owned)
                     // The same shell-mode signal upstream shows in its footer.
                     prompt.startsWith("!") -> stringResource(R.string.chat_composer_hint_shell)
+                    session.running -> stringResource(R.string.pending_input_hint)
                     session.open -> stringResource(R.string.chat_composer_hint_open)
                     else -> stringResource(R.string.chat_composer_hint_empty)
                 },

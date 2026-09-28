@@ -53,6 +53,8 @@ data class ThreadQueueDeleteParams(
     val queuedSubmissionId: String,
 )
 
+data class ThreadQueueDeleteResponse(val deleted: Boolean)
+
 /** `thread/queue/reorder` — replace the whole order in one call. */
 data class ThreadQueueReorderParams(
     val threadId: String,
