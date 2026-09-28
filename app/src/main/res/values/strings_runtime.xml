@@ -27,4 +27,6 @@
     <string name="runtime_creating_thread">Creating conversation</string>
     <string name="runtime_attachment_failed">Could not import attachment</string>
     <string name="runtime_unknown_slash_command">Unrecognized command \'/%1$s\'. Type \"/\" for a list of supported commands.</string>
+    <string name="slash_usage_requires_chatgpt">Sign in with ChatGPT to use /usage.</string>
+    <string name="slash_apps_requires_chatgpt">Sign in with ChatGPT and enable apps to use /apps.</string>
 </resources>

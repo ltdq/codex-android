@@ -293,4 +293,23 @@ class WorkspaceMessagesTest {
         assertFalse(AccountReadResponse(requiresOpenaiAuth = false).requiresSignIn)
         assertFalse(AccountReadResponse(requiresOpenaiAuth = true, account = Account.ApiKey).requiresSignIn)
     }
+
+    @Test
+    fun `rate limits and thread estimates follow account capabilities`() {
+        val apiKey = AccountReadResponse(requiresOpenaiAuth = true, account = Account.ApiKey)
+        val custom = AccountReadResponse(requiresOpenaiAuth = false)
+        val pro = AccountReadResponse(true, Account.Chatgpt("pro@example.com", "pro"))
+        val business = AccountReadResponse(true, Account.Chatgpt("business@example.com", "business"))
+        val automation = AccountReadResponse(true, Account.Chatgpt("automation@example.com", "enterprise_cbp_automation"))
+        val usageBased = AccountReadResponse(true, Account.Chatgpt("usage@example.com", "enterprise_cbp_usage_based"))
+
+        assertFalse(apiKey.canReadRateLimits)
+        assertFalse(custom.canReadRateLimits)
+        assertTrue(pro.canReadRateLimits)
+        assertFalse(pro.canReadThreadUsage)
+        assertTrue(business.canReadThreadUsage)
+        assertTrue(automation.canReadThreadUsage)
+        assertTrue(usageBased.canReadThreadUsage)
+        assertFalse(apiKey.canReadThreadUsage)
+    }
 }

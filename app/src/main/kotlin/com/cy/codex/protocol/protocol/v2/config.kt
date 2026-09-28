@@ -172,6 +172,12 @@ enum class WriteStatus(val wire: String) {
     }
 }
 
+/** Login modes allowed by policy (codex-rs/protocol/src/config_types.rs). */
+enum class ForcedLoginMethod(val wire: String) {
+    Api("api"),
+    Chatgpt("chatgpt"),
+}
+
 data class OverriddenMetadata(
     val message: String = "",
     val overridingLayer: ConfigLayerOrigin = ConfigLayerOrigin(),
@@ -184,6 +190,16 @@ data class ConfigRequirementsReadResponse(
     /** Raw `requirements.toml`, untyped for the same reason as the config body. */
     val requirements: JsonElement = JsonObject(emptyMap()),
 ) {
+    val allowedLoginMethods: List<ForcedLoginMethod>?
+        get() {
+            val raw = (requirements as? JsonObject)?.get("allowedLoginMethods") as? JsonArray
+                ?: return null
+            return raw.mapNotNull { element ->
+                val wire = element.stringOrNull()
+                ForcedLoginMethod.entries.find { it.wire == wire }
+            }
+        }
+
     /**
      * The reviewers managed policy permits, or `null` when it does not restrict them.
      *

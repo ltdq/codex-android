@@ -59,10 +59,13 @@ import com.cy.codex.protocol.protocol.v2.AccountRateLimits
 import com.cy.codex.protocol.protocol.v2.AccountReadResponse
 import com.cy.codex.protocol.protocol.v2.AccountUsage
 import com.cy.codex.protocol.protocol.v2.CreditsSnapshot
+import com.cy.codex.protocol.protocol.v2.ForcedLoginMethod
 import com.cy.codex.protocol.protocol.v2.LoginAccountParams
 import com.cy.codex.protocol.protocol.v2.LoginAccountResponse
 import com.cy.codex.protocol.protocol.v2.RateLimitResetCredit
 import com.cy.codex.protocol.protocol.v2.RateLimitWindow
+import com.cy.codex.canReadRateLimits
+import com.cy.codex.hasCodexBackendAuth
 import com.cy.codex.raisedSurface
 import com.cy.codex.sheetColor
 import com.cy.codex.sheetSideMargin
@@ -98,6 +101,7 @@ fun AccountScreen(
     catalog: CatalogState,
     onEvent: (AppEvent) -> Unit,
     onBack: () -> Unit,
+    onOpenBedrock: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val account = catalog.account
@@ -112,6 +116,8 @@ fun AccountScreen(
                     account.email
                         ?: account.planType
                         ?: stringResource(R.string.account_screen_signed_in)
+                } else if (!account.requiresOpenaiAuth) {
+                    stringResource(R.string.account_screen_no_sign_in_required)
                 } else {
                     stringResource(R.string.account_screen_not_signed_in)
                 },
@@ -119,12 +125,7 @@ fun AccountScreen(
             endActions = {
                 IconButton(
                     onClick = {
-                        // Three separate reloads: three endpoints, each able to fail on its own.
                         onEvent(AppEvent.ReloadAccount)
-                        if (account.signedIn) {
-                            onEvent(AppEvent.ReloadRateLimits)
-                            onEvent(AppEvent.ReloadUsage)
-                        }
                     },
                     minWidth = UiConsts.IconButtonSize,
                     minHeight = UiConsts.IconButtonSize,
@@ -147,21 +148,27 @@ fun AccountScreen(
                     .padding(bottom = UiConsts.PageBottomInset),
             verticalArrangement = Arrangement.spacedBy(UiConsts.SectionGap),
         ) {
-            AccountLoginSection(account)
+            if (account.signedIn || account.requiresOpenaiAuth) AccountLoginSection(account)
             if (account.signedIn) {
-                AccountLimitSection(rateLimits)
-                AccountResetCreditsSection(rateLimits, onEvent)
-                if (catalog.usageLoaded) AccountUsageSection(usage)
+                if (account.canReadRateLimits) {
+                    AccountLimitSection(rateLimits)
+                    AccountResetCreditsSection(rateLimits, onEvent)
+                }
+                if (account.hasCodexBackendAuth && catalog.usageLoaded) AccountUsageSection(usage)
                 AccountLogoutSection(loggedIn = true, onLogout = { onEvent(AppEvent.Logout) })
-            } else {
-                AccountSignIn(catalog, onEvent)
+            } else if (account.requiresOpenaiAuth) {
+                AccountSignIn(catalog, onEvent, onOpenBedrock)
             }
         }
     }
 }
 
 @Composable
-private fun AccountSignIn(catalog: CatalogState, onEvent: (AppEvent) -> Unit) {
+private fun AccountSignIn(
+    catalog: CatalogState,
+    onEvent: (AppEvent) -> Unit,
+    onOpenBedrock: () -> Unit,
+) {
     var key by remember { mutableStateOf("") }
     var browserError by remember { mutableStateOf<String?>(null) }
     val uriHandler = LocalUriHandler.current
@@ -227,49 +234,63 @@ private fun AccountSignIn(catalog: CatalogState, onEvent: (AppEvent) -> Unit) {
         } else {
             // The in-process app-server serves the callback on localhost, reachable by the device's
             // browser, so no custom scheme or onNewIntent handoff is needed.
-            Button(
-                onClick = {
-                    onEvent(
-                        AppEvent.Login(
-                            LoginAccountParams.Chatgpt(useHostedLoginSuccessPage = false)
+            if (catalog.isLoginMethodAllowed(ForcedLoginMethod.Chatgpt)) {
+                Button(
+                    onClick = {
+                        onEvent(
+                            AppEvent.Login(
+                                LoginAccountParams.Chatgpt(useHostedLoginSuccessPage = false)
+                            )
                         )
-                    )
-                },
-                modifier = Modifier.fillMaxWidth(),
-                enabled = !catalog.loginLoading,
-                colors = ButtonDefaults.buttonColorsPrimary(),
-            ) {
-                Text(text = stringResource(R.string.runtime_login_chatgpt), maxLines = 1)
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !catalog.loginLoading,
+                    colors = ButtonDefaults.buttonColorsPrimary(),
+                ) {
+                    Text(text = stringResource(R.string.runtime_login_chatgpt), maxLines = 1)
+                }
+                Button(
+                    onClick = { onEvent(AppEvent.Login(LoginAccountParams.ChatgptDeviceCode)) },
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !catalog.loginLoading,
+                    colors = ButtonDefaults.buttonColors(),
+                ) {
+                    Text(text = stringResource(R.string.runtime_login_device_code), maxLines = 1)
+                }
             }
-            Button(
-                onClick = { onEvent(AppEvent.Login(LoginAccountParams.ChatgptDeviceCode)) },
-                modifier = Modifier.fillMaxWidth(),
-                enabled = !catalog.loginLoading,
-                colors = ButtonDefaults.buttonColors(),
-            ) {
-                Text(text = stringResource(R.string.runtime_login_device_code), maxLines = 1)
+            if (catalog.isLoginMethodAllowed(ForcedLoginMethod.Api)) {
+                TextField(
+                    value = key,
+                    onValueChange = { key = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = stringResource(R.string.runtime_api_key),
+                    useLabelAsPlaceholder = true,
+                    singleLine = true,
+                    enabled = !catalog.loginLoading,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                    visualTransformation = PasswordVisualTransformation(),
+                )
+                Button(
+                    onClick = {
+                        onEvent(AppEvent.Login(LoginAccountParams.ApiKey(key.trim())))
+                        key = ""
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = key.isNotBlank() && !catalog.loginLoading,
+                    colors = ButtonDefaults.buttonColors(),
+                ) {
+                    Text(text = stringResource(R.string.runtime_login_api_key), maxLines = 1)
+                }
             }
-            TextField(
-                value = key,
-                onValueChange = { key = it },
-                modifier = Modifier.fillMaxWidth(),
-                label = stringResource(R.string.runtime_api_key),
-                useLabelAsPlaceholder = true,
-                singleLine = true,
-                enabled = !catalog.loginLoading,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                visualTransformation = PasswordVisualTransformation(),
-            )
-            Button(
-                onClick = {
-                    onEvent(AppEvent.Login(LoginAccountParams.ApiKey(key.trim())))
-                    key = ""
-                },
-                modifier = Modifier.fillMaxWidth(),
-                enabled = key.isNotBlank() && !catalog.loginLoading,
-                colors = ButtonDefaults.buttonColors(),
-            ) {
-                Text(text = stringResource(R.string.runtime_login_api_key), maxLines = 1)
+            if (catalog.shouldShowBedrockSetupWizard) {
+                Button(
+                    onClick = onOpenBedrock,
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !catalog.loginLoading,
+                    colors = ButtonDefaults.buttonColors(),
+                ) {
+                    Text(text = stringResource(R.string.sidebar_library_bedrock), maxLines = 1)
+                }
             }
         }
         if (catalog.loginLoading) LinearProgressIndicator(modifier = Modifier.fillMaxWidth())

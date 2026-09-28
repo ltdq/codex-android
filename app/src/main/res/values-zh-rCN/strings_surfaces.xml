@@ -305,6 +305,8 @@
     <string name="session_status_spend_control_value">%1$s / %2$s · 剩余 %3$d%%</string>
     <string name="session_status_spend_control_reached">已达到消费控制上限</string>
     <string name="session_status_account">账户</string>
+    <string name="session_status_api_key">已配置 API key（运行 codex login 以使用 ChatGPT）</string>
+    <string name="session_status_chatgpt_usage">ChatGPT 用量</string>
     <string name="session_status_plan">套餐</string>
     <string name="session_status_back">返回</string>
     <string name="session_status_load_failed">无法读取预估用量。</string>
@@ -321,4 +323,5 @@
     <string name="worktrees_detached">游离 HEAD</string>
     <string name="worktrees_bare">裸仓库</string>
     <string name="worktrees_back">返回</string>
+    <string name="account_screen_no_sign_in_required">无需 OpenAI 登录</string>
 </resources>

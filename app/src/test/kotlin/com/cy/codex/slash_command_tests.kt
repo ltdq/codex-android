@@ -2,6 +2,7 @@ package com.cy.codex
 
 import org.junit.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 
 class SlashCommandsTest {
     @Test
@@ -45,5 +46,14 @@ class SlashCommandsTest {
     @Test
     fun `filtering is case insensitive`() {
         assertEquals(listOf("model"), SlashCommands.filter("/MODEL").map { it.name })
+    }
+
+    @Test
+    fun `account-gated commands stay out of suggestions`() {
+        val names = SlashCommands.filter("/", usageAvailable = false, appsAvailable = false).map { it.name }
+        assertFalse("usage" in names)
+        assertFalse("apps" in names)
+        assertEquals(emptyList(), SlashCommands.filter("/usage", usageAvailable = false))
+        assertEquals(emptyList(), SlashCommands.filter("/apps", appsAvailable = false))
     }
 }

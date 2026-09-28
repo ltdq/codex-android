@@ -52,6 +52,14 @@ data class WorkspaceHeadlineCache(
 val AccountReadResponse.hasCodexBackendAuth: Boolean
     get() = account is Account.Chatgpt
 
+val AccountReadResponse.canReadRateLimits: Boolean
+    get() = requiresOpenaiAuth && account is Account.Chatgpt
+
+val AccountReadResponse.canReadThreadUsage: Boolean
+    get() = (account as? Account.Chatgpt)?.planType in setOf(
+        "business", "enterprise_cbp_usage_based", "enterprise_cbp_automation",
+    )
+
 /** Upstream `should_show_login_screen` (codex-rs/tui/src/lib.rs): OSS/custom providers skip login. */
 val AccountReadResponse.requiresSignIn: Boolean
     get() = requiresOpenaiAuth && account == null

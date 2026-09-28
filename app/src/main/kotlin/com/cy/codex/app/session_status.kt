@@ -21,6 +21,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
@@ -30,6 +31,7 @@ import com.cy.codex.R
 import com.cy.codex.UiConsts
 import com.cy.codex.UiType
 import com.cy.codex.copyToClipboard
+import com.cy.codex.canReadThreadUsage
 import com.cy.codex.label
 import com.cy.codex.protocol.protocol.v2.Account
 import com.cy.codex.protocol.protocol.v2.AddCreditsNudgeCreditType
@@ -55,10 +57,13 @@ import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.ChevronBackward
 import top.yukonga.miuix.kmp.icon.extended.Copy
 import top.yukonga.miuix.kmp.icon.extended.Info
+import top.yukonga.miuix.kmp.icon.extended.Link
 import top.yukonga.miuix.kmp.icon.extended.Notes
 import top.yukonga.miuix.kmp.icon.extended.Tasks
 import top.yukonga.miuix.kmp.icon.extended.Timer
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+
+private const val ChatGptUsageUrl = "https://chatgpt.com/codex/settings/usage"
 
 /**
  * `/status` page over the open thread: facts the status card lacks (thread id, cli version,
@@ -79,14 +84,15 @@ fun SessionStatusScreen(
     val thread = knownThreads.firstOrNull { it.id == session.threadId }
     val serverVersion =
         knownThreads.maxByOrNull { it.updatedAt }?.cliVersion?.takeIf { it.isNotBlank() }
-    var estimate by remember(session.threadId) { mutableStateOf<ThreadUsage?>(null) }
-    var estimateFailed by remember(session.threadId) { mutableStateOf(false) }
+    val accountState = app.catalog.account
+    var estimate by remember(session.threadId, app.accountGeneration) { mutableStateOf<ThreadUsage?>(null) }
+    var estimateFailed by remember(session.threadId, app.accountGeneration) { mutableStateOf(false) }
     var nudging by remember { mutableStateOf(false) }
     var nudgeMessage by remember { mutableStateOf<Int?>(null) }
     val scope = rememberCoroutineScope()
 
-    LaunchedEffect(session.threadId) {
-        if (session.threadId.isBlank()) return@LaunchedEffect
+    LaunchedEffect(session.threadId, app.accountGeneration) {
+        if (session.threadId.isBlank() || !accountState.canReadThreadUsage) return@LaunchedEffect
         app.client
             .readThreadUsage(session.threadId)
             .onSuccess { estimate = it }
@@ -95,8 +101,10 @@ fun SessionStatusScreen(
 
     val contextWindow = usage.modelContextWindow?.takeIf { it > 0 }
     val spend = app.catalog.rateLimits.rateLimits
-    val account = app.catalog.account.account
+    val account = accountState.account
+    val accountValue = statusAccountDisplay(account, stringResource(R.string.session_status_api_key))
     val context = LocalContext.current
+    val uriHandler = LocalUriHandler.current
     val report = sessionStatusReport(app)
     val copyLabel = stringResource(R.string.clipboard_copy_status)
 
@@ -422,56 +430,58 @@ fun SessionStatusScreen(
                     },
                 )
 
-                BasicComponent(
-                    title = stringResource(R.string.session_status_tokens_total),
-                    endActions = {
-                        Text(
-                            text = formatTokens(usage.total.totalTokens).ifEmpty { "—" },
-                            color = MiuixTheme.colorScheme.onSurface,
-                            textAlign = TextAlign.End,
-                        )
-                    },
-                )
-                BasicComponent(
-                    title = stringResource(R.string.session_status_tokens_input),
-                    endActions = {
-                        Text(
-                            text = formatTokens(usage.total.inputTokens).ifEmpty { "—" },
-                            color = MiuixTheme.colorScheme.onSurface,
-                            textAlign = TextAlign.End,
-                        )
-                    },
-                )
-                BasicComponent(
-                    title = stringResource(R.string.session_status_tokens_output),
-                    endActions = {
-                        Text(
-                            text = formatTokens(usage.total.outputTokens).ifEmpty { "—" },
-                            color = MiuixTheme.colorScheme.onSurface,
-                            textAlign = TextAlign.End,
-                        )
-                    },
-                )
-                BasicComponent(
-                    title = stringResource(R.string.session_status_tokens_cached),
-                    endActions = {
-                        Text(
-                            text = formatTokens(usage.total.cachedInputTokens).ifEmpty { "—" },
-                            color = MiuixTheme.colorScheme.onSurface,
-                            textAlign = TextAlign.End,
-                        )
-                    },
-                )
-                BasicComponent(
-                    title = stringResource(R.string.session_status_tokens_reasoning),
-                    endActions = {
-                        Text(
-                            text = formatTokens(usage.total.reasoningOutputTokens).ifEmpty { "—" },
-                            color = MiuixTheme.colorScheme.onSurface,
-                            textAlign = TextAlign.End,
-                        )
-                    },
-                )
+                if (account !is Account.Chatgpt) {
+                    BasicComponent(
+                        title = stringResource(R.string.session_status_tokens_total),
+                        endActions = {
+                            Text(
+                                text = formatTokens(usage.total.totalTokens).ifEmpty { "—" },
+                                color = MiuixTheme.colorScheme.onSurface,
+                                textAlign = TextAlign.End,
+                            )
+                        },
+                    )
+                    BasicComponent(
+                        title = stringResource(R.string.session_status_tokens_input),
+                        endActions = {
+                            Text(
+                                text = formatTokens(usage.total.inputTokens).ifEmpty { "—" },
+                                color = MiuixTheme.colorScheme.onSurface,
+                                textAlign = TextAlign.End,
+                            )
+                        },
+                    )
+                    BasicComponent(
+                        title = stringResource(R.string.session_status_tokens_output),
+                        endActions = {
+                            Text(
+                                text = formatTokens(usage.total.outputTokens).ifEmpty { "—" },
+                                color = MiuixTheme.colorScheme.onSurface,
+                                textAlign = TextAlign.End,
+                            )
+                        },
+                    )
+                    BasicComponent(
+                        title = stringResource(R.string.session_status_tokens_cached),
+                        endActions = {
+                            Text(
+                                text = formatTokens(usage.total.cachedInputTokens).ifEmpty { "—" },
+                                color = MiuixTheme.colorScheme.onSurface,
+                                textAlign = TextAlign.End,
+                            )
+                        },
+                    )
+                    BasicComponent(
+                        title = stringResource(R.string.session_status_tokens_reasoning),
+                        endActions = {
+                            Text(
+                                text = formatTokens(usage.total.reasoningOutputTokens).ifEmpty { "—" },
+                                color = MiuixTheme.colorScheme.onSurface,
+                                textAlign = TextAlign.End,
+                            )
+                        },
+                    )
+                }
                 BasicComponent(
                     title = stringResource(R.string.session_status_context),
                     endActions = {
@@ -578,16 +588,26 @@ fun SessionStatusScreen(
                         )
                     },
                 )
-                BasicComponent(
-                    title = stringResource(R.string.session_status_plan),
-                    endActions = {
-                        Text(
-                            text = planLabel(account).ifEmpty { "—" },
-                            color = MiuixTheme.colorScheme.onSurface,
-                            textAlign = TextAlign.End,
+                accountValue?.let { value ->
+                    BasicComponent(
+                        title = stringResource(R.string.session_status_account),
+                        summary = value,
+                    )
+                }
+                if (accountState.requiresOpenaiAuth) {
+                    Button(
+                        onClick = { runCatching { uriHandler.openUri(ChatGptUsageUrl) } },
+                        colors = ButtonDefaults.buttonColors(),
+                    ) {
+                        Icon(
+                            imageVector = MiuixIcons.Link,
+                            contentDescription = null,
+                            modifier = Modifier.size(UiConsts.IconHeader),
                         )
-                    },
-                )
+                        Spacer(Modifier.size(UiConsts.Space6))
+                        Text(text = stringResource(R.string.session_status_chatgpt_usage))
+                    }
+                }
                 spend.credits?.let { credits ->
                     BasicComponent(
                         title = stringResource(R.string.status_card_credits_label),
@@ -714,7 +734,9 @@ fun sessionStatusReport(app: CodexApp): String? {
     val spend = app.catalog.rateLimits.rateLimits
     val thread =
         (app.catalog.agentThreads + app.threads.threads).firstOrNull { it.id == session.threadId }
-    val plan = planLabel(app.catalog.account.account)
+    val accountState = app.catalog.account
+    val account = accountState.account
+    val accountValue = statusAccountDisplay(account, text(R.string.session_status_api_key))
     return buildString {
         appendLine(text(R.string.session_status_title))
         appendLine("${text(R.string.session_status_thread_id)}: ${session.threadId}")
@@ -743,9 +765,11 @@ fun sessionStatusReport(app: CodexApp): String? {
         )
         appendLine("${text(R.string.status_card_approval_label)}: ${config.approvalPolicy.label()}")
         appendLine("${text(R.string.status_card_access_label)}: ${accessSummary(config)}")
-        appendLine(
-            "${text(R.string.session_status_tokens_total)}: ${formatTokens(usage.total.totalTokens)}"
-        )
+        if (account !is Account.Chatgpt) {
+            appendLine(
+                "${text(R.string.session_status_tokens_total)}: ${formatTokens(usage.total.totalTokens)}"
+            )
+        }
         appendLine(
             "${text(R.string.session_status_context)}: " + "${(usage.usedFraction * 100).toInt()}%"
         )
@@ -763,17 +787,41 @@ fun sessionStatusReport(app: CodexApp): String? {
                 }
             appendLine("${text(R.string.status_card_credits_label)}: $balance")
         }
-        appendLine("${text(R.string.session_status_plan)}: $plan")
+        accountValue?.let { appendLine("${text(R.string.session_status_account)}: $it") }
+        if (accountState.requiresOpenaiAuth) {
+            appendLine("${text(R.string.session_status_chatgpt_usage)}: $ChatGptUsageUrl")
+        }
     }
 }
 
-@Composable
-private fun planLabel(account: Account?): String =
+internal fun statusAccountDisplay(account: Account?, apiKeyMessage: String): String? =
     when (account) {
-        is Account.Chatgpt -> account.planType
-        is Account.ApiKey -> stringResource(R.string.account_plan_api_key)
-        is Account.AmazonBedrock -> stringResource(R.string.account_plan_bedrock)
-        null -> stringResource(R.string.account_plan_signed_out)
+        is Account.Chatgpt -> {
+            val email = account.email?.takeIf { it.isNotBlank() }
+            val plan = account.planType.takeIf { it.isNotBlank() }?.let(::statusPlanDisplay)
+            when {
+                email != null && plan != null -> "$email ($plan)"
+                email != null -> email
+                plan != null -> plan
+                else -> "ChatGPT"
+            }
+        }
+        is Account.ApiKey -> apiKeyMessage
+        is Account.AmazonBedrock, null -> null
+    }
+
+private fun statusPlanDisplay(plan: String): String =
+    when (plan) {
+        "enterprise_cbp_automation" -> "Enterprise (Automation)"
+        "self_serve_business_prolite" -> "Business Premium"
+        "team", "self_serve_business_usage_based" -> "Business"
+        "business", "ent26", "enterprise_cbp_usage_based" -> "Enterprise"
+        "pro" -> "Pro (More)"
+        "promax" -> "Pro (Max)"
+        "prolite" -> "Pro"
+        "edu_plus" -> "Edu Plus"
+        "edu_pro" -> "Edu Pro"
+        else -> plan.split('_').joinToString(" ") { it.replaceFirstChar(Char::uppercase) }
     }
 
 @Composable

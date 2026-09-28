@@ -37,6 +37,7 @@ import com.cy.codex.protocol.protocol.v2.ExperimentalFeatureEntry
 import com.cy.codex.protocol.protocol.v2.ExternalAgentConfigImportHistory
 import com.cy.codex.protocol.protocol.v2.ExternalAgentConfigMigrationItem
 import com.cy.codex.protocol.protocol.v2.FuzzyFileSearchResult
+import com.cy.codex.protocol.protocol.v2.ForcedLoginMethod
 import com.cy.codex.protocol.protocol.v2.HookErrorInfo
 import com.cy.codex.protocol.protocol.v2.HookMetadata
 import com.cy.codex.protocol.protocol.v2.HookRunSummary
@@ -857,6 +858,17 @@ class CatalogState {
      * no reviewer at all.
      */
     var allowedApprovalsReviewers by mutableStateOf<List<ApprovalsReviewer>?>(null)
+
+    var allowedLoginMethods by mutableStateOf<List<ForcedLoginMethod>?>(null)
+
+    fun isLoginMethodAllowed(method: ForcedLoginMethod): Boolean =
+        allowedLoginMethods?.contains(method) ?: true
+
+    // Android hosts an embedded app-server, so this covers the remaining upstream wizard gates.
+    val shouldShowBedrockSetupWizard: Boolean
+        get() = account.account == null && account.requiresOpenaiAuth &&
+            configSnapshot.features["bedrock_setup_wizard"] == true &&
+            configSnapshot.modelProvider == null && isLoginMethodAllowed(ForcedLoginMethod.Api)
 
     /** Profiles `permissionProfile/list` returned, built-ins included; empty until the catalog loads (codex-rs/tui/src/permission_discovery.rs). */
     var permissionProfiles by mutableStateOf<List<PermissionProfileEntry>>(emptyList())

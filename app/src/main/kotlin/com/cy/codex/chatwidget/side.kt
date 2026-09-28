@@ -134,8 +134,13 @@ object SidebarModel {
      * recognizes; [planAvailable] mirrors the upstream feature gate on `SlashCommand::Plan`.
      */
     @Composable
-    fun slashSuggestions(query: String = "/", planAvailable: Boolean = true): List<SlashCommand> =
-        SlashCommands.filter(query)
+    fun slashSuggestions(
+        query: String = "/",
+        planAvailable: Boolean = true,
+        usageAvailable: Boolean = true,
+        appsAvailable: Boolean = true,
+    ): List<SlashCommand> =
+        SlashCommands.filter(query, usageAvailable, appsAvailable)
             .filter { spec -> planAvailable || spec.name != "plan" }
             .map { spec ->
                 SlashCommand(

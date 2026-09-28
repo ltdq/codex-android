@@ -63,13 +63,18 @@ internal object SlashCommands {
         All.firstOrNull { it.name == name } ?: All.firstOrNull { name in it.aliases }
 
     /** Exact matches before prefix matches, catalog order per group; aliases exact-only. */
-    fun filter(query: String): List<SlashCommandSpec> {
+    fun filter(
+        query: String,
+        usageAvailable: Boolean = true,
+        appsAvailable: Boolean = true,
+    ): List<SlashCommandSpec> {
         val needle = query.removePrefix("/")
-        if (needle.isEmpty()) return All
         val exact = mutableListOf<SlashCommandSpec>()
         val prefix = mutableListOf<SlashCommandSpec>()
         for (spec in All) {
+            if ((!usageAvailable && spec.name == "usage") || (!appsAvailable && spec.name == "apps")) continue
             when {
+                needle.isEmpty() -> prefix += spec
                 spec.name.equals(needle, ignoreCase = true) -> exact += spec
                 spec.aliases.any { it.equals(needle, ignoreCase = true) } -> exact += spec
                 spec.name.startsWith(needle, ignoreCase = true) -> prefix += spec

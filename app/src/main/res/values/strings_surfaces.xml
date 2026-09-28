@@ -331,6 +331,8 @@
     <string name="session_status_spend_control_value">%1$s / %2$s · %3$d%% left</string>
     <string name="session_status_spend_control_reached">Spend control reached</string>
     <string name="session_status_account">Account</string>
+    <string name="session_status_api_key">API key configured (run codex login to use ChatGPT)</string>
+    <string name="session_status_chatgpt_usage">ChatGPT usage</string>
     <string name="session_status_plan">Plan</string>
     <string name="session_status_back">Back</string>
     <string name="session_status_load_failed">Could not read estimated usage.</string>
@@ -348,4 +350,5 @@
     <string name="worktrees_bare">Bare repository</string>
     <string name="worktrees_back">Back</string>
 
+    <string name="account_screen_no_sign_in_required">No OpenAI sign-in required</string>
 </resources>

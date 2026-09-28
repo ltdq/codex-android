@@ -114,6 +114,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import com.cy.codex.protocol.protocol.v2.CollaborationMode
+import com.cy.codex.protocol.protocol.v2.AccountReadResponse
 import com.cy.codex.protocol.protocol.v2.ConfigBatchWriteParams
 import com.cy.codex.protocol.protocol.v2.ConfigEdit
 import com.cy.codex.protocol.protocol.v2.DiagnosticSeverity
@@ -233,6 +234,8 @@ class CodexApp(
 
     /** The in-flight recovery read; new input queues behind it instead of starting a turn. */
     private var rateLimitRecoveryJob: Job? = null
+    var accountGeneration by mutableStateOf(0L)
+        private set
 
     var goalMenuOpen by mutableStateOf(false)
 
@@ -278,6 +281,53 @@ class CodexApp(
      * window starts clean (codex-rs/tui/src/chatwidget/rate_limits.rs).
      */
     private val rateLimitWarnings = mutableMapOf<String, Long>()
+
+    private val connectorsAvailable: Boolean
+        get() = catalog.account.hasCodexBackendAuth && catalog.configSnapshot.features["apps"] != false
+
+    private fun refreshRateLimits() {
+        if (!catalog.account.canReadRateLimits) return
+        val generation = accountGeneration
+        load({ client.readRateLimits() }) {
+            if (generation == accountGeneration && catalog.account.canReadRateLimits) applyRateLimitsRead(it)
+        }
+    }
+
+    private fun refreshUsage() {
+        if (!catalog.account.hasCodexBackendAuth) return
+        val generation = accountGeneration
+        load({ client.readUsage() }) {
+            if (generation == accountGeneration && catalog.account.hasCodexBackendAuth) {
+                catalog.usage = it
+                catalog.usageLoaded = true
+            }
+        }
+    }
+
+    private fun refreshApps() {
+        if (!connectorsAvailable) return
+        val generation = accountGeneration
+        load({ client.listApps() }) {
+            if (generation == accountGeneration && connectorsAvailable) catalog.apps = it
+        }
+    }
+
+    private fun resetAccountScopedState() {
+        accountGeneration++
+        rateLimitRecoveryJob?.cancel()
+        rateLimitRecoveryJob = null
+        recoverySubmission = null
+        rateLimitWarnings.clear()
+        rateLimitNudge = null
+        rateLimitNudgeShown = false
+        catalog.rateLimits = com.cy.codex.protocol.protocol.v2.AccountRateLimits()
+        catalog.rateLimitsUpdatedAtMs = 0L
+        catalog.usage = com.cy.codex.protocol.protocol.v2.AccountUsage()
+        catalog.usageLoaded = false
+        catalog.threadUsage = emptyMap()
+        catalog.apps = emptyList()
+        resetBackendBannerForAccountChange()
+    }
 
     /**
      * Generation of each in-flight user verification, keyed by elicitation id (codex-rs/tui/src/app/user_verification.rs):
@@ -398,17 +448,25 @@ class CodexApp(
                 }
             }
             AppEvent.ReloadAccount -> load({ client.readAccount() }) {
+                if (it != catalog.account) {
+                    resetAccountScopedState()
+                    resetWorkspaceHeadline()
+                }
                 catalog.account = it
                 requestWorkspaceHeadlineIfDue()
+                if (surfaces.lastOrNull() == Surface.Account) {
+                    refreshRateLimits()
+                    refreshUsage()
+                }
             }
-            AppEvent.ReloadRateLimits -> load({ client.readRateLimits() }, ::applyRateLimitsRead)
-            AppEvent.ReloadUsage -> load({ client.readUsage() }) { catalog.usage = it; catalog.usageLoaded = true }
+            AppEvent.ReloadRateLimits -> refreshRateLimits()
+            AppEvent.ReloadUsage -> refreshUsage()
 
             AppEvent.ReloadConfig -> request { reloadConfig() }
             AppEvent.ReloadSkills -> load({ client.listSkills() }) { catalog.skills = it }
             AppEvent.ReloadPlugins -> request { reloadPlugins() }
             AppEvent.ReloadPluginShares -> load({ client.listPluginShares() }) { catalog.pluginShares = it }
-            AppEvent.ReloadApps -> load({ client.listApps() }) { catalog.apps = it }
+            AppEvent.ReloadApps -> refreshApps()
             AppEvent.ReloadHooks -> load({ client.listHooks() }) { entries ->
                 catalog.hooks = entries.flatMap { it.hooks }
                 catalog.hookWarnings = entries.flatMap { it.warnings }
@@ -587,7 +645,14 @@ class CodexApp(
                                     is LoginAccountResponse.ChatgptDeviceCode -> response
                                     else -> null
                                 }
-                                client.readAccount().onSuccess { catalog.account = it }
+                                client.readAccount().onSuccess {
+                                    resetAccountScopedState()
+                                    catalog.account = it
+                                    if (surfaces.lastOrNull() == Surface.Account) {
+                                        refreshRateLimits()
+                                        refreshUsage()
+                                    }
+                                }
                                 client.listModels().onSuccess { catalog.models = it }
                                 // A new sign-in is an identity change: drop the old account's headline.
                                 resetWorkspaceHeadline()
@@ -606,8 +671,8 @@ class CodexApp(
             AppEvent.Logout -> request {
                 client.logout().onSuccess {
                     catalog.pendingLogin = null
-                    catalog.usageLoaded = false
-                    catalog.rateLimits = com.cy.codex.protocol.protocol.v2.AccountRateLimits()
+                    resetAccountScopedState()
+                    catalog.account = AccountReadResponse(catalog.account.requiresOpenaiAuth)
                     // Identity gone: drop the account-scoped headline, aging out any in-flight response.
                     catalog.workspaceHeadlineCache =
                         resetWorkspaceHeadlineCache(catalog.workspaceHeadlineCache)
@@ -934,7 +999,9 @@ class CodexApp(
             "skills" -> openSurface(Surface.Skills)
             "plugins" -> openSurface(Surface.Plugins)
             "hooks" -> openSurface(Surface.Hooks)
-            "apps" -> openSurface(Surface.Apps)
+            "apps" -> if (connectorsAvailable) openSurface(Surface.Apps) else {
+                scope.launch { snackbar.showSnackbar(context.getString(R.string.slash_apps_requires_chatgpt)) }
+            }
             "settings" -> openSurface(Surface.Settings)
             "theme" -> openSurface(Surface.Settings)
             "cd" -> openSurface(Surface.WorkspacePicker)
@@ -950,7 +1017,9 @@ class CodexApp(
                     })
                 }
             }
-            "usage" -> openSurface(Surface.Account)
+            "usage" -> if (catalog.account.hasCodexBackendAuth) openSurface(Surface.Account) else {
+                scope.launch { snackbar.showSnackbar(context.getString(R.string.slash_usage_requires_chatgpt)) }
+            }
             "status" -> openSurface(Surface.SessionStatus)
             "copy" -> copyMenuOpen = true
             "model", "approvals" -> openSurface(Surface.Settings)
@@ -1060,6 +1129,7 @@ class CodexApp(
      * percent, suppressed while workspace credits cover the window).
      */
     private fun warnRateLimits() {
+        if (!catalog.account.canReadRateLimits) return
         val snapshot = catalog.rateLimits.rateLimits
         if (snapshot.credits?.unlimited == true || snapshot.credits?.hasCredits == true) return
         val windows = listOfNotNull(
@@ -1115,8 +1185,11 @@ class CodexApp(
     private suspend fun pollRateLimits() {
         while (true) {
             delay(rateLimitRefreshIntervalMs())
-            if (!startupReady || catalog.account.account == null) continue
-            client.readRateLimits().onSuccess { fresh -> applyRateLimitsRead(fresh) }
+            if (!startupReady || !catalog.account.canReadRateLimits) continue
+            val generation = accountGeneration
+            client.readRateLimits().onSuccess { fresh ->
+                if (generation == accountGeneration && catalog.account.canReadRateLimits) applyRateLimitsRead(fresh)
+            }
         }
     }
 
@@ -1183,6 +1256,7 @@ class CodexApp(
      * never when it is already selected (maybe_show_pending_rate_limit_prompt).
      */
     private fun maybeShowRateLimitNudge() {
+        if (!catalog.account.canReadRateLimits) return
         if (rateLimitNudge != null || rateLimitNudgeShown) return
         if (catalog.config.snapshot.hideRateLimitModelNudge == true) return
         // A banner owns the remedy; the Luna models are exactly this prompt's offer
@@ -1224,11 +1298,15 @@ class CodexApp(
 
     /** After a usage-limit failure, hold input until the limits read lands; a failed read still releases it (hold_rate_limit_recovery). */
     private fun beginRateLimitRecovery() {
+        if (!catalog.account.canReadRateLimits) return
         if (rateLimitRecoveryJob?.isActive == true) return
+        val generation = accountGeneration
         rateLimitRecoveryJob = scope.launch {
-            client.readRateLimits().onSuccess { fresh -> applyRateLimitsRead(fresh) }
+            client.readRateLimits().onSuccess { fresh ->
+                if (generation == accountGeneration && catalog.account.canReadRateLimits) applyRateLimitsRead(fresh)
+            }
             delay(RateLimitRecoveryDelayMs)
-            releaseHeldSubmissionIfDue()
+            if (generation == accountGeneration) releaseHeldSubmissionIfDue()
         }
     }
 
@@ -1558,13 +1636,18 @@ class CodexApp(
                 }
 
                 is AppServerEvent.AccountUpdated -> {
+                    resetAccountScopedState()
                     catalog.account = event.account
+                    if (surfaces.lastOrNull() == Surface.Account) {
+                        refreshRateLimits()
+                        refreshUsage()
+                    }
                     // Upstream treats every account update as the identity boundary and resets the
                     // headline cache (codex-rs/tui/src/chatwidget/settings.rs).
                     resetWorkspaceHeadline()
-                    resetBackendBannerForAccountChange()
                 }
                 is AppServerEvent.RateLimitsUpdatedEvent -> {
+                    if (!catalog.account.canReadRateLimits) return@collect
                     catalog.rateLimits = catalog.rateLimits.copy(rateLimits = catalog.rateLimits.rateLimits.mergedWith(event.rateLimits))
                     catalog.rateLimitsUpdatedAtMs = System.currentTimeMillis()
                     warnRateLimits()
@@ -1572,13 +1655,18 @@ class CodexApp(
                 is AppServerEvent.AccountLoginCompleted -> {
                     catalog.pendingLogin = null
                     catalog.loginError = event.delta.error
+                    resetAccountScopedState()
+                    catalog.account = AccountReadResponse(catalog.account.requiresOpenaiAuth)
                     // A completed sign-in is an identity change: drop the old account's headline
                     // unconditionally, then fetch once the new account reads back.
                     catalog.workspaceHeadlineCache =
                         resetWorkspaceHeadlineCache(catalog.workspaceHeadlineCache)
-                    resetBackendBannerForAccountChange()
                     client.readAccount().onSuccess {
                         catalog.account = it
+                        if (surfaces.lastOrNull() == Surface.Account) {
+                            refreshRateLimits()
+                            refreshUsage()
+                        }
                         requestWorkspaceHeadlineIfDue()
                     }
                     client.listModels().onSuccess { catalog.models = it }
@@ -1587,8 +1675,7 @@ class CodexApp(
                 is AppServerEvent.SkillsChanged ->
                     client.listSkills().onSuccess { catalog.skills = it }
 
-                is AppServerEvent.AppListUpdated ->
-                    client.listApps().onSuccess { catalog.apps = it }
+                is AppServerEvent.AppListUpdated -> refreshApps()
 
                 is AppServerEvent.McpStartupStatusEvent -> {
                     val delta = event.delta
@@ -1656,6 +1743,8 @@ class CodexApp(
     }
 
     fun openSurface(next: Surface) {
+        if (next == Surface.Bedrock && !catalog.shouldShowBedrockSetupWizard) return
+        if (next == Surface.Apps && !connectorsAvailable) return
         // `miuix-nav` rejects duplicate routes, so "open" pops back to the existing entry.
         val at = surfaces.indexOf(next)
         if (at >= 0) {
@@ -1666,10 +1755,6 @@ class CodexApp(
         when (next) {
             Surface.Account -> {
                 onAppEvent(AppEvent.ReloadAccount)
-                if (catalog.account.account != null) {
-                    onAppEvent(AppEvent.ReloadRateLimits)
-                    onAppEvent(AppEvent.ReloadUsage)
-                }
             }
             Surface.Hooks -> onAppEvent(AppEvent.ReloadHooks)
             Surface.McpServers -> onAppEvent(AppEvent.ReloadMcpServers)
@@ -2109,6 +2194,7 @@ class CodexApp(
                 client.readConfigRequirements().onSuccess {
                     catalog.allowedApprovalsReviewers = it.allowedApprovalsReviewers
                     catalog.allowedPermissionProfiles = it.allowedPermissionProfiles
+                    catalog.allowedLoginMethods = it.allowedLoginMethods
                 }
                 reloadConfig()
                 check(client.connection.first() == ConnectionState.Ready) {
@@ -2412,6 +2498,7 @@ fun CodexScreen(
                             catalog = app.catalog,
                             onEvent = app::onAppEvent,
                             onBack = app::closeSurface,
+                            onOpenBedrock = { app.openSurface(Surface.Bedrock) },
                         )
                     }
                 }

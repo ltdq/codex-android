@@ -671,7 +671,6 @@ private fun SettingsDataSection(onOpenEntry: (String) -> Unit) {
             SettingsLinkSpec(DestinationCatalog.Id.Migration, R.string.sidebar_library_migration, MiuixIcons.ConvertFile),
             SettingsLinkSpec(DestinationCatalog.Id.RemoteControl, R.string.sidebar_library_remote, MiuixIcons.Link),
             SettingsLinkSpec(DestinationCatalog.Id.Verification, R.string.sidebar_library_verification, MiuixIcons.Lock),
-            SettingsLinkSpec(DestinationCatalog.Id.Bedrock, R.string.sidebar_library_bedrock, MiuixIcons.Store),
             SettingsLinkSpec(DestinationCatalog.Id.Sandbox, R.string.sidebar_library_sandbox, MiuixIcons.Tune),
             SettingsLinkSpec(DestinationCatalog.Id.Diagnostics, R.string.sidebar_library_diagnostics, MiuixIcons.Search),
         )

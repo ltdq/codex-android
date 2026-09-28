@@ -62,10 +62,10 @@ object DestinationCatalog {
         Id.Migration,
         Id.RemoteControl,
         Id.Verification,
-        Id.Bedrock,
         Id.Sandbox,
         Id.Diagnostics,
     )
+    val Onboarding = setOf(Id.Bedrock)
     val SettingsSessionLinks = setOf(Id.Status)
 
     val Owned =
@@ -75,12 +75,13 @@ object DestinationCatalog {
             addAll(SessionTools)
             addAll(SettingsExtensions)
             addAll(SettingsData)
+            addAll(Onboarding)
             addAll(SettingsSessionLinks)
         }
 
     /** Every id has one owner; the sets are deliberately flat so a duplicate cannot hide in a map. */
     fun duplicateIds(): Set<String> {
-        val groups = listOf(Chrome, Navigation, SessionTools, SettingsExtensions, SettingsData, SettingsSessionLinks)
+        val groups = listOf(Chrome, Navigation, SessionTools, SettingsExtensions, SettingsData, Onboarding, SettingsSessionLinks)
         return groups.flatten().groupingBy { it }.eachCount().filterValues { it > 1 }.keys
     }
 }

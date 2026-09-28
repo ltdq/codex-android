@@ -91,6 +91,7 @@ import com.cy.codex.bottom_pane.activeToolDetail
 import com.cy.codex.bottom_pane.isConnectorAuth
 import com.cy.codex.copyToClipboard
 import com.cy.codex.glassTint
+import com.cy.codex.hasCodexBackendAuth
 import com.cy.codex.history_cell.CommandExecutionCell
 import com.cy.codex.history_cell.DiagnosticCell
 import com.cy.codex.history_cell.HookRunCell
@@ -1500,6 +1501,9 @@ private fun ComposerDock(
                             app.catalog.collaborationModes.any {
                                 it.mode == com.cy.codex.protocol.protocol.v2.CollaborationMode.Plan
                             },
+                        usageAvailable = app.catalog.account.hasCodexBackendAuth,
+                        appsAvailable = app.catalog.account.hasCodexBackendAuth &&
+                            app.catalog.configSnapshot.features["apps"] != false,
                     )
                 } else {
                     emptyList()
