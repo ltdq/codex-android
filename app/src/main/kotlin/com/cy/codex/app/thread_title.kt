@@ -1,5 +1,7 @@
 package com.cy.codex.app
 
+import com.cy.codex.protocol.protocol.v2.ModelPreset
+import com.cy.codex.protocol.protocol.v2.ReasoningEffort
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
@@ -14,6 +16,26 @@ import kotlinx.serialization.json.jsonPrimitive
  */
 internal const val ThreadTitleMaxChars = 36
 internal const val ThreadTitlePromptMaxBytes = 960
+internal const val ThreadTitleModel = "gpt-5.6-luna"
+
+internal data class ThreadTitleModelSelection(val model: String, val effort: ReasoningEffort?)
+
+/** Mirrors the title model choice in `codex-rs/tui/src/app/thread_title.rs`. */
+internal fun selectThreadTitleModel(
+    currentModel: String,
+    modelProviderId: String,
+    hasChatgptAccount: Boolean,
+    models: List<ModelPreset>,
+): ThreadTitleModelSelection {
+    val model = if (
+        modelProviderId == "openai" && hasChatgptAccount &&
+        models.any { it.model == ThreadTitleModel }
+    ) ThreadTitleModel else currentModel
+    return ThreadTitleModelSelection(
+        model,
+        if (model == ThreadTitleModel) ReasoningEffort.Low else null,
+    )
+}
 
 internal fun threadTitleOutputSchema(): JsonObject = buildJsonObject {
     put("type", JsonPrimitive("object"))

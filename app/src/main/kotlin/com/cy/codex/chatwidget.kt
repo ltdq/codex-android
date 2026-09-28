@@ -22,8 +22,11 @@ import com.cy.codex.protocol.protocol.item.PlanItem
 import com.cy.codex.protocol.protocol.item.ReasoningItem
 import com.cy.codex.protocol.protocol.item.ThreadItem
 import com.cy.codex.protocol.protocol.v2.ActivePermissionProfile
+import com.cy.codex.protocol.protocol.v2.Account
+import com.cy.codex.protocol.protocol.v2.AccountReadResponse
 import com.cy.codex.protocol.protocol.v2.DiagnosticSeverity
 import com.cy.codex.protocol.protocol.v2.FileUpdateChange
+import com.cy.codex.protocol.protocol.v2.ModelPreset
 import com.cy.codex.protocol.protocol.v2.QueuedSubmission
 import com.cy.codex.protocol.protocol.v2.SortDirection
 import com.cy.codex.protocol.protocol.v2.ThreadResumeInitialTurnsPageParams
@@ -64,6 +67,8 @@ class ChatWidget(
     /** Per-thread Reserve return targets; shared with `CodexApp` so both clear the same cache. */
     private val reserveReturns: com.cy.codex.chatwidget.ReserveReturnStore =
         com.cy.codex.chatwidget.InMemoryReserveReturnStore(),
+    private val titleAccount: () -> AccountReadResponse = { AccountReadResponse(requiresOpenaiAuth = false) },
+    private val titleModels: () -> List<ModelPreset> = { emptyList() },
 ) {
     /** Server requests waiting for a decision, oldest first; snapshot-backed so composables observe the queue. */
     private val pendingApprovals = mutableStateListOf<ApprovalRequest>()
@@ -1489,18 +1494,26 @@ class ChatWidget(
         if (threadId.isBlank() || !state.open) return
         if (!state.config.threadName.isNullOrBlank()) return
         if (!titleRequests.add(threadId)) return
+        val config = state.config
+        val titleModel = com.cy.codex.app.selectThreadTitleModel(
+            currentModel = config.model,
+            modelProviderId = config.modelProviderId,
+            hasChatgptAccount = titleAccount().account is Account.Chatgpt,
+            models = titleModels(),
+        )
         state.markTitleGenerationPending(true)
         scope.launch {
             try {
                 val prompt = firstUserMessageText(state.items) ?: return@launch
                 val result = structuredTurn(
                     client = client,
-                    cwd = state.config.cwd,
-                    model = state.config.model,
+                    cwd = config.cwd,
+                    model = titleModel.model,
                     developerInstructions = null,
                     prompt = com.cy.codex.app.threadTitlePrompt(prompt),
                     outputSchema = com.cy.codex.app.threadTitleOutputSchema(),
-                    effort = com.cy.codex.protocol.protocol.v2.ReasoningEffort.Low,
+                    effort = titleModel.effort,
+                    modelProvider = config.modelProviderId,
                 )
                 val title = com.cy.codex.app.parseThreadTitle(result.getOrNull()) ?: return@launch
                 if (state.threadId != threadId || !state.config.threadName.isNullOrBlank()) return@launch

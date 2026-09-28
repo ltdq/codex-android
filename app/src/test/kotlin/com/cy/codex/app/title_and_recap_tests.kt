@@ -1,7 +1,10 @@
 package com.cy.codex.app
+
 import com.cy.codex.protocol.protocol.item.AgentMessageItem
 import com.cy.codex.protocol.protocol.item.UserMessageItem
 import com.cy.codex.protocol.protocol.v2.MessagePhase
+import com.cy.codex.protocol.protocol.v2.ModelPreset
+import com.cy.codex.protocol.protocol.v2.ReasoningEffort
 import com.cy.codex.protocol.protocol.v2.UserInput
 import org.junit.Test
 import kotlin.test.assertEquals
@@ -9,6 +12,27 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class TitleAndRecapTest {
+
+    @Test
+    fun `title model requires OpenAI ChatGPT and catalog support`() {
+        val titleModel = model(ThreadTitleModel)
+        val currentModel = "gpt-6-sol"
+        val dedicated = ThreadTitleModelSelection(ThreadTitleModel, ReasoningEffort.Low)
+        val fallback = ThreadTitleModelSelection(currentModel, null)
+
+        assertEquals(dedicated, selectThreadTitleModel(currentModel, "openai", true, listOf(titleModel)))
+        assertEquals(fallback, selectThreadTitleModel(currentModel, "openai", false, listOf(titleModel)))
+        assertEquals(fallback, selectThreadTitleModel(currentModel, "other", true, listOf(titleModel)))
+        assertEquals(fallback, selectThreadTitleModel(currentModel, "openai", true, emptyList()))
+        assertEquals(
+            fallback,
+            selectThreadTitleModel(currentModel, "openai", true, listOf(model("other", id = ThreadTitleModel))),
+        )
+        assertEquals(
+            dedicated,
+            selectThreadTitleModel(ThreadTitleModel, "other", false, emptyList()),
+        )
+    }
 
     @Test
     fun `generated titles are normalized like the TUI`() {
@@ -58,4 +82,15 @@ class TitleAndRecapTest {
         assertTrue(!history.contains("working"))
         assertTrue(RecapPromptPrefix.endsWith("Conversation:\n"))
     }
+
+    private fun model(slug: String, id: String = slug) = ModelPreset(
+        id = id,
+        model = slug,
+        displayName = slug,
+        description = "",
+        defaultReasoningEffort = ReasoningEffort.Medium,
+        supportedReasoningEfforts = listOf(ReasoningEffort.Low),
+        isDefault = false,
+        hidden = true,
+    )
 }

@@ -30,11 +30,13 @@ internal suspend fun structuredTurn(
     prompt: String,
     outputSchema: JsonElement,
     effort: ReasoningEffort? = null,
+    modelProvider: String? = null,
 ): Result<String> = runCatching {
     val session = client.startThread(
         ThreadStartParams(
             cwd = cwd,
             model = model?.takeIf { it.isNotBlank() },
+            modelProvider = modelProvider,
             ephemeral = true,
             approvalPolicy = AskForApproval.Never,
             sandbox = SandboxPolicy(SandboxMode.ReadOnly),

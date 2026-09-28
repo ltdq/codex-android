@@ -173,7 +173,14 @@ class CodexApp(
     private val reserveReturns = com.cy.codex.chatwidget.SharedPrefsReserveReturnStore(preferences)
 
     var widget by mutableStateOf(
-        ChatWidget(client, scope, hookMetadata = { catalog.hooks }, reserveReturns = reserveReturns),
+        ChatWidget(
+            client,
+            scope,
+            hookMetadata = { catalog.hooks },
+            reserveReturns = reserveReturns,
+            titleAccount = { catalog.account },
+            titleModels = { catalog.models },
+        ),
     )
         private set
 
