@@ -95,4 +95,16 @@
     <string name="queued_messages_edit_detail">改写这条排队消息，它携带的其他输入会保留</string>
     <string name="queued_messages_edit_label">内容</string>
     <string name="queued_messages_edit_save">保存</string>
+
+    <!-- PlanImplementationSheet (chatwidget/plan_implementation.kt)。 -->
+    <string name="plan_implementation_title">实施这份计划？</string>
+    <string name="plan_implementation_yes">是，实施这份计划</string>
+    <string name="plan_implementation_yes_detail">切到 Default 模式开始编码</string>
+    <string name="plan_implementation_clear_context">是，清空上下文后实施</string>
+    <string name="plan_implementation_clear_context_fresh">用这份计划开新会话</string>
+    <string name="plan_implementation_clear_context_used">新开一个会话（当前上下文：%1$s）</string>
+    <string name="plan_implementation_no">否，留在 Plan 模式</string>
+    <string name="plan_implementation_no_detail">继续和模型一起做计划</string>
+    <string name="plan_implementation_default_unavailable">Default 模式不可用</string>
+    <string name="plan_implementation_no_approved_plan">没有已批准的计划</string>
 </resources>

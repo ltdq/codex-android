@@ -18,11 +18,20 @@ import androidx.core.content.ContextCompat
 import androidx.core.content.edit
 import com.cy.codex.MainActivity
 import com.cy.codex.R
+import com.cy.codex.bottom_pane.truncateGraphemes
+import com.cy.codex.protocol.protocol.v2.AsyncUserInputQuestion
 
 /** Android half of codex-rs/tui/src/chatwidget/notifications.rs: per-type whitelist keyed by the same wire names. */
-enum class AgentNotification(val wire: String, @StringRes val labelRes: Int) {
-    TurnComplete("agent-turn-complete", R.string.settings_notifications_turn_complete),
-    ApprovalRequested("approval-requested", R.string.settings_notifications_approval),
+enum class AgentNotification(
+    val wire: String,
+    @StringRes val labelRes: Int,
+    /** Displacing rule for a burst; a turn ending yields to anything that needs the user. */
+    val priority: Int,
+) {
+    TurnComplete("agent-turn-complete", R.string.settings_notifications_turn_complete, 0),
+    ApprovalRequested("approval-requested", R.string.settings_notifications_approval, 1),
+    PlanModePrompt("plan-mode-prompt", R.string.settings_notifications_plan_mode_prompt, 1),
+    AsyncQuestion("async-question", R.string.settings_notifications_async_question, 1),
 }
 
 sealed interface AgentNotice {
@@ -33,9 +42,40 @@ sealed interface AgentNotice {
         val kind: ApprovalNoticeKind,
         val detail: String?,
     ) : AgentNotice
+
+    /** The prompt's own copy is a resource, so only the thread travels. */
+    data class PlanModePrompt(val threadId: String) : AgentNotice
+
+    /** [title] is the named question, empty when the batch has none; [count] words the fallback. */
+    data class AsyncQuestion(val threadId: String, val title: String, val count: Int) : AgentNotice
 }
 
+/** The whitelist entry this notice is posted under, which also decides its priority. */
+internal val AgentNotice.notification: AgentNotification
+    get() = when (this) {
+        is AgentNotice.TurnComplete -> AgentNotification.TurnComplete
+        is AgentNotice.Approval -> AgentNotification.ApprovalRequested
+        is AgentNotice.PlanModePrompt -> AgentNotification.PlanModePrompt
+        is AgentNotice.AsyncQuestion -> AgentNotification.AsyncQuestion
+    }
+
+/** Mirrors `Notification::priority`; only a strictly higher one displaces a pending notice. */
+internal val AgentNotice.priority: Int get() = notification.priority
+
 enum class ApprovalNoticeKind { Command, FileChange, Elicitation, Other }
+
+/** `truncate_text(.., 30)` in codex-rs/tui/src/chatwidget/questions.rs. */
+private const val QuestionTitleGraphemes = 30
+
+/**
+ * The one question a notification can name, empty when the batch has none worth naming
+ * (`add_async_questions`, codex-rs/tui/src/chatwidget/questions.rs).
+ */
+internal fun asyncQuestionNoticeTitle(questions: List<AsyncUserInputQuestion>): String =
+    questions.singleOrNull()?.title?.trim().orEmpty()
+        .takeIf { it.isNotEmpty() }
+        ?.let { truncateGraphemes(it, QuestionTitleGraphemes) }
+        .orEmpty()
 
 /** Per-type whitelist in the `codex_ui` preferences; defaults mirror the TUI's Notifications::Enabled(true). */
 object NotificationSettings {
@@ -80,6 +120,16 @@ object NotificationSettings {
 private const val ChannelId = "codex_agent"
 private const val TurnCompleteId = 1001
 private const val ApprovalId = 1002
+private const val PlanModePromptId = 1003
+private const val AsyncQuestionId = 1004
+
+/** One id per type, so a burst of one kind replaces its own notification and leaves the others. */
+private fun notificationId(type: AgentNotification): Int = when (type) {
+    AgentNotification.TurnComplete -> TurnCompleteId
+    AgentNotification.ApprovalRequested -> ApprovalId
+    AgentNotification.PlanModePrompt -> PlanModePromptId
+    AgentNotification.AsyncQuestion -> AsyncQuestionId
+}
 
 fun ensureAgentNotificationChannel(context: Context) {
     val manager = context.getSystemService(NotificationManager::class.java) ?: return
@@ -113,6 +163,8 @@ fun postAgentNotification(context: Context, type: AgentNotification, body: Strin
         when (type) {
             AgentNotification.TurnComplete -> R.string.notification_turn_complete
             AgentNotification.ApprovalRequested -> R.string.notification_approval_requested
+            AgentNotification.PlanModePrompt -> R.string.notification_plan_mode_prompt
+            AgentNotification.AsyncQuestion -> R.string.notification_async_question
         },
     )
     val intent = Intent(context, MainActivity::class.java).apply {
@@ -132,8 +184,5 @@ fun postAgentNotification(context: Context, type: AgentNotification, body: Strin
         .setAutoCancel(true)
         .setContentIntent(pending)
         .build()
-    NotificationManagerCompat.from(context).notify(
-        if (type == AgentNotification.TurnComplete) TurnCompleteId else ApprovalId,
-        notification,
-    )
+    NotificationManagerCompat.from(context).notify(notificationId(type), notification)
 }

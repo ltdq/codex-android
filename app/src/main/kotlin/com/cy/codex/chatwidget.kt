@@ -6,7 +6,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.cy.codex.chatwidget.AgentNotice
+import com.cy.codex.chatwidget.AgentNotification
 import com.cy.codex.chatwidget.ApprovalNoticeKind
+import com.cy.codex.chatwidget.PlanImplementationPrompt
+import com.cy.codex.chatwidget.asyncQuestionNoticeTitle
+import com.cy.codex.chatwidget.notification
+import com.cy.codex.chatwidget.priority
 import com.cy.codex.chatwidget.PendingSteer
 import com.cy.codex.diff.TurnDiffAccumulator
 import com.cy.codex.history_cell.hookFailureLines
@@ -26,6 +31,7 @@ import com.cy.codex.protocol.protocol.item.UserMessageItem
 import com.cy.codex.protocol.protocol.v2.ActivePermissionProfile
 import com.cy.codex.protocol.protocol.v2.Account
 import com.cy.codex.protocol.protocol.v2.AccountReadResponse
+import com.cy.codex.protocol.protocol.v2.CollaborationMode
 import com.cy.codex.protocol.protocol.v2.DiagnosticSeverity
 import com.cy.codex.protocol.protocol.v2.FileUpdateChange
 import com.cy.codex.protocol.protocol.v2.ModelPreset
@@ -71,13 +77,32 @@ class ChatWidget(
         com.cy.codex.chatwidget.InMemoryReserveReturnStore(),
     private val titleAccount: () -> AccountReadResponse = { AccountReadResponse(requiresOpenaiAuth = false) },
     private val titleModels: () -> List<ModelPreset> = { emptyList() },
+    /** Whether a popup or modal already owns the screen (`no_modal_or_popup_active`). */
+    private val noPopupActive: () -> Boolean = { true },
+    /** Whether a bottom sheet is waiting on the user (the rate-limit switch prompt). */
+    private val popupPending: () -> Boolean = { false },
+    private val notificationAllowed: (AgentNotification) -> Boolean = { true },
 ) {
     /** Server requests waiting for a decision, oldest first; snapshot-backed so composables observe the queue. */
     private val pendingApprovals = mutableStateListOf<ApprovalRequest>()
 
+    /** Set when a plan lands in the open turn; the implementation prompt reads and clears it once. */
+    private var sawPlanItemThisTurn = false
+
+    /** A finished plan-mode turn awaiting the implement/fresh-thread choice; hosted by the chat screen. */
+    var planImplementationPrompt by mutableStateOf<PlanImplementationPrompt?>(null)
+        private set
+
     /** Notices for [CodexApp] to post; `tryEmit` with a buffer because an alert must never suspend a reducer. */
     private val _notices = MutableSharedFlow<AgentNotice>(extraBufferCapacity = 32)
     val notices: SharedFlow<AgentNotice> = _notices.asSharedFlow()
+
+    /**
+     * Notice waiting for the end of the event that raised it; one event can raise several, and only
+     * the highest priority is worth a phone notification (`ChatWidget::notify` in
+     * codex-rs/tui/src/chatwidget/notifications.rs).
+     */
+    private var pendingNotice: AgentNotice? = null
 
     /** Incremented on every reset so a stale collection job can recognise itself. */
     private var subscription: Job? = null
@@ -282,6 +307,28 @@ class ChatWidget(
         promoteApprovalIfIdle()
     }
 
+    /**
+     * Queues [notice] for the end of the current event, so one that needs the user outranks the turn
+     * ending: a plan awaiting "implement?" must not also raise "turn complete". A muted type never
+     * queues, or it would displace a louder one that the user did ask for.
+     *
+     * Upstream holds the notice until its next redraw; a burst that spans two events therefore costs
+     * one notification per event here. The phone's notification shade lists them side by side, so
+     * keeping both is what a user wants.
+     */
+    private fun notifyNotice(notice: AgentNotice) {
+        if (!notificationAllowed(notice.notification)) return
+        val queued = pendingNotice
+        if (queued != null && queued.priority > notice.priority) return
+        pendingNotice = notice
+    }
+
+    private fun flushNotice() {
+        val notice = pendingNotice ?: return
+        pendingNotice = null
+        _notices.tryEmit(notice)
+    }
+
     fun attach() {
         subscription?.cancel()
         // UNDISPATCHED: a socket delivers each notification exactly once, so anything emitted
@@ -322,6 +369,12 @@ class ChatWidget(
         approvalError = null
     }
 
+    /** Plan prompt and turn flag belong to one thread; neither may outlive the switch. */
+    private fun resetPlanImplementation() {
+        planImplementationPrompt = null
+        sawPlanItemThisTurn = false
+    }
+
     fun open(threadId: String, onLoaded: (Result<ThreadReadResponse>) -> Unit = {}) {
         switchInputThread(threadId)
         loadJob?.cancel()
@@ -342,6 +395,7 @@ class ChatWidget(
         adoptOtherThreadApprovals()
         turnDiff.reset()
         patchChanges.clear()
+        resetPlanImplementation()
         streamOvertookLoad = false
         nextTurnCursor = null
         latestKnownTurnId = null
@@ -556,6 +610,9 @@ class ChatWidget(
                 autoReviewDenials.removeAll { it.itemId == event.itemId }
 
             is AppEvent.SubmitUserMessage -> submitInput(event.inputs, queued = event.queued)
+            is AppEvent.SubmitUserMessageWithMode -> submitWithMode(event.text, event.mode)
+            // Starting the fresh thread is CodexApp's, not this reducer's.
+            is AppEvent.ClearUiAndSubmitUserMessage -> Unit
             is AppEvent.AnswerAsyncQuestion -> submitInput(listOf(UserInput.Text(event.text)), clearDraft = false)
             AppEvent.InterruptTurn -> interrupt()
             is AppEvent.RevertSessionForPromptEdit -> backtrack(event)
@@ -832,6 +889,7 @@ class ChatWidget(
         backtracking = false
         turnDiff.reset()
         patchChanges.clear()
+        resetPlanImplementation()
         recap.resetForNewThread()
         state.bindThread(session.threadId, session)
         restoreHeldInputs(session.threadId)
@@ -859,6 +917,7 @@ class ChatWidget(
         state.clear()
         latestKnownTurnId = null
         backtracking = false
+        resetPlanImplementation()
     }
 
     private fun replaceQueue(queued: List<QueuedSubmission>) {
@@ -901,6 +960,35 @@ class ChatWidget(
         }
     }
 
+    /**
+     * Switches the collaboration mode before submitting, so the turn cannot start under the old
+     * one (`submit_user_message_with_mode`, codex-rs/tui/src/chatwidget/input_flow.rs).
+     */
+    private fun submitWithMode(text: String, mode: CollaborationMode) {
+        val threadId = state.threadId
+        if (threadId.isEmpty() || state.config.blocksDirectInput) return
+        // A running turn keeps its mode; the switch would land after the turn it was meant to shape.
+        if (state.running && state.config.collaborationMode != mode) return
+        scope.launch {
+            val updated = client.updateThreadSettingsFull(
+                ThreadSettingsUpdateParams(threadId = threadId, collaborationMode = mode),
+            )
+            if (state.threadId != threadId) return@launch
+            updated.onFailure { error ->
+                state.addDiagnostic(
+                    SessionDiagnostic(
+                        severity = DiagnosticSeverity.Error,
+                        code = DiagnosticCode.SendFailed,
+                        detail = error.message,
+                    ),
+                )
+            }
+            if (updated.isFailure) return@launch
+            state.applyConfig(state.config.copy(collaborationMode = mode))
+            submitInput(listOf(UserInput.Text(text)), clearDraft = false)
+        }
+    }
+
     private fun submitInput(inputs: List<UserInput>, clearDraft: Boolean = true, queued: Boolean = false) {
         val hasText = inputs.filterIsInstance<UserInput.Text>().any { it.text.isNotBlank() }
         val hasMedia = inputs.any { it !is UserInput.Text }
@@ -916,7 +1004,7 @@ class ChatWidget(
             scope.launch(start = CoroutineStart.UNDISPATCHED) {
                 try {
                     client.addToQueue(threadId, inputs).onFailure { error ->
-                        restoreInputs(threadId, listOf(inputs))
+                        if (clearDraft) restoreInputs(threadId, listOf(inputs))
                         reportInputFailure(threadId, error)
                     }
                     refreshQueue(threadId)
@@ -931,10 +1019,12 @@ class ChatWidget(
         if (state.running) {
             val pending = PendingSteer(java.util.UUID.randomUUID().toString(), threadId, inputs, client.activeTurnId(threadId))
             uncommittedSteers.add(pending)
+            // A steer supersedes the plan this turn proposed (`submit_pending_steer` clears the flag).
+            sawPlanItemThisTurn = false
             scope.launch(start = CoroutineStart.UNDISPATCHED) {
                 client.steerTurn(threadId, inputs, pending.id, pending.turnId).onFailure { error ->
                     if (uncommittedSteers.remove(pending)) {
-                        restoreInputs(threadId, listOf(inputs))
+                        if (clearDraft) restoreInputs(threadId, listOf(inputs))
                         reportInputFailure(threadId, error)
                     }
                 }
@@ -944,7 +1034,7 @@ class ChatWidget(
         state.applyStatus(ThreadStatus.Active())
         scope.launch {
             client.startTurn(threadId, inputs).onFailure { error ->
-                restoreInputs(threadId, listOf(inputs))
+                if (clearDraft) restoreInputs(threadId, listOf(inputs))
                 if (state.threadId == threadId && version == loadVersion) state.applyStatus(ThreadStatus.Idle)
                 reportInputFailure(threadId, error)
             }
@@ -1267,6 +1357,7 @@ class ChatWidget(
         streamOvertookLoad = true
         when (event) {
             is AppServerEvent.ItemStarted -> state.upsert(event.item)
+
             is AppServerEvent.ItemCompleted -> onItemCompleted(event.item)
             is AppServerEvent.AgentMessageDelta ->
                 appendDelta(event.delta.itemId, DeltaKind.AgentMessage, event.delta.delta)
@@ -1307,6 +1398,8 @@ class ChatWidget(
                 state.applyStreaming(null)
                 // A new turn clears a previous safety stop; the gate is per turn.
                 state.applyMisalignment(null)
+                // `reset_turn_flags` on task start: this turn has not produced a plan yet.
+                sawPlanItemThisTurn = false
             }
 
             is AppServerEvent.TurnCompleted -> {
@@ -1518,6 +1611,7 @@ class ChatWidget(
             is AppServerEvent.ThreadDeleted,
             -> Unit
         }
+        flushNotice()
     }
 
     private fun onReviewStarted(delta: com.cy.codex.protocol.protocol.v2.GuardianApprovalReviewNotification) {
@@ -1572,6 +1666,22 @@ class ChatWidget(
         if (state.streamingItemId == item.id) state.applyStreaming(null)
         if (item is com.cy.codex.protocol.protocol.item.UserMessageItem) maybeGenerateTitle()
         dropResolvedApprovals(item)
+        if (item is AgentMessageItem) notifyAsyncQuestions(item)
+        // Upstream arms this in `on_plan_item_completed`; a plan that never completed is not a plan.
+        if (item is PlanItem) sawPlanItemThisTurn = true
+    }
+
+    /** A message that arrived carrying questions is the async-question prompt (`add_async_questions`). */
+    private fun notifyAsyncQuestions(item: AgentMessageItem) {
+        val questions = item.questions.orEmpty()
+        if (questions.isEmpty()) return
+        notifyNotice(
+            AgentNotice.AsyncQuestion(
+                threadId = state.threadId,
+                title = asyncQuestionNoticeTitle(questions),
+                count = questions.size,
+            ),
+        )
     }
 
     private fun dropResolvedApprovals(item: ThreadItem) {
@@ -1778,7 +1888,7 @@ class ChatWidget(
             refreshQueue(event.threadId)
         }
         // Preview is the last answer's first line, like the TUI's `AgentTurnComplete`.
-        _notices.tryEmit(
+        notifyNotice(
             AgentNotice.TurnComplete(
                 threadId = event.threadId,
                 preview = (state.items.lastOrNull { it is AgentMessageItem } as? AgentMessageItem)
@@ -1832,6 +1942,32 @@ class ChatWidget(
         turnDiff.reset()
         patchChanges.clear()
         refreshGitSummary(event.threadId)
+        // Upstream reaches this only from `on_task_complete`; an interrupted turn leaves no plan.
+        if (event.status == TurnStatus.Completed) maybePromptPlanImplementation(event.threadId)
+    }
+
+    /**
+     * Offers the implement/fresh-thread choice for the plan this turn produced
+     * (`maybe_prompt_plan_implementation`, codex-rs/tui/src/chatwidget/turn_runtime.rs). The turn
+     * flag is consumed either way: a turn that will not prompt must not arm the next one.
+     */
+    private fun maybePromptPlanImplementation(threadId: String) {
+        val sawPlan = sawPlanItemThisTurn
+        sawPlanItemThisTurn = false
+        if (!sawPlan) return
+        if (state.config.collaborationMode != CollaborationMode.Plan) return
+        if (state.queued.isNotEmpty() || pendingSteers.isNotEmpty()) return
+        // An approval card is a popup too, and this reducer owns that half of the screen.
+        if (!noPopupActive() || popupPending() || currentApproval != null) return
+        planImplementationPrompt = PlanImplementationPrompt(
+            threadId = threadId,
+            planMarkdown = state.items.filterIsInstance<PlanItem>().lastOrNull()?.text,
+        )
+        notifyNotice(AgentNotice.PlanModePrompt(threadId = threadId))
+    }
+
+    fun dismissPlanImplementation() {
+        planImplementationPrompt = null
     }
 
     private fun retireTurnApprovals(turnId: String) {

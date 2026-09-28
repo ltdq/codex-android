@@ -2126,3 +2126,22 @@ internal fun formatTokens(tokens: Long): String =
 
         else -> tokens.toString()
     }
+
+/**
+ * The same count for prose that cannot reach a resource: `1234` becomes `1.23K`, `123456` `123K`
+ * (`format_tokens_compact`, codex-rs/tui/src/status/helpers.rs).
+ */
+internal fun formatTokensCompact(tokens: Long): String {
+    val value = tokens.coerceAtLeast(0)
+    if (value < 1_000) return value.toString()
+    val (scaled, suffix) = when {
+        value >= 1_000_000_000_000 -> value / 1_000_000_000_000.0 to "T"
+        value >= 1_000_000_000 -> value / 1_000_000_000.0 to "B"
+        value >= 1_000_000 -> value / 1_000_000.0 to "M"
+        else -> value / 1_000.0 to "K"
+    }
+    val decimals = if (scaled < 10.0) 2 else if (scaled < 100.0) 1 else 0
+    val formatted = String.format(Locale.US, "%.${decimals}f", scaled)
+    val trimmed = if (formatted.contains('.')) formatted.trimEnd('0').trimEnd('.') else formatted
+    return trimmed + suffix
+}

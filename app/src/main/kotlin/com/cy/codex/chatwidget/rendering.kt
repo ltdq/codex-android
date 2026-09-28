@@ -116,6 +116,8 @@ import com.cy.codex.status.DiffCard
 import com.cy.codex.status.StatusCard
 import com.cy.codex.status.StatusCardButton
 import com.cy.codex.status.StatusPanelState
+import com.cy.codex.status.formatTokens
+import com.cy.codex.status.formatTokensCompact
 import com.cy.codex.statusDotColor
 import com.cy.codex.statusPillSurface
 import java.io.File
@@ -492,6 +494,38 @@ fun ChatScreen(
             // The patch is not on the request; it is recovered from the item the request names.
             patchChanges = { request -> app.widget.fileChangeChanges(request.itemId) },
         )
+        app.widget.planImplementationPrompt?.let { prompt ->
+            PlanImplementationSheet(
+                planMarkdown = prompt.planMarkdown,
+                defaultModeAvailable = app.catalog.collaborationModes.any {
+                    it.mode == CollaborationMode.Default
+                },
+                contextUsageLabel =
+                    planImplementationContextUsageLabel(
+                        usage = session.usage,
+                        compactTokens = ::formatTokensCompact,
+                    ),
+                onImplement = {
+                    app.widget.dismissPlanImplementation()
+                    app.onAppEvent(
+                        AppEvent.SubmitUserMessageWithMode(
+                            text = PlanImplementationCodingMessage,
+                            mode = CollaborationMode.Default,
+                        )
+                    )
+                },
+                onClearContext = {
+                    app.widget.dismissPlanImplementation()
+                    app.onAppEvent(
+                        AppEvent.ClearUiAndSubmitUserMessage(
+                            prompt.planMarkdown?.let { planImplementationClearContextMessage(it) }
+                                ?: PlanImplementationCodingMessage,
+                        )
+                    )
+                },
+                onDismiss = { app.widget.dismissPlanImplementation() },
+            )
+        }
         if (app.goalMenuOpen) {
             val goal = session.goal
             GoalSheet(

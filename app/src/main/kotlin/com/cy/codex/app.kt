@@ -84,6 +84,7 @@ import com.cy.codex.chatwidget.ChatScreen
 import com.cy.codex.chatwidget.AgentNotice
 import com.cy.codex.chatwidget.AgentNotification
 import com.cy.codex.chatwidget.ApprovalNoticeKind
+import com.cy.codex.chatwidget.NotificationSettings
 import com.cy.codex.chatwidget.agentNotificationsAllowed
 import com.cy.codex.chatwidget.postAgentNotification
 import com.cy.codex.chatwidget.PluginSharesScreen
@@ -183,6 +184,12 @@ class CodexApp(
             reserveReturns = reserveReturns,
             titleAccount = { catalog.account },
             titleModels = { catalog.models },
+            // The approval queue is the widget's own; these are the sheets this screen hosts.
+            noPopupActive = {
+                !goalMenuOpen && !copyMenuOpen && rateLimitNudge == null && mentionQuery == null
+            },
+            popupPending = { rateLimitNudge != null },
+            notificationAllowed = { NotificationSettings.allows(it) },
         ),
     )
         private set
@@ -380,6 +387,17 @@ class CodexApp(
                     snackbar.showSnackbar(context.getString(R.string.settings_permission_select_no_thread))
                 }
             }
+            // Plan implementation: the fresh-context row asks for a new thread, and neither row
+            // reads the composer, so the slash/`!` handling below does not apply.
+            is AppEvent.ClearUiAndSubmitUserMessage -> {
+                closeAllSurfaces()
+                createThread(
+                    // The fresh thread runs where this one did, not in the default workspace.
+                    cwd = widget.state.config.cwd.takeIf { it.isNotBlank() },
+                    inputs = listOf(com.cy.codex.protocol.protocol.v2.UserInput.Text(event.text)),
+                )
+            }
+            is AppEvent.SubmitUserMessageWithMode -> widget.action(event)
             is AppEvent.SubmitUserMessage -> {
                 if (!startupReady || creatingThread || widget.state.loading) return
                 // Input during the recovery read, or while Reserve is offered but not taken, is held
@@ -1187,8 +1205,28 @@ class CodexApp(
                 AgentNotification.ApprovalRequested,
                 approvalNoticeBody(context, notice),
             )
+
+            is AgentNotice.PlanModePrompt -> postAgentNotification(
+                context,
+                AgentNotification.PlanModePrompt,
+                context.getString(R.string.plan_implementation_title),
+            )
+
+            is AgentNotice.AsyncQuestion -> postAgentNotification(
+                context,
+                AgentNotification.AsyncQuestion,
+                asyncQuestionNoticeBody(context, notice),
+            )
         }
     }
+
+    /** The named question reads better than a count; an unnamed batch falls back to the count. */
+    private fun asyncQuestionNoticeBody(context: Context, notice: AgentNotice.AsyncQuestion): String =
+        when {
+            notice.title.isNotEmpty() -> notice.title
+            notice.count == 1 -> context.getString(R.string.notification_question_requested)
+            else -> context.getString(R.string.notification_questions_requested, notice.count)
+        }
 
     /**
      * Poll rate limits, faster as they fill (chatwidget/rate_limits.rs: 99% → 5 s, 90% → 15 s,

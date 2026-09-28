@@ -97,4 +97,16 @@
     <string name="queued_messages_edit_detail">Rewrites the queued message; the other inputs it carries are kept</string>
     <string name="queued_messages_edit_label">Message</string>
     <string name="queued_messages_edit_save">Save</string>
+
+    <!-- PlanImplementationSheet (chatwidget/plan_implementation.kt). -->
+    <string name="plan_implementation_title">Implement this plan?</string>
+    <string name="plan_implementation_yes">Yes, implement this plan</string>
+    <string name="plan_implementation_yes_detail">Switch to Default and start coding</string>
+    <string name="plan_implementation_clear_context">Yes, clear context and implement</string>
+    <string name="plan_implementation_clear_context_fresh">Fresh thread with this plan</string>
+    <string name="plan_implementation_clear_context_used">Start a fresh thread (current context: %1$s)</string>
+    <string name="plan_implementation_no">No, stay in Plan mode</string>
+    <string name="plan_implementation_no_detail">Continue planning with the model</string>
+    <string name="plan_implementation_default_unavailable">Default mode unavailable</string>
+    <string name="plan_implementation_no_approved_plan">No approved plan available</string>
 </resources>

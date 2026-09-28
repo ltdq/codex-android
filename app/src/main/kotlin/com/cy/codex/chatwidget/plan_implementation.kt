@@ -2,6 +2,7 @@ package com.cy.codex.chatwidget
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -27,14 +28,18 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.cy.codex.R
 import com.cy.codex.protocol.protocol.v2.PlanStep
 import com.cy.codex.protocol.protocol.v2.PlanStepStatus
+import com.cy.codex.protocol.protocol.v2.ThreadTokenUsage
 import com.cy.codex.UiConsts
 import com.cy.codex.UiType
 import com.cy.codex.raisedSurface
+import com.cy.codex.sheetColor
+import com.cy.codex.sheetSideMargin
 import com.cy.codex.successColor
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.LinearProgressIndicator
@@ -43,6 +48,7 @@ import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.basic.Check
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+import top.yukonga.miuix.kmp.window.WindowBottomSheet
 
 /**
  * The plan timeline, a pure function of [steps] — the whole plan arrives from `turn/plan/updated`.
@@ -235,5 +241,168 @@ internal fun PlanStepStatus.label(): String = stringResource(
         PlanStepStatus.Pending -> R.string.plan_timeline_pending
         PlanStepStatus.InProgress -> R.string.plan_timeline_in_progress
         PlanStepStatus.Completed -> R.string.plan_timeline_completed
+    },
+)
+
+/** The prompt the implement row submits (`PLAN_IMPLEMENTATION_CODING_MESSAGE`). */
+internal const val PlanImplementationCodingMessage = "Implement the plan."
+
+/** Prepended to the approved plan by the fresh-context row (`PLAN_IMPLEMENTATION_CLEAR_CONTEXT_PREFIX`). */
+internal const val PlanImplementationClearContextPrefix =
+    "A previous agent produced the plan below to accomplish the user's task. " +
+        "Implement the plan in a fresh context. Treat the plan as the source of " +
+        "user intent, re-read files as needed, and carry the work through " +
+        "implementation and verification."
+
+/** Why an implementing row cannot run, or `null` when it can. */
+internal enum class PlanImplementationBlock { DefaultModeUnavailable, NoApprovedPlan }
+
+/** Availability of the two implementing rows; `null` per row means the row is enabled. */
+internal data class PlanImplementationOptions(
+    val implement: PlanImplementationBlock? = null,
+    val clearContext: PlanImplementationBlock? = null,
+)
+
+/** A plan-mode turn that finished with a plan, awaiting the user's choice. */
+data class PlanImplementationPrompt(val threadId: String, val planMarkdown: String?)
+
+/**
+ * Both rows need the catalogue's Default mode, and the fresh-context row also needs an approved
+ * plan (`selection_view_params`, codex-rs/tui/src/chatwidget/plan_implementation.rs).
+ */
+internal fun planImplementationOptions(
+    defaultModeAvailable: Boolean,
+    planMarkdown: String?,
+): PlanImplementationOptions = PlanImplementationOptions(
+    implement = if (defaultModeAvailable) null else PlanImplementationBlock.DefaultModeUnavailable,
+    clearContext = when {
+        !defaultModeAvailable -> PlanImplementationBlock.DefaultModeUnavailable
+        planMarkdown.isNullOrBlank() -> PlanImplementationBlock.NoApprovedPlan
+        else -> null
+    },
+)
+
+/** The fresh thread's first message: the prefix and the approved plan. */
+internal fun planImplementationClearContextMessage(planMarkdown: String): String =
+    "$PlanImplementationClearContextPrefix\n\n$planMarkdown"
+
+/**
+ * Context-used label for the fresh-context row, or `null` for a fresh or unknown window
+ * (`plan_implementation_context_usage_label`, codex-rs/tui/src/chatwidget/turn_runtime.rs).
+ * [compactTokens] words the fallback the prompt takes when the server reports tokens without a
+ * window; upstream returns no label at all when both are unknown.
+ */
+internal fun planImplementationContextUsageLabel(
+    usage: ThreadTokenUsage,
+    compactTokens: (Long) -> String,
+): String? {
+    val remaining = usage.contextRemainingPercent()
+    if (remaining != null) {
+        val used = 100 - remaining
+        return if (used <= 0) null else "$used% used"
+    }
+    val tokens = usage.total.totalTokens
+    return if (tokens > 0) "${compactTokens(tokens)} used" else null
+}
+
+/**
+ * Confirmation after a plan-mode turn produced a plan (chatwidget/plan_implementation.rs):
+ * implement it in this thread, implement it in a fresh one, or keep planning.
+ */
+@Composable
+fun PlanImplementationSheet(
+    planMarkdown: String?,
+    defaultModeAvailable: Boolean,
+    contextUsageLabel: String?,
+    onImplement: () -> Unit,
+    onClearContext: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val options = planImplementationOptions(defaultModeAvailable, planMarkdown)
+    val freshContextDetail = stringResource(R.string.plan_implementation_clear_context_fresh)
+    val usedContextDetail = if (contextUsageLabel == null) {
+        freshContextDetail
+    } else {
+        stringResource(R.string.plan_implementation_clear_context_used, contextUsageLabel)
+    }
+    WindowBottomSheet(
+        show = true,
+        onDismissRequest = onDismiss,
+        title = stringResource(R.string.plan_implementation_title),
+        backgroundColor = sheetColor(),
+        cornerRadius = UiConsts.SheetCorner,
+        sheetMaxWidth = UiConsts.SheetMaxWidth,
+        outsideMargin = DpSize(sheetSideMargin(), 0.dp),
+        insideMargin = DpSize(UiConsts.SheetPadding, 0.dp),
+    ) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(bottom = UiConsts.SheetPadding),
+            verticalArrangement = Arrangement.spacedBy(UiConsts.Space2),
+        ) {
+            PlanImplementationRow(
+                title = stringResource(R.string.plan_implementation_yes),
+                detail = stringResource(R.string.plan_implementation_yes_detail),
+                block = options.implement,
+                onSelect = onImplement,
+            )
+            PlanImplementationRow(
+                title = stringResource(R.string.plan_implementation_clear_context),
+                detail = usedContextDetail,
+                block = options.clearContext,
+                onSelect = onClearContext,
+            )
+            PlanImplementationRow(
+                title = stringResource(R.string.plan_implementation_no),
+                detail = stringResource(R.string.plan_implementation_no_detail),
+                block = null,
+                onSelect = onDismiss,
+            )
+        }
+    }
+}
+
+@Composable
+private fun PlanImplementationRow(
+    title: String,
+    detail: String,
+    block: PlanImplementationBlock?,
+    onSelect: () -> Unit,
+) {
+    val colors = MiuixTheme.colorScheme
+    val enabled = block == null
+    val detailText = if (block == null) detail else block.reason()
+    Row(
+        modifier =
+            Modifier.fillMaxWidth()
+                .combinedClickable(enabled = enabled, onClick = onSelect)
+                .padding(horizontal = UiConsts.Space4, vertical = UiConsts.Space9),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                fontSize = UiType.SheetRowTitle,
+                lineHeight = UiType.SheetRowTitleLine,
+                color = if (enabled) colors.onSurface else colors.onSurfaceVariantSummary,
+            )
+            Text(
+                text = detailText,
+                modifier = Modifier.padding(top = UiConsts.Space1),
+                fontSize = UiType.RowDetail,
+                lineHeight = UiType.RowDetailLine,
+                color = colors.onSurfaceVariantSummary,
+            )
+        }
+    }
+}
+
+@Composable
+@ReadOnlyComposable
+private fun PlanImplementationBlock.reason(): String = stringResource(
+    when (this) {
+        PlanImplementationBlock.DefaultModeUnavailable ->
+            R.string.plan_implementation_default_unavailable
+
+        PlanImplementationBlock.NoApprovedPlan -> R.string.plan_implementation_no_approved_plan
     },
 )

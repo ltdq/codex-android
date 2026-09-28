@@ -26,6 +26,7 @@ import com.cy.codex.protocol.protocol.v2.HookRunSummary
 import com.cy.codex.protocol.protocol.v2.McpElicitationRequest
 import com.cy.codex.protocol.protocol.v2.PatchApplyStatus
 import com.cy.codex.protocol.protocol.v2.PatchChangeKind
+import com.cy.codex.protocol.protocol.item.PlanItem
 import com.cy.codex.protocol.protocol.v2.ThreadSessionState
 import com.cy.codex.protocol.protocol.v2.ServerRequestResolved
 import com.cy.codex.protocol.protocol.v2.SettingsField
@@ -38,6 +39,7 @@ import com.cy.codex.protocol.protocol.v2.ThreadTokenUsage
 import com.cy.codex.protocol.protocol.v2.TokenUsageBreakdown
 import com.cy.codex.protocol.protocol.v2.TerminalInteraction
 import com.cy.codex.protocol.protocol.v2.Turn
+import com.cy.codex.protocol.protocol.v2.CollaborationMode
 import com.cy.codex.protocol.protocol.v2.TurnStatus
 import com.cy.codex.protocol.protocol.v2.TurnsPage
 import com.cy.codex.protocol.protocol.v2.WarningNotification
@@ -76,6 +78,43 @@ class ChatWidgetTest {
         runCurrent()
         assertFalse(widget.state.running)
         assertEquals("keep this draft", widget.state.composerDraft)
+        assertEquals(DiagnosticCode.SendFailed, widget.state.diagnostics.single().code)
+    }
+
+    @Test
+    fun `implement plan sends its prompt without clearing a draft or image`() = runTest {
+        val client = TestClient()
+        val widget = ChatWidget(client, backgroundScope)
+        widget.bind(ThreadSessionState(threadId = "thread", collaborationMode = CollaborationMode.Plan))
+        val image = widget.state.addComposerImage("/tmp/draft.png")
+        widget.state.applyDraft("unsent $image")
+        val draft = widget.state.pendingTurnInputs()
+
+        val prompt = com.cy.codex.chatwidget.PlanImplementationCodingMessage
+        widget.action(AppEvent.SubmitUserMessageWithMode(prompt, CollaborationMode.Default))
+        runCurrent()
+
+        assertEquals(listOf<UserInput>(UserInput.Text(prompt)), client.turnInputs.single())
+        assertEquals(draft, widget.state.pendingTurnInputs())
+        assertEquals(CollaborationMode.Default, widget.state.config.collaborationMode)
+    }
+
+    @Test
+    fun `failed implement plan prompt leaves the existing draft untouched`() = runTest {
+        val client = TestClient().apply { turnResult = Result.failure(IllegalStateException("offline")) }
+        val widget = ChatWidget(client, backgroundScope)
+        widget.bind(ThreadSessionState(threadId = "thread", collaborationMode = CollaborationMode.Plan))
+        val image = widget.state.addComposerImage("/tmp/draft.png")
+        widget.state.applyDraft("unsent $image")
+        val draft = widget.state.pendingTurnInputs()
+
+        widget.action(AppEvent.SubmitUserMessageWithMode(
+            com.cy.codex.chatwidget.PlanImplementationCodingMessage,
+            CollaborationMode.Default,
+        ))
+        runCurrent()
+
+        assertEquals(draft, widget.state.pendingTurnInputs())
         assertEquals(DiagnosticCode.SendFailed, widget.state.diagnostics.single().code)
     }
 
@@ -903,11 +942,48 @@ class ChatWidgetTest {
         assertTrue(client.responses.isEmpty())
     }
 
+    @Test
+    fun `the plan prompt waits for a completed turn`() = runTest {
+        val client = TestClient()
+        val widget = ChatWidget(client, backgroundScope)
+        widget.bind(ThreadSessionState(threadId = "thread", collaborationMode = CollaborationMode.Plan))
+        widget.attach()
+
+        client.events.emit(AppServerEvent.ItemCompleted("thread", "turn-1", PlanItem("plan-1", "step one")))
+        runCurrent()
+        client.events.emit(AppServerEvent.TurnCompleted("thread", "turn-1", TurnStatus.Interrupted))
+        runCurrent()
+        assertNull(widget.planImplementationPrompt)
+
+        // A turn that did not finish leaves nothing behind; the next one arms the prompt itself.
+        client.events.emit(AppServerEvent.TurnStarted("thread", "turn-2"))
+        client.events.emit(AppServerEvent.ItemCompleted("thread", "turn-2", PlanItem("plan-2", "step two")))
+        runCurrent()
+        client.events.emit(AppServerEvent.TurnCompleted("thread", "turn-2", TurnStatus.Completed))
+        runCurrent()
+        assertEquals("step two", widget.planImplementationPrompt?.planMarkdown)
+    }
+
+    @Test
+    fun `an open sheet keeps the plan prompt back`() = runTest {
+        val client = TestClient()
+        val widget = ChatWidget(client, backgroundScope, noPopupActive = { false })
+        widget.bind(ThreadSessionState(threadId = "thread", collaborationMode = CollaborationMode.Plan))
+        widget.attach()
+
+        client.events.emit(AppServerEvent.ItemCompleted("thread", "turn-1", PlanItem("plan", "step")))
+        runCurrent()
+        client.events.emit(AppServerEvent.TurnCompleted("thread", "turn-1", TurnStatus.Completed))
+        runCurrent()
+        assertNull(widget.planImplementationPrompt)
+    }
+
     private class TestClient : AppServerClient {
         override val events = MutableSharedFlow<AppServerEvent>()
         override val requests = MutableSharedFlow<ApprovalRequest>()
         override val connection = flowOf(ConnectionState.Ready)
         var turnResult: Result<String> = Result.success("turn")
+        val turnInputs = mutableListOf<List<UserInput>>()
         var resumeResult: Result<ThreadSessionState> = Result.failure(IllegalStateException("unavailable"))
         var historyResult: Result<ThreadReadResponse> = Result.failure(IllegalStateException("unavailable"))
         var rejectResponse = false
@@ -929,7 +1005,10 @@ class ChatWidgetTest {
             outputSchema: JsonElement?,
             effort: com.cy.codex.protocol.protocol.v2.ReasoningEffort?,
             clientMetadata: Map<String, String>?,
-        ) = turnResult
+        ): Result<String> {
+            turnInputs += inputs
+            return turnResult
+        }
         override suspend fun resumeThread(params: com.cy.codex.protocol.protocol.v2.ThreadResumeParams) = resumeResult
         var readThreadCalled = false
         override suspend fun readThread(params: com.cy.codex.protocol.protocol.v2.ThreadReadParams): Result<ThreadReadResponse> {

@@ -63,6 +63,13 @@ sealed interface AppEvent {
     data class DeleteSection(val sectionId: String) : AppEvent
 
     data class SubmitUserMessage(val inputs: List<UserInput>, val queued: Boolean = false) : AppEvent
+
+    /** Submit one prompt, switching the thread's collaboration mode before the turn starts (`SubmitUserMessageWithMode`). */
+    data class SubmitUserMessageWithMode(val text: String, val mode: CollaborationMode) : AppEvent
+
+    /** Drop this thread and start a fresh one whose first prompt is [text] (`ClearUiAndSubmitUserMessage`). */
+    data class ClearUiAndSubmitUserMessage(val text: String) : AppEvent
+
     data object InterruptTurn : AppEvent
     data class RemoveComposerRetainedInput(val index: Int) : AppEvent
 

@@ -137,10 +137,27 @@ data class ThreadTokenUsage(
             (total.totalTokens.toFloat() / it.toFloat()).coerceIn(0f, 1f)
         } ?: 0f
 
+    /**
+     * User-controllable share of the window still free, in percent, or `null` when the server
+     * reports no window. Baseline tokens are always present in the context, so both sides are
+     * normalized by them (`TokenUsage::percent_of_context_window_remaining`).
+     */
+    fun contextRemainingPercent(): Long? {
+        val window = modelContextWindow ?: return null
+        if (window <= BaselineTokens) return 0
+        val effective = window - BaselineTokens
+        val used = (last.totalTokens - BaselineTokens).coerceAtLeast(0)
+        val remaining = (effective - used).coerceAtLeast(0)
+        return Math.round(remaining.toDouble() / effective.toDouble() * 100.0).coerceIn(0, 100)
+    }
+
     companion object {
         val Empty = ThreadTokenUsage(TokenUsageBreakdown.Empty, TokenUsageBreakdown.Empty)
     }
 }
+
+/** System prompt and fixed tool instructions, present in every request (`BASELINE_TOKENS`). */
+private const val BaselineTokens = 12_000L
 
 data class ThreadListing(
     val threads: List<Thread> = emptyList(),
