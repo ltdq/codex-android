@@ -6,8 +6,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import com.cy.codex.UiConsts
 import com.cy.codex.UiType
+import com.cy.codex.isHiddenNestedReviewTurn
+import com.cy.codex.protocol.protocol.item.EnteredReviewModeItem
+import com.cy.codex.protocol.protocol.item.ExitedReviewModeItem
 import com.cy.codex.protocol.protocol.item.ThreadItem
 import com.cy.codex.protocol.protocol.item.TurnSeparatorItem
+import com.cy.codex.protocol.protocol.item.UserMessageItem
 import com.cy.codex.protocol.protocol.v2.Turn
 import com.cy.codex.protocol.protocol.v2.TurnStatus
 import java.time.Instant
@@ -73,12 +77,26 @@ internal fun TurnSeparatorCell(item: TurnSeparatorItem, modifier: Modifier = Mod
 }
 
 /** Divider after a finished turn; `thread/read` returns turns in order. In-progress turns
- * are skipped: no completion time or duration yet. */
+ * are skipped: no completion time or duration yet.
+ *
+ * Mirrors the replay path in `codex/codex-rs/tui/src/chatwidget/replay.rs`: the reconstructed
+ * inline-review child turn repeats its prompt and is dropped with its divider, and a prompt
+ * committed while review mode is active is internal. */
 internal fun transcriptWithSeparators(turns: List<Turn>): List<ThreadItem> {
     val items = ArrayList<ThreadItem>(turns.sumOf { it.items.size } + turns.size)
-    for (turn in turns) {
-        items += turn.items
-        if (turn.status == TurnStatus.InProgress) continue
+    var reviewMode = false
+    for ((index, turn) in turns.withIndex()) {
+        val hiddenReviewTurn = index > 0 && isHiddenNestedReviewTurn(turns[index - 1], turn)
+        for (item in turn.items) {
+            when (item) {
+                is EnteredReviewModeItem -> reviewMode = true
+                is ExitedReviewModeItem -> reviewMode = false
+                else -> Unit
+            }
+            if (item is UserMessageItem && (hiddenReviewTurn || reviewMode)) continue
+            items += item
+        }
+        if (hiddenReviewTurn || turn.status == TurnStatus.InProgress) continue
         val elapsed = turn.durationMs?.let { it / 1000 }
             ?: turn.completedAt?.let { completed -> (completed - turn.startedAt).coerceAtLeast(0) / 1000 }
         val label = finalMessageSeparatorLabel(elapsed, turn.completedAt) ?: continue

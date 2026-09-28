@@ -242,6 +242,9 @@ class ChatWidget(
     /** Last turn loaded or streamed for the open thread, used to reject stale prompt edits. */
     private var latestKnownTurnId: String? = null
 
+    /** Oldest turn on screen; the next page pairs against it across the page boundary. */
+    private var oldestLoadedTurn: com.cy.codex.protocol.protocol.v2.Turn? = null
+
     val approvalQueueSize: Int get() = if (currentApproval == null) 0 else pendingApprovals.size
 
     /** Side threads inherit the parent's tool specs; `thread/fork` has no `dynamicTools` field. */
@@ -443,6 +446,7 @@ class ChatWidget(
             var loadedTurns = emptyList<com.cy.codex.protocol.protocol.v2.Turn>()
             if (version == loadVersion && row != null && page != null) {
                 // Separators are rebuilt; the server does not store this client's divider.
+                oldestLoadedTurn = page.turns.firstOrNull()
                 if (latestKnownTurnId == null) latestKnownTurnId = page.turns.firstOrNull()?.id
                 val transcript = com.cy.codex.history_cell.transcriptWithSeparators(page.turns)
                 applyLoadedTranscript(transcript)
@@ -455,6 +459,7 @@ class ChatWidget(
                 if (version != loadVersion) return@launch
                 history.onSuccess { response ->
                     if (version != loadVersion) return@onSuccess
+                    oldestLoadedTurn = response.turns.firstOrNull()
                     if (latestKnownTurnId == null) latestKnownTurnId = response.turns.lastOrNull()?.id
                     val transcript = if (response.turns.isNotEmpty()) {
                         com.cy.codex.history_cell.transcriptWithSeparators(response.turns)
@@ -505,6 +510,17 @@ class ChatWidget(
     }
 
     /** `thread/turns/list` pages newest-first; reverse before prepending. */
+    /**
+     * A page that lands under [turn] can reveal that [turn] is the reconstructed inline-review
+     * child; the prompts already rendered for it are internal and have to come back out
+     * (`hidden_review_item_ids`, codex-rs/tui/src/app/history_pagination.rs).
+     */
+    private fun dropReviewChildPrompts(previous: com.cy.codex.protocol.protocol.v2.Turn?, turn: com.cy.codex.protocol.protocol.v2.Turn?) {
+        if (previous == null || turn == null) return
+        if (!isHiddenNestedReviewTurn(previous, turn)) return
+        turn.items.filterIsInstance<UserMessageItem>().forEach { state.remove(it.id) }
+    }
+
     fun loadEarlier() {
         val cursor = nextTurnCursor ?: return
         if (loadingEarlier) return
@@ -522,7 +538,10 @@ class ChatWidget(
                 ),
             ).onSuccess { page ->
                 if (state.threadId != threadId) return@onSuccess
-                state.prepend(com.cy.codex.history_cell.transcriptWithSeparators(page.turns.asReversed()))
+                val older = page.turns.asReversed()
+                state.prepend(com.cy.codex.history_cell.transcriptWithSeparators(older))
+                dropReviewChildPrompts(older.lastOrNull(), oldestLoadedTurn)
+                oldestLoadedTurn = older.firstOrNull() ?: oldestLoadedTurn
                 nextTurnCursor = page.nextCursor
             }.onFailure { error ->
                 if (state.threadId != threadId) return@onFailure
@@ -2016,6 +2035,7 @@ class ChatWidget(
                 state.items.clear()
                 // Post-compact/revert: the old cursor may name a turn that no longer exists.
                 nextTurnCursor = null
+                oldestLoadedTurn = response.turns.firstOrNull()
                 latestKnownTurnId = response.turns.lastOrNull()?.id
                 val transcript = if (response.turns.isNotEmpty()) {
                     com.cy.codex.history_cell.transcriptWithSeparators(response.turns)

@@ -1,5 +1,7 @@
 package com.cy.codex.history_cell
 import com.cy.codex.protocol.protocol.item.AgentMessageItem
+import com.cy.codex.protocol.protocol.item.EnteredReviewModeItem
+import com.cy.codex.protocol.protocol.item.ExitedReviewModeItem
 import com.cy.codex.protocol.protocol.item.TurnSeparatorItem
 import com.cy.codex.protocol.protocol.item.UserMessageItem
 import com.cy.codex.protocol.protocol.v2.Turn
@@ -69,5 +71,62 @@ class SeparatorsTest {
         assertTrue(items[2] is TurnSeparatorItem)
         assertEquals("turn-separator-t1", items[2].id)
         assertEquals("u2", (items.last() as UserMessageItem).id)
+    }
+
+    @Test
+    fun `inline review child turn drops its repeated prompt and divider`() {
+        val reviewPrompt =
+            "Review the current code changes (staged, unstaged, and untracked files)."
+        val first = Turn(
+            id = "t1",
+            items = listOf(
+                UserMessageItem("u1", content = listOf(UserInput.Text("hi"))),
+                AgentMessageItem("a1", "there"),
+            ),
+            status = TurnStatus.Completed,
+            completedAt = Instant.parse("2026-09-18T14:32:00Z").toEpochMilli(),
+        )
+        val review = Turn(
+            id = "t2",
+            items = listOf(
+                EnteredReviewModeItem("enter", "current changes"),
+                ExitedReviewModeItem("exit", "review complete"),
+            ),
+            status = TurnStatus.Completed,
+            completedAt = Instant.parse("2026-09-18T14:33:00Z").toEpochMilli(),
+        )
+        val reviewChild = Turn(
+            id = "t3",
+            items = listOf(
+                UserMessageItem("p1", content = listOf(UserInput.Text(reviewPrompt))),
+                UserMessageItem("p2", content = listOf(UserInput.Text(reviewPrompt))),
+            ),
+            status = TurnStatus.Interrupted,
+        )
+
+        val items = transcriptWithSeparators(listOf(first, review, reviewChild))
+
+        assertEquals(
+            listOf("u1", "a1", "turn-separator-t1", "enter", "exit", "turn-separator-t2"),
+            items.map { it.id },
+        )
+    }
+
+    @Test
+    fun `prompts sent during review mode are hidden`() {
+        val review = Turn(
+            id = "t1",
+            items = listOf(
+                EnteredReviewModeItem("enter", "current changes"),
+                UserMessageItem("internal", content = listOf(UserInput.Text("internal review prompt"))),
+                ExitedReviewModeItem("exit", "review complete"),
+            ),
+            status = TurnStatus.Completed,
+            completedAt = Instant.parse("2026-09-18T14:32:00Z").toEpochMilli(),
+        )
+
+        val items = transcriptWithSeparators(listOf(review))
+
+        assertEquals(listOf("enter", "exit", "turn-separator-t1"), items.map { it.id })
     }
 }

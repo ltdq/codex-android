@@ -28,14 +28,22 @@ import com.cy.codex.protocol.protocol.v2.UserInput
 
 /**
  * `/export`: whole conversation as markdown, mirroring
- * `codex-rs/.../app/transcript_export.rs`; activity bodies indent four spaces.
+ * `codex-rs/.../app/transcript_export.rs`; activity bodies indent four spaces. A prompt bracketed
+ * by the review markers is internal input, as in that file's `visible_export_items`.
  */
 internal fun transcriptMarkdown(
     items: List<ThreadItem>,
     hooks: List<com.cy.codex.protocol.protocol.v2.HookMetadata> = emptyList(),
 ): String? {
     val markdown = StringBuilder("# Codex conversation\n")
+    var reviewMode = false
     for (item in items) {
+        when (item) {
+            is EnteredReviewModeItem -> reviewMode = true
+            is ExitedReviewModeItem -> reviewMode = false
+            else -> Unit
+        }
+        if (item is UserMessageItem && reviewMode) continue
         val (heading, indent) = when (item) {
             is UserMessageItem -> "User" to false
             is AgentMessageItem -> "Assistant" to false
@@ -135,8 +143,8 @@ private fun transcriptLines(
         }
         item.savedPath?.let { add("  saved to: $it") }
     }
-    is EnteredReviewModeItem -> listOf("entered review mode: ${item.review}")
-    is ExitedReviewModeItem -> listOf("exited review mode: ${item.review}")
+    is EnteredReviewModeItem -> listOf(">> Code review started: ${item.review} <<")
+    is ExitedReviewModeItem -> listOf("<< Code review finished: ${item.review} >>")
     is ContextCompactionItem -> listOf("context compacted")
     is TurnSeparatorItem, is RecapItem, is com.cy.codex.protocol.protocol.item.TipItem -> emptyList()
 }
