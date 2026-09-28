@@ -96,6 +96,8 @@ class ChatWidget(
 
     val pendingSteers: List<PendingSteer> get() = uncommittedSteers.filter { it.threadId == state.threadId }
     val restoringInputs: Boolean get() = state.threadId in restoringInputThreads
+    var backtracking by mutableStateOf(false)
+        private set
 
     /** Completed turns, bounded; used to drop approvals that arrive after their turn finished. */
     private val finishedTurns = ArrayDeque<String>()
@@ -211,6 +213,9 @@ class ChatWidget(
         private set
 
     val canLoadEarlier: Boolean get() = nextTurnCursor != null && !loadingEarlier
+
+    /** Last turn loaded or streamed for the open thread, used to reject stale prompt edits. */
+    private var latestKnownTurnId: String? = null
 
     val approvalQueueSize: Int get() = if (currentApproval == null) 0 else pendingApprovals.size
 
@@ -333,11 +338,13 @@ class ChatWidget(
         answeringApproval = false
         approvalError = null
         state.beginLoad(threadId)
+        backtracking = false
         adoptOtherThreadApprovals()
         turnDiff.reset()
         patchChanges.clear()
         streamOvertookLoad = false
         nextTurnCursor = null
+        latestKnownTurnId = null
         loadingEarlier = false
         recap.resetForNewThread()
         loadJob = scope.launch {
@@ -382,6 +389,7 @@ class ChatWidget(
             var loadedTurns = emptyList<com.cy.codex.protocol.protocol.v2.Turn>()
             if (version == loadVersion && row != null && page != null) {
                 // Separators are rebuilt; the server does not store this client's divider.
+                if (latestKnownTurnId == null) latestKnownTurnId = page.turns.firstOrNull()?.id
                 val transcript = com.cy.codex.history_cell.transcriptWithSeparators(page.turns)
                 applyLoadedTranscript(transcript)
                 if (streamedStatus == null) state.applyStatus(row.status)
@@ -393,6 +401,7 @@ class ChatWidget(
                 if (version != loadVersion) return@launch
                 history.onSuccess { response ->
                     if (version != loadVersion) return@onSuccess
+                    if (latestKnownTurnId == null) latestKnownTurnId = response.turns.lastOrNull()?.id
                     val transcript = if (response.turns.isNotEmpty()) {
                         com.cy.codex.history_cell.transcriptWithSeparators(response.turns)
                     } else {
@@ -487,6 +496,7 @@ class ChatWidget(
                 .onSuccess { session ->
                     dropDeltas()
                     state.beginLoad(session.threadId)
+                    latestKnownTurnId = null
                     turnDiff.reset()
                     patchChanges.clear()
                     recap.resetForNewThread()
@@ -548,6 +558,7 @@ class ChatWidget(
             is AppEvent.SubmitUserMessage -> submitInput(event.inputs, queued = event.queued)
             is AppEvent.AnswerAsyncQuestion -> submitInput(listOf(UserInput.Text(event.text)), clearDraft = false)
             AppEvent.InterruptTurn -> interrupt()
+            is AppEvent.RevertSessionForPromptEdit -> backtrack(event)
             is AppEvent.ResolveApproval -> resolve(event.requestId, event.response)
             is AppEvent.DismissApproval -> dismiss(event.requestId)
 
@@ -817,6 +828,8 @@ class ChatWidget(
         dropDeltas()
         resetApprovalState()
         state.beginLoad(session.threadId)
+        latestKnownTurnId = null
+        backtracking = false
         turnDiff.reset()
         patchChanges.clear()
         recap.resetForNewThread()
@@ -844,6 +857,8 @@ class ChatWidget(
         turnDiff.reset()
         recap.resetForNewThread()
         state.clear()
+        latestKnownTurnId = null
+        backtracking = false
     }
 
     private fun replaceQueue(queued: List<QueuedSubmission>) {
@@ -889,7 +904,7 @@ class ChatWidget(
     private fun submitInput(inputs: List<UserInput>, clearDraft: Boolean = true, queued: Boolean = false) {
         val hasText = inputs.filterIsInstance<UserInput.Text>().any { it.text.isNotBlank() }
         val hasMedia = inputs.any { it !is UserInput.Text }
-        if ((!hasText && !hasMedia) || !state.open || state.loading || restoringInputs) return
+        if ((!hasText && !hasMedia) || !state.open || state.loading || restoringInputs || backtracking) return
         // Viewing a parent-owned sub-agent: the transcript is readable, input is not.
         if (state.config.blocksDirectInput || state.misalignment != null) return
         val threadId = state.threadId
@@ -1008,6 +1023,56 @@ class ChatWidget(
             } finally {
                 restoringInputThreads.remove(event.threadId)
                 refreshQueue(event.threadId)
+            }
+        }
+    }
+
+    private fun backtrack(event: AppEvent.RevertSessionForPromptEdit) {
+        if (backtracking || restoringInputs || !state.open || state.loading || state.running ||
+            state.threadId != event.threadId || state.config.blocksDirectInput || isSideThread(event.threadId)) return
+        val version = loadVersion
+        val latestTurnId = latestKnownTurnId
+        backtracking = true
+        scope.launch {
+            var reverted = false
+            try {
+                val response = client.readThread(com.cy.codex.protocol.protocol.v2.ThreadReadParams(event.threadId)).getOrThrow()
+                if (version != loadVersion || state.running) return@launch
+                check(response.turns.lastOrNull()?.id == latestTurnId && latestKnownTurnId == latestTurnId) {
+                    "Thread history changed; reload the session before editing this prompt"
+                }
+                val selection = backtrackSelection(response.turns, event.prompt)
+                client.revertThreadBeforeTurn(event.threadId, selection.beforeTurnId).getOrThrow()
+                reverted = true
+                restoreInputs(event.threadId, listOf(selection.prompt.content))
+                if (version == loadVersion) {
+                    val refreshed = reloadHistory(event.threadId, pruneReceipts = true, removedTurnId = selection.beforeTurnId)
+                    if (version != loadVersion || state.threadId != event.threadId) return@launch
+                    if (refreshed) {
+                        backtracking = false
+                    } else {
+                        state.addDiagnostic(SessionDiagnostic(
+                            severity = DiagnosticSeverity.Error,
+                            message = "History was reverted but could not be refreshed; reopen the session",
+                        ))
+                    }
+                }
+            } catch (error: kotlinx.coroutines.CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                if (version == loadVersion && state.threadId == event.threadId) {
+                    state.addDiagnostic(SessionDiagnostic(
+                        severity = DiagnosticSeverity.Error,
+                        message = if (reverted) {
+                            "History was reverted but could not be refreshed; reopen the session"
+                        } else {
+                            error.message
+                        },
+                        detail = error.message.takeIf { reverted },
+                    ))
+                }
+            } finally {
+                if (version == loadVersion && !reverted) backtracking = false
             }
         }
     }
@@ -1237,13 +1302,17 @@ class ChatWidget(
                 }
             }
             is AppServerEvent.TurnStarted -> {
+                latestKnownTurnId = event.turnId
                 state.applyStatus(ThreadStatus.Active())
                 state.applyStreaming(null)
                 // A new turn clears a previous safety stop; the gate is per turn.
                 state.applyMisalignment(null)
             }
 
-            is AppServerEvent.TurnCompleted -> onTurnCompleted(event)
+            is AppServerEvent.TurnCompleted -> {
+                latestKnownTurnId = event.turnId
+                onTurnCompleted(event)
+            }
             is AppServerEvent.TurnDiffUpdatedEvent ->
                 state.applyTurnDiff(turnDiff.apply(event.delta.diff))
 
@@ -1774,47 +1843,56 @@ class ChatWidget(
     }
 
     private fun refreshHistory(threadId: String, pruneReceipts: Boolean = false) {
+        scope.launch { reloadHistory(threadId, pruneReceipts) }
+    }
+
+    private suspend fun reloadHistory(
+        threadId: String,
+        pruneReceipts: Boolean = false,
+        removedTurnId: String? = null,
+    ): Boolean {
         val version = loadVersion
-        scope.launch {
-            repeat(3) {
-                val revision = eventRevision
-                val response = client.readThread(com.cy.codex.protocol.protocol.v2.ThreadReadParams(threadId)).getOrElse {
-                    if (version == loadVersion) state.addDiagnostic(SessionDiagnostic(
-                        severity = DiagnosticSeverity.Error,
-                        code = DiagnosticCode.ThreadLoadFailed,
-                        detail = it.message,
-                    ))
-                    return@launch
+        repeat(3) {
+            val revision = eventRevision
+            val response = client.readThread(com.cy.codex.protocol.protocol.v2.ThreadReadParams(threadId)).getOrElse {
+                if (version == loadVersion) state.addDiagnostic(SessionDiagnostic(
+                    severity = DiagnosticSeverity.Error,
+                    code = DiagnosticCode.ThreadLoadFailed,
+                    detail = it.message,
+                ))
+                return false
+            }
+            if (version != loadVersion || state.threadId != threadId) return false
+            if (removedTurnId != null && response.turns.any { it.id == removedTurnId }) return@repeat
+            response.items.filterIsInstance<UserMessageItem>().filter { it.clientId != null }
+                .forEach { acknowledgeInput(threadId, it) }
+            if (revision == eventRevision) {
+                state.items.clear()
+                // Post-compact/revert: the old cursor may name a turn that no longer exists.
+                nextTurnCursor = null
+                latestKnownTurnId = response.turns.lastOrNull()?.id
+                val transcript = if (response.turns.isNotEmpty()) {
+                    com.cy.codex.history_cell.transcriptWithSeparators(response.turns)
+                } else {
+                    response.items
                 }
-                if (version != loadVersion || state.threadId != threadId) return@launch
-                response.items.filterIsInstance<UserMessageItem>().filter { it.clientId != null }
-                    .forEach { acknowledgeInput(threadId, it) }
-                if (revision == eventRevision) {
-                    state.items.clear()
-                    // Post-compact/revert: the old cursor may name a turn that no longer exists.
-                    nextTurnCursor = null
-                    val transcript = if (response.turns.isNotEmpty()) {
-                        com.cy.codex.history_cell.transcriptWithSeparators(response.turns)
-                    } else {
-                        response.items
+                transcript.forEach(state::upsert)
+                if (pruneReceipts) {
+                    val turns = response.turns.mapTo(mutableSetOf()) { it.id }
+                    val items = transcript.mapTo(mutableSetOf()) { it.id }
+                    state.approvalReceipts.removeAll { receipt ->
+                        receipt.turnId?.let { it !in turns } ?: (receipt.itemId !in items)
                     }
-                    transcript.forEach(state::upsert)
-                    if (pruneReceipts) {
-                        val turns = response.turns.mapTo(mutableSetOf()) { it.id }
-                        val items = transcript.mapTo(mutableSetOf()) { it.id }
-                        state.approvalReceipts.removeAll { receipt ->
-                            receipt.turnId?.let { it !in turns } ?: (receipt.itemId !in items)
-                        }
-                    }
-                    state.applyStatus(response.thread.status)
-                    // A snapshot can be older than the live stream; keep only the still-streaming item's buffer.
-                    val keep = response.items.mapTo(mutableSetOf()) { it.id }
-                    state.streamingItemId?.let(keep::add)
-                    state.retainStreams(keep)
-                    return@launch
                 }
+                state.applyStatus(response.thread.status)
+                // A snapshot can be older than the live stream; keep only the still-streaming item's buffer.
+                val keep = response.items.mapTo(mutableSetOf()) { it.id }
+                state.streamingItemId?.let(keep::add)
+                state.retainStreams(keep)
+                return true
             }
         }
+        return false
     }
 
     private fun withStreamedText(item: ThreadItem): ThreadItem = when {

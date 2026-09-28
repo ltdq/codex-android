@@ -36,6 +36,10 @@ sealed interface AppEvent {
     data class RenameThread(val threadId: String, val name: String) : AppEvent
     data class CompactThread(val threadId: String) : AppEvent
     data class RevertThread(val threadId: String, val itemId: String?) : AppEvent
+    data class RevertSessionForPromptEdit(
+        val threadId: String,
+        val prompt: com.cy.codex.protocol.protocol.item.UserMessageItem,
+    ) : AppEvent
     data object RefreshThreadList : AppEvent
 
     /** Re-read subagent threads; the dashboard needs metadata the parent transcript does not carry. */

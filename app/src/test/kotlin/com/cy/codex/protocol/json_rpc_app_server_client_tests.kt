@@ -54,6 +54,21 @@ import kotlin.test.assertTrue
 /** Exercises real wire messages while replacing only the JNI byte transport. */
 @OptIn(ExperimentalCoroutinesApi::class)
 class JsonRpcAppServerClientTest {
+    @Test
+    fun `prompt edit reverts the validated turn without rereading history`() = runTest {
+        val transport = HarnessTransport()
+        val client = JsonRpcAppServerClient(transport, backgroundScope)
+        client.initialize(ClientInfo("android", version = "1")).getOrThrow()
+        val revert = async { client.revertThreadBeforeTurn("thread", "selected-turn").getOrThrow() }
+        val request = transport.request()
+        assertEquals("thread/revert", request.text("method"))
+        assertEquals(obj("threadId" to "thread", "beforeTurnId" to "selected-turn"), request["params"])
+        transport.response(request, obj("thread" to obj("id" to "thread")))
+        revert.await()
+        assertTrue(transport.outgoing.tryReceive().isFailure)
+        client.close()
+    }
+
     private class HarnessTransport : JsonRpcTransport {
         val incoming = Channel<Result<String?>>(Channel.UNLIMITED)
         val outgoing = Channel<Pair<JsonRpcMessageKind, String>>(Channel.UNLIMITED)

@@ -104,6 +104,7 @@ import com.cy.codex.protocol.ApprovalResponse
 import com.cy.codex.protocol.protocol.item.AgentMessageItem
 import com.cy.codex.protocol.protocol.item.CommandExecutionItem
 import com.cy.codex.protocol.protocol.item.ThreadItem
+import com.cy.codex.protocol.protocol.item.UserMessageItem
 import com.cy.codex.protocol.protocol.v2.HookRunSummary
 import com.cy.codex.protocol.protocol.v2.AttachmentType
 import com.cy.codex.protocol.protocol.v2.CollaborationMode
@@ -600,6 +601,11 @@ private fun TranscriptPane(
         onOpenAgent = { threadId -> app.openSurface(Surface.SubAgentThread(threadId)) },
         onOpenAgentInfo = { threadId -> app.openSurface(Surface.SubAgent(threadId)) },
         onAnswerQuestion = { text -> app.onAppEvent(AppEvent.AnswerAsyncQuestion(text)) },
+        onEditPrompt = if (session.open && !session.loading && !session.running &&
+            !app.widget.backtracking && !session.config.blocksDirectInput && app.sideParentOf(session.threadId) == null
+        ) {
+            { prompt -> app.onAppEvent(AppEvent.RevertSessionForPromptEdit(session.threadId, prompt)) }
+        } else null,
         canLoadEarlier = app.widget.canLoadEarlier,
         loadingEarlier = app.widget.loadingEarlier,
         onLoadEarlier = app.widget::loadEarlier,
@@ -966,6 +972,7 @@ internal fun Transcript(
     loadingEarlier: Boolean,
     onLoadEarlier: () -> Unit,
     contentPadding: androidx.compose.foundation.layout.PaddingValues,
+    onEditPrompt: ((UserMessageItem) -> Unit)? = null,
     itemGap: Dp = 18.dp,
     planGap: Dp = 10.dp,
 ) {
@@ -1020,6 +1027,7 @@ internal fun Transcript(
                         onOpenAgent = onOpenAgent,
                         onOpenAgentInfo = onOpenAgentInfo,
                         onAnswerQuestion = onAnswerQuestion,
+                        onEditPrompt = onEditPrompt,
                     )
                 }
                 if (item is AgentMessageItem && plan.isNotEmpty() && index == rows.lastIndex) {
@@ -1442,7 +1450,7 @@ private fun ComposerDock(
         if (session.running && !session.config.blocksDirectInput) {
             com.cy.codex.bottom_pane.RunningInputActions(
                 canQueue = session.pendingTurnInputs().isNotEmpty() && !app.widget.restoringInputs &&
-                    session.misalignment == null,
+                    !app.widget.backtracking && session.misalignment == null,
                 onQueue = { app.onAppEvent(AppEvent.SubmitUserMessage(session.pendingTurnInputs(), queued = true)) },
                 onInterrupt = { app.onAppEvent(AppEvent.InterruptTurn) },
                 modifier = Modifier.padding(horizontal = UiConsts.ScreenMargin),
@@ -1514,6 +1522,7 @@ private fun ComposerDock(
             enabled =
                 app.startupReady &&
                     !app.widget.restoringInputs &&
+                    !app.widget.backtracking &&
                     !session.loading &&
                     !app.creatingThread &&
                     !session.config.blocksDirectInput &&

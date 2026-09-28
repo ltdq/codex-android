@@ -614,6 +614,7 @@ interface AppServerClient {
     suspend fun setThreadName(threadId: String, name: String): Result<Unit> = unsupported("setThreadName")
     suspend fun compactThread(threadId: String): Result<Unit> = unsupported("compactThread")
     suspend fun revertThread(threadId: String, itemId: String?): Result<Unit> = unsupported("revertThread")
+    suspend fun revertThreadBeforeTurn(threadId: String, beforeTurnId: String): Result<Unit> = unsupported("revertThreadBeforeTurn")
 
     suspend fun listThreadItems(params: ThreadItemsListParams): Result<ThreadItemsPage> = unsupported("listThreadItems")
 

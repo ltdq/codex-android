@@ -24,7 +24,7 @@ import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.ChevronBackward
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
-/** Ctrl+T transcript overlay, mirroring `codex-rs/.../app_backtrack.rs` `open_transcript_overlay`. */
+/** Transcript and prompt editing, mirroring `codex/codex-rs/tui/src/app_backtrack.rs`. */
 @Composable
 fun ThreadHistoryScreen(app: CodexApp, onBack: () -> Unit) {
     val session = app.widget.state
@@ -65,6 +65,14 @@ fun ThreadHistoryScreen(app: CodexApp, onBack: () -> Unit) {
                 onOpenAgent = { threadId -> app.openSurface(Surface.SubAgentThread(threadId)) },
                 onOpenAgentInfo = { threadId -> app.openSurface(Surface.SubAgent(threadId)) },
                 onAnswerQuestion = { text -> app.onAppEvent(AppEvent.AnswerAsyncQuestion(text)) },
+                onEditPrompt = if (session.open && !session.loading && !session.running &&
+                    !app.widget.backtracking && !session.config.blocksDirectInput && app.sideParentOf(session.threadId) == null
+                ) {
+                    { prompt ->
+                        app.onAppEvent(AppEvent.RevertSessionForPromptEdit(session.threadId, prompt))
+                        onBack()
+                    }
+                } else null,
                 canLoadEarlier = app.widget.canLoadEarlier,
                 loadingEarlier = app.widget.loadingEarlier,
                 onLoadEarlier = app.widget::loadEarlier,

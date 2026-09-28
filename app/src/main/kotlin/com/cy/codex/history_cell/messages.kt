@@ -5,6 +5,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -44,6 +45,7 @@ import com.cy.codex.protocol.protocol.item.UserMessageItem
 import com.cy.codex.protocol.protocol.v2.AsyncUserInputQuestion
 import com.cy.codex.protocol.protocol.v2.UserInput
 import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextField
@@ -66,6 +68,7 @@ fun UserMessageCell(
     textSpacing: Dp = 7.dp,
     fontSize: TextUnit = UiType.Message,
     lineHeight: TextUnit = UiType.MessageLine,
+    onEdit: (() -> Unit)? = null,
 ) {
     val colors = MiuixTheme.colorScheme
     val text =
@@ -101,6 +104,20 @@ fun UserMessageCell(
                     lineHeight = lineHeight,
                     color = colors.onSurface,
                 )
+            }
+            if (onEdit != null) {
+                Spacer(Modifier.height(textSpacing))
+                Button(
+                    onClick = onEdit,
+                    minHeight = UiConsts.ButtonHeight,
+                    insideMargin = PaddingValues(horizontal = UiConsts.Space12),
+                ) {
+                    Text(
+                        text = stringResource(R.string.history_ui_edit_prompt),
+                        fontSize = UiType.Action,
+                        color = colors.primary,
+                    )
+                }
             }
         }
     }

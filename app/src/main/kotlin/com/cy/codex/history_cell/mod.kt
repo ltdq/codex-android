@@ -43,9 +43,10 @@ fun ThreadItemCell(
     onOpenAgent: (String) -> Unit = {},
     onOpenAgentInfo: (String) -> Unit = {},
     onAnswerQuestion: (String) -> Unit = {},
+    onEditPrompt: ((UserMessageItem) -> Unit)? = null,
 ) {
     when (item) {
-        is UserMessageItem -> UserMessageCell(item, modifier)
+        is UserMessageItem -> UserMessageCell(item, modifier, onEdit = onEditPrompt?.let { edit -> { edit(item) } })
         is HookPromptItem -> HookPromptCell(item, modifier)
         is AgentMessageItem ->
             AgentMessageCell(item, modifier, stream, streaming, assistantLabel, cwd = cwd, onAnswerQuestion = onAnswerQuestion)

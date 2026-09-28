@@ -354,9 +354,10 @@ class JsonRpcAppServerClient(
         val history = readThread(ThreadReadParams(threadId)).getOrThrow()
         val turn = if (itemId == null) history.turns.lastOrNull() else history.turns.find { turn -> turn.items.any { it.id == itemId } }
         requireNotNull(turn) { "The selected message is no longer in this thread" }
-        rpc("thread/revert", obj("threadId" to threadId, "beforeTurnId" to turn.id))
-        Unit
+        revertThreadBeforeTurn(threadId, turn.id).getOrThrow()
     }
+    override suspend fun revertThreadBeforeTurn(threadId: String, beforeTurnId: String) =
+        call("thread/revert", obj("threadId" to threadId, "beforeTurnId" to beforeTurnId))
     override suspend fun updateThreadMetadata(threadId: String, name: String?, projectId: String?) = result {
         if (name != null) setThreadName(threadId, name).getOrThrow()
         WireCodec.thread(rpc("thread/metadata/update", obj("threadId" to threadId, "projectId" to (projectId ?: JsonNull)))["thread"]!!)

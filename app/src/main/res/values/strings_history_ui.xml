@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- The Ctrl+T read-only transcript overlay (app/history_ui.kt). -->
+    <!-- Transcript and prompt editing (app/history_ui.kt). -->
     <string name="history_ui_title">Transcript</string>
     <string name="history_ui_back">Back</string>
+    <string name="history_ui_edit_prompt">Edit from here</string>
 </resources>

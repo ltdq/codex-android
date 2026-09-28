@@ -150,7 +150,7 @@ class ClientRequestRegistryTest {
         "thread/realtime/start" to "startRealtime",
         "thread/realtime/stop" to "stopRealtime",
         "thread/resume" to "resumeThread",
-        "thread/revert" to "revertThread",
+        "thread/revert" to "revertThreadBeforeTurn",
         "thread/search" to "searchThreads",
         "thread/searchOccurrences" to "searchThreadOccurrences",
         "thread/section/move" to "moveThreadToSection",
@@ -188,6 +188,7 @@ class ClientRequestRegistryTest {
         "updateThreadSettingsFull",
         "readConfigLayers",
         "readThreadUsage",
+        "revertThread",
         "activeTurnId",
     )
 
