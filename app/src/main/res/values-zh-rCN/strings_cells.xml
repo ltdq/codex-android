@@ -153,4 +153,14 @@
     <string name="copy_sheet_code_block_language">代码块 %1$d（%2$s）</string>
     <string name="copy_sheet_status">会话状态</string>
     <string name="copy_sheet_nothing">暂无可复制的内容</string>
+
+    <!-- ComputerActivityRow (history_cell/computer_activity.kt)。 -->
+    <string name="computer_activity_using">正在操作电脑</string>
+    <string name="computer_activity_used">已操作电脑</string>
+    <string name="computer_activity_action">%1$d 个操作</string>
+    <string name="computer_activity_actions">%1$d 个操作</string>
+    <string name="computer_activity_failed">%1$d 个失败</string>
+    <string name="computer_activity_action_title">电脑操作</string>
+    <string name="computer_activity_failed_action">失败：%1$s</string>
+    <string name="computer_activity_more">还有 %1$d 条</string>
 </resources>

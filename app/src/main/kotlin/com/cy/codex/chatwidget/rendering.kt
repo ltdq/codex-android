@@ -93,16 +93,20 @@ import com.cy.codex.copyToClipboard
 import com.cy.codex.glassTint
 import com.cy.codex.hasCodexBackendAuth
 import com.cy.codex.history_cell.CommandExecutionCell
+import com.cy.codex.history_cell.ComputerActivityRow
 import com.cy.codex.history_cell.DiagnosticCell
 import com.cy.codex.history_cell.HookRunCell
 import com.cy.codex.history_cell.ThreadItemCell
 import com.cy.codex.history_cell.commandActionLabel
+import com.cy.codex.history_cell.isComputerActivity
 import com.cy.codex.history_cell.isExploringCall
 import com.cy.codex.perf.IdentityKeys
 import com.cy.codex.protocol.ApprovalRequest
 import com.cy.codex.protocol.ApprovalResponse
 import com.cy.codex.protocol.protocol.item.AgentMessageItem
 import com.cy.codex.protocol.protocol.item.CommandExecutionItem
+import com.cy.codex.protocol.protocol.item.McpToolCallItem
+import com.cy.codex.protocol.protocol.item.ReasoningItem
 import com.cy.codex.protocol.protocol.item.ThreadItem
 import com.cy.codex.protocol.protocol.item.UserMessageItem
 import com.cy.codex.protocol.protocol.v2.HookRunSummary
@@ -935,6 +939,11 @@ internal fun foldTranscriptRows(items: List<ThreadItem>): List<TranscriptRow> {
             }
             rows += TranscriptRow("explored:${item.id}", (index until end).toList(), exposed = true)
             index = end
+        } else if (item is McpToolCallItem && item.isComputerActivity()) {
+            var end = index + 1
+            while (end < items.size && items[end].continuesComputerActivity()) end++
+            rows += TranscriptRow("computer:${item.id}", (index until end).toList(), exposed = true)
+            index = end
         } else {
             rows += TranscriptRow(item.id, listOf(index), exposed = false)
             index++
@@ -942,6 +951,13 @@ internal fun foldTranscriptRows(items: List<ThreadItem>): List<TranscriptRow> {
     }
     return rows
 }
+
+/**
+ * A computer group spans intervening reasoning but nothing else
+ * (codex-rs/tui/src/thread_transcript/computer_groups.rs).
+ */
+private fun ThreadItem.continuesComputerActivity(): Boolean =
+    this is ReasoningItem || (this is McpToolCallItem && isComputerActivity())
 
 /**
  * Row keys of the trailing hook-run section of [Transcript] (codex-rs/tui/src/history_cell/hook_cell.rs
@@ -1040,10 +1056,14 @@ internal fun Transcript(
             val item = row.indices.firstOrNull()?.let { items.getOrNull(it) } ?: return@items
             Column(modifier = Modifier.fillMaxWidth()) {
                 if (row.exposed) {
-                    ExploredGroupRow(
-                        commands =
-                            row.indices.mapNotNull { items.getOrNull(it) as? CommandExecutionItem }
-                    )
+                    val groupItems = row.indices.mapNotNull { items.getOrNull(it) }
+                    if (items.getOrNull(row.indices.first()) is McpToolCallItem) {
+                        ComputerActivityRow(items = groupItems)
+                    } else {
+                        ExploredGroupRow(
+                            commands = groupItems.filterIsInstance<CommandExecutionItem>()
+                        )
+                    }
                 } else {
                     ThreadItemCell(
                         item = item,

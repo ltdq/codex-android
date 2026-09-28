@@ -608,6 +608,8 @@ fun CollapsibleSection(
     expanded: Boolean,
     onToggle: () -> Unit,
     modifier: Modifier = Modifier,
+    /** Lines the collapsed header names, for a group whose rows carry their own identity. */
+    collapsedRows: List<String> = emptyList(),
     subtitle: String? = null,
     verticalPadding: Dp = 4.dp,
     chevronSize: Dp = 13.dp,
@@ -671,6 +673,24 @@ fun CollapsibleSection(
                 verticalArrangement = Arrangement.spacedBy(contentSpacing),
                 content = content,
             )
+        } else if (collapsedRows.isNotEmpty()) {
+            Column(
+                modifier =
+                    Modifier.fillMaxWidth()
+                        .padding(start = contentStartPadding, top = contentTopPadding),
+                verticalArrangement = Arrangement.spacedBy(contentSpacing),
+            ) {
+                collapsedRows.forEach { row ->
+                    Text(
+                        text = row,
+                        fontSize = subtitleFontSize,
+                        lineHeight = subtitleLineHeight,
+                        color = colors.onSurfaceVariantSummary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
         }
     }
 }

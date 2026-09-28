@@ -155,4 +155,14 @@
     <string name="copy_sheet_code_block_language">Code block %1$d (%2$s)</string>
     <string name="copy_sheet_status">Session status</string>
     <string name="copy_sheet_nothing">Nothing to copy yet</string>
+
+    <!-- ComputerActivityRow (history_cell/computer_activity.kt). -->
+    <string name="computer_activity_using">Using computer</string>
+    <string name="computer_activity_used">Used computer</string>
+    <string name="computer_activity_action">%1$d action</string>
+    <string name="computer_activity_actions">%1$d actions</string>
+    <string name="computer_activity_failed">%1$d failed</string>
+    <string name="computer_activity_action_title">Computer action</string>
+    <string name="computer_activity_failed_action">Failed: %1$s</string>
+    <string name="computer_activity_more">%1$d more</string>
 </resources>
