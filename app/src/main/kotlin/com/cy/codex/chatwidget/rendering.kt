@@ -1473,9 +1473,10 @@ private fun ComposerDock(
 
         TurnActivityBar(
             running = session.running,
-            startedAtMs = session.turnStartedAtMs,
+            startedAtMs = session.activeCompaction?.startedAtMs ?: session.turnStartedAtMs,
             detail = remember(session.itemsRevision) { activeToolDetail(session.items) },
             hookStatus = session.hookStatus,
+            compacting = session.activeCompaction != null,
             modifier = Modifier.padding(horizontal = UiConsts.ScreenMargin),
         )
 

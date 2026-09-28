@@ -45,9 +45,13 @@ import com.cy.codex.protocol.protocol.v2.TurnsPage
 import com.cy.codex.protocol.protocol.v2.WarningNotification
 import com.cy.codex.protocol.protocol.item.AgentMessageItem
 import com.cy.codex.protocol.protocol.item.CommandExecutionItem
+import com.cy.codex.protocol.protocol.item.ContextCompactionItem
 import com.cy.codex.protocol.protocol.item.FileChangeItem
 import com.cy.codex.protocol.protocol.item.ReasoningItem
+import com.cy.codex.chatwidget.ActiveCompaction
+import com.cy.codex.chatwidget.PendingCompactionId
 import com.cy.codex.protocol.protocol.v2.UserInput
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.flowOf
@@ -67,6 +71,32 @@ import kotlin.test.assertTrue
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class ChatWidgetTest {
+    @Test
+    fun `a failed compact request clears only its pending header`() = runTest {
+        val gate = CompletableDeferred<Unit>()
+        val client = TestClient().apply {
+            compactGate = gate
+            compactResult = Result.failure(IllegalStateException("offline"))
+        }
+        val widget = ChatWidget(client, backgroundScope)
+        widget.bind(ThreadSessionState(threadId = "thread"))
+        widget.action(AppEvent.CompactThread("thread"))
+        assertEquals(PendingCompactionId, widget.state.activeCompaction?.id)
+        runCurrent()
+        gate.complete(Unit)
+        runCurrent()
+        assertNull(widget.state.activeCompaction)
+
+        val nextGate = CompletableDeferred<Unit>()
+        client.compactGate = nextGate
+        widget.action(AppEvent.CompactThread("thread"))
+        runCurrent()
+        widget.state.upsert(ContextCompactionItem("compact", startedAtMs = 1_000))
+        nextGate.complete(Unit)
+        runCurrent()
+        assertEquals(ActiveCompaction("compact", 1_000), widget.state.activeCompaction)
+    }
+
     @Test
     fun `failed submission retains the draft and leaves running state`() = runTest {
         val client = TestClient().apply { turnResult = Result.failure(IllegalStateException("offline")) }
@@ -986,6 +1016,8 @@ class ChatWidgetTest {
         val turnInputs = mutableListOf<List<UserInput>>()
         var resumeResult: Result<ThreadSessionState> = Result.failure(IllegalStateException("unavailable"))
         var historyResult: Result<ThreadReadResponse> = Result.failure(IllegalStateException("unavailable"))
+        var compactResult: Result<Unit> = Result.success(Unit)
+        var compactGate: CompletableDeferred<Unit>? = null
         var rejectResponse = false
         val responses = mutableListOf<ApprovalResponse>()
         var listThreadsResult: Result<com.cy.codex.protocol.protocol.v2.ThreadListing> =
@@ -1008,6 +1040,10 @@ class ChatWidgetTest {
         ): Result<String> {
             turnInputs += inputs
             return turnResult
+        }
+        override suspend fun compactThread(threadId: String): Result<Unit> {
+            compactGate?.await()
+            return compactResult
         }
         override suspend fun resumeThread(params: com.cy.codex.protocol.protocol.v2.ThreadResumeParams) = resumeResult
         var readThreadCalled = false

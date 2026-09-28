@@ -188,7 +188,12 @@ internal object WireCodec {
         FileUpdateChange(o.required("path"), PatchChangeKind.fromWire(o.objectOrNull("kind")?.text("type") ?: o.text("kind").orEmpty()), o.text("diff").orEmpty())
     }
 
-    fun item(value: JsonElement): ThreadItem {
+    /**
+     * One `ThreadItem`. [startedAtMs] is the lifecycle timestamp the enclosing notification
+     * carries — `item/started` has `startedAtMs`, `item/completed` has `completedAtMs` — and only
+     * a `contextCompaction` keeps it.
+     */
+    fun item(value: JsonElement, startedAtMs: Long? = null, completedAtMs: Long? = null): ThreadItem {
         val o = value.objectValue()
         val id = o.required("id")
         val status = o.text("status")
@@ -236,7 +241,7 @@ internal object WireCodec {
                 o.text("result").orEmpty(), o.bool("transparentBackground"), imageGenerationFailure(o), o.text("savedPath"))
             "enteredReviewMode" -> EnteredReviewModeItem(id, o.required("review"))
             "exitedReviewMode" -> ExitedReviewModeItem(id, o.required("review"))
-            "contextCompaction" -> ContextCompactionItem(id)
+            "contextCompaction" -> ContextCompactionItem(id, startedAtMs, completedAtMs)
             "hookPrompt" -> HookPromptItem(id, o.array("fragments").map { it.objectValue().let { f -> HookPromptFragment(f.required("text"), f.text("hookRunId").orEmpty()) } })
             "functionCallOutput" -> FunctionCallOutputItem(id, o.required("name"), o.text("namespace"), o["output"]?.wireText().orEmpty())
             else -> FunctionCallOutputItem(id, type, output = Json.write(o))

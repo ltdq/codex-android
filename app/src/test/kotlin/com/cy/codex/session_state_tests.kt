@@ -1,13 +1,18 @@
 package com.cy.codex
 
+import com.cy.codex.chatwidget.ActiveCompaction
+import com.cy.codex.chatwidget.PendingCompactionId
+import com.cy.codex.chatwidget.compactionElapsedSeconds
 import com.cy.codex.protocol.AppServerRpcException
 import com.cy.codex.protocol.protocol.item.CommandExecutionItem
+import com.cy.codex.protocol.protocol.item.ContextCompactionItem
 import com.cy.codex.protocol.protocol.item.McpToolCallItem
 import com.cy.codex.protocol.protocol.item.TurnSeparatorItem
 import com.cy.codex.protocol.protocol.v2.ActivePermissionProfile
 import com.cy.codex.protocol.protocol.v2.CommandExecutionStatus
 import com.cy.codex.protocol.protocol.v2.McpToolCallStatus
 import com.cy.codex.protocol.protocol.v2.PermissionProfileEntry
+import com.cy.codex.protocol.protocol.v2.ThreadStatus
 import org.junit.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -34,6 +39,62 @@ class SessionStateTest {
         state.appendTurnSeparator(TurnSeparatorItem("turn-separator-t", "Worked for 2m"))
         state.appendTurnSeparator(TurnSeparatorItem("turn-separator-t", "Worked for 2m"))
         assertEquals(1, state.items.size)
+    }
+
+    @Test
+    fun `a live compaction is status state until its completion lands`() {
+        val state = SessionState()
+        state.applyStatus(ThreadStatus.Active())
+        state.upsert(ContextCompactionItem("compact", startedAtMs = 1_000))
+        assertEquals(ActiveCompaction("compact", 1_000), state.activeCompaction)
+        assertTrue(state.items.isEmpty())
+
+        // A duplicate start must not restart the timer.
+        state.upsert(ContextCompactionItem("compact", startedAtMs = 5_000))
+        assertEquals(ActiveCompaction("compact", 1_000), state.activeCompaction)
+
+        state.upsert(ContextCompactionItem("compact", completedAtMs = 4_000))
+        assertNull(state.activeCompaction)
+        val cell = state.items.single() as ContextCompactionItem
+        assertEquals(3L, compactionElapsedSeconds(cell))
+    }
+
+    @Test
+    fun `a compaction this client did not see start carries no duration`() {
+        val state = SessionState()
+        state.upsert(ContextCompactionItem("compact", completedAtMs = 4_000))
+        assertNull(state.activeCompaction)
+        val cell = state.items.single() as ContextCompactionItem
+        assertNull(compactionElapsedSeconds(cell))
+    }
+
+    @Test
+    fun `a restored compaction without timestamps still reaches the transcript`() {
+        val state = SessionState()
+        state.upsert(ContextCompactionItem("compact"))
+        assertNull(state.activeCompaction)
+        val cell = state.items.single() as ContextCompactionItem
+        assertNull(compactionElapsedSeconds(cell))
+    }
+
+    @Test
+    fun `slash compact raises the header before the server names it`() {
+        val state = SessionState()
+        state.beginCompaction()
+        assertEquals(PendingCompactionId, state.activeCompaction?.id)
+        // The server's own start replaces the placeholder and still keeps the transcript clear.
+        state.upsert(ContextCompactionItem("compact", startedAtMs = 5_000))
+        assertEquals(ActiveCompaction("compact", 5_000), state.activeCompaction)
+        assertTrue(state.items.isEmpty())
+    }
+
+    @Test
+    fun `a turn that ends clears a compaction left running`() {
+        val state = SessionState()
+        state.applyStatus(ThreadStatus.Active())
+        state.upsert(ContextCompactionItem("compact", startedAtMs = 1_000))
+        state.applyStatus(ThreadStatus.Idle)
+        assertNull(state.activeCompaction)
     }
 
     @Test

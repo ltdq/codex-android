@@ -15,6 +15,8 @@
 
     <!-- TurnActivityBar.kt -->
     <string name="status_indicator_working">Working</string>
+    <string name="status_indicator_compacting">Compacting context</string>
+    <string name="status_indicator_compacting_detail">Making room to continue.</string>
 
     <!-- Misalignment -->
     <string name="misalignment_title">Chat stopped as a precaution</string>

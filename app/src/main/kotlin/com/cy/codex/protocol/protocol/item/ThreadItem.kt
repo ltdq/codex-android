@@ -314,8 +314,16 @@ data class ExitedReviewModeItem(
     val review: String,
 ) : ThreadItem
 
+/**
+ * A compaction marker.
+ *
+ * `item/started` carries [startedAtMs] and `item/completed` carries [completedAtMs]; a `thread/read`
+ * snapshot carries neither, so a restored compaction shows no duration.
+ */
 data class ContextCompactionItem(
     override val id: String,
+    val startedAtMs: Long? = null,
+    val completedAtMs: Long? = null,
 ) : ThreadItem
 
 /**

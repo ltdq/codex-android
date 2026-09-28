@@ -584,7 +584,17 @@ class ChatWidget(
 
             is AppEvent.DeleteThread -> request { client.deleteThread(event.threadId) }
             is AppEvent.RenameThread -> request { client.setThreadName(event.threadId, event.name) }
-            is AppEvent.CompactThread -> request { client.compactThread(event.threadId) }
+            is AppEvent.CompactThread -> {
+                // The header switches as the command is dispatched, not when the server's item lands
+                // (codex-rs/tui/src/chatwidget/slash_dispatch.rs `SlashCommand::Compact`).
+                state.beginCompaction()
+                val version = loadVersion
+                request {
+                    client.compactThread(event.threadId).onFailure {
+                        if (version == loadVersion && state.threadId == event.threadId) state.cancelPendingCompaction()
+                    }
+                }
+            }
             is AppEvent.RevertThread -> request { client.revertThread(event.threadId, event.itemId) }
 
             is AppEvent.MoveThreadToSection -> request {

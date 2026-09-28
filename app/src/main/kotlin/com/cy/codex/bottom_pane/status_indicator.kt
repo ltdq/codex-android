@@ -47,13 +47,19 @@ import top.yukonga.miuix.kmp.basic.LinearProgressIndicator
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
-/** Live turn status row: elapsed time plus current agent activity (status_indicator_widget.rs). */
+/**
+ * Live turn status row: elapsed time plus current agent activity (status_indicator_widget.rs).
+ *
+ * A running compaction takes the header and details, the way `set_status` lets it override them
+ * (codex-rs/tui/src/chatwidget/compaction.rs).
+ */
 @Composable
 fun TurnActivityBar(
     running: Boolean,
     startedAtMs: Long?,
     detail: String?,
     hookStatus: String?,
+    compacting: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
@@ -75,6 +81,9 @@ fun TurnActivityBar(
     ) {
         val colors = MiuixTheme.colorScheme
         val elapsed = ((now - (startedAtMs ?: now)).coerceAtLeast(0L)) / 1000
+        val header = stringResource(
+            if (compacting) R.string.status_indicator_compacting else R.string.status_indicator_working,
+        )
         Column(modifier = Modifier.fillMaxWidth()) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 LinearProgressIndicator(
@@ -82,7 +91,7 @@ fun TurnActivityBar(
                 )
                 Spacer(Modifier.width(UiConsts.Space8))
                 Text(
-                    text = stringResource(R.string.status_indicator_working) + " · " + formatElapsedCompact(elapsed),
+                    text = header + " · " + formatElapsedCompact(elapsed),
                     fontSize = UiType.Footnote,
                     lineHeight = UiType.FootnoteLine,
                     fontWeight = FontWeight.Medium,
@@ -90,7 +99,9 @@ fun TurnActivityBar(
                     maxLines = 1,
                 )
             }
-            ActivityDetailLine(detail)
+            ActivityDetailLine(
+                if (compacting) stringResource(R.string.status_indicator_compacting_detail) else detail,
+            )
             ActivityDetailLine(hookStatus)
         }
     }

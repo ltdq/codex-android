@@ -27,6 +27,8 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.cy.codex.R
+import com.cy.codex.chatwidget.compactionElapsedSeconds
+import com.cy.codex.chatwidget.compactionLabel
 import com.cy.codex.protocol.protocol.item.ContextCompactionItem
 import com.cy.codex.protocol.protocol.item.EnteredReviewModeItem
 import com.cy.codex.protocol.protocol.item.ExitedReviewModeItem
@@ -137,7 +139,10 @@ fun NoticeCell(
 fun ContextCompactionCell(item: ContextCompactionItem, modifier: Modifier = Modifier) {
     CompactLine(
         icon = MiuixIcons.Merge,
-        text = stringResource(R.string.notices_cell_context_compacted),
+        text = compactionLabel(
+            stringResource(R.string.notices_cell_context_compacted),
+            compactionElapsedSeconds(item),
+        ),
         detail = stringResource(R.string.notices_cell_context_compacted_detail),
         modifier = modifier,
         tone = ThreadStatusTone.Done,

@@ -8,10 +8,13 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.referentialEqualityPolicy
 import androidx.compose.runtime.setValue
+import com.cy.codex.chatwidget.ActiveCompaction
+import com.cy.codex.chatwidget.PendingCompactionId
 import com.cy.codex.protocol.AppServerRpcException
 import com.cy.codex.protocol.protocol.item.AgentMessageItem
 import com.cy.codex.protocol.protocol.item.CollabAgentToolCallItem
 import com.cy.codex.protocol.protocol.item.CommandExecutionItem
+import com.cy.codex.protocol.protocol.item.ContextCompactionItem
 import com.cy.codex.protocol.protocol.item.DynamicToolCallItem
 import com.cy.codex.protocol.protocol.item.FileChangeItem
 import com.cy.codex.protocol.protocol.item.ImageGenerationItem
@@ -134,6 +137,16 @@ class SessionState {
      * name, and the last started hook wins while several run in parallel.
      */
     var hookStatus by mutableStateOf<String?>(null)
+        private set
+
+    /**
+     * The compaction a live `item/started` opened, until its `item/completed`.
+     *
+     * While it is set the activity row shows the compaction header and counts from
+     * [ActiveCompaction.startedAtMs], the way `ChatWidget` rebases its status timer
+     * (codex-rs/tui/src/chatwidget/compaction.rs).
+     */
+    internal var activeCompaction by mutableStateOf<ActiveCompaction?>(null)
         private set
 
     /** Items in arrival order; deltas mutate the item they name in place. */
@@ -387,6 +400,7 @@ class SessionState {
         open = false
         loading = true
         running = false
+        activeCompaction = null
         streamingItemId = null
         streamBuffers.clear()
         attachments.clear()
@@ -425,7 +439,11 @@ class SessionState {
         status = value
         running = value is ThreadStatus.Active
         if (running && !wasRunning) turnStartedAtMs = System.currentTimeMillis()
-        if (!running) turnStartedAtMs = null
+        if (!running) {
+            turnStartedAtMs = null
+            // A turn that ended without its compaction completing leaves the header stuck otherwise.
+            activeCompaction = null
+        }
     }
 
     /** Remember a running hook for the activity indicator. */
@@ -481,6 +499,46 @@ class SessionState {
     }
 
     fun upsert(item: ThreadItem) {
+        if (item is ContextCompactionItem) {
+            applyCompaction(item)
+            return
+        }
+        replace(item)
+    }
+
+    /** `/compact` shows the header as it dispatches, before the server names the compaction. */
+    fun beginCompaction() {
+        if (activeCompaction == null) {
+            activeCompaction = ActiveCompaction(PendingCompactionId, System.currentTimeMillis())
+        }
+    }
+
+    fun cancelPendingCompaction() {
+        if (activeCompaction?.id == PendingCompactionId) activeCompaction = null
+    }
+
+    /**
+     * Route a live compaction start to the activity row instead of the transcript; the transcript
+     * only gets the completion cell, and that cell carries a duration only when this client saw
+     * the matching start.
+     *
+     * Mirrors `ChatWidget::on_context_compaction_started` / `on_context_compaction_completed`
+     * (codex-rs/tui/src/chatwidget/compaction.rs).
+     */
+    private fun applyCompaction(item: ContextCompactionItem) {
+        val startedAtMs = item.startedAtMs
+        if (startedAtMs != null && item.completedAtMs == null) {
+            if (activeCompaction?.id == item.id) return
+            activeCompaction = ActiveCompaction(item.id, startedAtMs)
+            return
+        }
+        // A thread/read snapshot carries neither timestamp: it is a past compaction, not a start.
+        val liveStart = activeCompaction?.takeIf { it.id == item.id }?.startedAtMs
+        if (liveStart != null) activeCompaction = null
+        replace(item.copy(startedAtMs = liveStart))
+    }
+
+    private fun replace(item: ThreadItem) {
         val index = items.indexOfFirst { it.id == item.id }
         if (index < 0) items.add(item) else items[index] = item
         itemsRevision++

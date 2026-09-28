@@ -12,6 +12,7 @@ import com.cy.codex.protocol.protocol.required
 import com.cy.codex.protocol.protocol.strings
 import com.cy.codex.protocol.protocol.text
 import com.cy.codex.protocol.protocol.item.AgentMessageItem
+import com.cy.codex.protocol.protocol.item.ContextCompactionItem
 import com.cy.codex.protocol.protocol.v2.ApprovalsReviewer
 import com.cy.codex.protocol.protocol.v2.AttachmentType
 import com.cy.codex.protocol.protocol.v2.ClientInfo
@@ -1800,6 +1801,34 @@ class JsonRpcAppServerClientTest {
         transport.response(account, obj("account" to JsonNull))
         assertIs<AppServerEvent.AgentMessageDelta>(observed.await())
         assertEquals(0L, testScheduler.currentTime)
+        client.close()
+    }
+
+    @Test
+    fun `compaction items keep the lifecycle timestamps their notification carries`() = runTest {
+        val transport = HarnessTransport()
+        val client = JsonRpcAppServerClient(transport, backgroundScope)
+        client.initialize(ClientInfo("android", version = "1")).getOrThrow()
+        val started = async(UnconfinedTestDispatcher(testScheduler)) { client.events.first() }
+        transport.push(
+            """{"method":"item/started","params":{"threadId":"t","turnId":"turn","startedAtMs":123,"item":{"type":"contextCompaction","id":"compact"}}}""",
+        )
+        val startedEvent = assertIs<AppServerEvent.ItemStarted>(started.await())
+        assertEquals(ContextCompactionItem("compact", startedAtMs = 123), startedEvent.item)
+        client.close()
+    }
+
+    @Test
+    fun `a completed compaction carries only its completion time`() = runTest {
+        val transport = HarnessTransport()
+        val client = JsonRpcAppServerClient(transport, backgroundScope)
+        client.initialize(ClientInfo("android", version = "1")).getOrThrow()
+        val completed = async(UnconfinedTestDispatcher(testScheduler)) { client.events.first() }
+        transport.push(
+            """{"method":"item/completed","params":{"threadId":"t","turnId":"turn","completedAtMs":456,"item":{"type":"contextCompaction","id":"compact"}}}""",
+        )
+        val completedEvent = assertIs<AppServerEvent.ItemCompleted>(completed.await())
+        assertEquals(ContextCompactionItem("compact", completedAtMs = 456), completedEvent.item)
         client.close()
     }
 }

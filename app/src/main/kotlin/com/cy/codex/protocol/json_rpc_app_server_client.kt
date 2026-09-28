@@ -1026,8 +1026,8 @@ class JsonRpcAppServerClient(
         val itemId = p.text("itemId").orEmpty()
         fun delta() = ItemTextDelta(threadId, turnId, itemId, p.text("delta").orEmpty(), p.int("summaryIndex") ?: 0)
         val event: AppServerEvent? = when (method) {
-            "item/started" -> AppServerEvent.ItemStarted(threadId, turnId, WireCodec.item(p["item"]!!))
-            "item/completed" -> AppServerEvent.ItemCompleted(threadId, turnId, WireCodec.item(p["item"]!!))
+            "item/started" -> AppServerEvent.ItemStarted(threadId, turnId, WireCodec.item(p["item"]!!, startedAtMs = p.long("startedAtMs")))
+            "item/completed" -> AppServerEvent.ItemCompleted(threadId, turnId, WireCodec.item(p["item"]!!, completedAtMs = p.long("completedAtMs")))
             "item/agentMessage/delta" -> AppServerEvent.AgentMessageDelta(threadId, delta())
             "item/plan/delta" -> AppServerEvent.PlanDelta(threadId, delta())
             "item/reasoning/textDelta" -> AppServerEvent.ReasoningTextDelta(threadId, delta())
