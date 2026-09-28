@@ -36,11 +36,18 @@ import com.cy.codex.CodexApp
 import com.cy.codex.R
 import com.cy.codex.UiConsts
 import com.cy.codex.UiType
+import com.cy.codex.canReadThreadUsage
 import com.cy.codex.protocol.protocol.v2.AgentRunStatus
 import com.cy.codex.protocol.protocol.v2.ThreadStatus
+import com.cy.codex.protocol.protocol.v2.ThreadUsage
 import com.cy.codex.sheetColor
 import com.cy.codex.sheetSideMargin
+import com.cy.codex.status.formatCreditMicros
+import com.cy.codex.status.formatEstimatedUsdMicros
 import com.cy.codex.status.formatTokens
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
@@ -96,6 +103,10 @@ fun AgentsScreen(
         }
     val busiest = filtered.maxOfOrNull { it.tokens }?.coerceAtLeast(1) ?: 1
     val totalTokens = entries.sumOf { it.tokens.toLong() }
+    val canReadUsage = app.catalog.account.canReadThreadUsage
+    var usageTarget by remember(session.threadId, app.accountGeneration) { mutableStateOf<String?>(null) }
+    var estimate by remember(usageTarget, app.accountGeneration) { mutableStateOf<ThreadUsage?>(null) }
+    var estimateFailed by remember(usageTarget, app.accountGeneration) { mutableStateOf(false) }
     var renameTarget by remember { mutableStateOf<AgentRosterEntry?>(null) }
     var renameText by remember { mutableStateOf("") }
     var archiveTarget by remember { mutableStateOf<AgentRosterEntry?>(null) }
@@ -110,6 +121,28 @@ fun AgentsScreen(
     // Refreshed once per open: `thread/list` is the only source of subagent liveness and cli metadata.
     LaunchedEffect(session.threadId) {
         app.onAppEvent(AppEvent.ReloadAgentThreads(session.threadId))
+    }
+
+    LaunchedEffect(usageTarget, app.accountGeneration) {
+        val threadId = usageTarget ?: return@LaunchedEffect
+        if (!canReadUsage) return@LaunchedEffect
+        while (true) {
+            app.client.readThreadUsage(threadId)
+                .onSuccess {
+                    currentCoroutineContext().ensureActive()
+                    if (it.threadId == threadId) {
+                        estimate = it
+                        estimateFailed = false
+                    } else {
+                        estimateFailed = true
+                    }
+                }
+                .onFailure {
+                    currentCoroutineContext().ensureActive()
+                    estimateFailed = true
+                }
+            delay(60_000)
+        }
     }
 
     Column(modifier = modifier.fillMaxSize().background(colors.background)) {
@@ -165,12 +198,34 @@ fun AgentsScreen(
                     AgentActions(
                         agent = agent,
                         onStop = { app.onAppEvent(AppEvent.StopThreadTurn(agent.threadId)) },
+                        onUsage = if (canReadUsage) {
+                            { usageTarget = if (usageTarget == agent.threadId) null else agent.threadId }
+                        } else null,
                         onRename = {
                             renameTarget = agent
                             renameText = agent.name
                         },
                         onArchive = { archiveTarget = agent },
                     )
+                    if (usageTarget == agent.threadId && canReadUsage) {
+                        val value = estimate?.let {
+                            listOfNotNull(
+                                stringResource(
+                                    R.string.account_screen_credits_balance,
+                                    formatCreditMicros(it.estimatedUsageCreditsMicros),
+                                ),
+                                formatEstimatedUsdMicros(it.estimatedUsageUsdMicros),
+                            ).joinToString(" · ")
+                        } ?: if (estimateFailed) {
+                            stringResource(R.string.session_status_load_failed)
+                        } else {
+                            "…"
+                        }
+                        BasicComponent(
+                            title = stringResource(R.string.session_status_estimated_usage),
+                            summary = value,
+                        )
+                    }
                 }
             }
         }
@@ -305,6 +360,7 @@ private fun AgentRosterEntry.canStop(): Boolean =
 private fun AgentActions(
     agent: AgentRosterEntry,
     onStop: () -> Unit,
+    onUsage: (() -> Unit)?,
     onRename: () -> Unit,
     onArchive: () -> Unit,
 ) {
@@ -325,6 +381,11 @@ private fun AgentActions(
                 colors = ButtonDefaults.buttonColors(),
             ) {
                 Text(text = stringResource(R.string.agents_action_stop), maxLines = 1)
+            }
+        }
+        if (onUsage != null) {
+            Button(onClick = onUsage, colors = ButtonDefaults.buttonColors()) {
+                Text(text = stringResource(R.string.session_status_estimated_usage), maxLines = 1)
             }
         }
         Button(
