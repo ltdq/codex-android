@@ -28,8 +28,6 @@ MCP 元数据、web search results 与 hook 输出均已接线并有 JVM 测试�
 
 ## 1. 交互能力
 
-- [ ] **Plan 实施提示**：上游问「Implement this plan? / 清空上下文实施」
-      （`tui/src/chatwidget/plan_implementation.rs`）；Kotlin 有 plan 模式与时间线，无此一步。
 - [ ] **安全缓冲重试**：上游给「换更快的模型重试 / 继续等待 / 了解更多」
       （`tui/src/chatwidget/safety_buffering.rs`）；Kotlin 只报一条诊断。
 - [ ] **实时语音（realtime）**：目前是壳，无 WebRTC/录音/字幕，`Realtime*` 通知全部丢弃
@@ -39,14 +37,9 @@ MCP 元数据、web search results 与 hook 输出均已接线并有 JVM 测试�
 - [ ] **goal 持久状态指示**：上游 footer 常驻 Active/Paused/Blocked/UsageLimited/
       BudgetLimited/Complete 与用量，恢复会话时提示「Resume paused goal?」
       （`tui/src/chatwidget/goal_status.rs`、`goal_menu.rs`）；Kotlin 只在 GoalSheet 打开时可见。
-- [ ] **通知类型与优先级**：上游有 PlanModePrompt、user-input 请求等类型并按优先级聚合
-      （`tui/src/chatwidget/notifications.rs`）；Kotlin 只有 TurnComplete + ApprovalRequested。
 
 ## 2. Transcript 渲染
 
-- [ ] **Computer/CUA 活动聚合**：相邻 `cua_repl`/node-repl 调用合并为
-      「Using/Used computer · N actions」（上游 `tui/src/history_cell/computer_activity.rs`）；
-      Kotlin 一次调用一张通用 MCP 卡片，无 `cua` 处理。
 - [ ] **Mermaid 图**：完成的 mermaid fence 渲染成图，失败回退代码块
       （上游 `tui/src/markdown_render/mermaid.rs`）；Kotlin 当普通代码块。
 - [ ] **inline visualization**：`::codex-inline-vis{…}` 指令（上游
@@ -56,13 +49,9 @@ MCP 元数据、web search results 与 hook 输出均已接线并有 JVM 测试�
 - [ ] **后台线程的 hook 结果回放**：`HookCompleted` 只落到当时的会话态，后台子线程的
       hook 运行不会回放进它的 transcript；hook 标识靠 `hooks/list` 元数据按
       (event, displayOrder, sourcePath) join，会话中途改 hook 配置会静默错配。
-- [ ] **compaction 进度**：上游有实时标题与「Context compacted · 3s」
-      （`tui/src/chatwidget/compaction.rs`）；Kotlin 只有静态通知。
 - [ ] **unified exec 等待/交互 cell**：上游区分「Waited for background terminal」与
       「Interacted with background terminal」（`tui/src/history_cell/exec.rs`）；Kotlin 把
       stdin 混进命令输出，等待不可见。
-- [ ] **嵌套 review turn**：上游在 transcript/backtrack 里隐藏 review 内部 turn
-      （`tui/src/app_backtrack.rs`）；Kotlin 每个 finished turn 都插分隔。
 - [ ] **启动警告 cell**：上游在 transcript 顶部提示「N startup issues」
       （`tui/src/history_cell/startup_warnings.rs`）；Kotlin 只在 `/mcp` 页可见。
 - [ ] **turn 分隔符的 runtime metrics**（工具/推理调用数、TTFT/TBT，
