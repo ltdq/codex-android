@@ -535,14 +535,14 @@ fun ChatScreen(
 }
 
 /**
- * Whether a transcript has nothing to draw; hook runs count as content, so a session whose only
- * history is a hook cell is not empty.
+ * Hook runs and approval receipts count as transcript content.
  */
 internal fun transcriptIsEmpty(
     items: List<ThreadItem>,
     diagnostics: List<SessionDiagnostic>,
     hookRuns: List<HookRunSummary>,
-): Boolean = items.isEmpty() && diagnostics.isEmpty() && hookRuns.isEmpty()
+    approvalReceipts: List<com.cy.codex.history_cell.ApprovalDecisionReceipt> = emptyList(),
+): Boolean = items.isEmpty() && diagnostics.isEmpty() && hookRuns.isEmpty() && approvalReceipts.isEmpty()
 
 /**
  * The transcript surface, split out of [ChatScreen] so a streaming write invalidates only this
@@ -564,7 +564,7 @@ private fun TranscriptPane(
             derivedStateOf {
                 (!session.open && !session.loading) ||
                     (session.open &&
-                        transcriptIsEmpty(items, diagnostics, session.hookRuns) &&
+                        transcriptIsEmpty(items, diagnostics, session.hookRuns, session.approvalReceipts) &&
                         !session.running)
             }
         }
@@ -590,6 +590,7 @@ private fun TranscriptPane(
         items = items,
         diagnostics = diagnostics,
         hookRuns = session.hookRuns,
+        approvalReceipts = session.approvalReceipts,
         isStreaming = isStreaming,
         streamFor = streamFor,
         plan = session.plan,
@@ -951,6 +952,7 @@ internal fun Transcript(
     items: List<ThreadItem>,
     diagnostics: List<SessionDiagnostic>,
     hookRuns: List<HookRunSummary> = emptyList(),
+    approvalReceipts: List<com.cy.codex.history_cell.ApprovalDecisionReceipt> = emptyList(),
     isStreaming: (ThreadItem) -> Boolean,
     streamFor: (String) -> MarkdownStream?,
     plan: List<com.cy.codex.protocol.protocol.v2.PlanStep>,
@@ -983,6 +985,9 @@ internal fun Transcript(
     // Not remembered: a SnapshotStateList keeps its identity as runs land, so reading it here is
     // what subscribes the transcript to new runs.
     val hookRunKeys = hookRunRowKeys(hookRuns)
+    val receiptsByItem = approvalReceipts.groupBy { it.itemId }
+    val itemIds = remember(items) { derivedStateOf { items.mapTo(hashSetOf()) { it.id } } }
+    val unanchoredReceipts = approvalReceipts.filter { it.itemId !in itemIds.value }
 
     LazyColumn(
         state = listState,
@@ -1021,7 +1026,16 @@ internal fun Transcript(
                     Spacer(Modifier.height(planGap))
                     PlanTimeline(steps = plan)
                 }
+                row.indices.forEach { itemIndex ->
+                    receiptsByItem[items.getOrNull(itemIndex)?.id].orEmpty().forEach { receipt ->
+                        Spacer(Modifier.height(planGap))
+                        com.cy.codex.history_cell.ApprovalDecisionCell(receipt)
+                    }
+                }
             }
+        }
+        items(count = unanchoredReceipts.size, key = { "approval:${unanchoredReceipts[it].id}" }) { index ->
+            com.cy.codex.history_cell.ApprovalDecisionCell(unanchoredReceipts[index])
         }
         // Finished hook runs trail the items as their own cells (codex-rs/tui/src/history_cell/hook_cell.rs).
         items(count = hookRunKeys.size, key = { hookRunKeys[it] }) { index ->

@@ -1354,7 +1354,8 @@ class JsonRpcAppServerClient(
     }
 
     override suspend fun respond(requestId: RequestId, response: ApprovalResponse) {
-        val (id, params) = approvals[requestId.value] ?: error("Approval is no longer pending")
+        val pendingApproval = approvals[requestId.value] ?: error("Approval is no longer pending")
+        val (id, params) = pendingApproval
         val body = when (response) {
             is ApprovalResponse.CommandExecution -> obj("decision" to decisionBody(response.decision))
             is ApprovalResponse.FileChange -> obj("decision" to response.decision.wire)
@@ -1385,7 +1386,7 @@ class JsonRpcAppServerClient(
             is ApprovalResponse.CurrentTime -> obj("currentTimeAt" to response.epochMillis / 1000)
         }
         transport.send(JsonRpcMessageKind.Response, Json.write(obj("id" to id, "result" to body)))
-        approvals.remove(requestId.value)
+        check(approvals.remove(requestId.value, pendingApproval)) { "Approval is no longer pending" }
     }
 
     companion object {

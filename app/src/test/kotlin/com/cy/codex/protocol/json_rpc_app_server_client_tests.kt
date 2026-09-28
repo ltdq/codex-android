@@ -30,6 +30,7 @@ import com.cy.codex.protocol.protocol.v2.TimelineEntry
 import com.cy.codex.protocol.protocol.v2.TurnStatus
 import com.cy.codex.protocol.protocol.v2.UserInput
 import java.io.IOException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.Channel
@@ -58,8 +59,12 @@ class JsonRpcAppServerClientTest {
         val outgoing = Channel<Pair<JsonRpcMessageKind, String>>(Channel.UNLIMITED)
         var starts = 0
         var closes = 0
+        var responseGate: CompletableDeferred<Unit>? = null
         override suspend fun start() { starts++ }
-        override suspend fun send(kind: JsonRpcMessageKind, message: String) { outgoing.send(kind to message) }
+        override suspend fun send(kind: JsonRpcMessageKind, message: String) {
+            if (kind == JsonRpcMessageKind.Response) responseGate?.await()
+            outgoing.send(kind to message)
+        }
         override suspend fun receive(): String? = incoming.receive().getOrThrow()
         override suspend fun close() { closes++ }
         suspend fun request(): JsonObject {
@@ -448,6 +453,29 @@ class JsonRpcAppServerClientTest {
         val response = transport.sentResponse()
         assertEquals(JsonPrimitive(42), response["id"])
         assertEquals("decline", response.objectOrNull("result")!!.text("decision"))
+        client.close()
+    }
+
+    @Test
+    fun `a resolved request cannot complete a pending response send`() = runTest {
+        val gate = CompletableDeferred<Unit>()
+        val transport = HarnessTransport().apply { responseGate = gate }
+        val client = JsonRpcAppServerClient(transport, backgroundScope)
+        client.initialize(ClientInfo("android", version = "1")).getOrThrow()
+        val approval = async { client.requests.first() }
+        transport.push("""{"id":"approval","method":"item/commandExecution/requestApproval","params":{"threadId":"t","turnId":"turn","itemId":"cmd","command":"pwd","cwd":"/workspace"}}""")
+        val received = assertIs<ApprovalRequest.Exec>(approval.await())
+        val answer = async {
+            runCatching {
+                client.respond(received.requestId, ApprovalResponse.CommandExecution(CommandExecutionApprovalDecision.Accept))
+            }
+        }
+        runCurrent()
+        transport.push("""{"method":"serverRequest/resolved","params":{"threadId":"t","requestId":"approval"}}""")
+        runCurrent()
+        gate.complete(Unit)
+        assertEquals("Approval is no longer pending", answer.await().exceptionOrNull()?.message)
+        assertEquals(JsonPrimitive("approval"), transport.sentResponse()["id"])
         client.close()
     }
 

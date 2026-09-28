@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="approval_receipt_approved">You approved %1$s this time</string>
+    <string name="approval_receipt_session">You approved %1$s every time this session</string>
+    <string name="approval_receipt_denied">You did not approve %1$s</string>
+    <string name="approval_receipt_guardian_denied">Request denied for %1$s</string>
+    <string name="approval_receipt_timed_out">Review timed out before %1$s</string>
+    <string name="approval_receipt_canceled">You canceled the request for %1$s</string>
+    <string name="approval_receipt_execpolicy">You approved Codex to always run commands that start with %1$s</string>
+    <string name="approval_receipt_network_allow">You persisted Codex network access to %1$s</string>
+    <string name="approval_receipt_network_deny">You denied Codex network access to %1$s and saved that rule</string>
+    <string name="approval_receipt_request">this request</string>
+    <string name="approval_receipt_request_timeout">this request could be approved</string>
+    <string name="approval_receipt_command">Codex to run %1$s</string>
+    <string name="approval_receipt_command_timeout">Codex could run %1$s</string>
+    <string name="approval_receipt_network">Codex network access to %1$s</string>
+    <string name="approval_receipt_network_timeout">Codex could access %1$s</string>
+    <string name="approval_receipt_patch">a patch</string>
+    <string name="approval_receipt_patch_file">a patch touching %1$s</string>
+    <string name="approval_receipt_patch_files">a patch touching %1$d files</string>
+    <string name="approval_receipt_apply">Codex to apply %1$s</string>
+    <string name="approval_receipt_apply_timeout">Codex could apply %1$s</string>
+    <string name="approval_receipt_permissions_granted">You granted additional permissions</string>
+    <string name="approval_receipt_permissions_session">You granted additional permissions for this session</string>
+    <string name="approval_receipt_permissions_denied">You did not grant additional permissions</string>
+    <string name="approval_receipt_permissions">Codex to request permissions</string>
+    <string name="approval_receipt_permissions_timeout">Codex could request permissions</string>
+    <string name="approval_receipt_mcp">Codex to call MCP tool %1$s</string>
+    <string name="approval_receipt_mcp_timeout">Codex could call MCP tool %1$s</string>
+    <string name="approval_receipt_stdin">Codex to send input to terminal %1$s: %2$s</string>
+    <string name="approval_receipt_stdin_timeout">Codex could send input to terminal %1$s: %2$s</string>
+</resources>

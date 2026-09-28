@@ -31,8 +31,6 @@ MCP 元数据、web search results 与 hook 输出均已接线并有 JVM 测试�
 - [ ] **回退重编辑（backtrack）**：上游 Esc-Esc 打开 transcript、选中用户消息后回退并把它
       重新填进输入框（`tui/src/app_backtrack.rs`）。Kotlin 只有只读 Ctrl+T
       （`app/history_ui.kt`）与 `/revert <itemId>`；用户消息 cell 没有可点击的回退入口。
-- [ ] **审批决定回执**：上游在 transcript 里记「You approved … / denied / timed out」
-      （`tui/src/history_cell/approvals.rs`）；Kotlin 只关弹窗并改状态，没有回执 cell。
 - [ ] **Plan 实施提示**：上游问「Implement this plan? / 清空上下文实施」
       （`tui/src/chatwidget/plan_implementation.rs`）；Kotlin 有 plan 模式与时间线，无此一步。
 - [ ] **安全缓冲重试**：上游给「换更快的模型重试 / 继续等待 / 了解更多」

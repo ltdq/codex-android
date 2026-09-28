@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="approval_receipt_approved">你已批准本次%1$s</string>
+    <string name="approval_receipt_session">你已批准在本次会话中始终允许%1$s</string>
+    <string name="approval_receipt_denied">你未批准%1$s</string>
+    <string name="approval_receipt_guardian_denied">已拒绝%1$s的请求</string>
+    <string name="approval_receipt_timed_out">审核已超时，%1$s</string>
+    <string name="approval_receipt_canceled">你已取消%1$s的请求</string>
+    <string name="approval_receipt_execpolicy">你已批准 Codex 始终运行以 %1$s 开头的命令</string>
+    <string name="approval_receipt_network_allow">你已保存允许 Codex 访问 %1$s 的网络规则</string>
+    <string name="approval_receipt_network_deny">你已拒绝 Codex 访问 %1$s，并保存了该规则</string>
+    <string name="approval_receipt_request">此请求</string>
+    <string name="approval_receipt_request_timeout">此请求未获批准</string>
+    <string name="approval_receipt_command">Codex 运行 %1$s</string>
+    <string name="approval_receipt_command_timeout">Codex 未能运行 %1$s</string>
+    <string name="approval_receipt_network">Codex 访问 %1$s</string>
+    <string name="approval_receipt_network_timeout">Codex 未能访问 %1$s</string>
+    <string name="approval_receipt_patch">补丁</string>
+    <string name="approval_receipt_patch_file">涉及 %1$s 的补丁</string>
+    <string name="approval_receipt_patch_files">涉及 %1$d 个文件的补丁</string>
+    <string name="approval_receipt_apply">Codex 应用%1$s</string>
+    <string name="approval_receipt_apply_timeout">Codex 未能应用%1$s</string>
+    <string name="approval_receipt_permissions_granted">你已授予额外权限</string>
+    <string name="approval_receipt_permissions_session">你已为本次会话授予额外权限</string>
+    <string name="approval_receipt_permissions_denied">你未授予额外权限</string>
+    <string name="approval_receipt_permissions">Codex 申请权限</string>
+    <string name="approval_receipt_permissions_timeout">Codex 未能申请权限</string>
+    <string name="approval_receipt_mcp">Codex 调用 MCP 工具 %1$s</string>
+    <string name="approval_receipt_mcp_timeout">Codex 未能调用 MCP 工具 %1$s</string>
+    <string name="approval_receipt_stdin">Codex 向终端 %1$s 发送输入：%2$s</string>
+    <string name="approval_receipt_stdin_timeout">Codex 未能向终端 %1$s 发送输入：%2$s</string>
+</resources>

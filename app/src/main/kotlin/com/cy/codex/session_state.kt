@@ -174,6 +174,12 @@ class SessionState {
     /** Server-owned follow-ups for later turns; queue IDs allow editing and removal. */
     val queued = mutableStateListOf<QueuedSubmission>()
 
+    val approvalReceipts = mutableStateListOf<com.cy.codex.history_cell.ApprovalDecisionReceipt>()
+
+    fun addApprovalReceipt(receipt: com.cy.codex.history_cell.ApprovalDecisionReceipt) {
+        if (approvalReceipts.none { it.id == receipt.id }) approvalReceipts.add(receipt)
+    }
+
     /** Diagnostics surfaced as transcript notices. */
     val diagnostics = mutableStateListOf<SessionDiagnostic>()
 
@@ -392,6 +398,7 @@ class SessionState {
         usage = ThreadTokenUsage.Empty
         goal = null
         queued.clear()
+        approvalReceipts.clear()
         diagnostics.clear()
         permissionSelectionError = null
         hookRuns.clear()

@@ -53,12 +53,14 @@ fun ThreadHistoryScreen(app: CodexApp, onBack: () -> Unit) {
                 items = session.items,
                 diagnostics = session.diagnostics,
                 hookRuns = session.hookRuns,
+                approvalReceipts = session.approvalReceipts,
                 // Snapshot of the live transcript behind it: nothing streams into the overlay.
                 isStreaming = { false },
                 streamFor = { null },
                 plan = session.plan,
                 loading = false,
-                empty = session.items.isEmpty() && session.diagnostics.isEmpty() && session.hookRuns.isEmpty(),
+                empty = session.items.isEmpty() && session.diagnostics.isEmpty() &&
+                    session.hookRuns.isEmpty() && session.approvalReceipts.isEmpty(),
                 cwd = session.config.cwd,
                 onOpenAgent = { threadId -> app.openSurface(Surface.SubAgentThread(threadId)) },
                 onOpenAgentInfo = { threadId -> app.openSurface(Surface.SubAgent(threadId)) },

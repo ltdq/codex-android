@@ -1059,21 +1059,28 @@ class ChatWidget(
         if (answeringApproval) return
         // A proof can land after the request left the queue (server-resolved, turn ended, thread
         // switched); answering then is a silent no-op, not an error.
-        if (pendingApprovals.none { it.requestId == requestId } && otherApprovals.none { it.requestId == requestId }) return
+        val request = (pendingApprovals + otherApprovals).firstOrNull { it.requestId == requestId } ?: return
+        val version = loadVersion
         answeringApproval = true
         approvalError = null
         scope.launch {
             try {
                 client.respond(requestId, response)
+                if (version != loadVersion) return@launch
+                if (request.threadId == state.threadId &&
+                    (pendingApprovals.any { it === request } || otherApprovals.any { it === request })
+                ) {
+                    com.cy.codex.history_cell.approvalDecisionReceipt(request, response)?.let(state::addApprovalReceipt)
+                }
                 pendingApprovals.removeAll { it.requestId == requestId }
                 if (currentApproval?.requestId == requestId) currentApproval = pendingApprovals.firstOrNull()
                 if (pendingApprovals.isEmpty() && state.running) state.applyStatus(ThreadStatus.Active())
             } catch (error: kotlinx.coroutines.CancellationException) {
                 throw error
             } catch (error: Exception) {
-                approvalError = error.message
+                if (version == loadVersion) approvalError = error.message
             } finally {
-                answeringApproval = false
+                if (version == loadVersion) answeringApproval = false
                 // Retired whether or not the respond landed; any verification that produced this
                 // response is over even when the card stays up for a retry.
                 onApprovalRetired(requestId)
@@ -1271,7 +1278,7 @@ class ChatWidget(
             is AppServerEvent.ThreadQueueChangedEvent -> refreshQueue(event.threadId)
 
             is AppServerEvent.ThreadCompacted -> refreshHistory(event.threadId)
-            is AppServerEvent.ThreadRevertedEvent -> refreshHistory(event.threadId)
+            is AppServerEvent.ThreadRevertedEvent -> refreshHistory(event.threadId, pruneReceipts = true)
 
             is AppServerEvent.ErrorEvent -> state.addDiagnostic(
                 SessionDiagnostic(
@@ -1454,6 +1461,7 @@ class ChatWidget(
 
     /** A denial is the one review outcome the user can act on; `thread/approveGuardianDeniedAction` needs the cached assessment. */
     private fun onReviewCompleted(delta: com.cy.codex.protocol.protocol.v2.GuardianApprovalReviewNotification) {
+        com.cy.codex.history_cell.guardianApprovalDecisionReceipt(delta)?.let(state::addApprovalReceipt)
         reviewsInFlight.removeAll { it.id == delta.reviewId }
         if (delta.status != "denied" || delta.itemId.isBlank()) return
         autoReviewDenials.removeAll { it.itemId == delta.itemId }
@@ -1765,7 +1773,7 @@ class ChatWidget(
         syncCurrentApproval()
     }
 
-    private fun refreshHistory(threadId: String) {
+    private fun refreshHistory(threadId: String, pruneReceipts: Boolean = false) {
         val version = loadVersion
         scope.launch {
             repeat(3) {
@@ -1791,6 +1799,13 @@ class ChatWidget(
                         response.items
                     }
                     transcript.forEach(state::upsert)
+                    if (pruneReceipts) {
+                        val turns = response.turns.mapTo(mutableSetOf()) { it.id }
+                        val items = transcript.mapTo(mutableSetOf()) { it.id }
+                        state.approvalReceipts.removeAll { receipt ->
+                            receipt.turnId?.let { it !in turns } ?: (receipt.itemId !in items)
+                        }
+                    }
                     state.applyStatus(response.thread.status)
                     // A snapshot can be older than the live stream; keep only the still-streaming item's buffer.
                     val keep = response.items.mapTo(mutableSetOf()) { it.id }
