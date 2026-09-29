@@ -142,7 +142,6 @@ import top.yukonga.miuix.kmp.nav.core.NavDisplay
 import top.yukonga.miuix.kmp.nav.core.NavDisplayEffects
 import top.yukonga.miuix.kmp.nav.core.navBackStackOf
 import top.yukonga.miuix.kmp.nav.transition.NavSwipeDirection
-import top.yukonga.miuix.kmp.nav.transition.NavTransitions
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
@@ -2570,7 +2569,7 @@ fun CodexScreen(
                     onBack = app::closeSurface,
                     // The third segment swaps what it shows; sliding it sideways is motion the sections
                     // do not have yet (docs/TODO.md).
-                    transition = NavTransitions.None,
+                    transition = ShellPageTransition,
                     effects = NavDisplayEffects(enableCornerClip = false, dimAmount = 0f),
                 ) {
                     entry<Surface.Chat>(swipeDismiss = NavSwipeDirection.None) {

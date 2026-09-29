@@ -1,6 +1,12 @@
 package com.cy.codex
 
+import androidx.compose.animation.core.LinearEasing
 import top.yukonga.miuix.kmp.nav.core.NavKey
+import top.yukonga.miuix.kmp.nav.transition.NavMotion
+import top.yukonga.miuix.kmp.nav.transition.NavSettleSpec
+import top.yukonga.miuix.kmp.nav.transition.NavSwipeDirection
+import top.yukonga.miuix.kmp.nav.transition.NavTransition
+import top.yukonga.miuix.kmp.nav.transition.navGraphicsTransition
 
 /**
  * What the shell is currently showing.
@@ -120,3 +126,22 @@ sealed interface Surface : NavKey {
      */
     data object Agents : Surface
 }
+
+/**
+ * A settle that is over before the first frame of a swap is drawn; the library unloads a leaving
+ * page only once the driver has reached the new top index.
+ */
+private val InstantSettle = NavSettleSpec.Tween(durationMillis = 0, easing = LinearEasing)
+
+/**
+ * How the page column swaps what it shows: the identity transform, settling in no time, so a page
+ * arrives and leaves in the frame the back stack changes. The library's `NavTransitions.None`
+ * settles on [NavMotion.Default], whose 500ms tween delays the revealed page.
+ */
+internal val ShellPageTransition: NavTransition =
+    navGraphicsTransition(
+        opaqueDepth = 1f,
+        dismissDirection = NavSwipeDirection.None,
+        motion =
+            NavMotion(commit = InstantSettle, cancel = InstantSettle, programmatic = InstantSettle),
+    ) {}
