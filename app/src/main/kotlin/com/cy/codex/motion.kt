@@ -176,9 +176,6 @@ object UiConsts {
     /** Preferred width of the shell's expanded menu, the middle segment. */
     val NavMenuWidth = 224.dp
 
-    /** Width of the floating session panel, and the ceiling on it: a wider window gets no wider panel. */
-    val SidebarWidthCap = 252.dp
-
     /**
      * Window width from which the rail's menu takes its own column.
      *

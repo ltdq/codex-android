@@ -4,7 +4,6 @@ import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.expandVertically
@@ -27,12 +26,12 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -58,7 +57,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -85,10 +83,12 @@ import com.cy.codex.UiConsts
 import com.cy.codex.UiType
 import com.cy.codex.app.AgentRosterEntry
 import com.cy.codex.app.AgentsOverview
+import com.cy.codex.app.StatusDot
 import com.cy.codex.app.SubAgentTranscriptPane
 import com.cy.codex.app.agentPageThreads
 import com.cy.codex.app.rememberAgentRoster
 import com.cy.codex.app.sessionStatusReport
+import com.cy.codex.app.tone
 import com.cy.codex.app.withThreadMetadata
 import com.cy.codex.bottom_pane.ApprovalDialog
 import com.cy.codex.bottom_pane.ApprovalNoticeBar
@@ -127,7 +127,6 @@ import com.cy.codex.status.DiffCard
 import com.cy.codex.status.StatusCard
 import com.cy.codex.status.StatusCardButton
 import com.cy.codex.status.StatusPanelState
-import com.cy.codex.status.formatTokens
 import com.cy.codex.status.formatTokensCompact
 import com.cy.codex.statusDotColor
 import com.cy.codex.statusPillSurface
@@ -176,9 +175,9 @@ private fun controlsWidth(agentPage: Boolean, gap: Dp = UiConsts.Space8): Dp =
     UiConsts.ChipSize * 2 + gap + if (agentPage) UiConsts.ChipSize else 0.dp
 
 /**
- * The page column: the open thread and the agents it spawned, with their title bar, status card,
- * session panel and approval cards, mirroring `codex-rs/tui/src/chatwidget.rs`. The rail, its menu
- * and the composer are the shell's; this surface owns only presentation state.
+ * The page column: the open thread and the agents it spawned, with their title bar, composer,
+ * status card, session panel and approval cards, mirroring `codex-rs/tui/src/chatwidget.rs`. The
+ * rail and its menu are the shell's; this surface owns only presentation state.
  */
 @Composable
 fun ChatScreen(
@@ -186,6 +185,8 @@ fun ChatScreen(
     modifier: Modifier = Modifier,
     topInset: Dp = 0.dp,
     bottomInset: Dp = 0.dp,
+    /** How far the composer reaches past the page column on each side, into a shut menu's gutter. */
+    composerGrow: Dp = 0.dp,
     /** How far the floating controls reach past the page column's end, to the window's edge. */
     controlsEndOffset: Dp = 0.dp,
     topBlurHeight: Dp = 52.dp,
@@ -193,7 +194,6 @@ fun ChatScreen(
     topBlurRadius: Float = 14f,
     bottomBlurRadius: Float = 16f,
     panelTopOffset: Dp = 56.dp,
-    minPanelHeight: Dp = 240.dp,
     minDiffHeight: Dp = 300.dp,
     maxDiffHeight: Dp = 560.dp,
     statusCardMaxHeight: Dp = 560.dp,
@@ -220,6 +220,13 @@ fun ChatScreen(
             exportPicker.launch(app.transcriptExportFileName())
         }
     }
+    // OpenDocument, not GetContent: the app keeps a document-uri grant the server can read back later.
+    val attachmentPicker =
+        rememberLauncherForActivityResult(contract = ActivityResultContracts.OpenDocument()) { uri ->
+            if (uri != null) {
+                app.importAttachment(uri)
+            }
+        }
     val colors = MiuixTheme.colorScheme
     val scope = rememberCoroutineScope()
     var overviewOpen by remember { mutableStateOf(false) }
@@ -318,8 +325,8 @@ fun ChatScreen(
                         threadId = threadId,
                         client = app.client,
                         topInset = topInset,
-                        // The composer is the shell's and already takes its own height below.
-                        bottomInset = bottomInset + UiConsts.ScreenMargin * 2,
+                        // Clear the read-only bar that replaces the composer on this page.
+                        bottomInset = bottomInset + UiConsts.PromptBarHeight + UiConsts.ScreenMargin,
                         modifier = Modifier.fillMaxSize(),
                     )
                 }
@@ -350,6 +357,74 @@ fun ChatScreen(
                         gradient = ProgressiveBlur.Bottom.copy(endFraction = 0.92f),
                     )
         )
+
+        // The composer follows the page; its box is the column grown by [composerGrow] on both sides,
+        // so it ends at the window's right margin.
+        AnimatedVisibility(
+            visible = viewedAgent == null,
+            enter =
+                fadeIn(tween(Motion.EnterMs, easing = Motion.EnterEasing)) +
+                    expandVertically(
+                        expandFrom = Alignment.Bottom,
+                        animationSpec = tween(Motion.EnterMs, easing = Motion.EnterEasing),
+                    ),
+            exit =
+                fadeOut(tween(Motion.ExitMs, easing = Motion.ExitEasing)) +
+                    shrinkVertically(
+                        shrinkTowards = Alignment.Bottom,
+                        animationSpec = tween(Motion.ExitMs, easing = Motion.ExitEasing),
+                    ),
+            modifier =
+                Modifier.align(Alignment.BottomCenter)
+                    .requiredWidth(maxWidth + composerGrow * 2),
+        ) {
+            ComposerDock(
+                app = app,
+                session = session,
+                threadNameOf = threadNameOf,
+                backdrop = backdrop,
+                onAttach = { attachmentPicker.launch(arrayOf("*/*")) },
+            )
+        }
+
+        // Kept through the exit animation so the bar does not pop out from under the returning
+        // composer.
+        var lastAgentPage by remember { mutableStateOf<String?>(null) }
+        LaunchedEffect(viewedAgent) {
+            if (viewedAgent != null) lastAgentPage = viewedAgent
+        }
+        AnimatedVisibility(
+            visible = viewedAgent != null,
+            enter =
+                fadeIn(tween(Motion.EnterMs, easing = Motion.EnterEasing)) +
+                    expandVertically(
+                        expandFrom = Alignment.Bottom,
+                        animationSpec = tween(Motion.EnterMs, easing = Motion.EnterEasing),
+                    ),
+            exit =
+                fadeOut(tween(Motion.ExitMs, easing = Motion.ExitEasing)) +
+                    shrinkVertically(
+                        shrinkTowards = Alignment.Bottom,
+                        animationSpec = tween(Motion.ExitMs, easing = Motion.ExitEasing),
+                    ),
+            modifier =
+                Modifier.align(Alignment.BottomCenter)
+                    .requiredWidth(maxWidth + composerGrow * 2),
+        ) {
+            lastAgentPage?.let { threadId ->
+                SubAgentPageBar(
+                    entry = roster.firstOrNull { it.threadId == threadId },
+                    onOpenDetails = { app.openAgentSummary(threadId) },
+                    modifier =
+                        Modifier.fillMaxWidth()
+                            .padding(
+                                start = UiConsts.ScreenMargin,
+                                end = UiConsts.ScreenMargin,
+                                bottom = UiConsts.ScreenMargin,
+                            ),
+                )
+            }
+        }
 
         app.connectionLostMessage?.let { message ->
             ConnectionBanner(
@@ -387,10 +462,24 @@ fun ChatScreen(
         ) {
             StatusCardButton(open = panelState.open, onClick = { panelState.toggle() })
             Spacer(Modifier.width(UiConsts.Space8))
-            SessionPanelButton(
-                open = sessionPanelOpen,
-                onClick = { sessionPanelOpen = !sessionPanelOpen },
-            )
+            // The menu hangs off this chip, so the chip is what the popup anchors to and measures;
+            // the popup itself is drawn by the root Scaffold's host, over the composer.
+            Box {
+                SessionPanelButton(
+                    open = sessionPanelOpen,
+                    onClick = { sessionPanelOpen = !sessionPanelOpen },
+                )
+                SessionMenuPopup(
+                    show = sessionPanelOpen,
+                    library = SidebarModel.libraryEntries(),
+                    tools = SidebarModel.sessionEntries(),
+                    onAction = { entry ->
+                        sessionPanelOpen = false
+                        openSurfaceFor(app, entry.id)
+                    },
+                    onDismiss = { sessionPanelOpen = false },
+                )
+            }
             if (viewedAgent != null) {
                 IconButton(
                     onClick = { app.openAgentSummary(viewedAgent) },
@@ -405,28 +494,6 @@ fun ChatScreen(
                     )
                 }
             }
-        }
-
-        if (sessionPanelOpen) {
-            SessionToolsPanel(
-                title = stringResource(R.string.sidebar_library_header),
-                library = SidebarModel.libraryEntries(),
-                tools = SidebarModel.sessionEntries(),
-                onAction = { entry ->
-                    sessionPanelOpen = false
-                    openSurfaceFor(app, entry.id)
-                },
-                maxHeight =
-                    (maxHeight - topInset - UiConsts.ScreenMargin * 2 - UiConsts.ChipSize)
-                        .coerceAtLeast(minPanelHeight),
-                modifier =
-                    Modifier.align(Alignment.TopEnd)
-                        .offset(x = controlsEndOffset)
-                        .padding(
-                            end = UiConsts.ScreenMargin,
-                            top = topInset + UiConsts.ScreenMargin + UiConsts.ChipSize + UiConsts.Space8,
-                        ),
-            )
         }
 
         val panelMax = maxWidth - UiConsts.ScreenMargin * 2
@@ -458,6 +525,8 @@ fun ChatScreen(
                     ),
             modifier =
                 Modifier.align(Alignment.TopEnd)
+                    // Under the chip that opens it, so it keeps the chip's gap to the window's edge.
+                    .offset(x = controlsEndOffset)
                     .padding(
                         end = UiConsts.ScreenMargin,
                         top = topInset + UiConsts.ScreenMargin + panelTopOffset,
@@ -705,7 +774,11 @@ private fun TranscriptPane(
                 start = UiConsts.TranscriptGutter,
                 end = UiConsts.TranscriptGutter,
                 top = topInset + UiConsts.TranscriptTopInset,
-                bottom = bottomInset + UiConsts.ScreenMargin + UiConsts.TranscriptBottomInset,
+                bottom =
+                    bottomInset +
+                        UiConsts.PromptBarHeight +
+                        UiConsts.ScreenMargin * 2 +
+                        UiConsts.TranscriptBottomInset,
             ),
     )
 }
@@ -1711,6 +1784,69 @@ private fun AgentsOverviewPane(
         onDismissFinished = onDismissFinished,
         totalTokens = entries.sumOf { it.tokens.toLong() },
     )
+}
+
+/**
+ * Replaces the composer on an agent page: it names the agent being read and opens the summary
+ * sheet. Switching pages is the swipe gesture, so the bar carries no page controls.
+ */
+@Composable
+private fun SubAgentPageBar(
+    entry: AgentRosterEntry?,
+    onOpenDetails: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val colors = MiuixTheme.colorScheme
+    Row(
+        modifier =
+            modifier
+                .clip(RoundedCornerShape(UiConsts.CornerChip))
+                .background(glassTint(0.94f))
+                .padding(
+                    start = UiConsts.Space12,
+                    end = UiConsts.Space4,
+                    top = UiConsts.Space8,
+                    bottom = UiConsts.Space8,
+                ),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (entry != null) {
+            StatusDot(entry.tone())
+            Spacer(Modifier.width(UiConsts.Space8))
+        }
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text =
+                    entry?.name ?: stringResource(R.string.sub_agent_thread_fallback_title),
+                fontSize = UiType.RowTitle,
+                lineHeight = UiType.RowTitleLine,
+                fontWeight = FontWeight.Medium,
+                color = colors.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = stringResource(R.string.sub_agent_page_read_only),
+                fontSize = UiType.Footnote,
+                lineHeight = UiType.FootnoteLine,
+                color = colors.onSurfaceVariantSummary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        IconButton(
+            onClick = onOpenDetails,
+            minWidth = UiConsts.IconButtonSize,
+            minHeight = UiConsts.IconButtonSize,
+        ) {
+            Icon(
+                imageVector = MiuixIcons.Info,
+                contentDescription = stringResource(R.string.sub_agent_page_details),
+                modifier = Modifier.size(UiConsts.IconHeader),
+                tint = colors.primary,
+            )
+        }
+    }
 }
 
 @Composable

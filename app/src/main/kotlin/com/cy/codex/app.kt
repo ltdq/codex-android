@@ -4,8 +4,6 @@ import android.content.Context
 import android.net.Uri
 import android.provider.OpenableColumns
 import androidx.activity.compose.BackHandler
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Box
@@ -15,12 +13,10 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
@@ -78,7 +74,6 @@ import com.cy.codex.bottom_pane.mentions_v2.MentionSuggestion
 import com.cy.codex.bottom_pane.mentions_v2.mentionMatches
 import com.cy.codex.bottom_pane.userVerificationAnswer
 import com.cy.codex.chatwidget.ChatScreen
-import com.cy.codex.chatwidget.ComposerDock
 import com.cy.codex.chatwidget.AgentNotice
 import com.cy.codex.chatwidget.AgentNotification
 import com.cy.codex.chatwidget.ApprovalNoticeKind
@@ -140,8 +135,6 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Scaffold
-import top.yukonga.miuix.kmp.blur.layerBackdrop
-import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
 import top.yukonga.miuix.kmp.basic.SnackbarHost
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
 import top.yukonga.miuix.kmp.nav.core.NavBackStack
@@ -2446,21 +2439,6 @@ fun CodexScreen(
     val shortcutsHelp = remember { ShortcutsHelpState() }
     val menuLabels = navMenuLabels()
     val section = sectionOf(app.surface)
-    // OpenDocument, not GetContent: the app keeps a document-uri grant the server can read back later.
-    val attachmentPicker =
-        rememberLauncherForActivityResult(contract = ActivityResultContracts.OpenDocument()) { uri ->
-            if (uri != null) {
-                app.importAttachment(uri)
-            }
-        }
-    val threadNameOf: (String) -> String = { threadId ->
-        app.threads.threads
-            .firstOrNull { it.id == threadId }
-            ?.let { thread ->
-                thread.name?.takeIf { it.isNotBlank() }
-                    ?: thread.preview.take(48).takeIf { it.isNotBlank() }
-            } ?: threadId.take(8)
-    }
 
     var menuExpanded by remember {
         mutableStateOf(preferences.getBoolean(CodexApp.KeyMenuExpanded, true))
@@ -2482,19 +2460,35 @@ fun CodexScreen(
         preferences.edit().putStringSet(CodexApp.KeyExpandedProjects, expandedProjects).apply()
     }
 
-    // The shell's geometry is computed here rather than inside the Scaffold: the bottom bar holds
-    // the composer, and where it sits depends on the rail and the menu the content slot draws.
-    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-        // The status bar is normally hidden; a transient reveal must not push the chrome, so the
-        // inset is latched and may only ever shrink.
-        val liveTopInset = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
-        var topInset by remember { mutableStateOf(liveTopInset) }
-        LaunchedEffect(liveTopInset) {
-            if (liveTopInset < topInset) topInset = liveTopInset
-        }
-        // Edge-to-edge: the system does not resize for the keyboard; the chat entry consumes the
-        // IME inset itself (see `imePadding` below).
-        val bottomInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    // miuix's Scaffold is the app's page structure — it hosts the popups and dialogs every overlay in
+    // the app renders into — so the whole shell runs under it: rail, menu, page stack, and the
+    // composer a page draws for itself.
+    Scaffold(
+        containerColor = colors.background,
+        // The shell is its own chrome: the rail sits on the window's edge and the pages run under the
+        // hidden status bar, so no system inset is handed to the content.
+        contentWindowInsets = WindowInsets(0.dp, 0.dp, 0.dp, 0.dp),
+        snackbarHost = {
+            SnackbarHost(
+                state = app.snackbar,
+                modifier = Modifier
+                    .padding(bottom = UiConsts.ScreenMargin + UiConsts.PromptBarHeight + snackbarGap),
+            )
+        },
+    ) { contentPadding ->
+        // The three segments are measured once here: the rail and the menu are fixed columns, so the
+        // page column they leave is a function of the window, not of the page it shows.
+        BoxWithConstraints(modifier = Modifier.fillMaxSize().padding(contentPadding)) {
+            // The status bar is normally hidden; a transient reveal must not push the chrome, so the
+            // inset is latched and may only ever shrink.
+            val liveTopInset = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+            var topInset by remember { mutableStateOf(liveTopInset) }
+            LaunchedEffect(liveTopInset) {
+                if (liveTopInset < topInset) topInset = liveTopInset
+            }
+            // Edge-to-edge: the system does not resize for the keyboard; a page that takes input
+            // consumes the IME inset itself (see `imePadding` below).
+            val bottomInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
 
             val railWidth = UiConsts.NavRailWidth
             val menuWidth = UiConsts.NavMenuWidth
@@ -2526,8 +2520,14 @@ fun CodexScreen(
                     animationSpec = Motion.PanelDp,
                     label = "pageShift",
                 )
-            // The composer and the floating controls do not follow that column: the input takes the
-            // gutter a shut menu leaves behind, and the controls stay on the window's edge.
+            // The floating controls do not follow that column: they are anchored to the window, so
+            // they take back whatever the column's own position leaves at the window's edge — the
+            // same gap from the right edge as from the top one, wherever the column has moved to.
+            val controlsEndOffset =
+                (maxWidth - centredStart - pageShift - pageWidth).coerceAtLeast(0.dp)
+            // The composer does follow it, but not its width: a shut menu leaves the centred column
+            // the same gutter on both sides, and the input takes that gutter back, so it always ends
+            // at the window's right margin and starts as far left as the rail allows.
             val composerGrow by
                 animateDpAsState(
                     targetValue =
@@ -2538,19 +2538,6 @@ fun CodexScreen(
                         },
                     animationSpec = Motion.PanelDp,
                     label = "composerGrow",
-                )
-            val controlsEndOffset by
-                animateDpAsState(
-                    targetValue =
-                        if (wide && !menuExpanded) {
-                            (
-                                (maxWidth - railWidth - pageWidth) / 2 - UiConsts.ScreenMargin
-                                ).coerceAtLeast(0.dp)
-                        } else {
-                            0.dp
-                        },
-                    animationSpec = Motion.PanelDp,
-                    label = "controlsEndOffset",
                 )
             LaunchedEffect(wide) {
                 if (!wide && !menuChosen && menuExpanded) menuExpanded = false
@@ -2566,46 +2553,10 @@ fun CodexScreen(
                 }
             }
 
-            val pageBackdrop = rememberLayerBackdrop {
-                drawRect(colors.background)
-                drawContent()
-            }
-
-        Scaffold(
-            containerColor = colors.background,
-            contentWindowInsets = WindowInsets(0.dp, 0.dp, 0.dp, 0.dp),
-            snackbarHost = {
-                SnackbarHost(
-                    state = app.snackbar,
-                    modifier = Modifier
-                        .padding(bottom = UiConsts.ScreenMargin + UiConsts.PromptBarHeight + snackbarGap),
-                )
-            },
-            // The composer belongs to the bound thread but not to one page: it is the Scaffold's
-            // bottom bar, so it stays on screen whichever page the third segment shows and
-            // stretches into the gutter a shut menu leaves behind.
-            bottomBar = {
-                Box(modifier = Modifier.fillMaxWidth()) {
-                    ComposerDock(
-                        app = app,
-                        session = app.widget.state,
-                        threadNameOf = threadNameOf,
-                        backdrop = pageBackdrop,
-                        onAttach = { attachmentPicker.launch(arrayOf("*/*")) },
-                        modifier =
-                            Modifier.align(Alignment.BottomStart)
-                                .offset(x = centredStart + pageShift - composerGrow)
-                                .requiredWidth(pageWidth + composerGrow + controlsEndOffset),
-                    )
-                }
-            },
-        ) { contentPadding ->
             Box(modifier = Modifier.fillMaxSize()) {
                 NavRail(
                     selected = section,
                     onSelect = onRailSelect,
-                    topInset = topInset,
-                    bottomInset = bottomInset,
                     modifier = Modifier.align(Alignment.TopStart),
                 )
 
@@ -2615,10 +2566,7 @@ fun CodexScreen(
                         Modifier.align(Alignment.TopStart)
                             .offset(x = centredStart + pageShift)
                             .width(pageWidth)
-                            .fillMaxHeight()
-                            .layerBackdrop(pageBackdrop)
-                            // Pages end above the bottom bar instead of under it.
-                            .padding(bottom = contentPadding.calculateBottomPadding()),
+                            .fillMaxHeight(),
                     onBack = app::closeSurface,
                     // The third segment swaps what it shows; sliding it sideways is motion the sections
                     // do not have yet (docs/TODO.md).
@@ -2663,6 +2611,7 @@ fun CodexScreen(
                                     app = app,
                                     topInset = topInset,
                                     bottomInset = bottomInset,
+                                    composerGrow = composerGrow,
                                     controlsEndOffset = controlsEndOffset,
                                 )
                                 // Account banners ride above the composer (codex-rs/tui/src/chatwidget/backend_banners.rs).

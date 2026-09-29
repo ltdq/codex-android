@@ -5,24 +5,18 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
@@ -35,7 +29,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
@@ -45,20 +38,25 @@ import com.cy.codex.R
 import com.cy.codex.UiConsts
 import com.cy.codex.UiType
 import com.cy.codex.panelColor
-import com.cy.codex.raisedSurface
 import com.cy.codex.statusDotColor
+import top.yukonga.miuix.kmp.basic.BasicComponent
+import top.yukonga.miuix.kmp.basic.BasicComponentDefaults
 import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.ListPopupColumn
+import top.yukonga.miuix.kmp.basic.PopupPositionProvider
+import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.Surface
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.ChevronForward
 import top.yukonga.miuix.kmp.icon.extended.FolderFill
 import top.yukonga.miuix.kmp.icon.extended.Sidebar
+import top.yukonga.miuix.kmp.overlay.OverlayListPopup
 import top.yukonga.miuix.kmp.squircle.squircleSurface
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
- * Toggle for [SessionToolsPanel]; it is the status chip's twin, so it takes the same size, corner
+ * Toggle for [SessionMenuPopup]; it is the status chip's twin, so it takes the same size, corner
  * and press feedback.
  */
 @Composable
@@ -107,170 +105,72 @@ fun SessionPanelButton(
 }
 
 /**
- * The floating panel on the right of the page column: the thread library, then the tools that act
- * on the open thread. It floats over the page rather than taking a fourth segment of its own.
+ * The session menu: the thread library, then the tools that act on the open thread, drawn as a
+ * miuix list popup by the root Scaffold's popup host so it hangs off its chip, above the composer.
  */
 @Composable
-fun SessionToolsPanel(
-    title: String,
+fun SessionMenuPopup(
+    show: Boolean,
     library: List<SidebarEntry>,
     tools: List<SidebarEntry>,
     onAction: (SidebarEntry) -> Unit,
+    onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
-    width: Dp = UiConsts.SidebarWidthCap,
     maxHeight: Dp = 420.dp,
-    listPadding: PaddingValues = PaddingValues(start = 8.dp, end = 8.dp, bottom = 8.dp),
-    listItemGap: Dp = 2.dp,
-    sectionGap: Dp = 6.dp,
-    listBottomGap: Dp = 8.dp,
 ) {
     val libraryTitle = stringResource(R.string.sidebar_library_header)
     val toolsTitle = stringResource(R.string.sidebar_session_tools_header)
-    val rows =
-        remember(library, tools, libraryTitle, toolsTitle) {
-            buildList {
-                add(SessionPanelRow.Header(libraryTitle))
-                library.forEach { add(SessionPanelRow.Action(it)) }
-                add(SessionPanelRow.Gap)
-                add(SessionPanelRow.Header(toolsTitle))
-                tools.forEach { add(SessionPanelRow.Action(it)) }
-            }
-        }
-    Surface(
-        modifier = modifier.width(width).heightIn(max = maxHeight),
-        shape = RoundedCornerShape(UiConsts.OverlayCorner),
-        color = panelColor(),
-        shadowElevation = 18.dp,
+    OverlayListPopup(
+        show = show,
+        popupModifier = modifier,
+        alignment = PopupPositionProvider.Align.End,
+        onDismissRequest = onDismiss,
+        onDismissFinished = {},
+        maxHeight = maxHeight,
     ) {
-        Column(modifier = Modifier.fillMaxWidth()) {
-            Text(
-                text = title,
-                modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp),
-                fontSize = UiType.SheetTitle,
-                lineHeight = UiType.SheetTitleLine,
-                fontWeight = FontWeight.SemiBold,
-                color = MiuixTheme.colorScheme.onSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            LazyColumn(
-                state = rememberLazyListState(),
-                modifier = Modifier.fillMaxWidth().weight(1f, fill = false),
-                contentPadding = listPadding,
-                verticalArrangement = Arrangement.spacedBy(listItemGap),
-            ) {
-                items(rows.size, key = { rows[it].key }) { index ->
-                    when (val row = rows[index]) {
-                        is SessionPanelRow.Header ->
-                            SectionHeader(
-                                title = row.title,
-                                collapsed = false,
-                                collapsible = false,
-                                onClick = {},
-                            )
-
-                        SessionPanelRow.Gap -> Spacer(Modifier.height(sectionGap))
-
-                        is SessionPanelRow.Action ->
-                            ActionRow(entry = row.entry, onClick = { onAction(row.entry) })
-                    }
-                }
+        ListPopupColumn {
+            SmallTitle(text = libraryTitle)
+            library.forEach { entry ->
+                SessionMenuRow(entry = entry, onClick = { onAction(entry) })
             }
-            Spacer(Modifier.height(listBottomGap))
+            SmallTitle(text = toolsTitle)
+            tools.forEach { entry ->
+                SessionMenuRow(entry = entry, onClick = { onAction(entry) })
+            }
         }
     }
 }
 
-private sealed interface SessionPanelRow {
-    val key: String
-
-    data class Header(val title: String) : SessionPanelRow {
-        override val key: String = "header-$title"
-    }
-
-    data class Action(val entry: SidebarEntry) : SessionPanelRow {
-        override val key: String = "action-${entry.id}"
-    }
-
-    data object Gap : SessionPanelRow {
-        override val key: String = "gap"
-    }
-}
-
+/**
+ * One entry of the session menu; not a `BasicComponent`, because [ListPopupColumn] sizes rows
+ * through intrinsic measurement and the library's component overflows the constraint arithmetic
+ * there (`Component.kt:227`).
+ */
 @Composable
-internal fun SectionHeader(
-    title: String,
-    collapsed: Boolean,
-    collapsible: Boolean = true,
-    onClick: () -> Unit,
-    corner: Dp = UiConsts.CornerControl,
-    horizontalPadding: Dp = 6.dp,
-    contentPadding: PaddingValues =
-        PaddingValues(start = 8.dp, end = 8.dp, top = 12.dp, bottom = 8.dp),
-    titleSize: TextUnit = UiType.Subtitle,
-    titleLineHeight: TextUnit = UiType.SheetTitle,
-    chevronSize: Dp = 14.dp,
-    pressInDurationMs: Int = Motion.PressMs,
-    pressOutDurationMs: Int = Motion.TintMs,
-    chevronDurationMs: Int = Motion.ContentEnterMs,
-) {
+private fun SessionMenuRow(entry: SidebarEntry, onClick: () -> Unit) {
     val colors = MiuixTheme.colorScheme
-    val interactionSource = remember { MutableInteractionSource() }
-    val pressed by interactionSource.collectIsPressedAsState()
-    val pressOverlay by
-        animateColorAsState(
-            targetValue =
-                if (pressed) colors.onBackground.copy(alpha = 0.08f) else Color.Transparent,
-            animationSpec =
-                tween(durationMillis = if (pressed) pressInDurationMs else pressOutDurationMs),
-            label = "sectionPress",
-        )
-    val chevronRotation by
-        animateFloatAsState(
-            targetValue = if (collapsed) 90f else -90f,
-            animationSpec = tween(durationMillis = chevronDurationMs),
-            label = "sectionChevron",
-        )
     Row(
         modifier =
             Modifier.fillMaxWidth()
-                .padding(horizontal = horizontalPadding)
-                .clip(RoundedCornerShape(corner))
-                .then(
-                    if (collapsible) {
-                        Modifier.clickable(
-                            interactionSource = interactionSource,
-                            indication = null,
-                            onClick = onClick,
-                        )
-                    } else {
-                        Modifier
-                    },
-                )
-                .background(pressOverlay, RoundedCornerShape(corner))
-                .padding(contentPadding),
+                .clickable(onClick = onClick)
+                .heightIn(min = 56.dp)
+                .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(
-            text = title,
-            modifier = Modifier.weight(1f),
-            fontSize = titleSize,
-            lineHeight = titleLineHeight,
-            color = colors.onSurfaceVariantSummary,
+        Icon(
+            imageVector = entry.icon,
+            contentDescription = null,
+            modifier = Modifier.size(UiConsts.IconLeading),
+            tint = colors.onSurfaceSecondary,
         )
-        if (collapsible) {
-            Icon(
-                imageVector = MiuixIcons.ChevronForward,
-                contentDescription =
-                    if (collapsed) {
-                        stringResource(R.string.sidebar_expand_section, title)
-                    } else {
-                        stringResource(R.string.sidebar_collapse_section, title)
-                    },
-                modifier = Modifier.size(chevronSize).graphicsLayer { rotationZ = chevronRotation },
-                tint = colors.onSurfaceVariantSummary,
-            )
-        }
+        Spacer(Modifier.width(UiConsts.Space14))
+        Text(
+            text = entry.title,
+            fontSize = MiuixTheme.textStyles.headline1.fontSize,
+            color = colors.onBackground,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 
@@ -280,43 +180,29 @@ internal fun ActionRow(
     entry: SidebarEntry,
     onClick: () -> Unit,
     selected: Boolean = false,
-    corner: Dp = UiConsts.CornerRow,
-    contentPadding: PaddingValues = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
+    insideMargin: PaddingValues = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
     iconSize: Dp = UiConsts.IconLeading,
-    iconGap: Dp = UiConsts.Space14,
-    titleSize: TextUnit = UiType.Message,
-    titleLineHeight: TextUnit = UiType.ComposerLine,
 ) {
     val colors = MiuixTheme.colorScheme
-    Row(
-        modifier =
-            Modifier.fillMaxWidth()
-                .squircleSurface(
-                    color = if (selected) raisedSurface() else Color.Transparent,
-                    cornerRadius = corner,
-                )
-                .combinedClickable(onClick = onClick)
-                .padding(contentPadding),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Icon(
-            imageVector = entry.icon,
-            contentDescription = null,
-            modifier = Modifier.size(iconSize),
-            tint = if (selected) colors.primary else colors.onSurfaceSecondary,
-        )
-        Spacer(Modifier.width(iconGap))
-        Text(
-            text = entry.title,
-            modifier = Modifier.weight(1f),
-            fontSize = titleSize,
-            lineHeight = titleLineHeight,
-            fontWeight = if (selected) FontWeight.Medium else FontWeight.Normal,
-            color = if (selected) colors.primary else colors.onSurface,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-    }
+    BasicComponent(
+        title = entry.title,
+        // The row's own fill is the menu's; the selected entry is marked by its tint, like a card's
+        // highlighted row.
+        titleColor =
+            BasicComponentDefaults.titleColor(
+                color = if (selected) colors.primary else colors.onBackground,
+            ),
+        startAction = {
+            Icon(
+                imageVector = entry.icon,
+                contentDescription = null,
+                modifier = Modifier.size(iconSize),
+                tint = if (selected) colors.primary else colors.onSurfaceSecondary,
+            )
+        },
+        insideMargin = insideMargin,
+        onClick = onClick,
+    )
 }
 
 @Composable
@@ -324,14 +210,8 @@ internal fun ProjectRow(
     project: SidebarProject,
     expanded: Boolean,
     onClick: () -> Unit,
-    corner: Dp = UiConsts.CornerRow,
-    contentPadding: PaddingValues = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
+    insideMargin: PaddingValues = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
     iconSize: Dp = UiConsts.IconLeading,
-    iconGap: Dp = UiConsts.Space14,
-    nameSize: TextUnit = UiType.Message,
-    nameLineHeight: TextUnit = UiType.ComposerLine,
-    pathSize: TextUnit = UiType.Chip,
-    pathLineHeight: TextUnit = UiType.SheetRowTitle,
     chevronSize: Dp = 15.dp,
     chevronDurationMs: Int = Motion.DisclosureMs,
 ) {
@@ -342,52 +222,33 @@ internal fun ProjectRow(
             animationSpec = tween(durationMillis = chevronDurationMs),
             label = "projectChevron",
         )
-    Row(
-        modifier =
-            Modifier.fillMaxWidth()
-                .squircleSurface(color = Color.Transparent, cornerRadius = corner)
-                .combinedClickable(onClick = onClick)
-                .padding(contentPadding),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Icon(
-            imageVector = MiuixIcons.FolderFill,
-            contentDescription = null,
-            modifier = Modifier.size(iconSize),
-            tint = Color(0xFFFFC24B),
-        )
-        Spacer(Modifier.width(iconGap))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = project.name,
-                fontSize = nameSize,
-                lineHeight = nameLineHeight,
-                fontWeight = FontWeight.Medium,
-                color = colors.onSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+    BasicComponent(
+        title = project.name,
+        summary = project.path,
+        startAction = {
+            Icon(
+                imageVector = MiuixIcons.FolderFill,
+                contentDescription = null,
+                modifier = Modifier.size(iconSize),
+                tint = Color(0xFFFFC24B),
             )
-            Text(
-                text = project.path,
-                fontSize = pathSize,
-                lineHeight = pathLineHeight,
-                color = colors.onSurfaceVariantSummary,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+        },
+        endActions = {
+            Icon(
+                imageVector = MiuixIcons.ChevronForward,
+                contentDescription =
+                    if (expanded) {
+                        stringResource(R.string.sidebar_collapse_project, project.name)
+                    } else {
+                        stringResource(R.string.sidebar_expand_project, project.name)
+                    },
+                modifier = Modifier.size(chevronSize).graphicsLayer { rotationZ = chevronRotation },
+                tint = colors.onSurfaceVariantActions,
             )
-        }
-        Icon(
-            imageVector = MiuixIcons.ChevronForward,
-            contentDescription =
-                if (expanded) {
-                    stringResource(R.string.sidebar_collapse_project, project.name)
-                } else {
-                    stringResource(R.string.sidebar_expand_project, project.name)
-                },
-            modifier = Modifier.size(chevronSize).graphicsLayer { rotationZ = chevronRotation },
-            tint = colors.onSurfaceVariantActions,
-        )
-    }
+        },
+        insideMargin = insideMargin,
+        onClick = onClick,
+    )
 }
 
 @Composable
@@ -396,60 +257,45 @@ internal fun SessionRow(
     selected: Boolean,
     onClick: () -> Unit,
     startIndent: Dp = UiConsts.RowIndent,
-    corner: Dp = UiConsts.CornerRow,
-    contentPadding: PaddingValues =
-        PaddingValues(start = 12.dp, end = 12.dp, top = 10.dp, bottom = 10.dp),
+    insideMargin: PaddingValues = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
     dotSize: Dp = 7.dp,
-    dotGap: Dp = 12.dp,
-    titleSize: TextUnit = UiType.CardTitle,
-    titleLineHeight: TextUnit = UiType.Title,
-    dateGap: Dp = 8.dp,
     dateSize: TextUnit = UiType.RowDetail,
     dateLineHeight: TextUnit = UiType.Message,
 ) {
     val colors = MiuixTheme.colorScheme
-    Row(
-        modifier =
-            Modifier.fillMaxWidth()
-                .padding(start = startIndent)
-                .squircleSurface(
-                    color = if (selected) raisedSurface() else Color.Transparent,
-                    cornerRadius = corner,
-                )
-                .combinedClickable(onClick = onClick)
-                .padding(contentPadding),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(
-            modifier =
-                Modifier.size(dotSize)
-                    .clip(CircleShape)
-                    .background(
-                        when {
-                            session.running -> statusDotColor(com.cy.codex.ThreadStatusTone.Running)
-                            session.archived -> colors.onSurfaceVariantSummary.copy(alpha = 0.5f)
-                            else -> colors.onSurfaceVariantSummary
-                        }
-                    )
-        )
-        Spacer(Modifier.width(dotGap))
-        Text(
-            text = session.title,
-            modifier = Modifier.weight(1f),
-            fontSize = titleSize,
-            lineHeight = titleLineHeight,
-            fontWeight = if (selected) FontWeight.Medium else FontWeight.Normal,
-            color = if (selected) colors.primary else colors.onSurface,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        Spacer(Modifier.width(dateGap))
-        Text(
-            text = session.date,
-            fontSize = dateSize,
-            lineHeight = dateLineHeight,
-            color = colors.onSurfaceVariantSummary,
-            maxLines = 1,
-        )
-    }
+    BasicComponent(
+        modifier = Modifier.padding(start = startIndent),
+        title = session.title,
+        titleColor =
+            BasicComponentDefaults.titleColor(
+                color = if (selected) colors.primary else colors.onBackground,
+            ),
+        startAction = {
+            Box(
+                modifier =
+                    Modifier.size(dotSize)
+                        .clip(CircleShape)
+                        .background(
+                            when {
+                                session.running ->
+                                    statusDotColor(com.cy.codex.ThreadStatusTone.Running)
+
+                                session.archived -> colors.onSurfaceVariantSummary.copy(alpha = 0.5f)
+                                else -> colors.onSurfaceVariantSummary
+                            }
+                        )
+            )
+        },
+        endActions = {
+            Text(
+                text = session.date,
+                fontSize = dateSize,
+                lineHeight = dateLineHeight,
+                color = colors.onSurfaceVariantSummary,
+                maxLines = 1,
+            )
+        },
+        insideMargin = insideMargin,
+        onClick = onClick,
+    )
 }
