@@ -189,6 +189,11 @@ fun ChatScreen(
     composerGrow: Dp = 0.dp,
     /** How far the floating controls reach past the page column's end, to the window's edge. */
     controlsEndOffset: Dp = 0.dp,
+    /**
+     * Whether the shell shows this page; a covered page hides the chrome anchored to the window's
+     * edges.
+     */
+    pageOnTop: Boolean = true,
     topBlurHeight: Dp = 52.dp,
     bottomBlurHeight: Dp = 78.dp,
     topBlurRadius: Float = 14f,
@@ -358,10 +363,10 @@ fun ChatScreen(
                     )
         )
 
-        // The composer follows the page; its box is the column grown by [composerGrow] on both sides,
-        // so it ends at the window's right margin.
+        // The composer follows the page; a page the shell pushed above this one retracts it, since
+        // its box is wider than the column and would stand in the gutters otherwise.
         AnimatedVisibility(
-            visible = viewedAgent == null,
+            visible = pageOnTop && viewedAgent == null,
             enter =
                 fadeIn(tween(Motion.EnterMs, easing = Motion.EnterEasing)) +
                     expandVertically(
@@ -394,7 +399,7 @@ fun ChatScreen(
             if (viewedAgent != null) lastAgentPage = viewedAgent
         }
         AnimatedVisibility(
-            visible = viewedAgent != null,
+            visible = pageOnTop && viewedAgent != null,
             enter =
                 fadeIn(tween(Motion.EnterMs, easing = Motion.EnterEasing)) +
                     expandVertically(
@@ -453,45 +458,47 @@ fun ChatScreen(
             actions = { Spacer(Modifier.width(controlsWidth(agentPage = viewedAgent != null))) },
         )
 
-        Row(
-            modifier =
-                Modifier.align(Alignment.TopEnd)
-                    .offset(x = controlsEndOffset)
-                    .padding(end = UiConsts.ScreenMargin, top = topInset + UiConsts.ScreenMargin),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            StatusCardButton(open = panelState.open, onClick = { panelState.toggle() })
-            Spacer(Modifier.width(UiConsts.Space8))
-            // The menu hangs off this chip, so the chip is what the popup anchors to and measures;
-            // the popup itself is drawn by the root Scaffold's host, over the composer.
-            Box {
-                SessionPanelButton(
-                    open = sessionPanelOpen,
-                    onClick = { sessionPanelOpen = !sessionPanelOpen },
-                )
-                SessionMenuPopup(
-                    show = sessionPanelOpen,
-                    library = SidebarModel.libraryEntries(),
-                    tools = SidebarModel.sessionEntries(),
-                    onAction = { entry ->
-                        sessionPanelOpen = false
-                        openSurfaceFor(app, entry.id)
-                    },
-                    onDismiss = { sessionPanelOpen = false },
-                )
-            }
-            if (viewedAgent != null) {
-                IconButton(
-                    onClick = { app.openAgentSummary(viewedAgent) },
-                    minWidth = UiConsts.ChipSize,
-                    minHeight = UiConsts.ChipSize,
-                ) {
-                    Icon(
-                        imageVector = MiuixIcons.Info,
-                        contentDescription = stringResource(R.string.sub_agent_page_details),
-                        modifier = Modifier.size(UiConsts.ChipIcon),
-                        tint = colors.primary,
+        if (pageOnTop) {
+            Row(
+                modifier =
+                    Modifier.align(Alignment.TopEnd)
+                        .offset(x = controlsEndOffset)
+                        .padding(end = UiConsts.ScreenMargin, top = topInset + UiConsts.ScreenMargin),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                StatusCardButton(open = panelState.open, onClick = { panelState.toggle() })
+                Spacer(Modifier.width(UiConsts.Space8))
+                // The menu hangs off this chip, so the chip is what the popup anchors to and measures;
+                // the popup itself is drawn by the root Scaffold's host, over the composer.
+                Box {
+                    SessionPanelButton(
+                        open = sessionPanelOpen,
+                        onClick = { sessionPanelOpen = !sessionPanelOpen },
                     )
+                    SessionMenuPopup(
+                        show = sessionPanelOpen,
+                        library = SidebarModel.libraryEntries(),
+                        tools = SidebarModel.sessionEntries(),
+                        onAction = { entry ->
+                            sessionPanelOpen = false
+                            openSurfaceFor(app, entry.id)
+                        },
+                        onDismiss = { sessionPanelOpen = false },
+                    )
+                }
+                if (viewedAgent != null) {
+                    IconButton(
+                        onClick = { app.openAgentSummary(viewedAgent) },
+                        minWidth = UiConsts.ChipSize,
+                        minHeight = UiConsts.ChipSize,
+                    ) {
+                        Icon(
+                            imageVector = MiuixIcons.Info,
+                            contentDescription = stringResource(R.string.sub_agent_page_details),
+                            modifier = Modifier.size(UiConsts.ChipIcon),
+                            tint = colors.primary,
+                        )
+                    }
                 }
             }
         }
@@ -508,7 +515,7 @@ fun ChatScreen(
         val statusHeight = remember { mutableStateOf(0.dp) }
 
         AnimatedVisibility(
-            visible = panelState.open,
+            visible = pageOnTop && panelState.open,
             enter =
                 fadeIn(tween(panelEnterDurationMs, easing = Motion.EnterEasing)) +
                     scaleIn(

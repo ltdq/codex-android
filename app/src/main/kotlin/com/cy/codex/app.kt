@@ -2613,6 +2613,9 @@ fun CodexScreen(
                                     bottomInset = bottomInset,
                                     composerGrow = composerGrow,
                                     controlsEndOffset = controlsEndOffset,
+                                    // A pushed page covers the column, not the gutters: the chat's own
+                                    // chrome reaches into them, so only the top page may draw it.
+                                    pageOnTop = app.surface == Surface.Chat,
                                 )
                                 // Account banners ride above the composer (codex-rs/tui/src/chatwidget/backend_banners.rs).
                                 val bannerSurface = com.cy.codex.chatwidget.backendBannerSurface(
