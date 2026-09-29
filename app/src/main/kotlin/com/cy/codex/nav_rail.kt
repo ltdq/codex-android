@@ -16,9 +16,8 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.RectangleShape
-import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -29,10 +28,6 @@ import com.cy.codex.chatwidget.SidebarEntry
 import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
 import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.Surface
-import top.yukonga.miuix.kmp.basic.TooltipAnchorPosition
-import top.yukonga.miuix.kmp.basic.TooltipBox
-import top.yukonga.miuix.kmp.basic.TooltipDefaults
-import top.yukonga.miuix.kmp.basic.TooltipState
 import top.yukonga.miuix.kmp.basic.TopAppBar
 
 /**
@@ -106,142 +101,112 @@ private fun NavRailItem(
 }
 
 /**
- * The shell's second segment: the menu behind the selected rail item, at a width fixed by the shell
- * so the page column is measured once. The title collapses as the list scrolls under it, and the
- * same panel is drawn in the layout while pinned and floating through [NavMenuFlyout] as a card.
+ * The shell's second segment: one menu, floating over the page or pinned beside it. [settle] is how
+ * far it has filled out (0 card, 1 column); the same amount comes back as the rows' padding, so the
+ * card grows out around text that never moves, and a pinned menu keeps its scroll and open project.
  */
 @Composable
 internal fun NavMenuPanel(
     title: String,
     rows: List<NavMenuRow>,
     onRow: (NavMenuRow) -> Unit,
+    settle: Float,
     modifier: Modifier = Modifier,
     topInset: Dp = 0.dp,
     bottomInset: Dp = 0.dp,
     width: Dp = UiConsts.NavMenuWidth,
-    shape: Shape = RectangleShape,
     listPadding: PaddingValues = PaddingValues(horizontal = UiConsts.Space8, vertical = UiConsts.Space4),
     itemGap: Dp = UiConsts.Space2,
 ) {
     val scrollBehavior = MiuixScrollBehavior()
-    Surface(
-        modifier = modifier.width(width).fillMaxHeight(),
-        shape = shape,
-        color = panelColor(),
-        shadowElevation = UiConsts.PanelElevation,
+    val railGap = UiConsts.NavMenuFloatGap * (1f - settle)
+    val edgeGap = UiConsts.NavMenuFloatMargin * (1f - settle)
+    Box(
+        modifier =
+            modifier
+                .width(width)
+                .fillMaxHeight()
+                .padding(start = railGap, top = edgeGap, end = edgeGap, bottom = edgeGap),
     ) {
-        Column(modifier = Modifier.fillMaxSize()) {
-            Spacer(Modifier.height(topInset + UiConsts.ScreenMargin))
-            TopAppBar(
-                title = title,
-                largeTitle = title,
-                color = panelColor(),
-                defaultWindowInsetsPadding = false,
-                scrollBehavior = scrollBehavior,
-            )
-            LazyColumn(
-                state = rememberLazyListState(),
+        Surface(
+            modifier = Modifier.fillMaxSize().consumePointerInput(),
+            shape = RoundedCornerShape(UiConsts.PanelCorner * (1f - settle)),
+            color = panelColor(),
+            shadowElevation = UiConsts.PanelElevation,
+        ) {
+            Column(
                 modifier =
-                    Modifier.fillMaxWidth()
-                        .weight(1f)
-                        .nestedScroll(scrollBehavior.nestedScrollConnection),
-                contentPadding = listPadding,
-                verticalArrangement = Arrangement.spacedBy(itemGap),
+                    Modifier
+                        .fillMaxSize()
+                        .padding(
+                            // Whatever the card gives up, the rows take back: their rectangle is the
+                            // same one at both ends of the fill, so a pin moves the chrome, not the text.
+                            start = UiConsts.NavMenuFloatGap - railGap,
+                            top = UiConsts.NavMenuFloatMargin - edgeGap,
+                            end = UiConsts.NavMenuFloatMargin - edgeGap,
+                            bottom = UiConsts.NavMenuFloatMargin - edgeGap,
+                        ),
             ) {
-                items(rows.size, key = { rows[it].key }) { index ->
-                    when (val row = rows[index]) {
-                        is NavMenuRow.Header -> SmallTitle(text = row.title)
+                Spacer(Modifier.height(topInset + UiConsts.ScreenMargin))
+                TopAppBar(
+                    title = title,
+                    largeTitle = title,
+                    color = panelColor(),
+                    defaultWindowInsetsPadding = false,
+                    scrollBehavior = scrollBehavior,
+                )
+                LazyColumn(
+                    state = rememberLazyListState(),
+                    modifier =
+                        Modifier.fillMaxWidth()
+                            .weight(1f)
+                            .nestedScroll(scrollBehavior.nestedScrollConnection),
+                    contentPadding = listPadding,
+                    verticalArrangement = Arrangement.spacedBy(itemGap),
+                ) {
+                    items(rows.size, key = { rows[it].key }) { index ->
+                        when (val row = rows[index]) {
+                            is NavMenuRow.Header -> SmallTitle(text = row.title)
 
-                        is NavMenuRow.Entry ->
-                            ActionRow(
-                                entry = SidebarEntry(row.id, row.title, row.icon),
-                                selected = row.selected,
-                                onClick = { onRow(row) },
-                            )
+                            is NavMenuRow.Entry ->
+                                ActionRow(
+                                    entry = SidebarEntry(row.id, row.title, row.icon),
+                                    selected = row.selected,
+                                    onClick = { onRow(row) },
+                                )
 
-                        is NavMenuRow.Project ->
-                            ProjectRow(
-                                project = row.project,
-                                expanded = row.expanded,
-                                onClick = { onRow(row) },
-                            )
+                            is NavMenuRow.Project ->
+                                ProjectRow(
+                                    project = row.project,
+                                    expanded = row.expanded,
+                                    onClick = { onRow(row) },
+                                )
 
-                        is NavMenuRow.Session ->
-                            SessionRow(
-                                session = row.session,
-                                selected = row.selected,
-                                onClick = { onRow(row) },
-                            )
+                            is NavMenuRow.Session ->
+                                SessionRow(
+                                    session = row.session,
+                                    selected = row.selected,
+                                    onClick = { onRow(row) },
+                                )
+                        }
                     }
                 }
+                Spacer(Modifier.height(bottomInset + UiConsts.ScreenMargin))
             }
-            Spacer(Modifier.height(bottomInset + UiConsts.ScreenMargin))
         }
     }
 }
 
 /**
- * The card the menu becomes while it floats: the app's overlay corner, so a menu put up by the
- * pointer reads as an overlay of the page rather than as the shell's second column.
+ * Swallows every pointer event that lands on the card, so a tap on the card's own padding belongs
+ * to the menu rather than to the page under it; the rows are children and take their taps first.
  */
-private val NavMenuCardShape = RoundedCornerShape(UiConsts.PanelCorner)
-
-/**
- * Room the floating card keeps inside its popup: the gap from the rail on the left, and the stage
- * its shadow is drawn on everywhere else, since a popup window is exactly as big as what it holds.
- */
-private val NavMenuCardInset = PaddingValues(
-    start = UiConsts.Space8 + UiConsts.Space16,
-    top = UiConsts.Space16,
-    end = UiConsts.Space16,
-    bottom = UiConsts.Space16,
-)
-
-/**
- * The rail with the menu's floating panel hanging off it. The panel is a miuix tooltip, deliberately
- * not focusable: a focusable popup would consume the outside tap that usually belongs to the rail
- * item or the page behind it, and the shell drives the tooltip's state itself.
- */
-@Composable
-internal fun NavMenuFlyout(
-    state: TooltipState,
-    title: String,
-    rows: List<NavMenuRow>,
-    onRow: (NavMenuRow) -> Unit,
-    height: Dp,
-    modifier: Modifier = Modifier,
-    topInset: Dp = 0.dp,
-    bottomInset: Dp = 0.dp,
-    width: Dp = UiConsts.NavMenuWidth,
-    content: @Composable () -> Unit,
-) {
-    TooltipBox(
-        // The popup starts on the rail's own edge, so the pointer travelling from an item into the
-        // menu crosses nothing that belongs to neither; the gap the eye reads is the card's inset.
-        positionProvider =
-            TooltipDefaults.rememberTooltipPositionProvider(
-                positioning = TooltipAnchorPosition.Right,
-                spacingBetweenTooltipAndAnchor = 0.dp,
-            ),
-        tooltip = {
-            // A panel as tall as the rail holds the popup to the window's top: miuix centres a
-            // tooltip on its anchor and the window clamps it.
-            Box(modifier = Modifier.height(height).padding(NavMenuCardInset)) {
-                NavMenuPanel(
-                    title = title,
-                    rows = rows,
-                    onRow = onRow,
-                    topInset = topInset,
-                    bottomInset = bottomInset,
-                    width = width,
-                    shape = NavMenuCardShape,
-                )
+private fun Modifier.consumePointerInput(): Modifier =
+    pointerInput(Unit) {
+        awaitPointerEventScope {
+            while (true) {
+                awaitPointerEvent().changes.forEach { it.consume() }
             }
-        },
-        state = state,
-        modifier = modifier,
-        focusable = false,
-        enableUserInput = false,
-        content = content,
-    )
-}
+        }
+    }
+

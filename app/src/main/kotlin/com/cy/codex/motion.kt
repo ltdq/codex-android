@@ -180,6 +180,17 @@ object UiConsts {
     val NavMenuWidth = 224.dp
 
     /**
+     * Space the menu keeps off the rail while it floats, before a click pins it flush.
+     *
+     * The panel is one component in both states: this gap is what it fills when it is pinned, and the
+     * rows take the same amount back as padding, so the text is where it was while the card grows out
+     * around it.
+     */
+    val NavMenuFloatGap = 8.dp
+    /** Space the floating menu keeps off the window's other edges; the shadow falls into it. */
+    val NavMenuFloatMargin = 16.dp
+
+    /**
      * Window width from which the rail's menu takes its own column.
      *
      * Below it there is no room for three columns and the menu floats over the page; above it the
