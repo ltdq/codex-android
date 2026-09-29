@@ -33,11 +33,7 @@
     <string name="side_conversation_banner">Side conversation · from %1$s</string>
     <string name="side_conversation_back">Back to main</string>
 
-    <!-- SidebarPanel.kt -->
-    <string name="sidebar_title">Codex</string>
-    <string name="sidebar_collapse">Collapse sidebar</string>
-    <string name="sidebar_expand">Expand sidebar</string>
-    <string name="sidebar_open_settings">Open settings</string>
+    <!-- SessionToolsPanel.kt -->
     <string name="sidebar_projects_header">Projects</string>
     <string name="sidebar_session_tools_header">Current task</string>
     <string name="sidebar_expand_section">Expand %1$s</string>

@@ -17,6 +17,12 @@ sealed interface Surface : NavKey {
 
     // ---- catalogs -----------------------------------------------------------
     data object Settings : Surface
+
+    /**
+     * One settings section, opened from the rail's settings menu, which already lists every section.
+     */
+    data class SettingsDetail(val section: com.cy.codex.chatwidget.SettingsSection) : Surface
+
     data object Account : Surface
     data object McpServers : Surface
     data object Skills : Surface

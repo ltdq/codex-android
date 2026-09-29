@@ -1,7 +1,6 @@
 package com.cy.codex.chatwidget
 
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -15,8 +14,10 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -29,9 +30,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -47,151 +48,131 @@ import com.cy.codex.panelColor
 import com.cy.codex.raisedSurface
 import com.cy.codex.statusDotColor
 import top.yukonga.miuix.kmp.basic.Icon
-import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.Surface
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.ChevronForward
 import top.yukonga.miuix.kmp.icon.extended.FolderFill
-import top.yukonga.miuix.kmp.icon.extended.Settings
 import top.yukonga.miuix.kmp.icon.extended.Sidebar
 import top.yukonga.miuix.kmp.squircle.squircleSurface
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
- * The floating navigation drawer, mirroring codex-rs/tui/src/chatwidget/side.rs; built from
- * `thread/list` via [SidebarModel].
+ * Toggle for [SessionToolsPanel]; it is the status chip's twin, so it takes the same size, corner
+ * and press feedback.
  */
 @Composable
-fun SidebarPanel(
-    expanded: Boolean,
-    onExpandedChange: (Boolean) -> Unit,
-    actions: List<SidebarEntry>,
+fun SessionPanelButton(
+    open: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    elevation: Dp = 12.dp,
+) {
+    val colors = MiuixTheme.colorScheme
+    val interactionSource = remember { MutableInteractionSource() }
+    val pressed by interactionSource.collectIsPressedAsState()
+    val pressOverlay by
+        animateColorAsState(
+            targetValue =
+                if (pressed) colors.onBackground.copy(alpha = 0.12f) else Color.Transparent,
+            animationSpec = Motion.Tint,
+            label = "sessionPanelPress",
+        )
+    Surface(
+        onClick = onClick,
+        modifier = modifier.size(UiConsts.ChipSize),
+        shape = RoundedCornerShape(UiConsts.ChipCorner),
+        color =
+            pressOverlay.compositeOver(
+                if (open) colors.primary.copy(alpha = 0.92f) else panelColor()
+            ),
+        shadowElevation = elevation,
+        interactionSource = interactionSource,
+        indication = null,
+    ) {
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Icon(
+                imageVector = MiuixIcons.Sidebar,
+                contentDescription =
+                    if (open) {
+                        stringResource(R.string.session_tools_close)
+                    } else {
+                        stringResource(R.string.session_tools_open)
+                    },
+                modifier = Modifier.size(UiConsts.ChipIcon),
+                tint = if (open) colors.onPrimary else colors.primary,
+            )
+        }
+    }
+}
+
+/**
+ * The floating panel on the right of the page column: the thread library, then the tools that act
+ * on the open thread. It floats over the page rather than taking a fourth segment of its own.
+ */
+@Composable
+fun SessionToolsPanel(
+    title: String,
+    library: List<SidebarEntry>,
+    tools: List<SidebarEntry>,
     onAction: (SidebarEntry) -> Unit,
-    sessionActions: List<SidebarEntry>,
-    projects: List<SidebarProject>,
-    projectsCollapsed: Boolean,
-    onToggleProjects: () -> Unit,
-    expandedProjects: Set<String>,
-    onToggleProject: (String) -> Unit,
-    selectedSessionId: String?,
-    onSessionSelected: (String) -> Unit,
-    onOpenSettings: () -> Unit,
-    panelWidth: Dp,
-    collapsedWidth: Dp,
-    collapsedHeight: Dp,
-    maxPanelHeight: Dp,
-    expandedElevation: Dp = 18.dp,
-    collapsedElevation: Dp = 12.dp,
+    modifier: Modifier = Modifier,
+    width: Dp = UiConsts.SidebarWidthCap,
+    maxHeight: Dp = 420.dp,
     listPadding: PaddingValues = PaddingValues(start = 8.dp, end = 8.dp, bottom = 8.dp),
     listItemGap: Dp = 2.dp,
     sectionGap: Dp = 6.dp,
     listBottomGap: Dp = 8.dp,
-    modifier: Modifier = Modifier,
 ) {
-    val sizeSpec = Motion.PanelDp
-    val corner by
-        animateDpAsState(
-            targetValue = if (expanded) UiConsts.DrawerCorner else UiConsts.ChipCorner,
-            animationSpec = sizeSpec,
-            label = "sidebarCorner",
-        )
-    val shape = remember(corner) { RoundedCornerShape(corner) }
-    val width by
-        animateDpAsState(
-            targetValue = if (expanded) panelWidth else collapsedWidth,
-            animationSpec = sizeSpec,
-            label = "sidebarWidth",
-        )
-    val height by
-        animateDpAsState(
-            targetValue = if (expanded) maxPanelHeight else collapsedHeight,
-            animationSpec = sizeSpec,
-            label = "sidebarHeight",
-        )
-    val listAlpha by
-        animateFloatAsState(
-            targetValue = if (expanded) 1f else 0f,
-            animationSpec = if (expanded) Motion.ListFadeIn else Motion.ListFadeOut,
-            label = "sidebarListAlpha",
-        )
-    val projectsTitle = stringResource(R.string.sidebar_projects_header)
-    val sessionToolsTitle = stringResource(R.string.sidebar_session_tools_header)
-    val items =
-        remember(
-            actions,
-            sessionActions,
-            projects,
-            projectsCollapsed,
-            expandedProjects,
-            projectsTitle,
-            sessionToolsTitle,
-        ) {
-            sidebarItems(
-                actions,
-                sessionActions,
-                projects,
-                projectsCollapsed,
-                expandedProjects,
-                projectsTitle,
-                sessionToolsTitle,
-            )
+    val libraryTitle = stringResource(R.string.sidebar_library_header)
+    val toolsTitle = stringResource(R.string.sidebar_session_tools_header)
+    val rows =
+        remember(library, tools, libraryTitle, toolsTitle) {
+            buildList {
+                add(SessionPanelRow.Header(libraryTitle))
+                library.forEach { add(SessionPanelRow.Action(it)) }
+                add(SessionPanelRow.Gap)
+                add(SessionPanelRow.Header(toolsTitle))
+                tools.forEach { add(SessionPanelRow.Action(it)) }
+            }
         }
-    // No programmatic scroll into view: while the bar grows, a zero-height viewport reports "not
-    // visible" and clamped offsets make a tap land on the neighbour of the row being revealed.
-    val listState = rememberLazyListState()
-
     Surface(
-        modifier = modifier.width(width).height(height),
-        shape = shape,
+        modifier = modifier.width(width).heightIn(max = maxHeight),
+        shape = RoundedCornerShape(UiConsts.OverlayCorner),
         color = panelColor(),
-        shadowElevation = if (expanded) expandedElevation else collapsedElevation,
+        shadowElevation = 18.dp,
     ) {
-        Column(
-            modifier =
-                Modifier.then(
-                    if (expanded) Modifier else Modifier.clickable { onExpandedChange(true) }
-                )
-        ) {
-            SidebarHeader(
-                expanded = expanded,
-                onToggle = { onExpandedChange(!expanded) },
-                onOpenSettings = onOpenSettings,
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Text(
+                text = title,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 16.dp),
+                fontSize = UiType.SheetTitle,
+                lineHeight = UiType.SheetTitleLine,
+                fontWeight = FontWeight.SemiBold,
+                color = MiuixTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
             LazyColumn(
-                state = listState,
-                modifier = Modifier.fillMaxWidth().weight(1f).alpha(listAlpha),
+                state = rememberLazyListState(),
+                modifier = Modifier.fillMaxWidth().weight(1f, fill = false),
                 contentPadding = listPadding,
                 verticalArrangement = Arrangement.spacedBy(listItemGap),
             ) {
-                items(items.size, key = { items[it].key }) { index ->
-                    when (val item = items[index]) {
-                        is SidebarItem.Header ->
+                items(rows.size, key = { rows[it].key }) { index ->
+                    when (val row = rows[index]) {
+                        is SessionPanelRow.Header ->
                             SectionHeader(
-                                title = item.title,
-                                collapsed = item.collapsed,
-                                collapsible = item.collapsible,
-                                onClick = if (item.collapsible) onToggleProjects else ({ }),
+                                title = row.title,
+                                collapsed = false,
+                                collapsible = false,
+                                onClick = {},
                             )
 
-                        is SidebarItem.Gap -> Spacer(Modifier.height(sectionGap))
+                        SessionPanelRow.Gap -> Spacer(Modifier.height(sectionGap))
 
-                        is SidebarItem.Action ->
-                            ActionRow(entry = item.entry, onClick = { onAction(item.entry) })
-
-                        is SidebarItem.Project ->
-                            ProjectRow(
-                                project = item.project,
-                                expanded = item.expanded,
-                                onClick = { onToggleProject(item.project.id) },
-                            )
-
-                        is SidebarItem.Session ->
-                            SessionRow(
-                                session = item.session,
-                                selected = item.session.id == selectedSessionId,
-                                onClick = { onSessionSelected(item.session.id) },
-                            )
+                        is SessionPanelRow.Action ->
+                            ActionRow(entry = row.entry, onClick = { onAction(row.entry) })
                     }
                 }
             }
@@ -200,114 +181,24 @@ fun SidebarPanel(
     }
 }
 
-@Composable
-private fun SidebarHeader(
-    expanded: Boolean,
-    onToggle: () -> Unit,
-    onOpenSettings: () -> Unit,
-    headerExtraHeight: Dp = 10.dp,
-    headerPadding: Dp = 5.dp,
-    iconGap: Dp = 2.dp,
-    titleSize: TextUnit = UiType.Composer,
-    titleLineHeight: TextUnit = UiType.SheetTitleLine,
-    settingsIconSize: Dp = 19.dp,
-    pressInDurationMs: Int = Motion.PressMs,
-    pressOutDurationMs: Int = Motion.TintMs,
-    titleFadeInDurationMs: Int = Motion.DisclosureMs,
-    titleFadeOutDurationMs: Int = Motion.ExitMs,
-) {
-    val colors = MiuixTheme.colorScheme
-    val interactionSource = remember { MutableInteractionSource() }
-    val pressed by interactionSource.collectIsPressedAsState()
-    val pressOverlay by
-        animateColorAsState(
-            targetValue =
-                if (pressed) colors.onBackground.copy(alpha = 0.08f) else Color.Transparent,
-            animationSpec =
-                tween(durationMillis = if (pressed) pressInDurationMs else pressOutDurationMs),
-            label = "sidebarTogglePress",
-        )
-    val titleAlpha by
-        animateFloatAsState(
-            targetValue = if (expanded) 1f else 0f,
-            animationSpec =
-                tween(
-                    durationMillis = if (expanded) titleFadeInDurationMs else titleFadeOutDurationMs
-                ),
-            label = "sidebarTitleAlpha",
-        )
-    Row(
-        modifier =
-            Modifier.fillMaxWidth()
-                .height(UiConsts.ChipSize + headerExtraHeight)
-                .padding(horizontal = headerPadding),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(
-            modifier =
-                Modifier.size(UiConsts.ChipSize)
-                    .clip(CircleShape)
-                    .then(
-                        if (expanded) {
-                            Modifier.clickable(
-                                interactionSource = interactionSource,
-                                indication = null,
-                                onClick = onToggle,
-                            )
-                        } else {
-                            Modifier
-                        }
-                    )
-                    .background(pressOverlay, CircleShape),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                imageVector = MiuixIcons.Sidebar,
-                contentDescription =
-                    if (expanded) {
-                        stringResource(R.string.sidebar_collapse)
-                    } else {
-                        stringResource(R.string.sidebar_expand)
-                    },
-                modifier = Modifier.size(UiConsts.ChipIcon),
-                tint = colors.primary,
-            )
-        }
-        Spacer(Modifier.width(iconGap))
-        Text(
-            text = stringResource(R.string.sidebar_title),
-            modifier = Modifier.weight(1f).alpha(titleAlpha),
-            fontSize = titleSize,
-            lineHeight = titleLineHeight,
-            fontWeight = FontWeight.Medium,
-            color = colors.onSurface,
-            maxLines = 1,
-            softWrap = false,
-        )
-        // Settings lives in the drawer, not the status card: the drawer is navigation, the card is one
-        // session's read-out. Composed only when expanded — alpha-0 is still hit-testable and would
-        // sit on top of the collapsed toggle.
-        if (expanded) {
-            Box(modifier = Modifier.alpha(titleAlpha)) {
-                IconButton(
-                    onClick = onOpenSettings,
-                    minWidth = UiConsts.ChipSize,
-                    minHeight = UiConsts.ChipSize,
-                ) {
-                    Icon(
-                        imageVector = MiuixIcons.Settings,
-                        contentDescription = stringResource(R.string.sidebar_open_settings),
-                        modifier = Modifier.size(settingsIconSize),
-                        tint = colors.onSurfaceVariantSummary,
-                    )
-                }
-            }
-        }
+private sealed interface SessionPanelRow {
+    val key: String
+
+    data class Header(val title: String) : SessionPanelRow {
+        override val key: String = "header-$title"
+    }
+
+    data class Action(val entry: SidebarEntry) : SessionPanelRow {
+        override val key: String = "action-${entry.id}"
+    }
+
+    data object Gap : SessionPanelRow {
+        override val key: String = "gap"
     }
 }
 
 @Composable
-private fun SectionHeader(
+internal fun SectionHeader(
     title: String,
     collapsed: Boolean,
     collapsible: Boolean = true,
@@ -383,10 +274,12 @@ private fun SectionHeader(
     }
 }
 
+/** A menu or panel row; [selected] marks the row that names the open page. */
 @Composable
-private fun ActionRow(
+internal fun ActionRow(
     entry: SidebarEntry,
     onClick: () -> Unit,
+    selected: Boolean = false,
     corner: Dp = UiConsts.CornerRow,
     contentPadding: PaddingValues = PaddingValues(horizontal = 12.dp, vertical = 12.dp),
     iconSize: Dp = UiConsts.IconLeading,
@@ -398,7 +291,10 @@ private fun ActionRow(
     Row(
         modifier =
             Modifier.fillMaxWidth()
-                .squircleSurface(color = Color.Transparent, cornerRadius = corner)
+                .squircleSurface(
+                    color = if (selected) raisedSurface() else Color.Transparent,
+                    cornerRadius = corner,
+                )
                 .combinedClickable(onClick = onClick)
                 .padding(contentPadding),
         verticalAlignment = Alignment.CenterVertically,
@@ -407,7 +303,7 @@ private fun ActionRow(
             imageVector = entry.icon,
             contentDescription = null,
             modifier = Modifier.size(iconSize),
-            tint = colors.onSurfaceSecondary,
+            tint = if (selected) colors.primary else colors.onSurfaceSecondary,
         )
         Spacer(Modifier.width(iconGap))
         Text(
@@ -415,7 +311,8 @@ private fun ActionRow(
             modifier = Modifier.weight(1f),
             fontSize = titleSize,
             lineHeight = titleLineHeight,
-            color = colors.onSurface,
+            fontWeight = if (selected) FontWeight.Medium else FontWeight.Normal,
+            color = if (selected) colors.primary else colors.onSurface,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
@@ -423,7 +320,7 @@ private fun ActionRow(
 }
 
 @Composable
-private fun ProjectRow(
+internal fun ProjectRow(
     project: SidebarProject,
     expanded: Boolean,
     onClick: () -> Unit,
@@ -494,7 +391,7 @@ private fun ProjectRow(
 }
 
 @Composable
-private fun SessionRow(
+internal fun SessionRow(
     session: SidebarSession,
     selected: Boolean,
     onClick: () -> Unit,
@@ -554,60 +451,5 @@ private fun SessionRow(
             color = colors.onSurfaceVariantSummary,
             maxLines = 1,
         )
-    }
-}
-
-private sealed interface SidebarItem {
-    val key: String
-
-    data class Action(val entry: SidebarEntry) : SidebarItem {
-        override val key: String = "action-${entry.id}"
-    }
-
-    data class Header(
-        val id: String,
-        val title: String,
-        val collapsed: Boolean,
-        val collapsible: Boolean,
-    ) : SidebarItem {
-        override val key: String = "header-$id"
-    }
-
-    data class Gap(val position: Int) : SidebarItem {
-        override val key: String = "gap-$position"
-    }
-
-    data class Project(val project: SidebarProject, val expanded: Boolean) : SidebarItem {
-        override val key: String = "project-${project.id}"
-    }
-
-    data class Session(val session: SidebarSession) : SidebarItem {
-        override val key: String = "session-${session.id}"
-    }
-}
-
-private fun sidebarItems(
-    actions: List<SidebarEntry>,
-    sessionActions: List<SidebarEntry>,
-    projects: List<SidebarProject>,
-    projectsCollapsed: Boolean,
-    expandedProjects: Set<String>,
-    projectsTitle: String,
-    sessionToolsTitle: String,
-): List<SidebarItem> = buildList {
-    actions.forEach { add(SidebarItem.Action(it)) }
-    add(SidebarItem.Gap(0))
-    add(SidebarItem.Header("tools", sessionToolsTitle, collapsed = false, collapsible = false))
-    sessionActions.forEach { add(SidebarItem.Action(it)) }
-    add(SidebarItem.Gap(1))
-    add(SidebarItem.Header("projects", projectsTitle, projectsCollapsed, collapsible = true))
-    if (!projectsCollapsed) {
-        projects.forEach { project ->
-            val expanded = project.id in expandedProjects
-            add(SidebarItem.Project(project, expanded))
-            if (expanded) {
-                project.sessions.forEach { add(SidebarItem.Session(it)) }
-            }
-        }
     }
 }

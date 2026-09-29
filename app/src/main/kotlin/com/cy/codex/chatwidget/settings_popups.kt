@@ -99,121 +99,105 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
  * Full-screen settings page: the TUI's bottom-pane pickers (bottom_pane/model_popups.rs,
  * permission_popups.rs, experimental_features_view.rs) become one two-level page of
  * miuix-preference rows sending the same events.
+ *
+ * The rail's settings menu lists the sections, so a section arrives here as [section]; only
+ * `/settings` and the section-list page reach [section] `null`.
  */
 @Composable
 fun SettingsScreen(
     catalog: CatalogState,
     session: SessionState,
     onEvent: (AppEvent) -> Unit,
-    onBack: () -> Unit,
+    onBack: (() -> Unit)?,
     onOpenWorkspacePicker: () -> Unit,
     onOpenEntry: (String) -> Unit,
     onOpenShortcuts: () -> Unit,
+    onOpenSection: (SettingsSection) -> Unit,
     configPath: String,
     /** The account read's recovery verdict; gates the model group to Reserve-only (codex-rs/tui/src/chatwidget/luna_reserve_model.rs). */
     ordinaryUsageRecovered: Boolean = false,
-    /** Where `/permissions` asked this page to open; `null` starts at the home list. */
-    initialSection: SettingsSection? = null,
+    /** Which section to show; `null` shows the list of sections. */
+    section: SettingsSection? = null,
     modifier: Modifier = Modifier,
 ) {
     val config = session.config
     val preset =
         catalog.modelPreset(config.model)
             ?: catalog.models.firstOrNull { it.isDefault && !it.hidden }
-    // `remember` without keys: the deep link seeds the stack once and never rewinds later navigation.
-    val backStack = remember {
-        mutableStateListOf<NavKey>(initialSection?.let { SettingsRoute.Detail(it) } ?: SettingsRoute.Home)
+    if (section == null) {
+        SettingsPage(
+            title = stringResource(R.string.settings_screen_title),
+            summary = stringResource(R.string.settings_home_subtitle),
+            onBack = onBack,
+            modifier = modifier,
+        ) {
+            SettingsHome(
+                catalog = catalog,
+                session = session,
+                onSelect = onOpenSection,
+            )
+        }
+        return
     }
-
-    NavDisplay(
-        backStack = backStack,
-        modifier =
-            modifier
-                .fillMaxSize(),
-        onBack = {
-            if (backStack.size > 1) backStack.removeLastOrNull() else onBack()
-        },
-        transition = NavTransitions.MiuixDefault,
-        effects = NavDisplayEffects(enableCornerClip = false, dimAmount = 0f),
+    SettingsPage(
+        title = stringResource(section.titleRes),
+        summary = stringResource(section.descriptionRes),
+        onBack = onBack,
+        modifier = modifier,
     ) {
-        entry<SettingsRoute.Home>(swipeDismiss = NavSwipeDirection.None) {
-            SettingsPage(
-                title = stringResource(R.string.settings_screen_title),
-                summary = stringResource(R.string.settings_home_subtitle),
-                onBack = onBack,
-            ) {
-                SettingsHome(
-                    catalog = catalog,
-                    session = session,
-                    onSelect = { backStack.add(SettingsRoute.Detail(it)) },
+        when (section) {
+            SettingsSection.Model -> {
+                SettingsModelSection(
+                    catalog,
+                    preset,
+                    config.model,
+                    config.reasoningEffort,
+                    ordinaryUsageRecovered,
+                    onEvent,
                 )
+                SettingsMemorySection(catalog, onEvent)
+                SettingsExperimentalSection(catalog, onEvent)
             }
-        }
-        entry<SettingsRoute.Detail>(swipeDismiss = NavSwipeDirection.None) { route ->
-            SettingsPage(
-                title = stringResource(route.section.titleRes),
-                summary = stringResource(route.section.descriptionRes),
-                onBack = { backStack.removeLastOrNull() },
-            ) {
-                when (route.section) {
-                    SettingsSection.Model -> {
-                        SettingsModelSection(
-                            catalog,
-                            preset,
-                            config.model,
-                            config.reasoningEffort,
-                            ordinaryUsageRecovered,
-                            onEvent,
-                        )
-                        SettingsMemorySection(catalog, onEvent)
-                        SettingsExperimentalSection(catalog, onEvent)
-                    }
 
-                    SettingsSection.Permissions ->
-                        SettingsApprovalSection(config, catalog, session.permissionSelectionError, onEvent)
+            SettingsSection.Permissions ->
+                SettingsApprovalSection(config, catalog, session.permissionSelectionError, onEvent)
 
-                    SettingsSection.Workspace -> {
-                        SettingsWorkspaceSection(config.cwd, config.workspaceRoots, onOpenWorkspacePicker)
-                        SettingsSessionLink(config, onOpenEntry)
-                    }
+            SettingsSection.Workspace -> {
+                SettingsWorkspaceSection(config.cwd, config.workspaceRoots, onOpenWorkspacePicker)
+                SettingsSessionLink(config, onOpenEntry)
+            }
 
-                    SettingsSection.Appearance -> {
-                        SettingsAppearanceSection()
-                        SettingsShortcutsSection(onOpenShortcuts)
-                    }
+            SettingsSection.Appearance -> {
+                SettingsAppearanceSection()
+                SettingsShortcutsSection(onOpenShortcuts)
+            }
 
-                    SettingsSection.Notifications -> {
-                        SettingsNotificationSection()
-                        SettingsRecapSection()
-                    }
+            SettingsSection.Notifications -> {
+                SettingsNotificationSection()
+                SettingsRecapSection()
+            }
 
-                    SettingsSection.Extensions -> SettingsExtensionsSection(onOpenEntry)
-                    SettingsSection.Data -> SettingsDataSection(onOpenEntry)
-                    SettingsSection.System -> {
-                        SettingsConfigSourcesSection(catalog, configPath)
-                        SettingsAboutSection()
-                    }
-                }
+            SettingsSection.Extensions -> SettingsExtensionsSection(onOpenEntry)
+            SettingsSection.Data -> SettingsDataSection(onOpenEntry)
+            SettingsSection.System -> {
+                SettingsConfigSourcesSection(catalog, configPath)
+                SettingsAboutSection()
             }
         }
     }
-}
-
-private sealed interface SettingsRoute : NavKey {
-    data object Home : SettingsRoute
-    data class Detail(val section: SettingsSection) : SettingsRoute
 }
 
 @Composable
 private fun SettingsPage(
     title: String,
     summary: String,
-    onBack: () -> Unit,
+    onBack: (() -> Unit)?,
+    modifier: Modifier = Modifier,
     content: @Composable () -> Unit,
 ) {
     val focusManager = LocalFocusManager.current
     Column(
-        modifier = Modifier.fillMaxSize().background(MiuixTheme.colorScheme.background),
+        modifier = modifier.fillMaxSize().background(MiuixTheme.colorScheme.background),
     ) {
         BasicComponent(
             title = title,
@@ -232,7 +216,7 @@ private fun SettingsPage(
                         if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                         when (event.key) {
                             Key.Escape, Key.Back -> {
-                                onBack()
+                                onBack?.invoke()
                                 true
                             }
 
@@ -1029,7 +1013,8 @@ private fun MonoValue(text: String) {
 }
 
 @Composable
-private fun SettingsBackButton(onBack: () -> Unit) {
+private fun SettingsBackButton(onBack: (() -> Unit)?) {
+    if (onBack == null) return
     IconButton(
         onClick = onBack,
         minWidth = UiConsts.IconButtonSize,

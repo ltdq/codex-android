@@ -85,7 +85,7 @@ fun PluginsScreen(
     catalog: CatalogState,
     client: AppServerClient,
     onEvent: (AppEvent) -> Unit,
-    onBack: () -> Unit,
+    onBack: (() -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
     val colors = MiuixTheme.colorScheme
@@ -666,7 +666,8 @@ private fun PluginRow(
 }
 
 @Composable
-private fun PluginsBackButton(onBack: () -> Unit) {
+private fun PluginsBackButton(onBack: (() -> Unit)?) {
+    if (onBack == null) return
     IconButton(
         onClick = onBack,
         minWidth = UiConsts.IconButtonSize,

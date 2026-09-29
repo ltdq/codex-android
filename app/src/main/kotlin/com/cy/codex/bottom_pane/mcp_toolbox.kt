@@ -78,7 +78,7 @@ fun McpToolboxScreen(
     server: String,
     client: AppServerClient,
     onEvent: (AppEvent) -> Unit,
-    onBack: () -> Unit,
+    onBack: (() -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
     val colors = MiuixTheme.colorScheme
@@ -169,17 +169,19 @@ fun McpToolboxScreen(
             title = stringResource(R.string.mcp_toolbox_title),
             summary = server,
             startAction = {
-                IconButton(
-                    onClick = onBack,
-                    minWidth = UiConsts.IconButtonSize,
-                    minHeight = UiConsts.IconButtonSize,
-                ) {
-                    Icon(
-                        imageVector = MiuixIcons.ChevronBackward,
-                        contentDescription = stringResource(R.string.mcp_toolbox_back),
-                        modifier = Modifier.size(UiConsts.IconHeader),
-                        tint = MiuixTheme.colorScheme.primary,
-                    )
+                if (onBack != null) {
+                    IconButton(
+                        onClick = onBack,
+                        minWidth = UiConsts.IconButtonSize,
+                        minHeight = UiConsts.IconButtonSize,
+                    ) {
+                        Icon(
+                            imageVector = MiuixIcons.ChevronBackward,
+                            contentDescription = stringResource(R.string.mcp_toolbox_back),
+                            modifier = Modifier.size(UiConsts.IconHeader),
+                            tint = MiuixTheme.colorScheme.primary,
+                        )
+                    }
                 }
             },
             insideMargin = PaddingValues(14.dp, 10.dp),

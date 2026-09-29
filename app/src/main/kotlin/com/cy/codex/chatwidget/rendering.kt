@@ -31,6 +31,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -55,6 +56,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onSizeChanged
@@ -83,12 +85,10 @@ import com.cy.codex.UiConsts
 import com.cy.codex.UiType
 import com.cy.codex.app.AgentRosterEntry
 import com.cy.codex.app.AgentsOverview
-import com.cy.codex.app.StatusDot
 import com.cy.codex.app.SubAgentTranscriptPane
 import com.cy.codex.app.agentPageThreads
 import com.cy.codex.app.rememberAgentRoster
 import com.cy.codex.app.sessionStatusReport
-import com.cy.codex.app.tone
 import com.cy.codex.app.withThreadMetadata
 import com.cy.codex.bottom_pane.ApprovalDialog
 import com.cy.codex.bottom_pane.ApprovalNoticeBar
@@ -141,6 +141,7 @@ import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.LinearProgressIndicator
+import top.yukonga.miuix.kmp.basic.SmallTopAppBar
 import top.yukonga.miuix.kmp.basic.Surface
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.blur.Backdrop
@@ -170,30 +171,28 @@ internal fun agentPageSelections(
     pageThreads.getOrNull(page)?.takeIf { it != mainThreadId }
 }
 
+/** Footprint the title bar reserves for the floating controls pinned to the window's edge. */
+private fun controlsWidth(agentPage: Boolean, gap: Dp = UiConsts.Space8): Dp =
+    UiConsts.ChipSize * 2 + gap + if (agentPage) UiConsts.ChipSize else 0.dp
+
 /**
- * The chat surface: a pager whose first page is the open thread and whose later pages are the
- * agents it spawned, plus the drawer, status card, approval cards and composer, mirroring
- * `codex-rs/tui/src/chatwidget.rs`. Owns only presentation state; everything else is an
- * [com.cy.codex.AppEvent].
+ * The page column: the open thread and the agents it spawned, with their title bar, status card,
+ * session panel and approval cards, mirroring `codex-rs/tui/src/chatwidget.rs`. The rail, its menu
+ * and the composer are the shell's; this surface owns only presentation state.
  */
 @Composable
 fun ChatScreen(
     app: CodexApp,
     modifier: Modifier = Modifier,
-    topInset: androidx.compose.ui.unit.Dp = 0.dp,
-    bottomInset: androidx.compose.ui.unit.Dp = 0.dp,
-    sidebarExpanded: Boolean,
-    onSidebarExpandedChange: (Boolean) -> Unit,
-    projectsCollapsed: Boolean,
-    onToggleProjects: () -> Unit,
-    expandedProjects: Set<String>,
-    onToggleProject: (String) -> Unit,
+    topInset: Dp = 0.dp,
+    bottomInset: Dp = 0.dp,
+    /** How far the floating controls reach past the page column's end, to the window's edge. */
+    controlsEndOffset: Dp = 0.dp,
     topBlurHeight: Dp = 52.dp,
     bottomBlurHeight: Dp = 78.dp,
     topBlurRadius: Float = 14f,
     bottomBlurRadius: Float = 16f,
     panelTopOffset: Dp = 56.dp,
-    composerGap: Dp = 8.dp,
     minPanelHeight: Dp = 240.dp,
     minDiffHeight: Dp = 300.dp,
     maxDiffHeight: Dp = 560.dp,
@@ -203,19 +202,9 @@ fun ChatScreen(
     panelExitDurationMs: Int = Motion.ExitMs,
     diffEnterDurationMs: Int = Motion.EnterMs,
     diffExitDurationMs: Int = Motion.ExitMs,
-    queuedEnterDurationMs: Int = Motion.EnterMs,
-    queuedExitDurationMs: Int = Motion.ExitMs,
 ) {
     val session = app.widget.state
     val threads = app.threads
-    // OpenDocument, not GetContent: the app keeps a document-uri grant the server can read back later.
-    val attachmentPicker =
-        rememberLauncherForActivityResult(contract = ActivityResultContracts.OpenDocument()) { uri
-            ->
-            if (uri != null) {
-                app.importAttachment(uri)
-            }
-        }
     // Consume the request before launching; a recomposition must not open the dialog twice.
     val exportPicker =
         rememberLauncherForActivityResult(
@@ -237,6 +226,7 @@ fun ChatScreen(
     // `show` stays true through the exit animation; clearing on the request would cut it mid-slide.
     var overviewLeaving by remember { mutableStateOf(false) }
     val panelState = remember { StatusPanelState() }
+    var sessionPanelOpen by remember { mutableStateOf(false) }
 
     val mainAgentLabel = stringResource(R.string.agent_roster_main_label)
     val subAgentNameFormat = stringResource(R.string.agent_roster_sub_agent_name)
@@ -281,6 +271,17 @@ fun ChatScreen(
                     ?: thread.preview.take(48).takeIf { it.isNotBlank() }
             } ?: threadId.take(8)
     }
+    // Agent titles: the sub-agent's roster name on its own page, the thread's name on page zero and
+    // nothing at all while no session is open -- the empty state names itself in the transcript.
+    val agentTitle =
+        if (viewedAgent == null) {
+            threadNameOf(session.threadId).takeIf { it.isNotBlank() }.orEmpty()
+        } else {
+            roster.firstOrNull { it.threadId == viewedAgent }?.name
+                ?: stringResource(R.string.sub_agent_thread_fallback_title)
+        }
+    val agentSubtitle =
+        if (viewedAgent != null) stringResource(R.string.sub_agent_page_read_only) else ""
     val backdrop = rememberLayerBackdrop {
         drawRect(colors.background)
         drawContent()
@@ -288,69 +289,39 @@ fun ChatScreen(
 
     BoxWithConstraints(modifier = modifier.fillMaxSize()) {
         val density = LocalDensity.current
-        // Wide window: the column is inset by the drawer's width at all times — centred while
-        // the drawer is shut, pushed across when it opens — so text wraps once and the drawer
-        // costs a composited translation, not a re-measure of every cell. Narrow: overlays.
-        val wide = maxWidth >= UiConsts.WideContentBreakpoint
-        val drawerWidth = minOf(UiConsts.SidebarWidth, UiConsts.SidebarWidthCap)
-        val contentStart =
-            (UiConsts.ScreenMargin + drawerWidth + UiConsts.ContentGap).coerceAtMost(maxWidth)
-        val contentWidth =
-            if (wide) {
-                (maxWidth - contentStart - UiConsts.ScreenMargin).coerceAtLeast(
-                    UiConsts.MinContentWidth
-                )
-            } else {
-                maxWidth
-            }
-        val centredStart = (maxWidth - contentWidth) / 2
-        val contentShift by
-            animateDpAsState(
-                targetValue = if (wide && sidebarExpanded) contentStart - centredStart else 0.dp,
-                animationSpec = Motion.PanelDp,
-                label = "contentShift",
-            )
         Box(modifier = Modifier.fillMaxSize().layerBackdrop(backdrop)) {
-            Box(
-                modifier =
-                    Modifier.align(Alignment.TopCenter)
-                        .width(contentWidth)
-                        .fillMaxHeight()
-                        .graphicsLayer { translationX = contentShift.toPx() }
-            ) {
-                HorizontalPager(
-                    state = pagerState,
-                    // The pages scroll vertically, so the pager owner reads horizontal drags
-                    // itself; native pager input would fight the transcripts for the pointer.
-                    modifier = Modifier.fillMaxSize().pagerGestureOverride(pagerState),
-                    userScrollEnabled = false,
-                    pageNestedScrollConnection = PagerGestureNestedScrollConnection,
-                    flingBehavior =
-                        PagerDefaults.flingBehavior(
-                            state = pagerState,
-                            snapAnimationSpec = PagerNavigationSpringSpec,
-                        ),
-                    key = { agentPages.getOrNull(it) ?: it },
-                ) { page ->
-                    val threadId = agentPages.getOrNull(page)
-                    if (threadId == null || threadId == session.threadId) {
-                        TranscriptPane(
-                            app = app,
-                            session = session,
-                            topInset = topInset,
-                            bottomInset = bottomInset,
-                            modifier = Modifier.fillMaxSize(),
-                        )
-                    } else {
-                        SubAgentTranscriptPane(
-                            threadId = threadId,
-                            client = app.client,
-                            topInset = topInset,
-                            // Clear the read-only bar that replaces the composer on this page.
-                            bottomInset = bottomInset + UiConsts.PromptBarHeight + UiConsts.ScreenMargin,
-                            modifier = Modifier.fillMaxSize(),
-                        )
-                    }
+            HorizontalPager(
+                state = pagerState,
+                // The pages scroll vertically, so the pager owner reads horizontal drags
+                // itself; native pager input would fight the transcripts for the pointer.
+                modifier = Modifier.fillMaxSize().pagerGestureOverride(pagerState),
+                userScrollEnabled = false,
+                pageNestedScrollConnection = PagerGestureNestedScrollConnection,
+                flingBehavior =
+                    PagerDefaults.flingBehavior(
+                        state = pagerState,
+                        snapAnimationSpec = PagerNavigationSpringSpec,
+                    ),
+                key = { agentPages.getOrNull(it) ?: it },
+            ) { page ->
+                val threadId = agentPages.getOrNull(page)
+                if (threadId == null || threadId == session.threadId) {
+                    TranscriptPane(
+                        app = app,
+                        session = session,
+                        topInset = topInset,
+                        bottomInset = bottomInset,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                } else {
+                    SubAgentTranscriptPane(
+                        threadId = threadId,
+                        client = app.client,
+                        topInset = topInset,
+                        // The composer is the shell's and already takes its own height below.
+                        bottomInset = bottomInset + UiConsts.ScreenMargin * 2,
+                        modifier = Modifier.fillMaxSize(),
+                    )
                 }
             }
         }
@@ -394,13 +365,69 @@ fun ChatScreen(
             )
         }
 
-        StatusCardButton(
-            open = panelState.open,
-            onClick = { panelState.toggle() },
+        // The title names the agent this page reads; transparent, so the top blur reads through. The
+        // floating controls are outside `actions`: they do not move with the page column.
+        SmallTopAppBar(
+            title = agentTitle,
+            subtitle = agentSubtitle,
+            color = Color.Transparent,
+            defaultWindowInsetsPadding = false,
+            modifier =
+                Modifier.align(Alignment.TopCenter)
+                    .padding(top = topInset + UiConsts.ScreenMargin),
+            actions = { Spacer(Modifier.width(controlsWidth(agentPage = viewedAgent != null))) },
+        )
+
+        Row(
             modifier =
                 Modifier.align(Alignment.TopEnd)
+                    .offset(x = controlsEndOffset)
                     .padding(end = UiConsts.ScreenMargin, top = topInset + UiConsts.ScreenMargin),
-        )
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            StatusCardButton(open = panelState.open, onClick = { panelState.toggle() })
+            Spacer(Modifier.width(UiConsts.Space8))
+            SessionPanelButton(
+                open = sessionPanelOpen,
+                onClick = { sessionPanelOpen = !sessionPanelOpen },
+            )
+            if (viewedAgent != null) {
+                IconButton(
+                    onClick = { app.openAgentSummary(viewedAgent) },
+                    minWidth = UiConsts.ChipSize,
+                    minHeight = UiConsts.ChipSize,
+                ) {
+                    Icon(
+                        imageVector = MiuixIcons.Info,
+                        contentDescription = stringResource(R.string.sub_agent_page_details),
+                        modifier = Modifier.size(UiConsts.ChipIcon),
+                        tint = colors.primary,
+                    )
+                }
+            }
+        }
+
+        if (sessionPanelOpen) {
+            SessionToolsPanel(
+                title = stringResource(R.string.sidebar_library_header),
+                library = SidebarModel.libraryEntries(),
+                tools = SidebarModel.sessionEntries(),
+                onAction = { entry ->
+                    sessionPanelOpen = false
+                    openSurfaceFor(app, entry.id)
+                },
+                maxHeight =
+                    (maxHeight - topInset - UiConsts.ScreenMargin * 2 - UiConsts.ChipSize)
+                        .coerceAtLeast(minPanelHeight),
+                modifier =
+                    Modifier.align(Alignment.TopEnd)
+                        .offset(x = controlsEndOffset)
+                        .padding(
+                            end = UiConsts.ScreenMargin,
+                            top = topInset + UiConsts.ScreenMargin + UiConsts.ChipSize + UiConsts.Space8,
+                        ),
+            )
+        }
 
         val panelMax = maxWidth - UiConsts.ScreenMargin * 2
         val statusWidth = minOf(UiConsts.StatusPanelWidth, panelMax)
@@ -505,83 +532,6 @@ fun ChatScreen(
             }
         }
 
-        val promptBarStartInset by
-            animateDpAsState(
-                targetValue =
-                    if (wide && sidebarExpanded) contentStart - UiConsts.ScreenMargin else 0.dp,
-                animationSpec = Motion.PanelDp,
-                label = "promptBarStartInset",
-            )
-
-        // The composer belongs to the bound thread; an agent page is read-only and retracts it.
-        AnimatedVisibility(
-            visible = viewedAgent == null,
-            enter =
-                fadeIn(tween(Motion.EnterMs, easing = Motion.EnterEasing)) +
-                    expandVertically(
-                        expandFrom = Alignment.Bottom,
-                        animationSpec = tween(Motion.EnterMs, easing = Motion.EnterEasing),
-                    ),
-            exit =
-                fadeOut(tween(Motion.ExitMs, easing = Motion.ExitEasing)) +
-                    shrinkVertically(
-                        shrinkTowards = Alignment.Bottom,
-                        animationSpec = tween(Motion.ExitMs, easing = Motion.ExitEasing),
-                    ),
-            modifier = Modifier.align(Alignment.BottomCenter),
-        ) {
-            ComposerDock(
-                app = app,
-                session = session,
-                threadNameOf = threadNameOf,
-                promptBarStartInset = promptBarStartInset,
-                backdrop = backdrop,
-                onAttach = { attachmentPicker.launch(arrayOf("*/*")) },
-                composerGap = composerGap,
-                queuedEnterDurationMs = queuedEnterDurationMs,
-                queuedExitDurationMs = queuedExitDurationMs,
-                modifier = Modifier,
-            )
-        }
-
-        // Kept through the exit animation so the bar does not pop out from under the returning
-        // composer.
-        var lastAgentPage by remember { mutableStateOf<String?>(null) }
-        LaunchedEffect(viewedAgent) {
-            if (viewedAgent != null) lastAgentPage = viewedAgent
-        }
-        AnimatedVisibility(
-            visible = viewedAgent != null,
-            enter =
-                fadeIn(tween(Motion.EnterMs, easing = Motion.EnterEasing)) +
-                    expandVertically(
-                        expandFrom = Alignment.Bottom,
-                        animationSpec = tween(Motion.EnterMs, easing = Motion.EnterEasing),
-                    ),
-            exit =
-                fadeOut(tween(Motion.ExitMs, easing = Motion.ExitEasing)) +
-                    shrinkVertically(
-                        shrinkTowards = Alignment.Bottom,
-                        animationSpec = tween(Motion.ExitMs, easing = Motion.ExitEasing),
-                    ),
-            modifier = Modifier.align(Alignment.BottomCenter),
-        ) {
-            lastAgentPage?.let { threadId ->
-                SubAgentPageBar(
-                    entry = roster.firstOrNull { it.threadId == threadId },
-                    onOpenDetails = { app.openAgentSummary(threadId) },
-                    modifier =
-                        Modifier.fillMaxWidth()
-                            .padding(
-                                start = (promptBarStartInset + UiConsts.ScreenMargin)
-                                    .coerceAtLeast(0.dp),
-                                end = UiConsts.ScreenMargin,
-                                bottom = UiConsts.ScreenMargin,
-                            ),
-                )
-            }
-        }
-
         AgentsOverviewPane(
             app = app,
             session = session,
@@ -597,30 +547,6 @@ fun ChatScreen(
                 overviewLeaving = false
                 overviewOpen = false
             },
-        )
-
-        SidebarPanel(
-            expanded = sidebarExpanded,
-            onExpandedChange = onSidebarExpandedChange,
-            actions = SidebarModel.actions(),
-            onAction = { entry -> openSurfaceFor(app, entry.id) },
-            sessionActions = SidebarModel.sessionEntries(),
-            projects = SidebarModel.projects(threads, includeArchived = false),
-            projectsCollapsed = projectsCollapsed,
-            onToggleProjects = onToggleProjects,
-            expandedProjects = expandedProjects,
-            onToggleProject = onToggleProject,
-            selectedSessionId = session.threadId,
-            onSessionSelected = app::openThread,
-            onOpenSettings = { app.openSurface(Surface.Settings) },
-            panelWidth = minOf(UiConsts.SidebarWidth, UiConsts.SidebarWidthCap),
-            collapsedWidth = UiConsts.ChipSize,
-            collapsedHeight = UiConsts.ChipSize,
-            maxPanelHeight =
-                (maxHeight - topInset - UiConsts.ScreenMargin * 2).coerceAtLeast(minPanelHeight),
-            modifier =
-                Modifier.align(Alignment.TopStart)
-                    .padding(start = UiConsts.ScreenMargin, top = topInset + UiConsts.ScreenMargin),
         )
 
         ApprovalDialog(
@@ -712,7 +638,7 @@ internal fun transcriptIsEmpty(
 
 /**
  * The transcript surface, split out of [ChatScreen] so a streaming write invalidates only this
- * pane, not the composer, panels and drawer around it.
+ * pane, not the composer and panels around it.
  */
 @Composable
 private fun TranscriptPane(
@@ -779,11 +705,7 @@ private fun TranscriptPane(
                 start = UiConsts.TranscriptGutter,
                 end = UiConsts.TranscriptGutter,
                 top = topInset + UiConsts.TranscriptTopInset,
-                bottom =
-                    bottomInset +
-                        UiConsts.PromptBarHeight +
-                        UiConsts.ScreenMargin * 2 +
-                        UiConsts.TranscriptBottomInset,
+                bottom = bottomInset + UiConsts.ScreenMargin + UiConsts.TranscriptBottomInset,
             ),
     )
 }
@@ -1004,7 +926,7 @@ private fun onApprovalDecision(
     }
 }
 
-/** Shared route table for the drawer and Settings, so the two placements cannot drift. */
+/** Shared route table for the rail's menus and Settings, so the two placements cannot drift. */
 internal fun openSurfaceFor(app: CodexApp, id: String) {
     // Routes needing a subject read the open session: a caller-passed id could name one no longer open.
     val threadId = app.widget.state.threadId
@@ -1480,11 +1402,10 @@ private const val ComposerDraftFile = "drafts/composer.txt"
 
 /** Queue tray and composer; reads live here so a keystroke or queue change does not recompose the content behind it. */
 @Composable
-private fun ComposerDock(
+internal fun ComposerDock(
     app: CodexApp,
     session: SessionState,
     threadNameOf: (String) -> String,
-    promptBarStartInset: Dp,
     backdrop: Backdrop,
     onAttach: () -> Unit,
     modifier: Modifier = Modifier,
@@ -1752,10 +1673,7 @@ private fun ComposerDock(
             backdrop = backdrop,
             modifier =
                 Modifier.fillMaxWidth()
-                    .padding(
-                        start = (promptBarStartInset + UiConsts.ScreenMargin).coerceAtLeast(0.dp),
-                        end = UiConsts.ScreenMargin,
-                    ),
+                    .padding(horizontal = UiConsts.ScreenMargin),
         )
     }
 }
@@ -1793,69 +1711,6 @@ private fun AgentsOverviewPane(
         onDismissFinished = onDismissFinished,
         totalTokens = entries.sumOf { it.tokens.toLong() },
     )
-}
-
-/**
- * Replaces the composer on an agent page: it names the agent being read and opens the summary
- * sheet. Switching pages is the swipe gesture, so the bar carries no page controls.
- */
-@Composable
-private fun SubAgentPageBar(
-    entry: AgentRosterEntry?,
-    onOpenDetails: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val colors = MiuixTheme.colorScheme
-    Row(
-        modifier =
-            modifier
-                .clip(RoundedCornerShape(UiConsts.CornerChip))
-                .background(glassTint(0.94f))
-                .padding(
-                    start = UiConsts.Space12,
-                    end = UiConsts.Space4,
-                    top = UiConsts.Space8,
-                    bottom = UiConsts.Space8,
-                ),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        if (entry != null) {
-            StatusDot(entry.tone())
-            Spacer(Modifier.width(UiConsts.Space8))
-        }
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text =
-                    entry?.name ?: stringResource(R.string.sub_agent_thread_fallback_title),
-                fontSize = UiType.RowTitle,
-                lineHeight = UiType.RowTitleLine,
-                fontWeight = FontWeight.Medium,
-                color = colors.onSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                text = stringResource(R.string.sub_agent_page_read_only),
-                fontSize = UiType.Footnote,
-                lineHeight = UiType.FootnoteLine,
-                color = colors.onSurfaceVariantSummary,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-        IconButton(
-            onClick = onOpenDetails,
-            minWidth = UiConsts.IconButtonSize,
-            minHeight = UiConsts.IconButtonSize,
-        ) {
-            Icon(
-                imageVector = MiuixIcons.Info,
-                contentDescription = stringResource(R.string.sub_agent_page_details),
-                modifier = Modifier.size(UiConsts.IconHeader),
-                tint = colors.primary,
-            )
-        }
-    }
 }
 
 @Composable

@@ -57,7 +57,7 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 fun HooksScreen(
     catalog: CatalogState,
     onEvent: (AppEvent) -> Unit,
-    onBack: () -> Unit,
+    onBack: (() -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
     val colors = MiuixTheme.colorScheme
@@ -394,7 +394,8 @@ private fun HooksIssueRow(text: String, path: String?, tint: Color) {
 }
 
 @Composable
-private fun HooksBackButton(onBack: () -> Unit) {
+private fun HooksBackButton(onBack: (() -> Unit)?) {
+    if (onBack == null) return
     IconButton(
         onClick = onBack,
         minWidth = UiConsts.IconButtonSize,

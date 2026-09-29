@@ -4,25 +4,25 @@ import android.content.Context
 import android.net.Uri
 import android.provider.OpenableColumns
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.clickable
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.focusable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -33,7 +33,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
@@ -79,6 +78,7 @@ import com.cy.codex.bottom_pane.mentions_v2.MentionSuggestion
 import com.cy.codex.bottom_pane.mentions_v2.mentionMatches
 import com.cy.codex.bottom_pane.userVerificationAnswer
 import com.cy.codex.chatwidget.ChatScreen
+import com.cy.codex.chatwidget.ComposerDock
 import com.cy.codex.chatwidget.AgentNotice
 import com.cy.codex.chatwidget.AgentNotification
 import com.cy.codex.chatwidget.ApprovalNoticeKind
@@ -91,6 +91,7 @@ import com.cy.codex.chatwidget.RealtimeScreen
 import com.cy.codex.chatwidget.ReviewScreen
 import com.cy.codex.chatwidget.SettingsScreen
 import com.cy.codex.chatwidget.SettingsSection
+import com.cy.codex.chatwidget.SidebarModel
 import com.cy.codex.chatwidget.TrustProjectSheet
 import com.cy.codex.chatwidget.WindowsSandboxScreen
 import com.cy.codex.chatwidget.WorkspacePickerScreen
@@ -139,11 +140,11 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Scaffold
+import top.yukonga.miuix.kmp.blur.layerBackdrop
+import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
 import top.yukonga.miuix.kmp.basic.SnackbarHost
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
-import top.yukonga.miuix.kmp.basic.Surface as MiuixSurface
 import top.yukonga.miuix.kmp.nav.core.NavBackStack
-import top.yukonga.miuix.kmp.nav.core.NavCornerClipMode
 import top.yukonga.miuix.kmp.nav.core.NavDisplay
 import top.yukonga.miuix.kmp.nav.core.NavDisplayEffects
 import top.yukonga.miuix.kmp.nav.core.navBackStackOf
@@ -280,16 +281,6 @@ class CodexApp(
     }
 
     var copyMenuOpen by mutableStateOf(false)
-
-    /**
-     * Section `/permissions` asked the settings page to open at (`Surface.Settings` carries no
-     * payload and the page owns its nav stack); consumed by the page's first composition.
-     */
-    private var pendingSettingsSection: SettingsSection? = null
-
-    /** One-shot read of [pendingSettingsSection]; later recompositions see `null`. */
-    fun consumePendingSettingsSection(): SettingsSection? =
-        pendingSettingsSection.also { pendingSettingsSection = null }
 
     var mentionQuery by mutableStateOf<String?>(null)
         private set
@@ -1080,12 +1071,8 @@ class CodexApp(
             "status" -> openSurface(Surface.SessionStatus)
             "copy" -> copyMenuOpen = true
             "model", "approvals" -> openSurface(Surface.Settings)
-            // The settings page's own nav stack wins when it is already open; otherwise the deep
-            // link seeds it at the profile picker.
-            "permissions" -> {
-                if (Surface.Settings !in surfaces) pendingSettingsSection = SettingsSection.Permissions
-                openSurface(Surface.Settings)
-            }
+            // The settings menu lists its own sections, so this link names one directly.
+            "permissions" -> openSurface(Surface.SettingsDetail(SettingsSection.Permissions))
             "memories" -> openSurface(Surface.Memories)
 
             // `/plan` toggles: the phone has no mode-cycle binding, so one command must do both or
@@ -1843,7 +1830,7 @@ class CodexApp(
             Surface.Plugins -> onAppEvent(AppEvent.ReloadPlugins)
             Surface.Apps -> onAppEvent(AppEvent.ReloadApps)
             Surface.Memories -> onAppEvent(AppEvent.ReloadMemories)
-            Surface.Settings -> {
+            Surface.Settings, is Surface.SettingsDetail -> {
                 onAppEvent(AppEvent.ReloadConfig)
                 load({ client.listExperimentalFeatures() }) { catalog.experimentalFeatures = it }
                 loadPermissionProfiles()
@@ -1859,6 +1846,22 @@ class CodexApp(
     /** Pop one page; the chat root is never popped. */
     fun closeSurface() {
         if (surfaces.size > 1) surfaces.removeAt(surfaces.lastIndex)
+    }
+
+    /**
+     * Land on a rail item's root page; the pages of the section being left are dropped, so back
+     * never walks out of one section and into another.
+     */
+    fun openSection(section: NavSection) {
+        closeAllSurfaces()
+        val root = sectionRoot(section)
+        if (root != Surface.Chat) openSurface(root)
+    }
+
+    /** Show a settings section; the section already on top is replaced instead of stacked under it. */
+    fun openSettingsSection(section: SettingsSection) {
+        if (surfaces.lastOrNull() is Surface.SettingsDetail) surfaces.removeAt(surfaces.lastIndex)
+        openSurface(Surface.SettingsDetail(section))
     }
 
     /**
@@ -2351,7 +2354,9 @@ class CodexApp(
 
         const val KeySelectedSession = "session_selected"
         const val KeyExpandedProjects = "projects_expanded"
-        const val KeyProjectsCollapsed = "projects_collapsed"
+
+        /** Whether the rail's menu is open; the rail itself never hides. */
+        const val KeyMenuExpanded = "nav_menu_expanded"
 
         /** Cross-session `luna_reserve_notice_account_id` (chatwidget/backend_banners.rs). */
         const val KeyLunaNoticeAccount = "luna_reserve_notice_account_id"
@@ -2425,8 +2430,9 @@ fun CodexRoot() {
 }
 
 /**
- * The shell: the chat mounts always, every other screen pushes over it
- * (codex-rs/tui/src/app.rs, `NavTransitions.Modal`); sidebar view state persists like `local_settings.rs`.
+ * The shell: the rail and its menu are the window's first two segments and the page stack fills the
+ * third, so navigation never leaves the screen (codex-rs/tui/src/app.rs). Rail view state persists
+ * like `local_settings.rs`.
  */
 @Composable
 fun CodexScreen(
@@ -2438,224 +2444,349 @@ fun CodexScreen(
     val preferences = remember { context.getSharedPreferences("codex_ui", android.content.Context.MODE_PRIVATE) }
     val colors = MiuixTheme.colorScheme
     val shortcutsHelp = remember { ShortcutsHelpState() }
-
-    var sidebarExpanded by remember { mutableStateOf(false) }
-    var projectsCollapsed by remember {
-        mutableStateOf(preferences.getBoolean(CodexApp.KeyProjectsCollapsed, false))
+    val menuLabels = navMenuLabels()
+    val section = sectionOf(app.surface)
+    // OpenDocument, not GetContent: the app keeps a document-uri grant the server can read back later.
+    val attachmentPicker =
+        rememberLauncherForActivityResult(contract = ActivityResultContracts.OpenDocument()) { uri ->
+            if (uri != null) {
+                app.importAttachment(uri)
+            }
+        }
+    val threadNameOf: (String) -> String = { threadId ->
+        app.threads.threads
+            .firstOrNull { it.id == threadId }
+            ?.let { thread ->
+                thread.name?.takeIf { it.isNotBlank() }
+                    ?: thread.preview.take(48).takeIf { it.isNotBlank() }
+            } ?: threadId.take(8)
     }
+
+    var menuExpanded by remember {
+        mutableStateOf(preferences.getBoolean(CodexApp.KeyMenuExpanded, true))
+    }
+    // Whether the user has opened or shut the menu this session; until they have, a narrow window
+    // keeps it shut, because there the menu is an overlay and the page needs the width.
+    var menuChosen by remember { mutableStateOf(false) }
     var expandedProjects by remember {
         mutableStateOf(preferences.getStringSet(CodexApp.KeyExpandedProjects, null) ?: emptySet())
     }
+    val setMenuExpanded: (Boolean) -> Unit = { open ->
+        menuChosen = true
+        menuExpanded = open
+        preferences.edit().putBoolean(CodexApp.KeyMenuExpanded, open).apply()
+    }
+    val toggleProject: (String) -> Unit = { id ->
+        expandedProjects =
+            if (id in expandedProjects) expandedProjects - id else expandedProjects + id
+        preferences.edit().putStringSet(CodexApp.KeyExpandedProjects, expandedProjects).apply()
+    }
 
-    Scaffold(
-        containerColor = colors.background,
-        contentWindowInsets = WindowInsets(0.dp, 0.dp, 0.dp, 0.dp),
-        snackbarHost = {
-            SnackbarHost(
-                state = app.snackbar,
-                modifier = Modifier
-                    .padding(bottom = UiConsts.ScreenMargin + UiConsts.PromptBarHeight + snackbarGap),
-            )
-        },
-    ) { _ ->
-        BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-            // The status bar is normally hidden; a transient reveal must not push the chrome, so the
-            // inset is latched and may only ever shrink.
-            val liveTopInset = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
-            var topInset by remember { mutableStateOf(liveTopInset) }
-            LaunchedEffect(liveTopInset) {
-                if (liveTopInset < topInset) topInset = liveTopInset
-            }
-            // Edge-to-edge: the system does not resize for the keyboard; the chat entry consumes the
-            // IME inset itself (see `imePadding` below).
-            val bottomInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    // The shell's geometry is computed here rather than inside the Scaffold: the bottom bar holds
+    // the composer, and where it sits depends on the rail and the menu the content slot draws.
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        // The status bar is normally hidden; a transient reveal must not push the chrome, so the
+        // inset is latched and may only ever shrink.
+        val liveTopInset = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+        var topInset by remember { mutableStateOf(liveTopInset) }
+        LaunchedEffect(liveTopInset) {
+            if (liveTopInset < topInset) topInset = liveTopInset
+        }
+        // Edge-to-edge: the system does not resize for the keyboard; the chat entry consumes the
+        // IME inset itself (see `imePadding` below).
+        val bottomInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
 
-            NavDisplay(
-                backStack = app.surfaces,
-                modifier = Modifier.fillMaxSize(),
-                onBack = app::closeSurface,
-                transition = NavTransitions.Modal,
-                effects = NavDisplayEffects(
-                    cornerClipRadius = UiConsts.DrawerCorner,
-                    cornerClipMode = NavCornerClipMode.All,
-                    dimAmount = UiConsts.ScrimAlpha,
-                ),
-            ) {
-                entry<Surface.Chat>(swipeDismiss = NavSwipeDirection.None) {
-                    val chatKeys = remember { FocusRequester() }
-                    var chatHasFocus by remember { mutableStateOf(false) }
-                    // One focus target keeps hardware keys routed; request it when the chat
-                    // surfaces, unless the composer already holds it.
-                    LaunchedEffect(app.surface) {
-                        if (app.surface == Surface.Chat && !chatHasFocus) {
-                            runCatching { chatKeys.requestFocus() }
-                        }
-                    }
-                    CompositionLocalProvider(
-                        LocalChatKeyFocus provides chatKeys,
-                        LocalShortcutsHelp provides shortcutsHelp,
-                        // Hook cells join run ids against this mirror to name hooks.
-                        LocalHookMetadata provides app.catalog.hooks,
-                        // The approval card raises verification events with no callback of its own
-                        // (LocalAppEvent in app_event.kt).
-                        LocalAppEvent provides app::onAppEvent,
-                        LocalWorkspaceHeadline provides app.catalog.workspaceHeadlineCache.headline,
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .imePadding()
-                                .focusRequester(chatKeys)
-                                .onFocusChanged { chatHasFocus = it.hasFocus }
-                                .focusable()
-                                .onPreviewKeyEvent { event ->
-                                    handleHardwareKey(app, shortcutsHelp, chatKeys, event)
-                                },
-                        ) {
-                            BackHandler(enabled = app.surface == Surface.Chat && sidebarExpanded) {
-                                sidebarExpanded = false
-                            }
-                            BackHandler(enabled = shortcutsHelp.visible) {
-                                shortcutsHelp.dismiss()
-                            }
-                            ChatScreen(
-                                app = app,
-                                topInset = topInset,
-                                bottomInset = bottomInset,
-                                sidebarExpanded = sidebarExpanded,
-                                onSidebarExpandedChange = { sidebarExpanded = it },
-                                projectsCollapsed = projectsCollapsed,
-                                onToggleProjects = {
-                                    projectsCollapsed = !projectsCollapsed
-                                    preferences.edit()
-                                        .putBoolean(CodexApp.KeyProjectsCollapsed, projectsCollapsed)
-                                        .apply()
-                                },
-                                expandedProjects = expandedProjects,
-                                onToggleProject = { id ->
-                                    expandedProjects = if (id in expandedProjects) {
-                                        expandedProjects - id
-                                    } else {
-                                        expandedProjects + id
-                                    }
-                                    preferences.edit()
-                                        .putStringSet(CodexApp.KeyExpandedProjects, expandedProjects)
-                                        .apply()
-                                },
-                            )
-                            // Account banners ride above the composer (codex-rs/tui/src/chatwidget/backend_banners.rs).
-                            val bannerSurface = com.cy.codex.chatwidget.backendBannerSurface(
-                                state = app.backendBanner,
-                                currentModel = app.widget.state.config.model,
-                                resetTime = com.cy.codex.chatwidget.bannerResetTime(
-                                    app.backendBanner.banner?.resetAt,
-                                    System.currentTimeMillis(),
-                                ),
-                                planType = app.catalog.rateLimits.rateLimits.planType,
-                                usageLimitTitle = stringResource(R.string.luna_recovery_title),
-                                usageLimitDescription = stringResource(R.string.luna_recovery_description),
-                                continueWithReserveLabel = stringResource(R.string.luna_continue_reserve),
-                            )
-                            val bannerUriHandler = LocalUriHandler.current
-                            com.cy.codex.chatwidget.BackendBannerSurface(
-                                surface = bannerSurface,
-                                onAction = { action ->
-                                    when (action) {
-                                        is com.cy.codex.chatwidget.BannerAction.OpenUrl ->
-                                            runCatching { bannerUriHandler.openUri(action.url) }
-
-                                        is com.cy.codex.chatwidget.BannerAction.NotifyOwner ->
-                                            app.onAppEvent(
-                                                AppEvent.SendAddCreditsNudgeEmail(action.creditType),
-                                            )
-
-                                        com.cy.codex.chatwidget.BannerAction.ResetUsage ->
-                                            // The account screen's reset-credit rows keep the
-                                            // explicit confirmation before consuming one.
-                                            app.openSurface(Surface.Account)
-                                    }
-                                },
-                                onDismiss = app::dismissBackendBanner,
-                                modifier = Modifier
-                                    .align(Alignment.BottomCenter)
-                                    .padding(
-                                        start = UiConsts.ScreenMargin,
-                                        end = UiConsts.ScreenMargin,
-                                        bottom = bottomInset +
-                                            UiConsts.PromptBarHeight +
-                                            UiConsts.ScreenMargin * 2,
-                                    ),
-                            )
-                        }
-                    }
+            val railWidth = UiConsts.NavRailWidth
+            val menuWidth = UiConsts.NavMenuWidth
+            // Wide window: rail and menu are columns of their own, so the page is laid out once at
+            // `window - rail - menu` and only translated when the menu opens. Narrow: the menu
+            // floats over the page, which keeps the width it needs.
+            val wide = maxWidth >= UiConsts.WideContentBreakpoint
+            val pageStart =
+                if (wide) {
+                    railWidth + menuWidth + UiConsts.ContentGap
+                } else {
+                    railWidth + UiConsts.ScreenMargin
                 }
+            val pageWidth =
+                (maxWidth - pageStart - UiConsts.ScreenMargin)
+                    .coerceAtLeast(0.dp)
+                    .coerceAtMost((maxWidth - railWidth).coerceAtLeast(0.dp))
+            val centredStart =
+                if (wide) {
+                    railWidth + ((maxWidth - railWidth - pageWidth) / 2).coerceAtLeast(0.dp)
+                } else {
+                    pageStart
+                }
+            // Centred while the menu is shut, pushed across when it opens: the page column follows
+            // the menu instead of being re-measured by it.
+            val pageShift by
+                animateDpAsState(
+                    targetValue = if (wide && menuExpanded) pageStart - centredStart else 0.dp,
+                    animationSpec = Motion.PanelDp,
+                    label = "pageShift",
+                )
+            // The composer and the floating controls do not follow that column: the input takes the
+            // gutter a shut menu leaves behind, and the controls stay on the window's edge.
+            val composerGrow by
+                animateDpAsState(
+                    targetValue =
+                        if (wide && menuExpanded) {
+                            0.dp
+                        } else {
+                            (centredStart - railWidth - UiConsts.ScreenMargin).coerceAtLeast(0.dp)
+                        },
+                    animationSpec = Motion.PanelDp,
+                    label = "composerGrow",
+                )
+            val controlsEndOffset by
+                animateDpAsState(
+                    targetValue =
+                        if (wide && !menuExpanded) {
+                            (
+                                (maxWidth - railWidth - pageWidth) / 2 - UiConsts.ScreenMargin
+                                ).coerceAtLeast(0.dp)
+                        } else {
+                            0.dp
+                        },
+                    animationSpec = Motion.PanelDp,
+                    label = "controlsEndOffset",
+                )
+            LaunchedEffect(wide) {
+                if (!wide && !menuChosen && menuExpanded) menuExpanded = false
+            }
+            // A second tap on the open section collapses its menu, whichever page of that section is
+            // on screen; any other item switches section and opens that section's menu.
+            val onRailSelect: (NavSection) -> Unit = { tapped ->
+                if (tapped == section) {
+                    setMenuExpanded(!menuExpanded)
+                } else {
+                    setMenuExpanded(true)
+                    app.openSection(tapped)
+                }
+            }
 
-                entry<Surface.Settings>(swipeDismiss = NavSwipeDirection.TopToBottom) {
-                    SheetPage(onDismiss = app::closeSurface) {
+            val pageBackdrop = rememberLayerBackdrop {
+                drawRect(colors.background)
+                drawContent()
+            }
+
+        Scaffold(
+            containerColor = colors.background,
+            contentWindowInsets = WindowInsets(0.dp, 0.dp, 0.dp, 0.dp),
+            snackbarHost = {
+                SnackbarHost(
+                    state = app.snackbar,
+                    modifier = Modifier
+                        .padding(bottom = UiConsts.ScreenMargin + UiConsts.PromptBarHeight + snackbarGap),
+                )
+            },
+            // The composer belongs to the bound thread but not to one page: it is the Scaffold's
+            // bottom bar, so it stays on screen whichever page the third segment shows and
+            // stretches into the gutter a shut menu leaves behind.
+            bottomBar = {
+                Box(modifier = Modifier.fillMaxWidth()) {
+                    ComposerDock(
+                        app = app,
+                        session = app.widget.state,
+                        threadNameOf = threadNameOf,
+                        backdrop = pageBackdrop,
+                        onAttach = { attachmentPicker.launch(arrayOf("*/*")) },
+                        modifier =
+                            Modifier.align(Alignment.BottomStart)
+                                .offset(x = centredStart + pageShift - composerGrow)
+                                .requiredWidth(pageWidth + composerGrow + controlsEndOffset),
+                    )
+                }
+            },
+        ) { contentPadding ->
+            Box(modifier = Modifier.fillMaxSize()) {
+                NavRail(
+                    selected = section,
+                    onSelect = onRailSelect,
+                    topInset = topInset,
+                    bottomInset = bottomInset,
+                    modifier = Modifier.align(Alignment.TopStart),
+                )
+
+                NavDisplay(
+                    backStack = app.surfaces,
+                    modifier =
+                        Modifier.align(Alignment.TopStart)
+                            .offset(x = centredStart + pageShift)
+                            .width(pageWidth)
+                            .fillMaxHeight()
+                            .layerBackdrop(pageBackdrop)
+                            // Pages end above the bottom bar instead of under it.
+                            .padding(bottom = contentPadding.calculateBottomPadding()),
+                    onBack = app::closeSurface,
+                    // The third segment swaps what it shows; sliding it sideways is motion the sections
+                    // do not have yet (docs/TODO.md).
+                    transition = NavTransitions.None,
+                    effects = NavDisplayEffects(enableCornerClip = false, dimAmount = 0f),
+                ) {
+                    entry<Surface.Chat>(swipeDismiss = NavSwipeDirection.None) {
+                        val chatKeys = remember { FocusRequester() }
+                        var chatHasFocus by remember { mutableStateOf(false) }
+                        // One focus target keeps hardware keys routed; request it when the chat
+                        // surfaces, unless the composer already holds it.
+                        LaunchedEffect(app.surface) {
+                            if (app.surface == Surface.Chat && !chatHasFocus) {
+                                runCatching { chatKeys.requestFocus() }
+                            }
+                        }
+                        CompositionLocalProvider(
+                            LocalChatKeyFocus provides chatKeys,
+                            LocalShortcutsHelp provides shortcutsHelp,
+                            // Hook cells join run ids against this mirror to name hooks.
+                            LocalHookMetadata provides app.catalog.hooks,
+                            // The approval card raises verification events with no callback of its own
+                            // (LocalAppEvent in app_event.kt).
+                            LocalAppEvent provides app::onAppEvent,
+                            LocalWorkspaceHeadline provides app.catalog.workspaceHeadlineCache.headline,
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .imePadding()
+                                    .focusRequester(chatKeys)
+                                    .onFocusChanged { chatHasFocus = it.hasFocus }
+                                    .focusable()
+                                    .onPreviewKeyEvent { event ->
+                                        handleHardwareKey(app, shortcutsHelp, chatKeys, event)
+                                    },
+                            ) {
+                                BackHandler(enabled = shortcutsHelp.visible) {
+                                    shortcutsHelp.dismiss()
+                                }
+                                ChatScreen(
+                                    app = app,
+                                    topInset = topInset,
+                                    bottomInset = bottomInset,
+                                    controlsEndOffset = controlsEndOffset,
+                                )
+                                // Account banners ride above the composer (codex-rs/tui/src/chatwidget/backend_banners.rs).
+                                val bannerSurface = com.cy.codex.chatwidget.backendBannerSurface(
+                                    state = app.backendBanner,
+                                    currentModel = app.widget.state.config.model,
+                                    resetTime = com.cy.codex.chatwidget.bannerResetTime(
+                                        app.backendBanner.banner?.resetAt,
+                                        System.currentTimeMillis(),
+                                    ),
+                                    planType = app.catalog.rateLimits.rateLimits.planType,
+                                    usageLimitTitle = stringResource(R.string.luna_recovery_title),
+                                    usageLimitDescription = stringResource(R.string.luna_recovery_description),
+                                    continueWithReserveLabel = stringResource(R.string.luna_continue_reserve),
+                                )
+                                val bannerUriHandler = LocalUriHandler.current
+                                com.cy.codex.chatwidget.BackendBannerSurface(
+                                    surface = bannerSurface,
+                                    onAction = { action ->
+                                        when (action) {
+                                            is com.cy.codex.chatwidget.BannerAction.OpenUrl ->
+                                                runCatching { bannerUriHandler.openUri(action.url) }
+
+                                            is com.cy.codex.chatwidget.BannerAction.NotifyOwner ->
+                                                app.onAppEvent(
+                                                    AppEvent.SendAddCreditsNudgeEmail(action.creditType),
+                                                )
+
+                                            com.cy.codex.chatwidget.BannerAction.ResetUsage ->
+                                                // The account screen's reset-credit rows keep the
+                                                // explicit confirmation before consuming one.
+                                                app.openSurface(Surface.Account)
+                                        }
+                                    },
+                                    onDismiss = app::dismissBackendBanner,
+                                    modifier = Modifier
+                                        .align(Alignment.BottomCenter)
+                                        .padding(
+                                            start = UiConsts.ScreenMargin,
+                                            end = UiConsts.ScreenMargin,
+                                            bottom = bottomInset +
+                                                UiConsts.PromptBarHeight +
+                                                UiConsts.ScreenMargin * 2,
+                                        ),
+                                )
+                            }
+                        }
+                    }
+
+                    // A page the rail's menu reaches takes no back action: the rail is its navigation,
+                    // and a chevron would promise a page the user never left. Pages the chat pushes keep
+                    // one, because there the chat is what they return to.
+                    entry<Surface.Settings>(swipeDismiss = NavSwipeDirection.None) {
                         SettingsScreen(
                             catalog = app.catalog,
                             session = app.widget.state,
                             onEvent = app::onAppEvent,
-                            onBack = app::closeSurface,
+                            onBack = null,
                             onOpenWorkspacePicker = { app.openSurface(Surface.WorkspacePicker) },
                             onOpenEntry = { id -> openSurfaceFor(app, id) },
                             onOpenShortcuts = { shortcutsHelp.toggle() },
+                            onOpenSection = { app.openSettingsSection(it) },
                             configPath = runtime.configPath,
                             ordinaryUsageRecovered = app.backendBanner.ordinaryUsageRecovered,
-                            // Read-and-clear: the deep link is one-shot.
-                            initialSection = app.consumePendingSettingsSection(),
                         )
                     }
-                }
 
-                entry<Surface.Account>(swipeDismiss = NavSwipeDirection.TopToBottom) {
-                    SheetPage(onDismiss = app::closeSurface) {
+                    entry<Surface.SettingsDetail>(swipeDismiss = NavSwipeDirection.None) { route ->
+                        SettingsScreen(
+                            catalog = app.catalog,
+                            session = app.widget.state,
+                            onEvent = app::onAppEvent,
+                            onBack = null,
+                            onOpenWorkspacePicker = { app.openSurface(Surface.WorkspacePicker) },
+                            onOpenEntry = { id -> openSurfaceFor(app, id) },
+                            onOpenShortcuts = { shortcutsHelp.toggle() },
+                            onOpenSection = { app.openSettingsSection(it) },
+                            configPath = runtime.configPath,
+                            ordinaryUsageRecovered = app.backendBanner.ordinaryUsageRecovered,
+                            section = route.section,
+                        )
+                    }
+
+                    entry<Surface.Account>(swipeDismiss = NavSwipeDirection.None) {
                         AccountScreen(
                             catalog = app.catalog,
                             onEvent = app::onAppEvent,
-                            onBack = app::closeSurface,
+                            onBack = null,
                             onOpenBedrock = { app.openSurface(Surface.Bedrock) },
                         )
                     }
-                }
 
-                entry<Surface.McpServers>(swipeDismiss = NavSwipeDirection.TopToBottom) {
-                    SheetPage(onDismiss = app::closeSurface) {
-                        McpScreen(catalog = app.catalog, onBack = app::closeSurface,
+                    entry<Surface.McpServers>(swipeDismiss = NavSwipeDirection.None) {
+                        McpScreen(catalog = app.catalog, onBack = null,
                             onOpenServer = { app.openSurface(Surface.McpToolbox(it)) },
                             onEvent = app::onAppEvent)
                     }
-                }
 
-                entry<Surface.Skills>(swipeDismiss = NavSwipeDirection.TopToBottom) {
-                    SheetPage(onDismiss = app::closeSurface) { SkillsScreen(catalog = app.catalog, onEvent = app::onAppEvent, onBack = app::closeSurface) }
-                }
+                    entry<Surface.Skills>(swipeDismiss = NavSwipeDirection.None) {
+                        SkillsScreen(catalog = app.catalog, onEvent = app::onAppEvent, onBack = null)
+                    }
 
-                entry<Surface.Plugins>(swipeDismiss = NavSwipeDirection.TopToBottom) {
-                    SheetPage(onDismiss = app::closeSurface) {
+                    entry<Surface.Plugins>(swipeDismiss = NavSwipeDirection.None) {
                         PluginsScreen(
                             catalog = app.catalog,
                             client = app.client,
                             onEvent = app::onAppEvent,
-                            onBack = app::closeSurface,
+                            onBack = null,
                         )
                     }
-                }
 
-                entry<Surface.Apps>(swipeDismiss = NavSwipeDirection.TopToBottom) {
-                    SheetPage(onDismiss = app::closeSurface) { AppsScreen(catalog = app.catalog, client = app.client, onEvent = app::onAppEvent, onBack = app::closeSurface) }
-                }
+                    entry<Surface.Apps>(swipeDismiss = NavSwipeDirection.None) {
+                        AppsScreen(catalog = app.catalog, client = app.client, onEvent = app::onAppEvent, onBack = null)
+                    }
 
-                entry<Surface.Hooks>(swipeDismiss = NavSwipeDirection.TopToBottom) {
-                    SheetPage(onDismiss = app::closeSurface) { HooksScreen(catalog = app.catalog, onEvent = app::onAppEvent, onBack = app::closeSurface) }
-                }
+                    entry<Surface.Hooks>(swipeDismiss = NavSwipeDirection.None) {
+                        HooksScreen(catalog = app.catalog, onEvent = app::onAppEvent, onBack = null)
+                    }
 
-                entry<Surface.Sessions>(swipeDismiss = NavSwipeDirection.TopToBottom) {
-                    SheetPage(onDismiss = app::closeSurface) { SessionListScreen(app = app, onBack = app::closeSurface) }
-                }
+                    entry<Surface.Sessions>(swipeDismiss = NavSwipeDirection.None) {
+                        SessionListScreen(app = app, onBack = app::closeSurface)
+                    }
 
-                entry<Surface.WorkspacePicker>(swipeDismiss = NavSwipeDirection.TopToBottom) {
-                    SheetPage(onDismiss = app::closeSurface) {
+                    entry<Surface.WorkspacePicker>(swipeDismiss = NavSwipeDirection.None) {
                         WorkspacePickerScreen(
                             client = app.client,
                             initialPath = app.widget.state.config.cwd.ifEmpty {
@@ -2667,125 +2798,101 @@ fun CodexScreen(
                             onBack = app::closeSurface,
                         )
                     }
-                }
 
-                entry<Surface.Projects>(swipeDismiss = NavSwipeDirection.TopToBottom) {
-                    SheetPage(onDismiss = app::closeSurface) {
+                    entry<Surface.Projects>(swipeDismiss = NavSwipeDirection.None) {
                         ProjectsScreen(
                             catalog = app.catalog,
                             client = app.client,
                             onEvent = app::onAppEvent,
-                            onBack = app::closeSurface,
+                            onBack = null,
                             onOpenEnvironment = { app.openSurface(Surface.EnvironmentDetail(it)) },
                             onOpenProject = { app.onAppEvent(AppEvent.NewThread(it)) },
                         )
                     }
-                }
 
-                entry<Surface.EnvironmentDetail>(swipeDismiss = NavSwipeDirection.TopToBottom) { route ->
-                    SheetPage(onDismiss = app::closeSurface) {
+                    entry<Surface.EnvironmentDetail>(swipeDismiss = NavSwipeDirection.None) { route ->
                         EnvironmentDetailScreen(
                             environmentId = route.environmentId,
                             client = app.client,
-                            onBack = app::closeSurface,
+                            onBack = null,
                         )
                     }
-                }
 
-                entry<Surface.RemoteControl>(swipeDismiss = NavSwipeDirection.TopToBottom) {
-                    LaunchedEffect(Unit) { app.onAppEvent(AppEvent.ReloadRemoteControl) }
-                    SheetPage(onDismiss = app::closeSurface) {
+                    entry<Surface.RemoteControl>(swipeDismiss = NavSwipeDirection.None) {
+                        LaunchedEffect(Unit) { app.onAppEvent(AppEvent.ReloadRemoteControl) }
                         RemoteControlScreen(
                             catalog = app.catalog,
                             onEvent = app::onAppEvent,
-                            onBack = app::closeSurface,
+                            onBack = null,
                         )
                     }
-                }
 
-                entry<Surface.UserVerification>(swipeDismiss = NavSwipeDirection.TopToBottom) {
-                    LaunchedEffect(Unit) { app.onAppEvent(AppEvent.ReloadUserVerification) }
-                    SheetPage(onDismiss = app::closeSurface) {
+                    entry<Surface.UserVerification>(swipeDismiss = NavSwipeDirection.None) {
+                        LaunchedEffect(Unit) { app.onAppEvent(AppEvent.ReloadUserVerification) }
                         UserVerificationScreen(
                             catalog = app.catalog,
                             onEvent = app::onAppEvent,
-                            onBack = app::closeSurface,
+                            onBack = null,
                         )
                     }
-                }
 
-                entry<Surface.PluginShares>(swipeDismiss = NavSwipeDirection.TopToBottom) {
-                    LaunchedEffect(Unit) { app.onAppEvent(AppEvent.ReloadPluginShares) }
-                    SheetPage(onDismiss = app::closeSurface) {
+                    entry<Surface.PluginShares>(swipeDismiss = NavSwipeDirection.None) {
+                        LaunchedEffect(Unit) { app.onAppEvent(AppEvent.ReloadPluginShares) }
                         PluginSharesScreen(
                             catalog = app.catalog,
                             onEvent = app::onAppEvent,
-                            onBack = app::closeSurface,
+                            onBack = null,
                         )
                     }
-                }
 
-                entry<Surface.Memories>(swipeDismiss = NavSwipeDirection.TopToBottom) {
-                    LaunchedEffect(Unit) { app.onAppEvent(AppEvent.ReloadMemories) }
-                    SheetPage(onDismiss = app::closeSurface) {
+                    entry<Surface.Memories>(swipeDismiss = NavSwipeDirection.None) {
+                        LaunchedEffect(Unit) { app.onAppEvent(AppEvent.ReloadMemories) }
                         MemoriesScreen(
                             catalog = app.catalog,
                             onEvent = app::onAppEvent,
-                            onBack = app::closeSurface,
+                            onBack = null,
                         )
                     }
-                }
 
-                entry<Surface.SessionStatus>(swipeDismiss = NavSwipeDirection.TopToBottom) {
-                    SheetPage(onDismiss = app::closeSurface) {
-                        SessionStatusScreen(app = app, onBack = app::closeSurface)
+                    entry<Surface.SessionStatus>(swipeDismiss = NavSwipeDirection.None) {
+                        SessionStatusScreen(app = app, onBack = null)
                     }
-                }
 
-                entry<Surface.Diagnostics>(swipeDismiss = NavSwipeDirection.TopToBottom) {
-                    LaunchedEffect(Unit) { app.onAppEvent(AppEvent.ReloadDiagnostics) }
-                    SheetPage(onDismiss = app::closeSurface) {
+                    entry<Surface.Diagnostics>(swipeDismiss = NavSwipeDirection.None) {
+                        LaunchedEffect(Unit) { app.onAppEvent(AppEvent.ReloadDiagnostics) }
                         DiagnosticsScreen(
                             catalog = app.catalog,
                             onEvent = app::onAppEvent,
-                            onBack = app::closeSurface,
+                            onBack = null,
                         )
                     }
-                }
 
-                entry<Surface.ExternalAgentImport>(swipeDismiss = NavSwipeDirection.TopToBottom) {
-                    SheetPage(onDismiss = app::closeSurface) {
+                    entry<Surface.ExternalAgentImport>(swipeDismiss = NavSwipeDirection.None) {
                         ExternalAgentImportScreen(
                             catalog = app.catalog,
                             onEvent = app::onAppEvent,
-                            onBack = app::closeSurface,
+                            onBack = null,
                         )
                     }
-                }
 
-                entry<Surface.Bedrock>(swipeDismiss = NavSwipeDirection.TopToBottom) {
-                    SheetPage(onDismiss = app::closeSurface) {
+                    entry<Surface.Bedrock>(swipeDismiss = NavSwipeDirection.None) {
                         BedrockScreen(
                             client = app.client,
                             onEvent = app::onAppEvent,
                             onBack = app::closeSurface,
                         )
                     }
-                }
 
-                entry<Surface.WindowsSandbox>(swipeDismiss = NavSwipeDirection.TopToBottom) {
-                    SheetPage(onDismiss = app::closeSurface) {
+                    entry<Surface.WindowsSandbox>(swipeDismiss = NavSwipeDirection.None) {
                         WindowsSandboxScreen(
                             catalog = app.catalog,
                             client = app.client,
                             onEvent = app::onAppEvent,
-                            onBack = app::closeSurface,
+                            onBack = null,
                         )
                     }
-                }
 
-                entry<Surface.FileBrowser>(swipeDismiss = NavSwipeDirection.TopToBottom) { route ->
-                    SheetPage(onDismiss = app::closeSurface) {
+                    entry<Surface.FileBrowser>(swipeDismiss = NavSwipeDirection.None) { route ->
                         FileBrowserScreen(
                             path = route.path,
                             picking = route.picking,
@@ -2797,10 +2904,8 @@ fun CodexScreen(
                             },
                         )
                     }
-                }
 
-                entry<Surface.ExecCommand>(swipeDismiss = NavSwipeDirection.TopToBottom) {
-                    SheetPage(onDismiss = app::closeSurface) {
+                    entry<Surface.ExecCommand>(swipeDismiss = NavSwipeDirection.None) {
                         ExecCommandScreen(
                             threadId = app.widget.state.threadId,
                             client = app.client,
@@ -2809,10 +2914,8 @@ fun CodexScreen(
                             onBack = app::closeSurface,
                         )
                     }
-                }
 
-                entry<Surface.BackgroundTerminals>(swipeDismiss = NavSwipeDirection.TopToBottom) {
-                    SheetPage(onDismiss = app::closeSurface) {
+                    entry<Surface.BackgroundTerminals>(swipeDismiss = NavSwipeDirection.None) {
                         BackgroundTerminalsScreen(
                             threadId = app.widget.state.threadId,
                             client = app.client,
@@ -2821,11 +2924,9 @@ fun CodexScreen(
                             onBack = app::closeSurface,
                         )
                     }
-                }
 
-                entry<Surface.Realtime>(swipeDismiss = NavSwipeDirection.TopToBottom) {
-                    LaunchedEffect(Unit) { app.onAppEvent(AppEvent.ReloadRealtimeVoices) }
-                    SheetPage(onDismiss = app::closeSurface) {
+                    entry<Surface.Realtime>(swipeDismiss = NavSwipeDirection.None) {
+                        LaunchedEffect(Unit) { app.onAppEvent(AppEvent.ReloadRealtimeVoices) }
                         RealtimeScreen(
                             threadId = app.widget.state.threadId,
                             catalog = app.catalog,
@@ -2833,10 +2934,8 @@ fun CodexScreen(
                             onBack = app::closeSurface,
                         )
                     }
-                }
 
-                entry<Surface.Worktrees>(swipeDismiss = NavSwipeDirection.TopToBottom) {
-                    SheetPage(onDismiss = app::closeSurface) {
+                    entry<Surface.Worktrees>(swipeDismiss = NavSwipeDirection.None) {
                         WorktreesScreen(
                             client = app.client,
                             cwd = app.widget.state.config.cwd.ifEmpty { app.defaultWorkspace },
@@ -2844,73 +2943,112 @@ fun CodexScreen(
                             onBack = app::closeSurface,
                         )
                     }
-                }
 
-                entry<Surface.Review>(swipeDismiss = NavSwipeDirection.TopToBottom) {
-                    SheetPage(onDismiss = app::closeSurface) {
+                    entry<Surface.Review>(swipeDismiss = NavSwipeDirection.None) {
                         ReviewScreen(
                             threadId = app.widget.state.threadId,
                             onEvent = app::onAppEvent,
                             onBack = app::closeSurface,
                         )
                     }
-                }
 
-                entry<Surface.Diff>(swipeDismiss = NavSwipeDirection.TopToBottom) {
-                    SheetPage(onDismiss = app::closeSurface) {
+                    entry<Surface.Diff>(swipeDismiss = NavSwipeDirection.None) {
                         GitDiffScreen(
                             cwd = app.widget.state.config.cwd.ifBlank { app.defaultWorkspace },
                             client = app.client,
                             onBack = app::closeSurface,
                         )
                     }
-                }
 
-                entry<Surface.ThreadHistory>(swipeDismiss = NavSwipeDirection.TopToBottom) {
-                    SheetPage(onDismiss = app::closeSurface) {
+                    entry<Surface.ThreadHistory>(swipeDismiss = NavSwipeDirection.None) {
                         ThreadHistoryScreen(app = app, onBack = app::closeSurface)
                     }
-                }
 
-                entry<Surface.McpToolbox>(swipeDismiss = NavSwipeDirection.TopToBottom) { route ->
-                    SheetPage(onDismiss = app::closeSurface) {
+                    entry<Surface.McpToolbox>(swipeDismiss = NavSwipeDirection.None) { route ->
                         McpToolboxScreen(
                             server = route.server,
                             client = app.client,
                             onEvent = app::onAppEvent,
-                            onBack = app::closeSurface,
+                            onBack = null,
                         )
                     }
-                }
 
-                entry<Surface.Agents>(swipeDismiss = NavSwipeDirection.TopToBottom) {
-                    SheetPage(onDismiss = app::closeSurface) {
+                    entry<Surface.Agents>(swipeDismiss = NavSwipeDirection.None) {
                         AgentsScreen(app = app, onBack = app::closeSurface)
                     }
                 }
-            }
-            app.agentSummary?.let { threadId ->
-                // `show` stays true through the exit animation; the sheet is composed until it reports finished.
-                var leaving by remember(threadId) { mutableStateOf(false) }
-                SubAgentSummarySheet(
-                    show = !leaving,
-                    threadId = threadId,
-                    session = app.widget.state,
-                    descendants = app.catalog.agentThreadsFor(app.widget.state.threadId),
-                    onDismissRequest = { leaving = true },
-                    onDismissFinished = {
-                        leaving = false
-                        app.dismissAgentSummary()
-                    },
-                )
-            }
-            ShortcutsOverlay(state = shortcutsHelp)
-            app.trustRequest?.let { request ->
-                TrustProjectSheet(
-                    path = request.path,
-                    onTrust = app::grantTrust,
-                    onDismiss = app::dismissTrust,
-                )
+
+                if (menuExpanded) {
+                    NavMenuPanel(
+                        // Home is the app's own list, so it carries the app's name; the other
+                        // sections name themselves.
+                        title =
+                            stringResource(
+                                if (section == NavSection.Home) {
+                                    R.string.nav_menu_title
+                                } else {
+                                    section.titleRes
+                                }
+                            ),
+                        rows =
+                            navMenuRows(
+                                section = section,
+                                labels = menuLabels,
+                                projects = SidebarModel.projects(app.threads, includeArchived = false),
+                                expandedProjects = expandedProjects,
+                                selectedThreadId = app.widget.state.threadId,
+                                selectedRowId = navRowIdOf(app.surface),
+                            ),
+                        onRow = { row ->
+                            when (row) {
+                                is NavMenuRow.Entry -> {
+                                    val settings = settingsSectionOfRow(row.id)
+                                    if (settings != null) {
+                                        app.openSettingsSection(settings)
+                                    } else {
+                                        openSurfaceFor(app, row.id)
+                                    }
+                                }
+
+                                is NavMenuRow.Project -> toggleProject(row.project.id)
+                                is NavMenuRow.Session -> app.openThread(row.session.id)
+                                is NavMenuRow.Header -> Unit
+                            }
+                        },
+                        topInset = topInset,
+                        bottomInset = bottomInset,
+                        modifier = Modifier.align(Alignment.TopStart).padding(start = railWidth),
+                    )
+                }
+                // Only the overlay menu needs a back gesture: laid out beside the page, it is not in
+                // the way, and a pushed page owns back for itself.
+                BackHandler(enabled = menuExpanded && !wide && app.surfaces.size == 1) {
+                    setMenuExpanded(false)
+                }
+
+                app.agentSummary?.let { threadId ->
+                    // `show` stays true through the exit animation; the sheet is composed until it reports finished.
+                    var leaving by remember(threadId) { mutableStateOf(false) }
+                    SubAgentSummarySheet(
+                        show = !leaving,
+                        threadId = threadId,
+                        session = app.widget.state,
+                        descendants = app.catalog.agentThreadsFor(app.widget.state.threadId),
+                        onDismissRequest = { leaving = true },
+                        onDismissFinished = {
+                            leaving = false
+                            app.dismissAgentSummary()
+                        },
+                    )
+                }
+                ShortcutsOverlay(state = shortcutsHelp)
+                app.trustRequest?.let { request ->
+                    TrustProjectSheet(
+                        path = request.path,
+                        onTrust = app::grantTrust,
+                        onDismiss = app::dismissTrust,
+                    )
+                }
             }
         }
     }
@@ -2964,7 +3102,6 @@ private fun handleHardwareKey(
     }
 }
 
-/** The wire reports successes/failures per item type and no total; the bar counts both and labels the types. */
 private fun externalImportProgress(
     results: List<com.cy.codex.protocol.protocol.v2.ExternalAgentConfigImportTypeResult>,
 ): ImportProgress {
@@ -2973,68 +3110,4 @@ private fun externalImportProgress(
     return ImportProgress(done, total, results.joinToString(", ") { it.itemType })
 }
 
-@Composable
-private fun SheetPage(
-    onDismiss: () -> Unit,
-    content: @Composable () -> Unit,
-) {
-    val outsideInteraction = remember { MutableInteractionSource() }
-    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-        val pageWidth = minOf(
-            (maxWidth - sheetSideMargin() * 2).coerceAtLeast(0.dp),
-            UiConsts.SheetMaxWidth,
-        )
-        val gutter = ((maxWidth - pageWidth) / 2).coerceAtLeast(0.dp)
-        Row(modifier = Modifier.fillMaxSize()) {
-            OutsideTapTarget(
-                interactionSource = outsideInteraction,
-                onDismiss = onDismiss,
-                modifier = Modifier.width(gutter).fillMaxHeight(),
-            )
-            Spacer(Modifier.weight(1f))
-            OutsideTapTarget(
-                interactionSource = outsideInteraction,
-                onDismiss = onDismiss,
-                modifier = Modifier.width(gutter).fillMaxHeight(),
-            )
-        }
-        OutsideTapTarget(
-            interactionSource = outsideInteraction,
-            onDismiss = onDismiss,
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .fillMaxWidth()
-                .height(UiConsts.SheetTopGap),
-        )
-        MiuixSurface(
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .padding(top = UiConsts.SheetTopGap)
-                .width(pageWidth)
-                .fillMaxHeight(),
-            shape = RoundedCornerShape(
-                topStart = UiConsts.DrawerCorner,
-                topEnd = UiConsts.DrawerCorner,
-            ),
-            color = panelColor(),
-            shadowElevation = UiConsts.SheetElevation,
-        ) {
-            content()
-        }
-    }
-}
 
-@Composable
-private fun OutsideTapTarget(
-    interactionSource: MutableInteractionSource,
-    onDismiss: () -> Unit,
-    modifier: Modifier,
-) {
-    Box(
-        modifier = modifier.clickable(
-            interactionSource = interactionSource,
-            indication = null,
-            onClick = onDismiss,
-        ),
-    )
-}

@@ -59,7 +59,7 @@ fun AppsScreen(
     catalog: CatalogState,
     client: AppServerClient,
     onEvent: (AppEvent) -> Unit,
-    onBack: () -> Unit,
+    onBack: (() -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
     val colors = MiuixTheme.colorScheme
@@ -368,7 +368,8 @@ private fun AppsRow(
 }
 
 @Composable
-private fun AppsBackButton(onBack: () -> Unit) {
+private fun AppsBackButton(onBack: (() -> Unit)?) {
+    if (onBack == null) return
     IconButton(
         onClick = onBack,
         minWidth = UiConsts.IconButtonSize,

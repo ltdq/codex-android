@@ -73,7 +73,7 @@ private const val ChatGptUsageUrl = "https://chatgpt.com/codex/settings/usage"
 @Composable
 fun SessionStatusScreen(
     app: CodexApp,
-    onBack: () -> Unit,
+    onBack: (() -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
     val colors = MiuixTheme.colorScheme
@@ -825,7 +825,8 @@ private fun statusPlanDisplay(plan: String): String =
     }
 
 @Composable
-private fun StatusBackButton(onBack: () -> Unit) {
+private fun StatusBackButton(onBack: (() -> Unit)?) {
+    if (onBack == null) return
     IconButton(
         onClick = onBack,
         minWidth = UiConsts.IconButtonSize,

@@ -75,7 +75,7 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 fun ExternalAgentImportScreen(
     catalog: CatalogState,
     onEvent: (AppEvent) -> Unit,
-    onBack: () -> Unit,
+    onBack: (() -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
     val colors = MiuixTheme.colorScheme
@@ -98,17 +98,19 @@ fun ExternalAgentImportScreen(
             title = stringResource(R.string.migration_screen_title),
             summary = stringResource(R.string.migration_screen_subtitle, items.size),
             startAction = {
-                IconButton(
-                    onClick = onBack,
-                    minWidth = UiConsts.IconButtonSize,
-                    minHeight = UiConsts.IconButtonSize,
-                ) {
-                    Icon(
-                        imageVector = MiuixIcons.ChevronBackward,
-                        contentDescription = stringResource(R.string.migration_screen_back),
-                        modifier = Modifier.size(UiConsts.IconHeader),
-                        tint = MiuixTheme.colorScheme.primary,
-                    )
+                if (onBack != null) {
+                    IconButton(
+                        onClick = onBack,
+                        minWidth = UiConsts.IconButtonSize,
+                        minHeight = UiConsts.IconButtonSize,
+                    ) {
+                        Icon(
+                            imageVector = MiuixIcons.ChevronBackward,
+                            contentDescription = stringResource(R.string.migration_screen_back),
+                            modifier = Modifier.size(UiConsts.IconHeader),
+                            tint = MiuixTheme.colorScheme.primary,
+                        )
+                    }
                 }
             },
             insideMargin = PaddingValues(14.dp, 10.dp),

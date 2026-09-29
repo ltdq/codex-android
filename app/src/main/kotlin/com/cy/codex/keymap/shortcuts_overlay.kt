@@ -66,7 +66,7 @@ private val CardMaxHeight = 560.dp
 @Composable
 fun ShortcutsOverlay(state: ShortcutsHelpState, modifier: Modifier = Modifier) {
     if (!state.visible) return
-    val shape = remember { RoundedCornerShape(UiConsts.DrawerCorner) }
+    val shape = remember { RoundedCornerShape(UiConsts.OverlayCorner) }
     val scrimInteraction = remember { MutableInteractionSource() }
     val cardInteraction = remember { MutableInteractionSource() }
     Box(

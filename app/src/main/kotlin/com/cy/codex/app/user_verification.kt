@@ -61,7 +61,7 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 fun UserVerificationScreen(
     catalog: CatalogState,
     onEvent: (AppEvent) -> Unit,
-    onBack: () -> Unit,
+    onBack: (() -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
     val colors = MiuixTheme.colorScheme
@@ -82,17 +82,19 @@ fun UserVerificationScreen(
             title = stringResource(R.string.user_verification_page_title),
             summary = subtitle,
             startAction = {
-                IconButton(
-                    onClick = onBack,
-                    minWidth = UiConsts.IconButtonSize,
-                    minHeight = UiConsts.IconButtonSize,
-                ) {
-                    Icon(
-                        imageVector = MiuixIcons.ChevronBackward,
-                        contentDescription = stringResource(R.string.user_verification_page_back),
-                        modifier = Modifier.size(UiConsts.IconHeader),
-                        tint = MiuixTheme.colorScheme.primary,
-                    )
+                if (onBack != null) {
+                    IconButton(
+                        onClick = onBack,
+                        minWidth = UiConsts.IconButtonSize,
+                        minHeight = UiConsts.IconButtonSize,
+                    ) {
+                        Icon(
+                            imageVector = MiuixIcons.ChevronBackward,
+                            contentDescription = stringResource(R.string.user_verification_page_back),
+                            modifier = Modifier.size(UiConsts.IconHeader),
+                            tint = MiuixTheme.colorScheme.primary,
+                        )
+                    }
                 }
             },
             endActions = {

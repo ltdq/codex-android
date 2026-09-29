@@ -2,38 +2,27 @@ package com.cy.codex.chatwidget
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.ReadOnlyComposable
-import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
+import com.cy.codex.DestinationCatalog
 import com.cy.codex.R
 import com.cy.codex.SlashCommands
 import com.cy.codex.ThreadListState
-import com.cy.codex.DestinationCatalog
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.AddFolder
 import top.yukonga.miuix.kmp.icon.extended.Blocklist
-import top.yukonga.miuix.kmp.icon.extended.Community
 import top.yukonga.miuix.kmp.icon.extended.File
 import top.yukonga.miuix.kmp.icon.extended.Folder
-import top.yukonga.miuix.kmp.icon.extended.GridView
-import top.yukonga.miuix.kmp.icon.extended.Info
-import top.yukonga.miuix.kmp.icon.extended.Link
-import top.yukonga.miuix.kmp.icon.extended.Lock
 import top.yukonga.miuix.kmp.icon.extended.Messages
 import top.yukonga.miuix.kmp.icon.extended.Mic
-import top.yukonga.miuix.kmp.icon.extended.Notes
-import top.yukonga.miuix.kmp.icon.extended.Paste
 import top.yukonga.miuix.kmp.icon.extended.Refresh
-import top.yukonga.miuix.kmp.icon.extended.ScreenMirroring
 import top.yukonga.miuix.kmp.icon.extended.Search
-import top.yukonga.miuix.kmp.icon.extended.Share
-import top.yukonga.miuix.kmp.icon.extended.Store
 import top.yukonga.miuix.kmp.icon.extended.Tasks
 import top.yukonga.miuix.kmp.icon.extended.Th1
 import top.yukonga.miuix.kmp.icon.extended.Timer
 
 /**
- * Sidebar model, mirroring the TUI's side panel (`codex-rs/tui/src/chatwidget/side.rs` and
+ * Session model, mirroring the TUI's side panel (`codex-rs/tui/src/chatwidget/side.rs` and
  * `app/side.rs`). Built from `thread/list` through [ThreadListState.grouped]; groups derive from
  * each thread's working directory.
  */
@@ -60,18 +49,16 @@ data class SidebarProject(
 
 object SidebarModel {
 
-    /** Navigation destinations. Configuration stays in Settings; tools belong to the open session. */
+    /** The thread library: what the open session is switched to, not a tool of the session itself. */
     @Composable
     @ReadOnlyComposable
-    fun actions(): List<SidebarEntry> = listOf(
-        SidebarEntry(DestinationCatalog.Id.New, stringResource(R.string.runtime_new_thread), MiuixIcons.Messages),
+    fun libraryEntries(): List<SidebarEntry> = listOf(
         SidebarEntry(DestinationCatalog.Id.Sessions, stringResource(R.string.sidebar_library_all_sessions), MiuixIcons.Messages),
         SidebarEntry(DestinationCatalog.Id.Archived, stringResource(R.string.sidebar_library_archived), MiuixIcons.Blocklist),
-        SidebarEntry(DestinationCatalog.Id.Projects, stringResource(R.string.sidebar_library_projects), MiuixIcons.Folder),
         SidebarEntry(DestinationCatalog.Id.Workspace, stringResource(R.string.sidebar_add_workspace), MiuixIcons.AddFolder),
     )
 
-    /** Tools that act on the open thread; session-scoped, so they stay out of Settings. */
+    /** Tools that act on the open thread; session-scoped, so they stay out of the rail's menus. */
     @Composable
     @ReadOnlyComposable
     fun sessionEntries(): List<SidebarEntry> = listOf(

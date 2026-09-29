@@ -23,8 +23,9 @@ class DestinationCatalogTest {
     }
 
     @Test
-    fun `session tools and settings pages stay separate`() {
-        assertTrue(DestinationCatalog.SessionTools.intersect(DestinationCatalog.SettingsExtensions).isEmpty())
-        assertTrue(DestinationCatalog.SessionTools.intersect(DestinationCatalog.SettingsData).isEmpty())
+    fun `session tools stay out of the rail's menus`() {
+        assertTrue(DestinationCatalog.SessionTools.intersect(DestinationCatalog.HomeMenu).isEmpty())
+        assertTrue(DestinationCatalog.SessionTools.intersect(DestinationCatalog.PluginsMenu).isEmpty())
+        assertTrue(DestinationCatalog.SessionTools.intersect(DestinationCatalog.SettingsMenu).isEmpty())
     }
 }

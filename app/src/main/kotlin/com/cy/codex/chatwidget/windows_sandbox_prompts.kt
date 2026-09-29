@@ -66,7 +66,7 @@ fun WindowsSandboxScreen(
     catalog: CatalogState,
     client: AppServerClient,
     onEvent: (AppEvent) -> Unit,
-    onBack: () -> Unit,
+    onBack: (() -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
     val colors = MiuixTheme.colorScheme
@@ -143,17 +143,19 @@ fun WindowsSandboxScreen(
             title = stringResource(R.string.windows_sandbox_title),
             summary = stringResource(R.string.windows_sandbox_subtitle),
             startAction = {
-                IconButton(
-                    onClick = onBack,
-                    minWidth = UiConsts.IconButtonSize,
-                    minHeight = UiConsts.IconButtonSize,
-                ) {
-                    Icon(
-                        imageVector = MiuixIcons.ChevronBackward,
-                        contentDescription = stringResource(R.string.windows_sandbox_back),
-                        modifier = Modifier.size(UiConsts.IconHeader),
-                        tint = MiuixTheme.colorScheme.primary,
-                    )
+                if (onBack != null) {
+                    IconButton(
+                        onClick = onBack,
+                        minWidth = UiConsts.IconButtonSize,
+                        minHeight = UiConsts.IconButtonSize,
+                    ) {
+                        Icon(
+                            imageVector = MiuixIcons.ChevronBackward,
+                            contentDescription = stringResource(R.string.windows_sandbox_back),
+                            modifier = Modifier.size(UiConsts.IconHeader),
+                            tint = MiuixTheme.colorScheme.primary,
+                        )
+                    }
                 }
             },
             insideMargin = PaddingValues(14.dp, 10.dp),

@@ -35,8 +35,21 @@ object DestinationCatalog {
         const val Status = "status"
     }
 
+    /** The rail's bottom item: chrome, not a page of the open session. */
     val Chrome = setOf(Id.Settings)
-    val Navigation = setOf(Id.New, Id.Workspace, Id.Sessions, Id.Archived, Id.Projects)
+
+    /** Pages a rail item opens on its own, with no row of its own menu to name them. */
+    val RailPages = setOf(Id.Projects)
+
+    /**
+     * The shell's second segment, per rail item; the project rows come from `thread/list` and have
+     * no id, so they are not listed here.
+     */
+    val HomeMenu = setOf(Id.New)
+    val PluginsMenu = setOf(Id.Skills, Id.Mcp, Id.Plugins, Id.Apps, Id.Hooks, Id.PluginShares)
+
+    /** The floating session panel: the thread library, then the tools that act on the open thread. */
+    val SessionLibrary = setOf(Id.Sessions, Id.Archived, Id.Workspace)
     val SessionTools = setOf(
         Id.History,
         Id.Files,
@@ -48,15 +61,9 @@ object DestinationCatalog {
         Id.Goal,
         Id.Realtime,
     )
-    val SettingsExtensions = setOf(
-        Id.Mcp,
-        Id.Skills,
-        Id.Plugins,
-        Id.Apps,
-        Id.Hooks,
-        Id.PluginShares,
-    )
-    val SettingsData = setOf(
+
+    /** Pages the settings menu opens directly; its section rows are `SettingsSection`. */
+    val SettingsMenu = setOf(
         Id.Account,
         Id.Memories,
         Id.Migration,
@@ -64,24 +71,35 @@ object DestinationCatalog {
         Id.Verification,
         Id.Sandbox,
         Id.Diagnostics,
+        Id.Status,
     )
+
     val Onboarding = setOf(Id.Bedrock)
-    val SettingsSessionLinks = setOf(Id.Status)
 
     val Owned =
         buildSet {
             addAll(Chrome)
-            addAll(Navigation)
+            addAll(RailPages)
+            addAll(HomeMenu)
+            addAll(PluginsMenu)
+            addAll(SessionLibrary)
             addAll(SessionTools)
-            addAll(SettingsExtensions)
-            addAll(SettingsData)
+            addAll(SettingsMenu)
             addAll(Onboarding)
-            addAll(SettingsSessionLinks)
         }
 
     /** Every id has one owner; the sets are deliberately flat so a duplicate cannot hide in a map. */
     fun duplicateIds(): Set<String> {
-        val groups = listOf(Chrome, Navigation, SessionTools, SettingsExtensions, SettingsData, Onboarding, SettingsSessionLinks)
+        val groups = listOf(
+            Chrome,
+            RailPages,
+            HomeMenu,
+            PluginsMenu,
+            SessionLibrary,
+            SessionTools,
+            SettingsMenu,
+            Onboarding,
+        )
         return groups.flatten().groupingBy { it }.eachCount().filterValues { it > 1 }.keys
     }
 }

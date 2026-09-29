@@ -71,7 +71,7 @@ fun ProjectsScreen(
     catalog: CatalogState,
     client: AppServerClient,
     onEvent: (AppEvent) -> Unit,
-    onBack: () -> Unit,
+    onBack: (() -> Unit)?,
     onOpenEnvironment: (String) -> Unit,
     onOpenProject: (String) -> Unit,
     modifier: Modifier = Modifier,
@@ -90,17 +90,19 @@ fun ProjectsScreen(
             title = stringResource(R.string.projects_screen_title),
             summary = stringResource(R.string.runtime_project_count, catalog.projects.size),
             startAction = {
-                IconButton(
-                    onClick = onBack,
-                    minWidth = UiConsts.IconButtonSize,
-                    minHeight = UiConsts.IconButtonSize,
-                ) {
-                    Icon(
-                        imageVector = MiuixIcons.ChevronBackward,
-                        contentDescription = stringResource(R.string.projects_screen_back),
-                        modifier = Modifier.size(UiConsts.IconHeader),
-                        tint = MiuixTheme.colorScheme.primary,
-                    )
+                if (onBack != null) {
+                    IconButton(
+                        onClick = onBack,
+                        minWidth = UiConsts.IconButtonSize,
+                        minHeight = UiConsts.IconButtonSize,
+                    ) {
+                        Icon(
+                            imageVector = MiuixIcons.ChevronBackward,
+                            contentDescription = stringResource(R.string.projects_screen_back),
+                            modifier = Modifier.size(UiConsts.IconHeader),
+                            tint = MiuixTheme.colorScheme.primary,
+                        )
+                    }
                 }
             },
             endActions = {
@@ -541,7 +543,7 @@ private fun EnvironmentsCard(
 fun EnvironmentDetailScreen(
     environmentId: String,
     client: AppServerClient,
-    onBack: () -> Unit,
+    onBack: (() -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
     val colors = MiuixTheme.colorScheme
@@ -574,17 +576,19 @@ fun EnvironmentDetailScreen(
             summary =
                 status?.status?.label() ?: stringResource(R.string.environment_detail_loading),
             startAction = {
-                IconButton(
-                    onClick = onBack,
-                    minWidth = UiConsts.IconButtonSize,
-                    minHeight = UiConsts.IconButtonSize,
-                ) {
-                    Icon(
-                        imageVector = MiuixIcons.ChevronBackward,
-                        contentDescription = stringResource(R.string.projects_screen_back),
-                        modifier = Modifier.size(UiConsts.IconHeader),
-                        tint = MiuixTheme.colorScheme.primary,
-                    )
+                if (onBack != null) {
+                    IconButton(
+                        onClick = onBack,
+                        minWidth = UiConsts.IconButtonSize,
+                        minHeight = UiConsts.IconButtonSize,
+                    ) {
+                        Icon(
+                            imageVector = MiuixIcons.ChevronBackward,
+                            contentDescription = stringResource(R.string.projects_screen_back),
+                            modifier = Modifier.size(UiConsts.IconHeader),
+                            tint = MiuixTheme.colorScheme.primary,
+                        )
+                    }
                 }
             },
         )

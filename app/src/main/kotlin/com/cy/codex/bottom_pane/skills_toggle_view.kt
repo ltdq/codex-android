@@ -60,7 +60,7 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 fun SkillsScreen(
     catalog: CatalogState,
     onEvent: (AppEvent) -> Unit,
-    onBack: () -> Unit,
+    onBack: (() -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
     val colors = MiuixTheme.colorScheme
@@ -229,7 +229,8 @@ private fun SkillsScopeCard(
 }
 
 @Composable
-private fun SkillsBackButton(onBack: () -> Unit) {
+private fun SkillsBackButton(onBack: (() -> Unit)?) {
+    if (onBack == null) return
     IconButton(
         onClick = onBack,
         minWidth = UiConsts.IconButtonSize,

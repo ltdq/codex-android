@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- NavRail.kt -->
+    <string name="nav_rail_home">Home</string>
+    <string name="nav_rail_plugins">Plugins</string>
+    <string name="nav_rail_projects">Projects</string>
+    <string name="nav_rail_settings">Settings</string>
+
+    <!-- NavMenuPanel.kt -->
+    <string name="nav_menu_title">Codex</string>
+    <string name="nav_menu_account_group">Account and data</string>
+
+    <!-- SessionToolsPanel.kt -->
+    <string name="sidebar_library_header">Sessions</string>
+    <string name="session_tools_open">Open the session panel</string>
+    <string name="session_tools_close">Close the session panel</string>
+</resources>

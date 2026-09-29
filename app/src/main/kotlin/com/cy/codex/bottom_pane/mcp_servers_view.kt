@@ -60,7 +60,7 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 @Composable
 fun McpScreen(
     catalog: CatalogState,
-    onBack: () -> Unit,
+    onBack: (() -> Unit)?,
     onOpenServer: (String) -> Unit,
     onEvent: (AppEvent) -> Unit = {},
     modifier: Modifier = Modifier,
@@ -358,7 +358,8 @@ private fun McpAddServerRow() {
 }
 
 @Composable
-private fun McpBackButton(onBack: () -> Unit) {
+private fun McpBackButton(onBack: (() -> Unit)?) {
+    if (onBack == null) return
     IconButton(
         onClick = onBack,
         minWidth = UiConsts.IconButtonSize,

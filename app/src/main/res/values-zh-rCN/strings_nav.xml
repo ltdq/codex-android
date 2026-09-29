@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- NavRail.kt -->
+    <string name="nav_rail_home">首页</string>
+    <string name="nav_rail_plugins">插件</string>
+    <string name="nav_rail_projects">项目</string>
+    <string name="nav_rail_settings">设置</string>
+
+    <!-- NavMenuPanel.kt -->
+    <string name="nav_menu_title">Codex</string>
+    <string name="nav_menu_account_group">账户与数据</string>
+
+    <!-- SessionToolsPanel.kt -->
+    <string name="sidebar_library_header">会话</string>
+    <string name="session_tools_open">打开会话面板</string>
+    <string name="session_tools_close">关闭会话面板</string>
+</resources>

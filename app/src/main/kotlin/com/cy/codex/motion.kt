@@ -14,7 +14,7 @@ import androidx.compose.ui.unit.sp
  * Motion constants.
  *
  * Mirrors `codex-rs/tui/src/motion.rs`: one place for every animated transition so panels,
- * drawers and streaming text accelerate the same way.
+ * panels and streaming text accelerate the same way.
  */
 object Motion {
     /**
@@ -28,7 +28,7 @@ object Motion {
     private fun <T> motion(spec: androidx.compose.animation.core.FiniteAnimationSpec<T>) =
         if (reduced) androidx.compose.animation.core.snap() else spec
 
-    /** Panels and drawers: critically damped, no overshoot. */
+    /** Panels and overlays: critically damped, no overshoot. */
     val Panel: androidx.compose.animation.core.FiniteAnimationSpec<Float>
         get() = motion(spring(dampingRatio = 1f, stiffness = Spring.StiffnessMediumLow))
 
@@ -107,7 +107,7 @@ object Motion {
  *
  * Mirrors `codex-rs/tui/src/ui_consts.rs`.
  *
- * Corners are a ladder, not a free parameter: chrome (drawers, panels, sheets) is [CornerChrome],
+ * Corners are a ladder, not a free parameter: chrome (overlays, panels, sheets) is [CornerChrome],
  * a card inside one is [CornerCard], a row inside a card is [CornerRow], and a control is
  * [CornerControl]. Nothing in the app should introduce a fifth value.
  */
@@ -131,19 +131,19 @@ object UiConsts {
     val CornerControl = 12.dp
     val CornerChip = 8.dp
 
-    /** Corner radius of the two floating drawers, and of a pushed page's top edge. */
-    val DrawerCorner = CornerChrome
+    /** Corner radius of a floating overlay: the session panel, the shortcuts sheet. */
+    val OverlayCorner = CornerChrome
 
-    /** Corner radius of the collapsed drawer chip and the status button: they are the same chip. */
+    /** Corner radius of the title bar's chips; the status and session-panel chips are one shape. */
     val ChipCorner = 18.dp
 
-    /** Edge of the two top-corner chips. They face each other across the transcript, so they match. */
+    /** Edge of the title bar's chips, which sit side by side in its action row. */
     val ChipSize = 48.dp
 
     /** Icon inside a top-corner chip. */
     val ChipIcon = 22.dp
 
-    /** Leading icon of a drawer row, and the marker column of a markdown list. */
+    /** Leading icon of a menu or panel row, and the marker column of a markdown list. */
     val IconLeading = 22.dp
 
     /** Icon inside a compact header button. */
@@ -154,14 +154,6 @@ object UiConsts {
 
     /** Indent that lines a child row up under its parent's icon. */
     val RowIndent = 26.dp
-
-    /**
-     * How far a pushed page stops short of the top edge.
-     *
-     * A page that reaches the top edge stops reading as a page over the transcript and starts
-     * reading as a screen swap; the top band is also where the system's edge gestures live.
-     */
-    val SheetTopGap = 58.dp
 
     /** Corner radius of the status card, and of every other floating panel. */
     val PanelCorner = 30.dp
@@ -175,30 +167,33 @@ object UiConsts {
     /** Corner radius shared by every section card. */
     val SectionCorner = CornerCard
 
-    /** Preferred width of the sidebar drawer. */
-    val SidebarWidth = 252.dp
+    /** Width of the shell's navigation rail: an icon column, narrow because it never hides. */
+    val NavRailWidth = 56.dp
 
-    /** Ceiling on the drawer's width, so a very wide window does not get a very wide drawer. */
+    /** Square a rail icon sits in; the selection fill covers this square, not the whole rail. */
+    val NavRailItemSize = 42.dp
+
+    /** Preferred width of the shell's expanded menu, the middle segment. */
+    val NavMenuWidth = 224.dp
+
+    /** Width of the floating session panel, and the ceiling on it: a wider window gets no wider panel. */
     val SidebarWidthCap = 252.dp
 
     /**
-     * Window width from which the transcript gets its own column beside the drawer.
+     * Window width from which the rail's menu takes its own column.
      *
-     * Below it there is no room for two columns and the drawer goes back over the text; above it the
-     * text is laid out once at `window - drawer` and only ever translated.
+     * Below it there is no room for three columns and the menu floats over the page; above it the
+     * page is laid out once at `window - rail - menu` and only ever translated.
      */
     val WideContentBreakpoint = 720.dp
 
     /**
-     * Space between the drawer's outer edge and the transcript column.
+     * Space between the menu's outer edge and the page column.
      *
-     * Without it the column's left edge lands on the drawer's right edge and the first 18dp gutter is
-     * all the separation there is — the text reads as if it were tucked under the drawer.
+     * Without it the column's left edge lands on the menu's right edge and the first 18dp gutter is
+     * all the separation there is — the text reads as if it were tucked under the menu.
      */
     val ContentGap = 20.dp
-
-    /** The transcript column never gets narrower than this, whatever the drawer asks for. */
-    val MinContentWidth = 320.dp
 
     /** Space kept between the transcript's first row and the top edge. */
     val TranscriptTopInset = 96.dp
@@ -324,7 +319,7 @@ object UiConsts {
     /** Thickness of the hairline dividers inside a card. */
     val DividerThickness = 0.7.dp
 
-    /** Thickness of a control's outline, and of the two floating drawers' edge. */
+    /** Thickness of a control's outline, and of a floating overlay's edge. */
     val OutlineThickness = 0.7.dp
 
     /** Height of the thin progress meters. */
@@ -343,7 +338,6 @@ object UiConsts {
      * and elevation are named once instead of being repeated at every call site.
      */
     val SheetCorner = CornerChrome
-    val SheetElevation = 24.dp
     val PanelElevation = 18.dp
 
     /** The fraction of the window a sheet may cover before it has to scroll internally. */

@@ -100,7 +100,7 @@ import top.yukonga.miuix.kmp.window.WindowBottomSheet
 fun AccountScreen(
     catalog: CatalogState,
     onEvent: (AppEvent) -> Unit,
-    onBack: () -> Unit,
+    onBack: (() -> Unit)?,
     onOpenBedrock: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -929,7 +929,8 @@ private fun AccountText(
 }
 
 @Composable
-private fun AccountBackButton(onBack: () -> Unit) {
+private fun AccountBackButton(onBack: (() -> Unit)?) {
+    if (onBack == null) return
     IconButton(
         onClick = onBack,
         minWidth = UiConsts.IconButtonSize,
