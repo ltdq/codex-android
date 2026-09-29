@@ -37,10 +37,11 @@ MCP 元数据、web search results 与 hook 输出均已接线并有 JVM 测试�
 - [ ] **goal 持久状态指示**：上游 footer 常驻 Active/Paused/Blocked/UsageLimited/
       BudgetLimited/Complete 与用量，恢复会话时提示「Resume paused goal?」
       （`tui/src/chatwidget/goal_status.rs`、`goal_menu.rs`）；Kotlin 只在 GoalSheet 打开时可见。
-- [ ] **三段式导航没有过渡动画**：切换导航区、展开/收起菜单、正文换页都是直接跳变
-      （`surface.kt` 的 `ShellPageTransition` 与菜单开关，`nav_rail.kt` 的固定列宽）。miuix 的
-      `NavigationRail`/`NavigationRailItem` 只做自身展开动画，rail 与菜单、菜单与正文之间的
-      位移和淡入没有动效；正文列的跟随位移（`pageShift`）也是唯一会动的一处。
+- [ ] **三段式导航没有过渡动画**：切换导航区、正文换页、以及固化菜单的展开/收起都是直接跳变
+      （`surface.kt` 的 `ShellPageTransition`、`nav_rail.kt` 的固定列与 `app.kt` 的菜单开关）。
+      miuix 的 `NavigationRail`/`NavigationRailItem` 只做自身展开动画；只有指针悬浮的菜单有动效
+      （miuix `Tooltip` 的淡入淡出，`nav_rail.kt` 的 `NavMenuFlyout`），rail 与菜单、菜单与正文
+      之间的位移和淡入没有；正文列的跟随位移（`pageShift`）是另一处会动的地方。
 
 ## 2. Transcript 渲染
 

@@ -5,6 +5,7 @@
     <string name="nav_rail_plugins">插件</string>
     <string name="nav_rail_projects">项目</string>
     <string name="nav_rail_settings">设置</string>
+    <string name="nav_rail_show_menu">显示该栏菜单</string>
 
     <!-- NavMenuPanel.kt -->
     <string name="nav_menu_title">Codex</string>

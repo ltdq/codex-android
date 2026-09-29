@@ -1,8 +1,10 @@
 package com.cy.codex
 
-import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,20 +16,23 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.cy.codex.theme.RoundedIndication
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.VerticalDivider
-import top.yukonga.miuix.kmp.squircle.squircleBackground
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
@@ -73,9 +78,9 @@ fun CodexNavigationRail(
 }
 
 /**
- * One section of [CodexNavigationRail]: the icon and its selection fill, and no label, so the rail
- * costs the page beside it no label column. The fill, the icon step and the tab role are the
- * library's collapsed rail item's.
+ * One section of [CodexNavigationRail]: the icon and its press highlight, and no label, so the rail
+ * costs the page beside it no label column. A press and a long press are one gesture detector, so a
+ * long press never also selects the item.
  */
 @Composable
 fun CodexNavigationRailItem(
@@ -85,32 +90,46 @@ fun CodexNavigationRailItem(
     contentDescription: String,
     modifier: Modifier = Modifier,
     size: Dp = UiConsts.NavRailItemSize,
-    iconSize: Dp = UiConsts.IconLeading,
+    iconSize: Dp = UiConsts.NavRailIconSize,
+    longClickLabel: String? = null,
+    onLongClick: (() -> Unit)? = null,
+    onHoverChanged: (Boolean) -> Unit = {},
 ) {
     val colors = MiuixTheme.colorScheme
     val interactionSource = remember { MutableInteractionSource() }
+    // One source for hover and press, so the highlight and the shell's own state follow one pointer.
+    val hovered by interactionSource.collectIsHoveredAsState()
+    val reportHover by rememberUpdatedState(onHoverChanged)
+    LaunchedEffect(hovered) { reportHover(hovered) }
+    val isSelected = selected
+    // Press and hover draw on the item's whole square, in the rail's own rounded rectangle: the
+    // library's default indication insets its circle, which reads as a dot on an icon-only rail.
+    val indication =
+        remember(colors.onBackground) {
+            RoundedIndication(color = colors.onBackground, radius = UiConsts.CornerRow, inset = 0.dp)
+        }
     Box(
         modifier =
             modifier
                 .size(size)
-                .squircleBackground(
-                    color = if (selected) colors.surfaceContainerHigh else Color.Transparent,
-                    cornerRadius = UiConsts.CornerRow,
-                )
-                .selectable(
-                    selected = selected,
+                .hoverable(interactionSource)
+                .combinedClickable(
                     onClick = onClick,
+                    onLongClick = onLongClick,
+                    onLongClickLabel = longClickLabel,
                     role = Role.Tab,
                     interactionSource = interactionSource,
-                    indication = LocalIndication.current,
-                ),
+                    indication = indication,
+                )
+                // The tab role comes from the gesture detector; the selection state does not.
+                .semantics { this.selected = isSelected },
         contentAlignment = Alignment.Center,
     ) {
         Icon(
             imageVector = icon,
             contentDescription = contentDescription,
             modifier = Modifier.size(iconSize),
-            tint = if (selected) colors.primary else colors.onSurfaceSecondary,
+            tint = if (isSelected) colors.primary else colors.onSurfaceSecondary,
         )
     }
 }

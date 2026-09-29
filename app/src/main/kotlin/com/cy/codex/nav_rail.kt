@@ -1,6 +1,7 @@
 package com.cy.codex
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
@@ -24,21 +25,29 @@ import com.cy.codex.chatwidget.SidebarEntry
 import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
 import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.Surface
+import top.yukonga.miuix.kmp.basic.TooltipAnchorPosition
+import top.yukonga.miuix.kmp.basic.TooltipBox
+import top.yukonga.miuix.kmp.basic.TooltipDefaults
+import top.yukonga.miuix.kmp.basic.TooltipState
 import top.yukonga.miuix.kmp.basic.TopAppBar
 
 /**
  * The shell's first segment: the rail that never hides, and whose selected item toggles its menu.
  * Which sections it holds is the shell's decision; its looks are [CodexNavigationRail]'s.
+ * [onHover] and [onLongPress] only say which item the pointer is on; [RailMenu] decides the rest.
  */
 @Composable
 internal fun NavRail(
     selected: NavSection,
     onSelect: (NavSection) -> Unit,
+    onHover: (NavSection, Boolean) -> Unit,
+    onLongPress: (NavSection) -> Unit,
     modifier: Modifier = Modifier,
     width: Dp = UiConsts.NavRailWidth,
     itemSize: Dp = UiConsts.NavRailItemSize,
     itemGap: Dp = UiConsts.Space8,
 ) {
+    val showMenuLabel = stringResource(R.string.nav_rail_show_menu)
     CodexNavigationRail(
         modifier = modifier,
         width = width,
@@ -46,29 +55,56 @@ internal fun NavRail(
         itemGap = itemGap,
     ) {
         NavSection.entries.filterNot { it == NavSection.Settings }.forEach { section ->
-            CodexNavigationRailItem(
+            NavRailItem(
+                section = section,
                 selected = section == selected,
-                onClick = { onSelect(section) },
-                icon = section.icon,
-                contentDescription = stringResource(section.titleRes),
-                size = itemSize,
+                onSelect = onSelect,
+                onHover = onHover,
+                onLongPress = onLongPress,
+                longClickLabel = showMenuLabel,
+                itemSize = itemSize,
             )
         }
         // Settings configures what the sections above show, so it stands on the rail's floor.
         Spacer(Modifier.weight(1f))
-        CodexNavigationRailItem(
+        NavRailItem(
+            section = NavSection.Settings,
             selected = selected == NavSection.Settings,
-            onClick = { onSelect(NavSection.Settings) },
-            icon = NavSection.Settings.icon,
-            contentDescription = stringResource(NavSection.Settings.titleRes),
-            size = itemSize,
+            onSelect = onSelect,
+            onHover = onHover,
+            onLongPress = onLongPress,
+            longClickLabel = showMenuLabel,
+            itemSize = itemSize,
         )
     }
 }
 
+@Composable
+private fun NavRailItem(
+    section: NavSection,
+    selected: Boolean,
+    onSelect: (NavSection) -> Unit,
+    onHover: (NavSection, Boolean) -> Unit,
+    onLongPress: (NavSection) -> Unit,
+    longClickLabel: String,
+    itemSize: Dp,
+) {
+    CodexNavigationRailItem(
+        selected = selected,
+        onClick = { onSelect(section) },
+        icon = section.icon,
+        contentDescription = stringResource(section.titleRes),
+        size = itemSize,
+        longClickLabel = longClickLabel,
+        onLongClick = { onLongPress(section) },
+        onHoverChanged = { hovered -> onHover(section, hovered) },
+    )
+}
+
 /**
  * The shell's second segment: the menu behind the selected rail item, at a width fixed by the shell
- * so the page column is measured once. The title collapses as the list scrolls under it.
+ * so the page column is measured once. The title collapses as the list scrolls under it, and the
+ * same panel is drawn in the layout while pinned and floating through [NavMenuFlyout] while hovered.
  */
 @Composable
 internal fun NavMenuPanel(
@@ -136,4 +172,52 @@ internal fun NavMenuPanel(
             Spacer(Modifier.height(bottomInset + UiConsts.ScreenMargin))
         }
     }
+}
+
+/**
+ * The rail with the menu's floating panel hanging off it. The panel is a miuix tooltip, deliberately
+ * not focusable: a focusable popup would consume the outside tap that usually belongs to the rail
+ * item or the page behind it, and the shell drives the tooltip's state itself.
+ */
+@Composable
+internal fun NavMenuFlyout(
+    state: TooltipState,
+    title: String,
+    rows: List<NavMenuRow>,
+    onRow: (NavMenuRow) -> Unit,
+    height: Dp,
+    modifier: Modifier = Modifier,
+    topInset: Dp = 0.dp,
+    bottomInset: Dp = 0.dp,
+    width: Dp = UiConsts.NavMenuWidth,
+    content: @Composable () -> Unit,
+) {
+    TooltipBox(
+        // The panel starts on the rail's own edge: no gap for the pointer to cross, so travelling
+        // from an item into the menu never leaves both segments on the way.
+        positionProvider =
+            TooltipDefaults.rememberTooltipPositionProvider(
+                positioning = TooltipAnchorPosition.Right,
+                spacingBetweenTooltipAndAnchor = 0.dp,
+            ),
+        tooltip = {
+            // A panel as tall as the rail holds the popup to the window's top: miuix centres a
+            // tooltip on its anchor and the window clamps it.
+            Box(Modifier.height(height)) {
+                NavMenuPanel(
+                    title = title,
+                    rows = rows,
+                    onRow = onRow,
+                    topInset = topInset,
+                    bottomInset = bottomInset,
+                    width = width,
+                )
+            }
+        },
+        state = state,
+        modifier = modifier,
+        focusable = false,
+        enableUserInput = false,
+        content = content,
+    )
 }

@@ -180,6 +180,44 @@ private val SettingsPageSpecs = listOf(
 private class MenuSpec(val id: String, @StringRes val titleRes: Int, val icon: ImageVector)
 
 /**
+ * The shell's second segment: the menu a click pinned, and the section a pointer floats over it.
+ * The two are exclusive; [floating] outlives [onPointer] by the panel's exit animation.
+ */
+internal data class RailMenu(
+    val pinned: Boolean = false,
+    /** Section a pointer put up; the rows the panel lists for as long as it is drawn. */
+    val floating: NavSection? = null,
+    /** Whether the pointer is on the rail or the menu, that is, whether the pick is still live. */
+    val onPointer: Boolean = false,
+) {
+    /** Whether the menu is drawn at all. */
+    val shown: Boolean get() = pinned || onPointer
+
+    /** Whether the menu floats over the page rather than standing as the window's second column. */
+    val detached: Boolean get() = onPointer && !pinned
+
+    /** The section the menu lists; [openPage] is the section the page on screen belongs to. */
+    fun section(openPage: NavSection): NavSection = if (pinned) openPage else floating ?: openPage
+
+    /** The pointer rested on a rail item; a pinned column is what it answers to, not the pointer. */
+    fun hover(section: NavSection): RailMenu =
+        if (pinned) this else copy(floating = section, onPointer = true)
+
+    /** A long press asks for the floating menu, and the two cannot both be drawn: the pin gives way. */
+    fun press(section: NavSection): RailMenu =
+        copy(pinned = false, floating = section, onPointer = true)
+
+    /** The pointer is clear of the rail and the menu: the pick is spent, the panel's rows are not. */
+    fun leave(): RailMenu = copy(onPointer = false)
+
+    /** A click pinned the menu, and what is left to list is the section the page belongs to. */
+    fun pin(): RailMenu = copy(pinned = true, floating = null, onPointer = false)
+
+    /** The click that closes the column again; the page takes back the width it gave up. */
+    fun unpin(): RailMenu = copy(pinned = false)
+}
+
+/**
  * Rows the rail item's menu shows; [selectedRowId] marks the row that names the open page.
  */
 internal fun navMenuRows(

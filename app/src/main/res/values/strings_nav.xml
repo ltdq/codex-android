@@ -5,6 +5,7 @@
     <string name="nav_rail_plugins">Plugins</string>
     <string name="nav_rail_projects">Projects</string>
     <string name="nav_rail_settings">Settings</string>
+    <string name="nav_rail_show_menu">Show this section\'s menu</string>
 
     <!-- NavMenuPanel.kt -->
     <string name="nav_menu_title">Codex</string>

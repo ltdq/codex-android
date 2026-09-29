@@ -168,10 +168,13 @@ object UiConsts {
     val SectionCorner = CornerCard
 
     /** Width of the shell's navigation rail: an icon column, narrow because it never hides. */
-    val NavRailWidth = 56.dp
+    val NavRailWidth = 64.dp
 
-    /** Square a rail icon sits in; the selection fill covers this square, not the whole rail. */
-    val NavRailItemSize = 42.dp
+    /** Square a rail icon sits in; the press highlight covers this square, not the whole rail. */
+    val NavRailItemSize = 48.dp
+
+    /** Icon inside a rail item; the rail is icon-only, so its glyphs carry the whole column. */
+    val NavRailIconSize = 26.dp
 
     /** Preferred width of the shell's expanded menu, the middle segment. */
     val NavMenuWidth = 224.dp

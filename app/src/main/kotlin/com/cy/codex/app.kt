@@ -26,6 +26,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -34,7 +35,11 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
@@ -137,6 +142,7 @@ import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SnackbarHost
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
+import top.yukonga.miuix.kmp.basic.rememberTooltipState
 import top.yukonga.miuix.kmp.nav.core.NavBackStack
 import top.yukonga.miuix.kmp.nav.core.NavDisplay
 import top.yukonga.miuix.kmp.nav.core.NavDisplayEffects
@@ -2439,20 +2445,38 @@ fun CodexScreen(
     val menuLabels = navMenuLabels()
     val section = sectionOf(app.surface)
 
-    var menuExpanded by remember {
-        mutableStateOf(preferences.getBoolean(CodexApp.KeyMenuExpanded, true))
+    // The menu a click pinned, and the section the pointer floats over it.
+    var railMenu by remember {
+        mutableStateOf(RailMenu(pinned = preferences.getBoolean(CodexApp.KeyMenuExpanded, true)))
     }
-    // Whether the user has opened or shut the menu this session; until they have, a narrow window
-    // keeps it shut, because there the menu is an overlay and the page needs the width.
+    // Whether the user has pinned or unpinned the menu this session; until they have, a narrow
+    // window keeps it shut, because there the menu is an overlay and the page needs the width.
     var menuChosen by remember { mutableStateOf(false) }
     var expandedProjects by remember {
         mutableStateOf(preferences.getStringSet(CodexApp.KeyExpandedProjects, null) ?: emptySet())
     }
-    val setMenuExpanded: (Boolean) -> Unit = { open ->
-        menuChosen = true
-        menuExpanded = open
-        preferences.edit().putBoolean(CodexApp.KeyMenuExpanded, open).apply()
+    val setMenu: (RailMenu) -> Unit = { next ->
+        // The pin is the one part of the menu that is a decision to keep: the pointer's own pick is
+        // not, so it is not written down.
+        if (next.pinned != railMenu.pinned) {
+            preferences.edit().putBoolean(CodexApp.KeyMenuExpanded, next.pinned).apply()
+        }
+        railMenu = next
     }
+    val setPinned: (Boolean) -> Unit = { open ->
+        menuChosen = true
+        setMenu(if (open) railMenu.pin() else railMenu.unpin())
+    }
+    // The pointer's half of the menu: resting on an item floats that section, long-pressing one does
+    // the same for a finger that never hovers.
+    val hoverMenu: (NavSection, Boolean) -> Unit = { hovered, isHovered ->
+        if (isHovered) setMenu(railMenu.hover(hovered))
+    }
+    val longPressMenu: (NavSection) -> Unit = { pressed ->
+        menuChosen = true
+        setMenu(railMenu.press(pressed))
+    }
+    val leaveMenu: () -> Unit = { setMenu(railMenu.leave()) }
     val toggleProject: (String) -> Unit = { id ->
         expandedProjects =
             if (id in expandedProjects) expandedProjects - id else expandedProjects + id
@@ -2491,6 +2515,9 @@ fun CodexScreen(
 
             val railWidth = UiConsts.NavRailWidth
             val menuWidth = UiConsts.NavMenuWidth
+            // The window's own height: the rail is this tall, and the panel the pointer floats is
+            // given the same height (see NavMenuFlyout).
+            val shellHeight = maxHeight
             // Wide window: rail and menu are columns of their own, so the page is laid out once at
             // `window - rail - menu` and only translated when the menu opens. Narrow: the menu
             // floats over the page, which keeps the width it needs.
@@ -2511,11 +2538,12 @@ fun CodexScreen(
                 } else {
                     pageStart
                 }
-            // Centred while the menu is shut, pushed across when it opens: the page column follows
-            // the menu instead of being re-measured by it.
+            // Centred while the menu floats or is shut, pushed across only once a click pinned it: a
+            // menu the pointer put up must leave the page where it is, or the page moves out from
+            // under the row the pointer was travelling to.
             val pageShift by
                 animateDpAsState(
-                    targetValue = if (wide && menuExpanded) pageStart - centredStart else 0.dp,
+                    targetValue = if (wide && railMenu.pinned) pageStart - centredStart else 0.dp,
                     animationSpec = Motion.PanelDp,
                     label = "pageShift",
                 )
@@ -2530,7 +2558,7 @@ fun CodexScreen(
             val composerGrow by
                 animateDpAsState(
                     targetValue =
-                        if (wide && menuExpanded) {
+                        if (wide && railMenu.pinned) {
                             0.dp
                         } else {
                             (centredStart - railWidth - UiConsts.ScreenMargin).coerceAtLeast(0.dp)
@@ -2539,25 +2567,107 @@ fun CodexScreen(
                     label = "composerGrow",
                 )
             LaunchedEffect(wide) {
-                if (!wide && !menuChosen && menuExpanded) menuExpanded = false
+                if (!wide && !menuChosen && railMenu.pinned) railMenu = railMenu.unpin()
             }
-            // A second tap on the open section collapses its menu, whichever page of that section is
-            // on screen; any other item switches section and opens that section's menu.
+            // A second tap on the open section unpins its menu, whichever page of that section is on
+            // screen; any other item switches section and pins that section's menu.
             val onRailSelect: (NavSection) -> Unit = { tapped ->
-                if (tapped == section) {
-                    setMenuExpanded(!menuExpanded)
+                if (railMenu.pinned && tapped == section) {
+                    setPinned(false)
                 } else {
-                    setMenuExpanded(true)
+                    setPinned(true)
                     app.openSection(tapped)
                 }
             }
 
-            Box(modifier = Modifier.fillMaxSize()) {
-                NavRail(
-                    selected = section,
-                    onSelect = onRailSelect,
-                    modifier = Modifier.align(Alignment.TopStart),
+            // The menu the pointer is on, drawn by miuix's tooltip: a window of its own, so it can
+            // hang over the page without the page making room for it.
+            val flyout = rememberTooltipState(isPersistent = true)
+            val floating = railMenu.detached
+            LaunchedEffect(floating) {
+                if (floating) flyout.show() else flyout.dismiss()
+            }
+            // An outside tap or a back press is taken inside the popup, which the shell never sees;
+            // the popup giving up its target is what tells the shell the pick has been spent.
+            LaunchedEffect(flyout.transition.targetState) {
+                if (!flyout.transition.targetState) leaveMenu()
+            }
+            // Every pointer event the window still gets: a pointer on the menu's own window reaches
+            // neither this node nor the rail, so an event here past both segments is on the page.
+            var railEnd by remember { mutableStateOf(0f) }
+            val menuWidthPx = with(LocalDensity.current) { menuWidth.toPx() }
+
+            val menuSection = railMenu.section(section)
+            // The section's rows are built while the menu is drawn; the panel outlives the pick by
+            // its own exit animation, and holds an empty list only once it is gone from the screen.
+            val menuRows =
+                if (railMenu.shown || flyout.isVisible) {
+                    navMenuRows(
+                        section = menuSection,
+                        labels = menuLabels,
+                        projects = SidebarModel.projects(app.threads, includeArchived = false),
+                        expandedProjects = expandedProjects,
+                        selectedThreadId = app.widget.state.threadId,
+                        selectedRowId = navRowIdOf(app.surface),
+                    )
+                } else {
+                    emptyList()
+                }
+            // Home is the app's own list, so it carries the app's name; the other sections name
+            // themselves.
+            val menuTitle =
+                stringResource(
+                    if (menuSection == NavSection.Home) R.string.nav_menu_title else menuSection.titleRes
                 )
+            val onMenuRow: (NavMenuRow) -> Unit = { row ->
+                when (row) {
+                    is NavMenuRow.Entry -> {
+                        val settings = settingsSectionOfRow(row.id)
+                        if (settings != null) {
+                            app.openSettingsSection(settings)
+                        } else {
+                            openSurfaceFor(app, row.id)
+                        }
+                    }
+
+                    is NavMenuRow.Project -> toggleProject(row.project.id)
+                    is NavMenuRow.Session -> app.openThread(row.session.id)
+                    is NavMenuRow.Header -> Unit
+                }
+                // Choosing a row is what a floating menu is pinned by: the page the choice opened
+                // becomes the section the menu now lists, as the window's second column.
+                setPinned(true)
+            }
+
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .onPointerAwayFromMenu(
+                        menuStart = railEnd,
+                        menuEnd = railEnd + menuWidthPx,
+                        onAway = leaveMenu,
+                    ),
+            ) {
+                NavMenuFlyout(
+                    state = flyout,
+                    title = menuTitle,
+                    rows = menuRows,
+                    onRow = onMenuRow,
+                    // As tall as the rail, which is what holds the panel to the window's top.
+                    height = shellHeight,
+                    topInset = topInset,
+                    bottomInset = bottomInset,
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .onGloballyPositioned { railEnd = it.size.width.toFloat() },
+                ) {
+                    NavRail(
+                        selected = section,
+                        onSelect = onRailSelect,
+                        onHover = hoverMenu,
+                        onLongPress = longPressMenu,
+                    )
+                }
 
                 NavDisplay(
                     backStack = app.surfaces,
@@ -2929,52 +3039,21 @@ fun CodexScreen(
                     }
                 }
 
-                if (menuExpanded) {
+                if (railMenu.pinned) {
                     NavMenuPanel(
-                        // Home is the app's own list, so it carries the app's name; the other
-                        // sections name themselves.
-                        title =
-                            stringResource(
-                                if (section == NavSection.Home) {
-                                    R.string.nav_menu_title
-                                } else {
-                                    section.titleRes
-                                }
-                            ),
-                        rows =
-                            navMenuRows(
-                                section = section,
-                                labels = menuLabels,
-                                projects = SidebarModel.projects(app.threads, includeArchived = false),
-                                expandedProjects = expandedProjects,
-                                selectedThreadId = app.widget.state.threadId,
-                                selectedRowId = navRowIdOf(app.surface),
-                            ),
-                        onRow = { row ->
-                            when (row) {
-                                is NavMenuRow.Entry -> {
-                                    val settings = settingsSectionOfRow(row.id)
-                                    if (settings != null) {
-                                        app.openSettingsSection(settings)
-                                    } else {
-                                        openSurfaceFor(app, row.id)
-                                    }
-                                }
-
-                                is NavMenuRow.Project -> toggleProject(row.project.id)
-                                is NavMenuRow.Session -> app.openThread(row.session.id)
-                                is NavMenuRow.Header -> Unit
-                            }
-                        },
+                        title = menuTitle,
+                        rows = menuRows,
+                        onRow = onMenuRow,
                         topInset = topInset,
                         bottomInset = bottomInset,
                         modifier = Modifier.align(Alignment.TopStart).padding(start = railWidth),
                     )
                 }
-                // Only the overlay menu needs a back gesture: laid out beside the page, it is not in
-                // the way, and a pushed page owns back for itself.
-                BackHandler(enabled = menuExpanded && !wide && app.surfaces.size == 1) {
-                    setMenuExpanded(false)
+                // The floating menu takes back first, since it is what the user just put up; the
+                // overlay menu a narrow window shows is the one that needs the page's back gesture.
+                BackHandler(enabled = floating) { leaveMenu() }
+                BackHandler(enabled = railMenu.pinned && !wide && app.surfaces.size == 1) {
+                    setPinned(false)
                 }
 
                 app.agentSummary?.let { threadId ->
@@ -2999,6 +3078,38 @@ fun CodexScreen(
                         onTrust = app::grantTrust,
                         onDismiss = app::dismissTrust,
                     )
+                }
+            }
+        }
+    }
+}
+
+/** How much of the rail's menu-facing edge counts as the pointer heading into the menu. */
+private val RailMenuEdge = 8.dp
+
+/**
+ * Reports the pointer once it is clear of the rail and the menu; a pointer over the menu's own
+ * window reaches no node at all, so it never counts as away.
+ */
+@Composable
+private fun Modifier.onPointerAwayFromMenu(
+    menuStart: Float,
+    menuEnd: Float,
+    onAway: () -> Unit,
+): Modifier {
+    val away by rememberUpdatedState(onAway)
+    val edge = with(LocalDensity.current) { RailMenuEdge.toPx() }
+    return pointerInput(menuStart, menuEnd, edge) {
+        awaitPointerEventScope {
+            while (true) {
+                val event = awaitPointerEvent()
+                val x = event.changes.lastOrNull()?.position?.x ?: continue
+                val exiting = event.type == PointerEventType.Exit
+                when {
+                    exiting && x >= menuStart - edge -> Unit
+                    x > menuEnd -> away()
+                    exiting -> away()
+                    else -> Unit
                 }
             }
         }
