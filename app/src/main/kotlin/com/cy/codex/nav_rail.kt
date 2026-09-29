@@ -1,5 +1,6 @@
 package com.cy.codex
 
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -10,13 +11,15 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
@@ -25,15 +28,16 @@ import com.cy.codex.chatwidget.ActionRow
 import com.cy.codex.chatwidget.ProjectRow
 import com.cy.codex.chatwidget.SessionRow
 import com.cy.codex.chatwidget.SidebarEntry
-import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
 import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.Surface
+import top.yukonga.miuix.kmp.basic.TooltipAnchorPosition
+import top.yukonga.miuix.kmp.basic.TooltipBox
 import top.yukonga.miuix.kmp.basic.TopAppBar
 
 /**
  * The shell's first segment: the rail that never hides, and whose selected item toggles its menu.
- * Which sections it holds is the shell's decision; its looks are [CodexNavigationRail]'s.
- * [onHover] and [onLongPress] only say which item the pointer is on; [RailMenu] decides the rest.
+ * Which sections it holds is the shell's decision; its looks are [CodexNavigationRail]'s. With no
+ * menu to float, [showTooltips] names the item the pointer is on instead.
  */
 @Composable
 internal fun NavRail(
@@ -41,6 +45,7 @@ internal fun NavRail(
     onSelect: (NavSection) -> Unit,
     onHover: (NavSection, Boolean) -> Unit,
     onLongPress: (NavSection) -> Unit,
+    showTooltips: Boolean,
     modifier: Modifier = Modifier,
     width: Dp = UiConsts.NavRailWidth,
     itemSize: Dp = UiConsts.NavRailItemSize,
@@ -60,6 +65,7 @@ internal fun NavRail(
                 onSelect = onSelect,
                 onHover = onHover,
                 onLongPress = onLongPress,
+                showTooltips = showTooltips,
                 longClickLabel = showMenuLabel,
                 itemSize = itemSize,
             )
@@ -72,6 +78,7 @@ internal fun NavRail(
             onSelect = onSelect,
             onHover = onHover,
             onLongPress = onLongPress,
+            showTooltips = showTooltips,
             longClickLabel = showMenuLabel,
             itemSize = itemSize,
         )
@@ -85,32 +92,45 @@ private fun NavRailItem(
     onSelect: (NavSection) -> Unit,
     onHover: (NavSection, Boolean) -> Unit,
     onLongPress: (NavSection) -> Unit,
+    showTooltips: Boolean,
     longClickLabel: String,
     itemSize: Dp,
 ) {
-    CodexNavigationRailItem(
-        selected = selected,
-        onClick = { onSelect(section) },
-        icon = section.icon,
-        contentDescription = stringResource(section.titleRes),
-        size = itemSize,
-        longClickLabel = longClickLabel,
-        onLongClick = { onLongPress(section) },
-        onHoverChanged = { hovered -> onHover(section, hovered) },
-    )
+    val title = stringResource(section.titleRes)
+    // Where the menu is pinned, the rail cannot float it, so the pointer resting on an item and a
+    // finger holding one name the item instead; the tooltip brings both gestures with it.
+    TooltipBox(
+        text = title,
+        enabled = showTooltips,
+        positioning = TooltipAnchorPosition.End,
+    ) {
+        CodexNavigationRailItem(
+            selected = selected,
+            onClick = { onSelect(section) },
+            icon = section.icon,
+            contentDescription = title,
+            size = itemSize,
+            longClickLabel = longClickLabel,
+            // The tooltip presses the same gesture when it is the one that answers.
+            onLongClick = if (showTooltips) null else { { onLongPress(section) } },
+            onHoverChanged = { hovered -> onHover(section, hovered) },
+        )
+    }
 }
 
 /**
  * The shell's second segment: one menu, floating over the page or pinned beside it. [settle] is how
- * far it has filled out (0 card, 1 column); the same amount comes back as the rows' padding, so the
- * card grows out around text that never moves, and a pinned menu keeps its scroll and open project.
+ * far it has filled out and [reveal] how much width has unfolded; the rows never move while the
+ * card grows around them. [onCardTap] pins the menu on a tap no row took.
  */
 @Composable
 internal fun NavMenuPanel(
     title: String,
     rows: List<NavMenuRow>,
     onRow: (NavMenuRow) -> Unit,
+    onCardTap: () -> Unit,
     settle: Float,
+    reveal: Float,
     modifier: Modifier = Modifier,
     topInset: Dp = 0.dp,
     bottomInset: Dp = 0.dp,
@@ -118,18 +138,18 @@ internal fun NavMenuPanel(
     listPadding: PaddingValues = PaddingValues(horizontal = UiConsts.Space8, vertical = UiConsts.Space4),
     itemGap: Dp = UiConsts.Space2,
 ) {
-    val scrollBehavior = MiuixScrollBehavior()
     val railGap = UiConsts.NavMenuFloatGap * (1f - settle)
     val edgeGap = UiConsts.NavMenuFloatMargin * (1f - settle)
+    val cardTap by rememberUpdatedState(onCardTap)
     Box(
         modifier =
             modifier
-                .width(width)
+                .width(width * reveal)
                 .fillMaxHeight()
                 .padding(start = railGap, top = edgeGap, end = edgeGap, bottom = edgeGap),
     ) {
         Surface(
-            modifier = Modifier.fillMaxSize().consumePointerInput(),
+            modifier = Modifier.fillMaxSize().pointerInput(Unit) { detectTapGestures { cardTap() } },
             shape = RoundedCornerShape(UiConsts.PanelCorner * (1f - settle)),
             color = panelColor(),
             shadowElevation = UiConsts.PanelElevation,
@@ -137,10 +157,14 @@ internal fun NavMenuPanel(
             Column(
                 modifier =
                     Modifier
-                        .fillMaxSize()
+                        // The card's own rectangle, whatever it has unfolded to, so the rows keep
+                        // the width they end up with and the unfold reveals them instead of
+                        // reflowing them.
+                        .requiredWidth(width - railGap - edgeGap)
+                        .fillMaxHeight()
                         .padding(
-                            // Whatever the card gives up, the rows take back: their rectangle is the
-                            // same one at both ends of the fill, so a pin moves the chrome, not the text.
+                            // Whatever the card gives up, the rows take back: a pin moves the
+                            // chrome, not the text.
                             start = UiConsts.NavMenuFloatGap - railGap,
                             top = UiConsts.NavMenuFloatMargin - edgeGap,
                             end = UiConsts.NavMenuFloatMargin - edgeGap,
@@ -148,19 +172,17 @@ internal fun NavMenuPanel(
                         ),
             ) {
                 Spacer(Modifier.height(topInset + UiConsts.ScreenMargin))
+                // Only the large title: the bar is the panel's header, and the list scrolls beside
+                // it rather than under it, so there is no collapsed step for a second title to name.
                 TopAppBar(
-                    title = title,
+                    title = "",
                     largeTitle = title,
                     color = panelColor(),
                     defaultWindowInsetsPadding = false,
-                    scrollBehavior = scrollBehavior,
                 )
                 LazyColumn(
                     state = rememberLazyListState(),
-                    modifier =
-                        Modifier.fillMaxWidth()
-                            .weight(1f)
-                            .nestedScroll(scrollBehavior.nestedScrollConnection),
+                    modifier = Modifier.fillMaxWidth().weight(1f),
                     contentPadding = listPadding,
                     verticalArrangement = Arrangement.spacedBy(itemGap),
                 ) {
@@ -196,17 +218,3 @@ internal fun NavMenuPanel(
         }
     }
 }
-
-/**
- * Swallows every pointer event that lands on the card, so a tap on the card's own padding belongs
- * to the menu rather than to the page under it; the rows are children and take their taps first.
- */
-private fun Modifier.consumePointerInput(): Modifier =
-    pointerInput(Unit) {
-        awaitPointerEventScope {
-            while (true) {
-                awaitPointerEvent().changes.forEach { it.consume() }
-            }
-        }
-    }
-

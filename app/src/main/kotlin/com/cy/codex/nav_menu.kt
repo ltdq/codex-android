@@ -203,9 +203,12 @@ internal data class RailMenu(
     fun hover(section: NavSection): RailMenu =
         if (pinned) this else copy(floating = section, onPointer = true)
 
-    /** A long press asks for the floating menu, and the two cannot both be drawn: the pin gives way. */
+    /**
+     * A long press asks for the floating menu, and a pinned column already answers for the section;
+     * the rail names the item it pressed instead, which is what [pinned] tells it to do.
+     */
     fun press(section: NavSection): RailMenu =
-        copy(pinned = false, floating = section, onPointer = true)
+        if (pinned) this else copy(floating = section, onPointer = true)
 
     /** The pointer is clear of the rail and the menu: the pick is spent, the panel's rows are not. */
     fun leave(): RailMenu = copy(onPointer = false)

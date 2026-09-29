@@ -5,7 +5,7 @@ import android.net.Uri
 import android.provider.OpenableColumns
 import androidx.activity.compose.BackHandler
 
-import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.Animatable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -34,8 +34,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.graphics.TransformOrigin
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.pointer.PointerEventType
@@ -2539,29 +2537,37 @@ fun CodexScreen(
                     pageStart
                 }
             // How far the menu has filled out of its card: 0 is the card the pointer put up, 1 the
-            // column a click pinned. The page's shift and the panel's own chrome ride this one
-            // number, so the page moves aside exactly as fast as the panel grows into the room it is
-            // making, and the two never drift apart.
-            val menuSettle by
-                animateFloatAsState(
-                    targetValue = if (railMenu.pinned) 1f else 0f,
-                    animationSpec = Motion.Panel,
-                    label = "menuSettle",
-                )
-            // The panel arrives and leaves as one piece, out of the rail's edge rather than its own
-            // middle. While it is up, floating and pinned are the same composition: a pin moves the
-            // chrome, it does not rebuild the list under the pointer.
+            // column a click pinned. The page's shift and the panel's chrome ride this one number,
+            // so the two never drift apart.
             val menuUp = railMenu.shown
-            val menuOpacity by
-                animateFloatAsState(
-                    targetValue = if (menuUp) 1f else 0f,
-                    animationSpec = if (menuUp) Motion.Enter else Motion.Exit,
-                    label = "menuOpacity",
-                )
-            val menuDrawn = menuUp || menuOpacity > 0f
-            // Centred while the menu floats or is shut, pushed across as far as the panel has filled:
+            val settleTarget = if (railMenu.pinned) 1f else 0f
+            val menuSettle = remember { Animatable(settleTarget) }
+            // How much of the panel has unfolded out of the rail; the card never grows from its middle.
+            val menuReveal = remember { Animatable(0f) }
+            var menuDrawn by remember { mutableStateOf(false) }
+            LaunchedEffect(menuUp) {
+                if (menuUp) {
+                    menuDrawn = true
+                    // Snap before the panel is on screen, so its arrival is an unfold out of the rail.
+                    menuSettle.snapTo(settleTarget)
+                    menuReveal.animateTo(1f, Motion.Panel)
+                } else {
+                    // Leaving: the retract is the motion, so the chrome holds the shape it had, and
+                    // only drops it once the panel is off the screen.
+                    menuReveal.animateTo(0f, Motion.Panel)
+                    menuDrawn = false
+                    menuSettle.snapTo(settleTarget)
+                }
+            }
+            // The fill is for a pin of a menu already up, whose arrival the effect above settled.
+            LaunchedEffect(settleTarget, menuUp, menuDrawn) {
+                if (menuUp && menuDrawn) menuSettle.animateTo(settleTarget, Motion.Panel)
+            }
+            // The room the menu has taken so far, which is what everything around it makes way for.
+            val menuOpen = menuSettle.value * menuReveal.value
+            // Centred while the menu floats or is shut, pushed across as the menu takes its room:
             // the page column follows the menu instead of being re-measured by it.
-            val pageShift = (pageStart - centredStart) * menuSettle
+            val pageShift = (pageStart - centredStart) * menuOpen
             // The floating controls do not follow that column: they are anchored to the window, so
             // they take back whatever the column's own position leaves at the window's edge — the
             // same gap from the right edge as from the top one, wherever the column has moved to.
@@ -2571,7 +2577,7 @@ fun CodexScreen(
             // the same gutter on both sides, and the input takes that gutter back, so it always ends
             // at the window's right margin and starts as far left as the rail allows.
             val composerGrow =
-                (centredStart - railWidth - UiConsts.ScreenMargin).coerceAtLeast(0.dp) * (1f - menuSettle)
+                (centredStart - railWidth - UiConsts.ScreenMargin).coerceAtLeast(0.dp) * (1f - menuOpen)
             LaunchedEffect(wide) {
                 if (!wide && !menuChosen && railMenu.pinned) railMenu = railMenu.unpin()
             }
@@ -2588,7 +2594,7 @@ fun CodexScreen(
 
             val menuSection = railMenu.section(section)
             // The section's rows are built while the panel is drawn; the panel outlives the pick by
-            // its own fade, and holds an empty list only once it is gone from the screen.
+            // its own retract, and holds an empty list only once it is gone from the screen.
             val menuRows =
                 if (menuDrawn) {
                     navMenuRows(
@@ -2633,14 +2639,6 @@ fun CodexScreen(
                     .fillMaxSize()
                     .onPointerAwayFromMenu(menuEnd = with(LocalDensity.current) { (railWidth + menuWidth).toPx() }, onAway = leaveMenu),
             ) {
-                NavRail(
-                    selected = section,
-                    onSelect = onRailSelect,
-                    onHover = hoverMenu,
-                    onLongPress = longPressMenu,
-                    modifier = Modifier.align(Alignment.TopStart),
-                )
-
                 NavDisplay(
                     backStack = app.surfaces,
                     modifier =
@@ -3018,22 +3016,32 @@ fun CodexScreen(
                         title = menuTitle,
                         rows = menuRows,
                         onRow = onMenuRow,
-                        settle = menuSettle,
+                        // A tap on the card that no row took pins the menu on the section it is
+                        // showing, the way a click on that rail item would.
+                        onCardTap = {
+                            if (!railMenu.pinned) {
+                                app.openSection(railMenu.section(section))
+                                setPinned(true)
+                            }
+                        },
+                        settle = menuSettle.value,
+                        reveal = menuReveal.value,
                         topInset = topInset,
                         bottomInset = bottomInset,
-                        modifier =
-                            Modifier.align(Alignment.TopStart)
-                                .padding(start = railWidth)
-                                .graphicsLayer {
-                                    alpha = menuOpacity
-                                    val scale = 1f - MenuEnterScale * (1f - menuOpacity)
-                                    scaleX = scale
-                                    scaleY = scale
-                                    // Grows out of the rail's edge, not out of its own middle.
-                                    transformOrigin = TransformOrigin(0f, 0.5f)
-                                },
+                        modifier = Modifier.align(Alignment.TopStart).padding(start = railWidth),
                     )
                 }
+                // The rail is the window's first column, so it is drawn over the menu it opens: the
+                // menu's shadow belongs to the page beside it, not to the rail it came out of.
+                NavRail(
+                    selected = section,
+                    onSelect = onRailSelect,
+                    onHover = hoverMenu,
+                    onLongPress = longPressMenu,
+                    // The pointer has no menu to float while the column is up, so it names the item.
+                    showTooltips = railMenu.pinned,
+                    modifier = Modifier.align(Alignment.TopStart),
+                )
                 // The floating menu takes back first, since it is what the user just put up; the
                 // overlay menu a narrow window keeps is the one that needs the page's back gesture.
                 BackHandler(enabled = railMenu.detached) { leaveMenu() }
@@ -3068,9 +3076,6 @@ fun CodexScreen(
         }
     }
 }
-
-/** How much smaller the menu is on its way in, at the rail's edge. */
-private const val MenuEnterScale = 0.08f
 
 /**
  * Reports the pointer once it is clear of the rail and the menu: the panel is drawn in this window,

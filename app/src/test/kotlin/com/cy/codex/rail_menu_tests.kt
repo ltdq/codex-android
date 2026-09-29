@@ -59,12 +59,20 @@ class RailMenuTest {
     }
 
     @Test
-    fun `a long press floats the section it pressed and gives up the pin`() {
-        val menu = RailMenu(pinned = true).press(NavSection.Projects)
+    fun `a long press floats the section it pressed while nothing is pinned`() {
+        val menu = RailMenu().press(NavSection.Projects)
 
-        assertFalse(menu.pinned)
         assertTrue(menu.detached)
         assertEquals(NavSection.Projects, menu.section(NavSection.Home))
+    }
+
+    @Test
+    fun `a long press leaves the pinned column up instead of floating over it`() {
+        val menu = RailMenu(pinned = true).press(NavSection.Projects)
+
+        assertTrue(menu.pinned)
+        assertFalse(menu.detached)
+        assertEquals(NavSection.Home, menu.section(NavSection.Home))
     }
 
     @Test
