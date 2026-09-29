@@ -9,11 +9,15 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
@@ -104,7 +108,7 @@ private fun NavRailItem(
 /**
  * The shell's second segment: the menu behind the selected rail item, at a width fixed by the shell
  * so the page column is measured once. The title collapses as the list scrolls under it, and the
- * same panel is drawn in the layout while pinned and floating through [NavMenuFlyout] while hovered.
+ * same panel is drawn in the layout while pinned and floating through [NavMenuFlyout] as a card.
  */
 @Composable
 internal fun NavMenuPanel(
@@ -115,12 +119,14 @@ internal fun NavMenuPanel(
     topInset: Dp = 0.dp,
     bottomInset: Dp = 0.dp,
     width: Dp = UiConsts.NavMenuWidth,
+    shape: Shape = RectangleShape,
     listPadding: PaddingValues = PaddingValues(horizontal = UiConsts.Space8, vertical = UiConsts.Space4),
     itemGap: Dp = UiConsts.Space2,
 ) {
     val scrollBehavior = MiuixScrollBehavior()
     Surface(
         modifier = modifier.width(width).fillMaxHeight(),
+        shape = shape,
         color = panelColor(),
         shadowElevation = UiConsts.PanelElevation,
     ) {
@@ -175,6 +181,23 @@ internal fun NavMenuPanel(
 }
 
 /**
+ * The card the menu becomes while it floats: the app's overlay corner, so a menu put up by the
+ * pointer reads as an overlay of the page rather than as the shell's second column.
+ */
+private val NavMenuCardShape = RoundedCornerShape(UiConsts.PanelCorner)
+
+/**
+ * Room the floating card keeps inside its popup: the gap from the rail on the left, and the stage
+ * its shadow is drawn on everywhere else, since a popup window is exactly as big as what it holds.
+ */
+private val NavMenuCardInset = PaddingValues(
+    start = UiConsts.Space8 + UiConsts.Space16,
+    top = UiConsts.Space16,
+    end = UiConsts.Space16,
+    bottom = UiConsts.Space16,
+)
+
+/**
  * The rail with the menu's floating panel hanging off it. The panel is a miuix tooltip, deliberately
  * not focusable: a focusable popup would consume the outside tap that usually belongs to the rail
  * item or the page behind it, and the shell drives the tooltip's state itself.
@@ -193,8 +216,8 @@ internal fun NavMenuFlyout(
     content: @Composable () -> Unit,
 ) {
     TooltipBox(
-        // The panel starts on the rail's own edge: no gap for the pointer to cross, so travelling
-        // from an item into the menu never leaves both segments on the way.
+        // The popup starts on the rail's own edge, so the pointer travelling from an item into the
+        // menu crosses nothing that belongs to neither; the gap the eye reads is the card's inset.
         positionProvider =
             TooltipDefaults.rememberTooltipPositionProvider(
                 positioning = TooltipAnchorPosition.Right,
@@ -203,7 +226,7 @@ internal fun NavMenuFlyout(
         tooltip = {
             // A panel as tall as the rail holds the popup to the window's top: miuix centres a
             // tooltip on its anchor and the window clamps it.
-            Box(Modifier.height(height)) {
+            Box(modifier = Modifier.height(height).padding(NavMenuCardInset)) {
                 NavMenuPanel(
                     title = title,
                     rows = rows,
@@ -211,6 +234,7 @@ internal fun NavMenuFlyout(
                     topInset = topInset,
                     bottomInset = bottomInset,
                     width = width,
+                    shape = NavMenuCardShape,
                 )
             }
         },
