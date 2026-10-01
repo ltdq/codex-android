@@ -77,10 +77,10 @@ object Motion {
     const val SpinnerPeriodMs = 900L
 
     /**
-     * Period of the shell's base drifting: off the ladder on purpose, since a background is not a
-     * transition.
+     * Period of the shell's base turning: one pass of its light and one turn of its hues, three
+     * times the demo's own cycle and off the ladder, since a background is not a transition.
      */
-    const val DriftMs = 90_000
+    const val DriftMs = 45_000
 
     /** Press and selection feedback. */
     const val PressMs = 120

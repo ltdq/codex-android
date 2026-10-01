@@ -3,7 +3,6 @@ package com.cy.codex
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.lerp
 import top.yukonga.miuix.kmp.theme.ColorSchemeMode
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
@@ -95,18 +94,13 @@ fun panelColor(): Color {
 
 /**
  * The rail's colour, which is the shell's base layer: the window is painted in it and the screen the
- * menu and the pages stand on floats over it (see [CodexShellScreen]). A dark scheme's surface is
- * black, which reads as a hole beside the screen, so the base mixes the scheme's accent into it; a
- * light one takes the grouped container step, where surface and background are both near-white.
+ * menu and the pages stand on floats over it (see [CodexShellScreen]). It is the flat step of the
+ * scheme and no more, since [CodexShellBackdrop] is what colours the base.
  */
 @Composable
 fun railColor(): Color {
     val colors = MiuixTheme.colorScheme
-    return if (darkScheme()) {
-        lerp(colors.surface, colors.primaryContainer, 0.3f)
-    } else {
-        lerp(colors.surfaceContainerHigh, colors.primaryContainer, 0.16f)
-    }
+    return if (darkScheme()) colors.surface else colors.surfaceContainerHigh
 }
 
 /**

@@ -148,41 +148,50 @@ fun CodexShellScreen(
     )
 }
 
-/** One colour of [CodexShellBackdrop]'s wash: what it is, how strong, and where it sits and reaches. */
-private class WashMark(
-    val color: Color,
-    val alpha: Float,
-    val at: Offset,
-    val reach: Float,
+/** The background's own colours, as the hue they stand on and the swing they turn through. */
+private class Os3Hues(
+    val hue: Float,
+    val swing: Float,
+    val saturation: Float,
+    val value: Float,
 )
 
-/** How far a wash mark wanders, as a fraction of the window: enough to be seen, not to be read. */
-private const val WashDrift = 0.06f
+/** The demo's own background in a dark scheme: a deep blue that turns violet and back. */
+private val Os3Dark = Os3Hues(hue = 250f, swing = 35f, saturation = 0.72f, value = 0.32f)
 
-/** A full turn of that wander, and of the marks' standing apart from one another. */
+/** And in a light one, the pastel the same turn takes: a pink through a lavender. */
+private val Os3Light = Os3Hues(hue = 292f, swing = 48f, saturation = 0.14f, value = 0.97f)
+
+/** How far that background's gradient slides, as a fraction of the window. */
+private const val Os3Flow = 0.06f
+
+/**
+ * How much of the window the flow's light is wide, as a fraction of its height, and how bright: a
+ * band rather than a glow, since an edge travelling down the rail is what the eye can see move.
+ */
+private const val Os3Band = 0.16f
+private const val Os3BandAlpha = 0.45f
+
+/** [Color.hsv] with the hue wrapped, so a swing that crosses the wheel's seam is still a colour. */
+private fun os3Color(hue: Float, saturation: Float, value: Float): Color =
+    Color.hsv(((hue % 360f) + 360f) % 360f, saturation.coerceIn(0f, 1f), value.coerceIn(0f, 1f))
+
+/** A full turn of the background's swing. */
 private val TwoPi = (2.0 * PI).toFloat()
 
 /**
- * The rail's colour, lit: the window's base layer, painted under everything the shell draws, as a
- * wash of the scheme's own containers drifting across the window. Only the four bands the screen
- * leaves are painted, since the drift repaints this layer every frame.
+ * The rail's colour, lit: the window's base layer, painted under everything the shell draws, as the
+ * OS3 background the miuix demo's blur page turns through, with one band of light running down it.
+ * Only the four bands the screen leaves are painted, since the cycle repaints it every frame.
  */
 @Composable
 fun CodexShellBackdrop(
     railWidth: Dp,
     modifier: Modifier = Modifier,
 ) {
-    val colors = MiuixTheme.colorScheme
     val base = railColor()
-    val dark = darkScheme()
-    // Fractions of the window, built along its left edge where the rail's items stand.
-    val wash =
-        listOf(
-            WashMark(colors.primaryContainer, if (dark) 0.3f else 0.22f, Offset(-0.08f, 0.1f), 0.55f),
-            WashMark(colors.secondaryContainer, if (dark) 0.25f else 0.25f, Offset(0.04f, 0.52f), 0.42f),
-            WashMark(colors.tertiaryContainer, if (dark) 0.4f else 0.3f, Offset(-0.04f, 0.92f), 0.6f),
-        )
-    // Read by the draw and not by the composition, so a drifting base redraws instead of recomposing.
+    val hues = if (darkScheme()) Os3Dark else Os3Light
+    // Read by the draw and not by the composition, so a turning base redraws instead of recomposing.
     val drift =
         if (Motion.reduced) {
             null
@@ -214,30 +223,42 @@ fun CodexShellBackdrop(
                             Rect(size.width - inset, top, size.width, bottom),
                         )
                     onDrawBehind {
-                        val phase = (drift?.value ?: 0f) * TwoPi
+                        val turn = drift?.value ?: 0f
+                        val phase = turn * TwoPi
+                        val hue = hues.hue + hues.swing * sin(phase)
+                        // The hue's own neighbours, which the demo's background runs through from
+                        // one end of the window to the other.
+                        val background =
+                            Brush.linearGradient(
+                                colors =
+                                    listOf(
+                                        os3Color(hue - 22f, hues.saturation * 1.1f, hues.value * 0.9f),
+                                        os3Color(hue + 6f, hues.saturation * 0.9f, hues.value * 1.15f),
+                                        os3Color(hue + 38f, hues.saturation * 1.05f, hues.value * 0.8f),
+                                    ),
+                                start = Offset(size.width * (0.08f + Os3Flow * cos(phase)), 0f),
+                                end = Offset(size.width * (0.92f - Os3Flow * cos(phase)), size.height),
+                            )
+                        val light = os3Color(hue + 6f, hues.saturation * 0.7f, hues.value * 1.2f)
+                        // The light enters and leaves the window, so the cycle's one seam falls off
+                        // screen.
+                        val sweep = size.height * (1.5f * turn - 0.25f)
+                        val flow =
+                            Brush.linearGradient(
+                                // Fading to its own nothing rather than through transparent black,
+                                // which the shader darkens on the way out.
+                                colors =
+                                    listOf(
+                                        light.copy(alpha = 0f),
+                                        light.copy(alpha = Os3BandAlpha),
+                                        light.copy(alpha = 0f),
+                                    ),
+                                start = Offset(0f, sweep - size.height * Os3Band),
+                                end = Offset(0f, sweep + size.height * Os3Band),
+                            )
                         bands.forEach { band -> drawRect(color = base, topLeft = band.topLeft, size = band.size) }
-                        wash.forEachIndexed { index, mark ->
-                            // The marks turn out of step, so the wash moves rather than pulses; each
-                            // fades to its own nothing rather than through transparent black.
-                            val turn = phase + index * TwoPi / wash.size
-                            val brush =
-                                Brush.radialGradient(
-                                    colors =
-                                        listOf(
-                                            mark.color.copy(alpha = mark.alpha),
-                                            mark.color.copy(alpha = 0f),
-                                        ),
-                                    center =
-                                        Offset(
-                                            size.width * (mark.at.x + WashDrift * cos(turn)),
-                                            size.height * (mark.at.y + WashDrift * sin(turn)),
-                                        ),
-                                    radius = maxOf(size.width, size.height) * mark.reach,
-                                )
-                            bands.forEach { band ->
-                                drawRect(brush = brush, topLeft = band.topLeft, size = band.size)
-                            }
-                        }
+                        bands.forEach { band -> drawRect(brush = background, topLeft = band.topLeft, size = band.size) }
+                        bands.forEach { band -> drawRect(brush = flow, topLeft = band.topLeft, size = band.size) }
                     }
                 },
     )
