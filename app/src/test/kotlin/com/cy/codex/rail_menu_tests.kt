@@ -85,6 +85,30 @@ class RailMenuTest {
     }
 
     @Test
+    fun `the item the column was closed under floats nothing while the pointer stays on it`() {
+        val menu = RailMenu(pinned = true).unpin().hover(NavSection.Home)
+
+        assertFalse(menu.shown)
+        assertFalse(menu.detached)
+    }
+
+    @Test
+    fun `the pointer coming back to the rail floats again once it has been clear`() {
+        val menu = RailMenu(pinned = true).unpin().leave().hover(NavSection.Plugins)
+
+        assertTrue(menu.detached)
+        assertEquals(NavSection.Plugins, menu.floating)
+    }
+
+    @Test
+    fun `a long press floats over the hover a click spent`() {
+        val menu = RailMenu(pinned = true).unpin().press(NavSection.Projects)
+
+        assertTrue(menu.detached)
+        assertEquals(NavSection.Projects, menu.section(NavSection.Home))
+    }
+
+    @Test
     fun `nothing is drawn before anything puts the menu up`() {
         val menu = RailMenu()
 

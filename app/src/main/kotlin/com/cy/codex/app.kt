@@ -2639,7 +2639,14 @@ fun CodexScreen(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .onPointerAwayFromMenu(menuEnd = with(LocalDensity.current) { (railWidth + menuWidth).toPx() }, onAway = leaveMenu),
+                    .onPointerAwayFromMenu(
+                        // The menu is the rail's own width while it is up; with no panel up, the
+                        // rail's edge is where the pointer has left both segments.
+                        menuEnd = with(LocalDensity.current) {
+                            (if (menuUp) railWidth + menuWidth else railWidth).toPx()
+                        },
+                        onAway = leaveMenu,
+                    ),
             ) {
                 // The base the shell stands on, the screen floating on it and the rail on the base's
                 // own column.
