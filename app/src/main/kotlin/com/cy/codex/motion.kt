@@ -180,7 +180,7 @@ object UiConsts {
     val NavMenuWidth = 224.dp
 
     /**
-     * Space the menu keeps off the rail while it floats, before a click pins it flush.
+     * Space the menu keeps off the screen's edge while it floats, before a click pins it flush.
      *
      * The panel is one component in both states: this gap is what it fills when it is pinned, and the
      * rows take the same amount back as padding, so the text is where it was while the card grows out
@@ -197,14 +197,6 @@ object UiConsts {
      * page is laid out once at `window - rail - menu` and only ever translated.
      */
     val WideContentBreakpoint = 720.dp
-
-    /**
-     * Space between the menu's outer edge and the page column.
-     *
-     * Without it the column's left edge lands on the menu's right edge and the first 18dp gutter is
-     * all the separation there is — the text reads as if it were tucked under the menu.
-     */
-    val ContentGap = 20.dp
 
     /** Space kept between the transcript's first row and the top edge. */
     val TranscriptTopInset = 96.dp
@@ -327,7 +319,7 @@ object UiConsts {
     /** Tint of an inline label chip over the row it sits in. */
     const val BadgeTintAlpha = 0.16f
 
-    /** Thickness of the hairline dividers inside a card. */
+    /** Thickness of the hairline divider: the ones inside a card, and the shell's two. */
     val DividerThickness = 0.7.dp
 
     /** Thickness of a control's outline, and of a floating overlay's edge. */

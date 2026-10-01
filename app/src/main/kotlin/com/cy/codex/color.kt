@@ -3,6 +3,7 @@ package com.cy.codex
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
+import top.yukonga.miuix.kmp.theme.ColorSchemeMode
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /** Colour helpers shared by every surface; mirrors `codex-rs/tui/src/color.rs` and `style.rs`. */
@@ -89,6 +90,23 @@ fun sheetColor(): Color {
 fun panelColor(): Color {
     val colors = MiuixTheme.colorScheme
     return if (isSystemInDarkTheme()) colors.surfaceContainerHighest else colors.surfaceContainer
+}
+
+/**
+ * The rail's colour, which is the shell's base layer: the window is painted in it and the screen the
+ * menu and the pages stand on floats over it (see [CodexShellScreen]). It is the scheme's surface in
+ * a dark scheme, already a step below the background there, and the grouped container step in a
+ * light one, where the two are both near-white.
+ */
+@Composable
+fun railColor(): Color {
+    val colors = MiuixTheme.colorScheme
+    val dark = when (MiuixTheme.colorSchemeMode) {
+        ColorSchemeMode.Dark, ColorSchemeMode.MonetDark -> true
+        ColorSchemeMode.Light, ColorSchemeMode.MonetLight -> false
+        ColorSchemeMode.System, ColorSchemeMode.MonetSystem, null -> isSystemInDarkTheme()
+    }
+    return if (dark) colors.surface else colors.surfaceContainerHigh
 }
 
 @Composable

@@ -2429,9 +2429,9 @@ fun CodexRoot() {
 }
 
 /**
- * The shell: the rail and its menu are the window's first two segments and the page stack fills the
- * third, so navigation never leaves the screen (codex-rs/tui/src/app.rs). Rail view state persists
- * like `local_settings.rs`.
+ * The shell: the rail is the window's base layer and the menu and the page stack are the screen
+ * that floats on it, so navigation never leaves the screen (codex-rs/tui/src/app.rs). Rail view
+ * state persists like `local_settings.rs`.
  */
 @Composable
 fun CodexScreen(
@@ -2486,9 +2486,10 @@ fun CodexScreen(
 
     // miuix's Scaffold is the app's page structure — it hosts the popups and dialogs every overlay in
     // the app renders into — so the whole shell runs under it: rail, menu, page stack, and the
-    // composer a page draws for itself.
+    // composer a page draws for itself. Its container is the rail's colour, the window's base layer
+    // the screen is inset into (see `CodexShellScreen`).
     Scaffold(
-        containerColor = colors.background,
+        containerColor = railColor(),
         // The shell is its own chrome: the rail sits on the window's edge and the pages run under the
         // hidden status bar, so no system inset is handed to the content.
         contentWindowInsets = WindowInsets(0.dp, 0.dp, 0.dp, 0.dp),
@@ -2516,13 +2517,16 @@ fun CodexScreen(
 
             val railWidth = UiConsts.NavRailWidth
             val menuWidth = UiConsts.NavMenuWidth
+            // The screen's corners are the display's own, so the rail's colour shows through them.
+            val screenCorner = screenCornerRadius()
             // Wide window: rail and menu are columns of their own, so the page is laid out once at
             // `window - rail - menu` and only translated as the menu opens. Narrow: the menu floats
-            // over the page, which keeps the width it needs.
+            // over the page, which keeps the width it needs. The page's column begins where the menu
+            // ends, with the hairline between them the menu's own edge.
             val wide = maxWidth >= UiConsts.WideContentBreakpoint
             val pageStart =
                 if (wide) {
-                    railWidth + menuWidth + UiConsts.ContentGap
+                    railWidth + menuWidth
                 } else {
                     railWidth + UiConsts.ScreenMargin
                 }
@@ -2639,400 +2643,407 @@ fun CodexScreen(
                     .fillMaxSize()
                     .onPointerAwayFromMenu(menuEnd = with(LocalDensity.current) { (railWidth + menuWidth).toPx() }, onAway = leaveMenu),
             ) {
-                NavDisplay(
-                    backStack = app.surfaces,
-                    modifier =
-                        Modifier.align(Alignment.TopStart)
-                            .offset(x = centredStart + pageShift)
-                            .width(pageWidth)
-                            .fillMaxHeight(),
-                    onBack = app::closeSurface,
-                    // The third segment swaps what it shows; sliding it sideways is motion the sections
-                    // do not have yet (docs/TODO.md).
-                    transition = ShellPageTransition,
-                    effects = NavDisplayEffects(enableCornerClip = false, dimAmount = 0f),
+                CodexShellScreen(
+                    railWidth = railWidth,
+                    corner = screenCorner,
                 ) {
-                    entry<Surface.Chat>(swipeDismiss = NavSwipeDirection.None) {
-                        val chatKeys = remember { FocusRequester() }
-                        var chatHasFocus by remember { mutableStateOf(false) }
-                        // One focus target keeps hardware keys routed; request it when the chat
-                        // surfaces, unless the composer already holds it.
-                        LaunchedEffect(app.surface) {
-                            if (app.surface == Surface.Chat && !chatHasFocus) {
-                                runCatching { chatKeys.requestFocus() }
-                            }
-                        }
-                        CompositionLocalProvider(
-                            LocalChatKeyFocus provides chatKeys,
-                            LocalShortcutsHelp provides shortcutsHelp,
-                            // Hook cells join run ids against this mirror to name hooks.
-                            LocalHookMetadata provides app.catalog.hooks,
-                            // The approval card raises verification events with no callback of its own
-                            // (LocalAppEvent in app_event.kt).
-                            LocalAppEvent provides app::onAppEvent,
-                            LocalWorkspaceHeadline provides app.catalog.workspaceHeadlineCache.headline,
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .imePadding()
-                                    .focusRequester(chatKeys)
-                                    .onFocusChanged { chatHasFocus = it.hasFocus }
-                                    .focusable()
-                                    .onPreviewKeyEvent { event ->
-                                        handleHardwareKey(app, shortcutsHelp, chatKeys, event)
-                                    },
-                            ) {
-                                BackHandler(enabled = shortcutsHelp.visible) {
-                                    shortcutsHelp.dismiss()
+                    NavDisplay(
+                        backStack = app.surfaces,
+                        modifier =
+                            Modifier.align(Alignment.TopStart)
+                                // Measured against the window, drawn on the screen: the column is
+                                // whatever the rail's own width leaves at its left.
+                                .offset(x = centredStart - railWidth + pageShift)
+                                .width(pageWidth)
+                                .fillMaxHeight(),
+                        onBack = app::closeSurface,
+                        // The third segment swaps what it shows; sliding it sideways is motion the sections
+                        // do not have yet (docs/TODO.md).
+                        transition = ShellPageTransition,
+                        effects = NavDisplayEffects(enableCornerClip = false, dimAmount = 0f),
+                    ) {
+                        entry<Surface.Chat>(swipeDismiss = NavSwipeDirection.None) {
+                            val chatKeys = remember { FocusRequester() }
+                            var chatHasFocus by remember { mutableStateOf(false) }
+                            // One focus target keeps hardware keys routed; request it when the chat
+                            // surfaces, unless the composer already holds it.
+                            LaunchedEffect(app.surface) {
+                                if (app.surface == Surface.Chat && !chatHasFocus) {
+                                    runCatching { chatKeys.requestFocus() }
                                 }
-                                ChatScreen(
-                                    app = app,
-                                    topInset = topInset,
-                                    bottomInset = bottomInset,
-                                    composerGrow = composerGrow,
-                                    controlsEndOffset = controlsEndOffset,
-                                    // A pushed page covers the column, not the gutters: the chat's own
-                                    // chrome reaches into them, so only the top page may draw it.
-                                    pageOnTop = app.surface == Surface.Chat,
-                                )
-                                // Account banners ride above the composer (codex-rs/tui/src/chatwidget/backend_banners.rs).
-                                val bannerSurface = com.cy.codex.chatwidget.backendBannerSurface(
-                                    state = app.backendBanner,
-                                    currentModel = app.widget.state.config.model,
-                                    resetTime = com.cy.codex.chatwidget.bannerResetTime(
-                                        app.backendBanner.banner?.resetAt,
-                                        System.currentTimeMillis(),
-                                    ),
-                                    planType = app.catalog.rateLimits.rateLimits.planType,
-                                    usageLimitTitle = stringResource(R.string.luna_recovery_title),
-                                    usageLimitDescription = stringResource(R.string.luna_recovery_description),
-                                    continueWithReserveLabel = stringResource(R.string.luna_continue_reserve),
-                                )
-                                val bannerUriHandler = LocalUriHandler.current
-                                com.cy.codex.chatwidget.BackendBannerSurface(
-                                    surface = bannerSurface,
-                                    onAction = { action ->
-                                        when (action) {
-                                            is com.cy.codex.chatwidget.BannerAction.OpenUrl ->
-                                                runCatching { bannerUriHandler.openUri(action.url) }
-
-                                            is com.cy.codex.chatwidget.BannerAction.NotifyOwner ->
-                                                app.onAppEvent(
-                                                    AppEvent.SendAddCreditsNudgeEmail(action.creditType),
-                                                )
-
-                                            com.cy.codex.chatwidget.BannerAction.ResetUsage ->
-                                                // The account screen's reset-credit rows keep the
-                                                // explicit confirmation before consuming one.
-                                                app.openSurface(Surface.Account)
-                                        }
-                                    },
-                                    onDismiss = app::dismissBackendBanner,
-                                    modifier = Modifier
-                                        .align(Alignment.BottomCenter)
-                                        .padding(
-                                            start = UiConsts.ScreenMargin,
-                                            end = UiConsts.ScreenMargin,
-                                            bottom = bottomInset +
-                                                UiConsts.PromptBarHeight +
-                                                UiConsts.ScreenMargin * 2,
-                                        ),
-                                )
                             }
+                            CompositionLocalProvider(
+                                LocalChatKeyFocus provides chatKeys,
+                                LocalShortcutsHelp provides shortcutsHelp,
+                                // Hook cells join run ids against this mirror to name hooks.
+                                LocalHookMetadata provides app.catalog.hooks,
+                                // The approval card raises verification events with no callback of its own
+                                // (LocalAppEvent in app_event.kt).
+                                LocalAppEvent provides app::onAppEvent,
+                                LocalWorkspaceHeadline provides app.catalog.workspaceHeadlineCache.headline,
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .imePadding()
+                                        .focusRequester(chatKeys)
+                                        .onFocusChanged { chatHasFocus = it.hasFocus }
+                                        .focusable()
+                                        .onPreviewKeyEvent { event ->
+                                            handleHardwareKey(app, shortcutsHelp, chatKeys, event)
+                                        },
+                                ) {
+                                    BackHandler(enabled = shortcutsHelp.visible) {
+                                        shortcutsHelp.dismiss()
+                                    }
+                                    ChatScreen(
+                                        app = app,
+                                        topInset = topInset,
+                                        bottomInset = bottomInset,
+                                        composerGrow = composerGrow,
+                                        controlsEndOffset = controlsEndOffset,
+                                        // A pushed page covers the column, not the gutters: the chat's own
+                                        // chrome reaches into them, so only the top page may draw it.
+                                        pageOnTop = app.surface == Surface.Chat,
+                                    )
+                                    // Account banners ride above the composer (codex-rs/tui/src/chatwidget/backend_banners.rs).
+                                    val bannerSurface = com.cy.codex.chatwidget.backendBannerSurface(
+                                        state = app.backendBanner,
+                                        currentModel = app.widget.state.config.model,
+                                        resetTime = com.cy.codex.chatwidget.bannerResetTime(
+                                            app.backendBanner.banner?.resetAt,
+                                            System.currentTimeMillis(),
+                                        ),
+                                        planType = app.catalog.rateLimits.rateLimits.planType,
+                                        usageLimitTitle = stringResource(R.string.luna_recovery_title),
+                                        usageLimitDescription = stringResource(R.string.luna_recovery_description),
+                                        continueWithReserveLabel = stringResource(R.string.luna_continue_reserve),
+                                    )
+                                    val bannerUriHandler = LocalUriHandler.current
+                                    com.cy.codex.chatwidget.BackendBannerSurface(
+                                        surface = bannerSurface,
+                                        onAction = { action ->
+                                            when (action) {
+                                                is com.cy.codex.chatwidget.BannerAction.OpenUrl ->
+                                                    runCatching { bannerUriHandler.openUri(action.url) }
+
+                                                is com.cy.codex.chatwidget.BannerAction.NotifyOwner ->
+                                                    app.onAppEvent(
+                                                        AppEvent.SendAddCreditsNudgeEmail(action.creditType),
+                                                    )
+
+                                                com.cy.codex.chatwidget.BannerAction.ResetUsage ->
+                                                    // The account screen's reset-credit rows keep the
+                                                    // explicit confirmation before consuming one.
+                                                    app.openSurface(Surface.Account)
+                                            }
+                                        },
+                                        onDismiss = app::dismissBackendBanner,
+                                        modifier = Modifier
+                                            .align(Alignment.BottomCenter)
+                                            .padding(
+                                                start = UiConsts.ScreenMargin,
+                                                end = UiConsts.ScreenMargin,
+                                                bottom = bottomInset +
+                                                    UiConsts.PromptBarHeight +
+                                                    UiConsts.ScreenMargin * 2,
+                                            ),
+                                    )
+                                }
+                            }
+                        }
+
+                        // A page the rail's menu reaches takes no back action: the rail is its navigation,
+                        // and a chevron would promise a page the user never left. Pages the chat pushes keep
+                        // one, because there the chat is what they return to.
+                        entry<Surface.Settings>(swipeDismiss = NavSwipeDirection.None) {
+                            SettingsScreen(
+                                catalog = app.catalog,
+                                session = app.widget.state,
+                                onEvent = app::onAppEvent,
+                                onBack = null,
+                                onOpenWorkspacePicker = { app.openSurface(Surface.WorkspacePicker) },
+                                onOpenEntry = { id -> openSurfaceFor(app, id) },
+                                onOpenShortcuts = { shortcutsHelp.toggle() },
+                                onOpenSection = { app.openSettingsSection(it) },
+                                configPath = runtime.configPath,
+                                ordinaryUsageRecovered = app.backendBanner.ordinaryUsageRecovered,
+                            )
+                        }
+
+                        entry<Surface.SettingsDetail>(swipeDismiss = NavSwipeDirection.None) { route ->
+                            SettingsScreen(
+                                catalog = app.catalog,
+                                session = app.widget.state,
+                                onEvent = app::onAppEvent,
+                                onBack = null,
+                                onOpenWorkspacePicker = { app.openSurface(Surface.WorkspacePicker) },
+                                onOpenEntry = { id -> openSurfaceFor(app, id) },
+                                onOpenShortcuts = { shortcutsHelp.toggle() },
+                                onOpenSection = { app.openSettingsSection(it) },
+                                configPath = runtime.configPath,
+                                ordinaryUsageRecovered = app.backendBanner.ordinaryUsageRecovered,
+                                section = route.section,
+                            )
+                        }
+
+                        entry<Surface.Account>(swipeDismiss = NavSwipeDirection.None) {
+                            AccountScreen(
+                                catalog = app.catalog,
+                                onEvent = app::onAppEvent,
+                                onBack = null,
+                                onOpenBedrock = { app.openSurface(Surface.Bedrock) },
+                            )
+                        }
+
+                        entry<Surface.McpServers>(swipeDismiss = NavSwipeDirection.None) {
+                            McpScreen(catalog = app.catalog, onBack = null,
+                                onOpenServer = { app.openSurface(Surface.McpToolbox(it)) },
+                                onEvent = app::onAppEvent)
+                        }
+
+                        entry<Surface.Skills>(swipeDismiss = NavSwipeDirection.None) {
+                            SkillsScreen(catalog = app.catalog, onEvent = app::onAppEvent, onBack = null)
+                        }
+
+                        entry<Surface.Plugins>(swipeDismiss = NavSwipeDirection.None) {
+                            PluginsScreen(
+                                catalog = app.catalog,
+                                client = app.client,
+                                onEvent = app::onAppEvent,
+                                onBack = null,
+                            )
+                        }
+
+                        entry<Surface.Apps>(swipeDismiss = NavSwipeDirection.None) {
+                            AppsScreen(catalog = app.catalog, client = app.client, onEvent = app::onAppEvent, onBack = null)
+                        }
+
+                        entry<Surface.Hooks>(swipeDismiss = NavSwipeDirection.None) {
+                            HooksScreen(catalog = app.catalog, onEvent = app::onAppEvent, onBack = null)
+                        }
+
+                        entry<Surface.Sessions>(swipeDismiss = NavSwipeDirection.None) {
+                            SessionListScreen(app = app, onBack = app::closeSurface)
+                        }
+
+                        entry<Surface.WorkspacePicker>(swipeDismiss = NavSwipeDirection.None) {
+                            WorkspacePickerScreen(
+                                client = app.client,
+                                initialPath = app.widget.state.config.cwd.ifEmpty {
+                                    app.defaultWorkspace
+                                },
+                                onPicked = { path ->
+                                    app.onAppEvent(com.cy.codex.AppEvent.NewThread(path))
+                                },
+                                onBack = app::closeSurface,
+                            )
+                        }
+
+                        entry<Surface.Projects>(swipeDismiss = NavSwipeDirection.None) {
+                            ProjectsScreen(
+                                catalog = app.catalog,
+                                client = app.client,
+                                onEvent = app::onAppEvent,
+                                onBack = null,
+                                onOpenEnvironment = { app.openSurface(Surface.EnvironmentDetail(it)) },
+                                onOpenProject = { app.onAppEvent(AppEvent.NewThread(it)) },
+                            )
+                        }
+
+                        entry<Surface.EnvironmentDetail>(swipeDismiss = NavSwipeDirection.None) { route ->
+                            EnvironmentDetailScreen(
+                                environmentId = route.environmentId,
+                                client = app.client,
+                                onBack = null,
+                            )
+                        }
+
+                        entry<Surface.RemoteControl>(swipeDismiss = NavSwipeDirection.None) {
+                            LaunchedEffect(Unit) { app.onAppEvent(AppEvent.ReloadRemoteControl) }
+                            RemoteControlScreen(
+                                catalog = app.catalog,
+                                onEvent = app::onAppEvent,
+                                onBack = null,
+                            )
+                        }
+
+                        entry<Surface.UserVerification>(swipeDismiss = NavSwipeDirection.None) {
+                            LaunchedEffect(Unit) { app.onAppEvent(AppEvent.ReloadUserVerification) }
+                            UserVerificationScreen(
+                                catalog = app.catalog,
+                                onEvent = app::onAppEvent,
+                                onBack = null,
+                            )
+                        }
+
+                        entry<Surface.PluginShares>(swipeDismiss = NavSwipeDirection.None) {
+                            LaunchedEffect(Unit) { app.onAppEvent(AppEvent.ReloadPluginShares) }
+                            PluginSharesScreen(
+                                catalog = app.catalog,
+                                onEvent = app::onAppEvent,
+                                onBack = null,
+                            )
+                        }
+
+                        entry<Surface.Memories>(swipeDismiss = NavSwipeDirection.None) {
+                            LaunchedEffect(Unit) { app.onAppEvent(AppEvent.ReloadMemories) }
+                            MemoriesScreen(
+                                catalog = app.catalog,
+                                onEvent = app::onAppEvent,
+                                onBack = null,
+                            )
+                        }
+
+                        entry<Surface.SessionStatus>(swipeDismiss = NavSwipeDirection.None) {
+                            SessionStatusScreen(app = app, onBack = null)
+                        }
+
+                        entry<Surface.Diagnostics>(swipeDismiss = NavSwipeDirection.None) {
+                            LaunchedEffect(Unit) { app.onAppEvent(AppEvent.ReloadDiagnostics) }
+                            DiagnosticsScreen(
+                                catalog = app.catalog,
+                                onEvent = app::onAppEvent,
+                                onBack = null,
+                            )
+                        }
+
+                        entry<Surface.ExternalAgentImport>(swipeDismiss = NavSwipeDirection.None) {
+                            ExternalAgentImportScreen(
+                                catalog = app.catalog,
+                                onEvent = app::onAppEvent,
+                                onBack = null,
+                            )
+                        }
+
+                        entry<Surface.Bedrock>(swipeDismiss = NavSwipeDirection.None) {
+                            BedrockScreen(
+                                client = app.client,
+                                onEvent = app::onAppEvent,
+                                onBack = app::closeSurface,
+                            )
+                        }
+
+                        entry<Surface.WindowsSandbox>(swipeDismiss = NavSwipeDirection.None) {
+                            WindowsSandboxScreen(
+                                catalog = app.catalog,
+                                client = app.client,
+                                onEvent = app::onAppEvent,
+                                onBack = null,
+                            )
+                        }
+
+                        entry<Surface.FileBrowser>(swipeDismiss = NavSwipeDirection.None) { route ->
+                            FileBrowserScreen(
+                                path = route.path,
+                                picking = route.picking,
+                                client = app.client,
+                                onBack = app::closeSurface,
+                                onPick = { picked ->
+                                    app.onAppEvent(AppEvent.NewThread(picked))
+                                    app.closeAllSurfaces()
+                                },
+                            )
+                        }
+
+                        entry<Surface.ExecCommand>(swipeDismiss = NavSwipeDirection.None) {
+                            ExecCommandScreen(
+                                threadId = app.widget.state.threadId,
+                                client = app.client,
+                                shellPath = runtime.shellPath,
+                                initialCwd = app.widget.state.config.cwd.ifBlank { app.defaultWorkspace },
+                                onBack = app::closeSurface,
+                            )
+                        }
+
+                        entry<Surface.BackgroundTerminals>(swipeDismiss = NavSwipeDirection.None) {
+                            BackgroundTerminalsScreen(
+                                threadId = app.widget.state.threadId,
+                                client = app.client,
+                                session = app.widget.state,
+                                onEvent = app::onAppEvent,
+                                onBack = app::closeSurface,
+                            )
+                        }
+
+                        entry<Surface.Realtime>(swipeDismiss = NavSwipeDirection.None) {
+                            LaunchedEffect(Unit) { app.onAppEvent(AppEvent.ReloadRealtimeVoices) }
+                            RealtimeScreen(
+                                threadId = app.widget.state.threadId,
+                                catalog = app.catalog,
+                                onEvent = app::onAppEvent,
+                                onBack = app::closeSurface,
+                            )
+                        }
+
+                        entry<Surface.Worktrees>(swipeDismiss = NavSwipeDirection.None) {
+                            WorktreesScreen(
+                                client = app.client,
+                                cwd = app.widget.state.config.cwd.ifEmpty { app.defaultWorkspace },
+                                onOpen = { path -> app.onAppEvent(AppEvent.NewThread(path)) },
+                                onBack = app::closeSurface,
+                            )
+                        }
+
+                        entry<Surface.Review>(swipeDismiss = NavSwipeDirection.None) {
+                            ReviewScreen(
+                                threadId = app.widget.state.threadId,
+                                onEvent = app::onAppEvent,
+                                onBack = app::closeSurface,
+                            )
+                        }
+
+                        entry<Surface.Diff>(swipeDismiss = NavSwipeDirection.None) {
+                            GitDiffScreen(
+                                cwd = app.widget.state.config.cwd.ifBlank { app.defaultWorkspace },
+                                client = app.client,
+                                onBack = app::closeSurface,
+                            )
+                        }
+
+                        entry<Surface.ThreadHistory>(swipeDismiss = NavSwipeDirection.None) {
+                            ThreadHistoryScreen(app = app, onBack = app::closeSurface)
+                        }
+
+                        entry<Surface.McpToolbox>(swipeDismiss = NavSwipeDirection.None) { route ->
+                            McpToolboxScreen(
+                                server = route.server,
+                                client = app.client,
+                                onEvent = app::onAppEvent,
+                                onBack = null,
+                            )
+                        }
+
+                        entry<Surface.Agents>(swipeDismiss = NavSwipeDirection.None) {
+                            AgentsScreen(app = app, onBack = app::closeSurface)
                         }
                     }
 
-                    // A page the rail's menu reaches takes no back action: the rail is its navigation,
-                    // and a chevron would promise a page the user never left. Pages the chat pushes keep
-                    // one, because there the chat is what they return to.
-                    entry<Surface.Settings>(swipeDismiss = NavSwipeDirection.None) {
-                        SettingsScreen(
-                            catalog = app.catalog,
-                            session = app.widget.state,
-                            onEvent = app::onAppEvent,
-                            onBack = null,
-                            onOpenWorkspacePicker = { app.openSurface(Surface.WorkspacePicker) },
-                            onOpenEntry = { id -> openSurfaceFor(app, id) },
-                            onOpenShortcuts = { shortcutsHelp.toggle() },
-                            onOpenSection = { app.openSettingsSection(it) },
-                            configPath = runtime.configPath,
-                            ordinaryUsageRecovered = app.backendBanner.ordinaryUsageRecovered,
-                        )
-                    }
-
-                    entry<Surface.SettingsDetail>(swipeDismiss = NavSwipeDirection.None) { route ->
-                        SettingsScreen(
-                            catalog = app.catalog,
-                            session = app.widget.state,
-                            onEvent = app::onAppEvent,
-                            onBack = null,
-                            onOpenWorkspacePicker = { app.openSurface(Surface.WorkspacePicker) },
-                            onOpenEntry = { id -> openSurfaceFor(app, id) },
-                            onOpenShortcuts = { shortcutsHelp.toggle() },
-                            onOpenSection = { app.openSettingsSection(it) },
-                            configPath = runtime.configPath,
-                            ordinaryUsageRecovered = app.backendBanner.ordinaryUsageRecovered,
-                            section = route.section,
-                        )
-                    }
-
-                    entry<Surface.Account>(swipeDismiss = NavSwipeDirection.None) {
-                        AccountScreen(
-                            catalog = app.catalog,
-                            onEvent = app::onAppEvent,
-                            onBack = null,
-                            onOpenBedrock = { app.openSurface(Surface.Bedrock) },
-                        )
-                    }
-
-                    entry<Surface.McpServers>(swipeDismiss = NavSwipeDirection.None) {
-                        McpScreen(catalog = app.catalog, onBack = null,
-                            onOpenServer = { app.openSurface(Surface.McpToolbox(it)) },
-                            onEvent = app::onAppEvent)
-                    }
-
-                    entry<Surface.Skills>(swipeDismiss = NavSwipeDirection.None) {
-                        SkillsScreen(catalog = app.catalog, onEvent = app::onAppEvent, onBack = null)
-                    }
-
-                    entry<Surface.Plugins>(swipeDismiss = NavSwipeDirection.None) {
-                        PluginsScreen(
-                            catalog = app.catalog,
-                            client = app.client,
-                            onEvent = app::onAppEvent,
-                            onBack = null,
-                        )
-                    }
-
-                    entry<Surface.Apps>(swipeDismiss = NavSwipeDirection.None) {
-                        AppsScreen(catalog = app.catalog, client = app.client, onEvent = app::onAppEvent, onBack = null)
-                    }
-
-                    entry<Surface.Hooks>(swipeDismiss = NavSwipeDirection.None) {
-                        HooksScreen(catalog = app.catalog, onEvent = app::onAppEvent, onBack = null)
-                    }
-
-                    entry<Surface.Sessions>(swipeDismiss = NavSwipeDirection.None) {
-                        SessionListScreen(app = app, onBack = app::closeSurface)
-                    }
-
-                    entry<Surface.WorkspacePicker>(swipeDismiss = NavSwipeDirection.None) {
-                        WorkspacePickerScreen(
-                            client = app.client,
-                            initialPath = app.widget.state.config.cwd.ifEmpty {
-                                app.defaultWorkspace
+                    if (menuDrawn) {
+                        // The screen's first segment: pinned flush against its left edge, floating over
+                        // the page.
+                        NavMenuPanel(
+                            title = menuTitle,
+                            rows = menuRows,
+                            onRow = onMenuRow,
+                            // A tap on the card that no row took pins the menu on the section it is
+                            // showing, the way a click on that rail item would.
+                            onCardTap = {
+                                if (!railMenu.pinned) {
+                                    app.openSection(railMenu.section(section))
+                                    setPinned(true)
+                                }
                             },
-                            onPicked = { path ->
-                                app.onAppEvent(com.cy.codex.AppEvent.NewThread(path))
-                            },
-                            onBack = app::closeSurface,
+                            settle = menuSettle.value,
+                            reveal = menuReveal.value,
+                            topInset = topInset,
+                            bottomInset = bottomInset,
+                            modifier = Modifier.align(Alignment.TopStart),
                         )
-                    }
-
-                    entry<Surface.Projects>(swipeDismiss = NavSwipeDirection.None) {
-                        ProjectsScreen(
-                            catalog = app.catalog,
-                            client = app.client,
-                            onEvent = app::onAppEvent,
-                            onBack = null,
-                            onOpenEnvironment = { app.openSurface(Surface.EnvironmentDetail(it)) },
-                            onOpenProject = { app.onAppEvent(AppEvent.NewThread(it)) },
-                        )
-                    }
-
-                    entry<Surface.EnvironmentDetail>(swipeDismiss = NavSwipeDirection.None) { route ->
-                        EnvironmentDetailScreen(
-                            environmentId = route.environmentId,
-                            client = app.client,
-                            onBack = null,
-                        )
-                    }
-
-                    entry<Surface.RemoteControl>(swipeDismiss = NavSwipeDirection.None) {
-                        LaunchedEffect(Unit) { app.onAppEvent(AppEvent.ReloadRemoteControl) }
-                        RemoteControlScreen(
-                            catalog = app.catalog,
-                            onEvent = app::onAppEvent,
-                            onBack = null,
-                        )
-                    }
-
-                    entry<Surface.UserVerification>(swipeDismiss = NavSwipeDirection.None) {
-                        LaunchedEffect(Unit) { app.onAppEvent(AppEvent.ReloadUserVerification) }
-                        UserVerificationScreen(
-                            catalog = app.catalog,
-                            onEvent = app::onAppEvent,
-                            onBack = null,
-                        )
-                    }
-
-                    entry<Surface.PluginShares>(swipeDismiss = NavSwipeDirection.None) {
-                        LaunchedEffect(Unit) { app.onAppEvent(AppEvent.ReloadPluginShares) }
-                        PluginSharesScreen(
-                            catalog = app.catalog,
-                            onEvent = app::onAppEvent,
-                            onBack = null,
-                        )
-                    }
-
-                    entry<Surface.Memories>(swipeDismiss = NavSwipeDirection.None) {
-                        LaunchedEffect(Unit) { app.onAppEvent(AppEvent.ReloadMemories) }
-                        MemoriesScreen(
-                            catalog = app.catalog,
-                            onEvent = app::onAppEvent,
-                            onBack = null,
-                        )
-                    }
-
-                    entry<Surface.SessionStatus>(swipeDismiss = NavSwipeDirection.None) {
-                        SessionStatusScreen(app = app, onBack = null)
-                    }
-
-                    entry<Surface.Diagnostics>(swipeDismiss = NavSwipeDirection.None) {
-                        LaunchedEffect(Unit) { app.onAppEvent(AppEvent.ReloadDiagnostics) }
-                        DiagnosticsScreen(
-                            catalog = app.catalog,
-                            onEvent = app::onAppEvent,
-                            onBack = null,
-                        )
-                    }
-
-                    entry<Surface.ExternalAgentImport>(swipeDismiss = NavSwipeDirection.None) {
-                        ExternalAgentImportScreen(
-                            catalog = app.catalog,
-                            onEvent = app::onAppEvent,
-                            onBack = null,
-                        )
-                    }
-
-                    entry<Surface.Bedrock>(swipeDismiss = NavSwipeDirection.None) {
-                        BedrockScreen(
-                            client = app.client,
-                            onEvent = app::onAppEvent,
-                            onBack = app::closeSurface,
-                        )
-                    }
-
-                    entry<Surface.WindowsSandbox>(swipeDismiss = NavSwipeDirection.None) {
-                        WindowsSandboxScreen(
-                            catalog = app.catalog,
-                            client = app.client,
-                            onEvent = app::onAppEvent,
-                            onBack = null,
-                        )
-                    }
-
-                    entry<Surface.FileBrowser>(swipeDismiss = NavSwipeDirection.None) { route ->
-                        FileBrowserScreen(
-                            path = route.path,
-                            picking = route.picking,
-                            client = app.client,
-                            onBack = app::closeSurface,
-                            onPick = { picked ->
-                                app.onAppEvent(AppEvent.NewThread(picked))
-                                app.closeAllSurfaces()
-                            },
-                        )
-                    }
-
-                    entry<Surface.ExecCommand>(swipeDismiss = NavSwipeDirection.None) {
-                        ExecCommandScreen(
-                            threadId = app.widget.state.threadId,
-                            client = app.client,
-                            shellPath = runtime.shellPath,
-                            initialCwd = app.widget.state.config.cwd.ifBlank { app.defaultWorkspace },
-                            onBack = app::closeSurface,
-                        )
-                    }
-
-                    entry<Surface.BackgroundTerminals>(swipeDismiss = NavSwipeDirection.None) {
-                        BackgroundTerminalsScreen(
-                            threadId = app.widget.state.threadId,
-                            client = app.client,
-                            session = app.widget.state,
-                            onEvent = app::onAppEvent,
-                            onBack = app::closeSurface,
-                        )
-                    }
-
-                    entry<Surface.Realtime>(swipeDismiss = NavSwipeDirection.None) {
-                        LaunchedEffect(Unit) { app.onAppEvent(AppEvent.ReloadRealtimeVoices) }
-                        RealtimeScreen(
-                            threadId = app.widget.state.threadId,
-                            catalog = app.catalog,
-                            onEvent = app::onAppEvent,
-                            onBack = app::closeSurface,
-                        )
-                    }
-
-                    entry<Surface.Worktrees>(swipeDismiss = NavSwipeDirection.None) {
-                        WorktreesScreen(
-                            client = app.client,
-                            cwd = app.widget.state.config.cwd.ifEmpty { app.defaultWorkspace },
-                            onOpen = { path -> app.onAppEvent(AppEvent.NewThread(path)) },
-                            onBack = app::closeSurface,
-                        )
-                    }
-
-                    entry<Surface.Review>(swipeDismiss = NavSwipeDirection.None) {
-                        ReviewScreen(
-                            threadId = app.widget.state.threadId,
-                            onEvent = app::onAppEvent,
-                            onBack = app::closeSurface,
-                        )
-                    }
-
-                    entry<Surface.Diff>(swipeDismiss = NavSwipeDirection.None) {
-                        GitDiffScreen(
-                            cwd = app.widget.state.config.cwd.ifBlank { app.defaultWorkspace },
-                            client = app.client,
-                            onBack = app::closeSurface,
-                        )
-                    }
-
-                    entry<Surface.ThreadHistory>(swipeDismiss = NavSwipeDirection.None) {
-                        ThreadHistoryScreen(app = app, onBack = app::closeSurface)
-                    }
-
-                    entry<Surface.McpToolbox>(swipeDismiss = NavSwipeDirection.None) { route ->
-                        McpToolboxScreen(
-                            server = route.server,
-                            client = app.client,
-                            onEvent = app::onAppEvent,
-                            onBack = null,
-                        )
-                    }
-
-                    entry<Surface.Agents>(swipeDismiss = NavSwipeDirection.None) {
-                        AgentsScreen(app = app, onBack = app::closeSurface)
                     }
                 }
-
-                if (menuDrawn) {
-                    // The menu's own rectangle: pinned it is the window's second column, and floating
-                    // the card sits inside it and the page runs under the rest.
-                    NavMenuPanel(
-                        title = menuTitle,
-                        rows = menuRows,
-                        onRow = onMenuRow,
-                        // A tap on the card that no row took pins the menu on the section it is
-                        // showing, the way a click on that rail item would.
-                        onCardTap = {
-                            if (!railMenu.pinned) {
-                                app.openSection(railMenu.section(section))
-                                setPinned(true)
-                            }
-                        },
-                        settle = menuSettle.value,
-                        reveal = menuReveal.value,
-                        topInset = topInset,
-                        bottomInset = bottomInset,
-                        modifier = Modifier.align(Alignment.TopStart).padding(start = railWidth),
-                    )
-                }
-                // The rail is the window's first column, so it is drawn over the menu it opens: the
-                // menu's shadow belongs to the page beside it, not to the rail it came out of.
+                // The rail is the base layer's own column, beside the screen: the menu it opens
+                // stops at the rail's edge.
                 NavRail(
                     selected = section,
                     onSelect = onRailSelect,
