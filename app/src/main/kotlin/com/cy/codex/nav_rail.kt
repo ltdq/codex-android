@@ -236,7 +236,7 @@ internal fun NavMenuPanel(
 
 /**
  * The menu's own corners: the panel's card while a pointer floats it, and none once it is pinned,
- * where the screen's clip rounds its left corners into the display's.
+ * where the screen's clip rounds its left corners into the panel's.
  */
 internal fun navMenuCorner(settle: Float): Dp = UiConsts.PanelCorner * (1f - settle)
 

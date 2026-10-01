@@ -76,6 +76,12 @@ object Motion {
     /** Blinking caret/spinner period. */
     const val SpinnerPeriodMs = 900L
 
+    /**
+     * Period of the shell's base drifting: off the ladder on purpose, since a background is not a
+     * transition.
+     */
+    const val DriftMs = 90_000
+
     /** Press and selection feedback. */
     const val PressMs = 120
 
@@ -169,6 +175,12 @@ object UiConsts {
 
     /** Width of the shell's navigation rail: an icon column, narrow because it never hides. */
     val NavRailWidth = 64.dp
+
+    /**
+     * Space the screen keeps off the window's edges, on the three sides the rail does not take, so
+     * the base shows around a screen that ends inside the window rather than at its edge.
+     */
+    val ScreenInset = 6.dp
 
     /** Square a rail icon sits in; the press highlight covers this square, not the whole rail. */
     val NavRailItemSize = 48.dp

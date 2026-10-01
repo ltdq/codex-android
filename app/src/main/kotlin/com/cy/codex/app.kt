@@ -2487,7 +2487,7 @@ fun CodexScreen(
     // miuix's Scaffold is the app's page structure — it hosts the popups and dialogs every overlay in
     // the app renders into — so the whole shell runs under it: rail, menu, page stack, and the
     // composer a page draws for itself. Its container is the rail's colour, the window's base layer
-    // the screen is inset into (see `CodexShellScreen`).
+    // the backdrop mixes and the screen is inset into (see `CodexShellBackdrop`).
     Scaffold(
         containerColor = railColor(),
         // The shell is its own chrome: the rail sits on the window's edge and the pages run under the
@@ -2517,8 +2517,6 @@ fun CodexScreen(
 
             val railWidth = UiConsts.NavRailWidth
             val menuWidth = UiConsts.NavMenuWidth
-            // The screen's corners are the display's own, so the rail's colour shows through them.
-            val screenCorner = screenCornerRadius()
             // Wide window: rail and menu are columns of their own, so the page is laid out once at
             // `window - rail - menu` and only translated as the menu opens. Narrow: the menu floats
             // over the page, which keeps the width it needs. The page's column begins where the menu
@@ -2643,10 +2641,13 @@ fun CodexScreen(
                     .fillMaxSize()
                     .onPointerAwayFromMenu(menuEnd = with(LocalDensity.current) { (railWidth + menuWidth).toPx() }, onAway = leaveMenu),
             ) {
-                CodexShellScreen(
+                // The base the shell stands on, the screen floating on it and the rail on the base's
+                // own column.
+                CodexShellBackdrop(
                     railWidth = railWidth,
-                    corner = screenCorner,
-                ) {
+                    modifier = Modifier.matchParentSize(),
+                )
+                CodexShellScreen(railWidth = railWidth) {
                     NavDisplay(
                         backStack = app.surfaces,
                         modifier =

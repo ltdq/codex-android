@@ -1,5 +1,10 @@
 package com.cy.codex
 
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.hoverable
@@ -27,10 +32,16 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.selected
@@ -40,11 +51,14 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import com.cy.codex.theme.RoundedIndication
+import kotlin.math.PI
+import kotlin.math.cos
+import kotlin.math.sin
 import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.squircle.SquircleDefaults
 import top.yukonga.miuix.kmp.squircle.addSquircleRect
 import top.yukonga.miuix.kmp.squircle.isSquircleEnabled
 import top.yukonga.miuix.kmp.theme.MiuixTheme
-import top.yukonga.miuix.kmp.utils.getRoundedCorner
 
 /**
  * The app's own miuix components, built from the library's own surfaces, shapes, colours and
@@ -53,16 +67,9 @@ import top.yukonga.miuix.kmp.utils.getRoundedCorner
  */
 
 /**
- * The display's own corner radius, which the shell's screen takes as its own. miuix reads it off the
- * window's insets, and a display that reports no corner leaves the shell its chrome step.
- */
-@Composable
-fun screenCornerRadius(): Dp = getRoundedCorner().takeIf { it > 0.dp } ?: UiConsts.CornerChrome
-
-/**
  * A surface's silhouette in miuix's corner geometry: the continuous corner a circular arc only
- * approximates. A [Shape] rather than the library's `squircleClip`, which records a surface of the
- * window's own size into a layer per frame.
+ * approximates, drawn as a [squirclePath]. A [Shape] rather than the library's `squircleClip`, which
+ * records a surface of the window's own size into a layer per frame.
  */
 @Composable
 fun squircleShape(radius: Dp): Shape {
@@ -70,46 +77,169 @@ fun squircleShape(radius: Dp): Shape {
     return remember(radius, squircle) { SquircleShape(radius, squircle) }
 }
 
-/** [addSquircleRect] behind a [Shape], one radius for all four corners. */
+/** [addSquircleRect] as a bare path, so a silhouette drawn by hand is the one a clip was cut from. */
+private fun squirclePath(
+    size: Size,
+    radius: Dp,
+    density: Density,
+    squircle: Boolean,
+): Path = Path().apply {
+    with(density) {
+        addSquircleRect(
+            width = size.width,
+            height = size.height,
+            cornerRadius = radius.toPx(),
+            squircleEnabled = squircle,
+        )
+    }
+}
+
+/** [squirclePath] behind a [Shape], one radius for all four corners. */
 private class SquircleShape(private val radius: Dp, private val squircle: Boolean) : Shape {
     override fun createOutline(
         size: Size,
         layoutDirection: LayoutDirection,
         density: Density,
-    ): Outline {
-        val path = Path()
-        with(density) {
-            path.addSquircleRect(
-                width = size.width,
-                height = size.height,
-                cornerRadius = radius.toPx(),
-                squircleEnabled = squircle,
-            )
-        }
-        return Outline.Generic(path)
-    }
+    ): Outline = Outline.Generic(squirclePath(size, radius, density, squircle))
 }
 
 /**
- * The shell's screen: the menu and the page stack, floating on the rail's own colour ([railColor]),
- * inset by the rail's width and rounded in the display's corner geometry. It clips what it holds,
- * since a page paints its own background edge to edge.
+ * The shell's screen: the menu and the page stack, floating on the rail's own colour ([railColor],
+ * washed by [CodexShellBackdrop]), inset by the rail's width and the window's other three edges and
+ * rounded at the panel's corner. It clips what it holds, since a page paints its own background edge
+ * to edge.
  */
 @Composable
 fun CodexShellScreen(
     railWidth: Dp,
-    corner: Dp,
     modifier: Modifier = Modifier,
     content: @Composable BoxScope.() -> Unit,
 ) {
+    val colors = MiuixTheme.colorScheme
+    val squircle = isSquircleEnabled()
+    val line = UiConsts.OutlineThickness
+    val shape = squircleShape(UiConsts.PanelCorner)
     Box(
         modifier =
             modifier
                 .fillMaxSize()
-                .padding(start = railWidth)
-                .clip(squircleShape(corner))
-                .background(MiuixTheme.colorScheme.background),
+                .padding(
+                    start = railWidth,
+                    top = UiConsts.ScreenInset,
+                    end = UiConsts.ScreenInset,
+                    bottom = UiConsts.ScreenInset,
+                )
+                .clip(shape)
+                .background(colors.background)
+                .drawWithCache {
+                    // A hair inside the silhouette, or a rectangle around it squares the corners off.
+                    val frame = squirclePath(
+                        size = Size(size.width - line.toPx(), size.height - line.toPx()),
+                        radius = UiConsts.PanelCorner - line / 2,
+                        density = this,
+                        squircle = squircle,
+                    ).apply { translate(Offset(line.toPx() / 2f, line.toPx() / 2f)) }
+                    onDrawWithContent {
+                        drawContent()
+                        drawPath(frame, color = colors.outline, style = Stroke(line.toPx()))
+                    }
+                },
         content = content,
+    )
+}
+
+/** One colour of [CodexShellBackdrop]'s wash: what it is, how strong, and where it sits and reaches. */
+private class WashMark(
+    val color: Color,
+    val alpha: Float,
+    val at: Offset,
+    val reach: Float,
+)
+
+/** How far a wash mark wanders, as a fraction of the window: enough to be seen, not to be read. */
+private const val WashDrift = 0.06f
+
+/** A full turn of that wander, and of the marks' standing apart from one another. */
+private val TwoPi = (2.0 * PI).toFloat()
+
+/**
+ * The rail's colour, lit: the window's base layer, painted under everything the shell draws, as a
+ * wash of the scheme's own containers drifting across the window. Only the four bands the screen
+ * leaves are painted, since the drift repaints this layer every frame.
+ */
+@Composable
+fun CodexShellBackdrop(
+    railWidth: Dp,
+    modifier: Modifier = Modifier,
+) {
+    val colors = MiuixTheme.colorScheme
+    val base = railColor()
+    val dark = darkScheme()
+    // Fractions of the window, built along its left edge where the rail's items stand.
+    val wash =
+        listOf(
+            WashMark(colors.primaryContainer, if (dark) 0.3f else 0.22f, Offset(-0.08f, 0.1f), 0.55f),
+            WashMark(colors.secondaryContainer, if (dark) 0.25f else 0.25f, Offset(0.04f, 0.52f), 0.42f),
+            WashMark(colors.tertiaryContainer, if (dark) 0.4f else 0.3f, Offset(-0.04f, 0.92f), 0.6f),
+        )
+    // Read by the draw and not by the composition, so a drifting base redraws instead of recomposing.
+    val drift =
+        if (Motion.reduced) {
+            null
+        } else {
+            rememberInfiniteTransition().animateFloat(
+                initialValue = 0f,
+                targetValue = 1f,
+                animationSpec = infiniteRepeatable(tween(durationMillis = Motion.DriftMs, easing = LinearEasing)),
+            )
+        }
+    Box(
+        modifier =
+            modifier
+                .drawWithCache {
+                    val inset = UiConsts.ScreenInset.toPx()
+                    // How far the screen's silhouette reaches out of its corner, which a band must
+                    // cover.
+                    val tile = UiConsts.PanelCorner.toPx() * SquircleDefaults.Extension
+                    val rail = railWidth.toPx()
+                    val top = inset + tile
+                    val bottom = size.height - top
+                    // Disjoint: a pixel two bands reach would take the wash twice, and the seam would
+                    // be where they cross.
+                    val bands =
+                        listOf(
+                            Rect(0f, 0f, size.width, top),
+                            Rect(0f, bottom, size.width, size.height),
+                            Rect(0f, top, rail, bottom),
+                            Rect(size.width - inset, top, size.width, bottom),
+                        )
+                    onDrawBehind {
+                        val phase = (drift?.value ?: 0f) * TwoPi
+                        bands.forEach { band -> drawRect(color = base, topLeft = band.topLeft, size = band.size) }
+                        wash.forEachIndexed { index, mark ->
+                            // The marks turn out of step, so the wash moves rather than pulses; each
+                            // fades to its own nothing rather than through transparent black.
+                            val turn = phase + index * TwoPi / wash.size
+                            val brush =
+                                Brush.radialGradient(
+                                    colors =
+                                        listOf(
+                                            mark.color.copy(alpha = mark.alpha),
+                                            mark.color.copy(alpha = 0f),
+                                        ),
+                                    center =
+                                        Offset(
+                                            size.width * (mark.at.x + WashDrift * cos(turn)),
+                                            size.height * (mark.at.y + WashDrift * sin(turn)),
+                                        ),
+                                    radius = maxOf(size.width, size.height) * mark.reach,
+                                )
+                            bands.forEach { band ->
+                                drawRect(brush = brush, topLeft = band.topLeft, size = band.size)
+                            }
+                        }
+                    }
+                },
     )
 }
 

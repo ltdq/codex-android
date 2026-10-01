@@ -3,6 +3,7 @@ package com.cy.codex
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 import top.yukonga.miuix.kmp.theme.ColorSchemeMode
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
@@ -94,19 +95,32 @@ fun panelColor(): Color {
 
 /**
  * The rail's colour, which is the shell's base layer: the window is painted in it and the screen the
- * menu and the pages stand on floats over it (see [CodexShellScreen]). It is the scheme's surface in
- * a dark scheme, already a step below the background there, and the grouped container step in a
- * light one, where the two are both near-white.
+ * menu and the pages stand on floats over it (see [CodexShellScreen]). A dark scheme's surface is
+ * black, which reads as a hole beside the screen, so the base mixes the scheme's accent into it; a
+ * light one takes the grouped container step, where surface and background are both near-white.
  */
 @Composable
 fun railColor(): Color {
     val colors = MiuixTheme.colorScheme
-    val dark = when (MiuixTheme.colorSchemeMode) {
-        ColorSchemeMode.Dark, ColorSchemeMode.MonetDark -> true
-        ColorSchemeMode.Light, ColorSchemeMode.MonetLight -> false
-        ColorSchemeMode.System, ColorSchemeMode.MonetSystem, null -> isSystemInDarkTheme()
+    return if (darkScheme()) {
+        lerp(colors.surface, colors.primaryContainer, 0.3f)
+    } else {
+        lerp(colors.surfaceContainerHigh, colors.primaryContainer, 0.16f)
     }
-    return if (dark) colors.surface else colors.surfaceContainerHigh
+}
+
+/**
+ * Whether the theme was built dark: the scheme answers for itself and the device only fills in for
+ * the modes that follow it.
+ */
+@Composable
+fun darkScheme(): Boolean = schemeIsDark(MiuixTheme.colorSchemeMode, isSystemInDarkTheme())
+
+/** [darkScheme] without the theme, for what has no [MiuixTheme] to ask. */
+internal fun schemeIsDark(mode: ColorSchemeMode?, systemDark: Boolean): Boolean = when (mode) {
+    ColorSchemeMode.Dark, ColorSchemeMode.MonetDark -> true
+    ColorSchemeMode.Light, ColorSchemeMode.MonetLight -> false
+    ColorSchemeMode.System, ColorSchemeMode.MonetSystem, null -> systemDark
 }
 
 @Composable
