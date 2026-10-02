@@ -12,16 +12,13 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
@@ -31,11 +28,9 @@ import com.cy.codex.chatwidget.ProjectRow
 import com.cy.codex.chatwidget.SessionRow
 import com.cy.codex.chatwidget.SidebarEntry
 import top.yukonga.miuix.kmp.basic.SmallTitle
-import top.yukonga.miuix.kmp.basic.Surface
 import top.yukonga.miuix.kmp.basic.TooltipAnchorPosition
 import top.yukonga.miuix.kmp.basic.TooltipBox
 import top.yukonga.miuix.kmp.basic.TopAppBar
-import top.yukonga.miuix.kmp.basic.VerticalDivider
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
@@ -123,9 +118,14 @@ private fun NavRailItem(
 }
 
 /**
- * The shell's second segment: one menu, floating over the page or pinned as the screen's first
- * segment. [settle] is how far it has joined the screen and [reveal] how much width has unfolded,
- * the rows keeping the width they end up with. [onCardTap] pins the menu on a tap no row took.
+ * The shell's second segment: the menu card, which the pointer floats over the page and a click
+ * pins into the layout. It is the page card's own surface ([CodexShellCard]) at the page card's own
+ * inset off the window and the page, and its left edge is the page card's — the rail's own — so the
+ * two cards line up while the menu is the only one up. Floating, it carries the card's shadow, since
+ * it hangs over the page; [settled] is how far it has come down onto the page, and the shadow is all
+ * a pin takes off it, so the card never changes size or place. [slide] is how far it has been drawn
+ * out of the rail: the rail's edge is where it comes from and where it goes back to, so a caller
+ * that clips there is what hides it. [onCardTap] pins the card on a tap no row took.
  */
 @Composable
 internal fun NavMenuPanel(
@@ -133,8 +133,8 @@ internal fun NavMenuPanel(
     rows: List<NavMenuRow>,
     onRow: (NavMenuRow) -> Unit,
     onCardTap: () -> Unit,
-    settle: Float,
-    reveal: Float,
+    slide: Float,
+    settled: Float,
     modifier: Modifier = Modifier,
     topInset: Dp = 0.dp,
     bottomInset: Dp = 0.dp,
@@ -142,43 +142,23 @@ internal fun NavMenuPanel(
     listPadding: PaddingValues = PaddingValues(horizontal = UiConsts.Space8, vertical = UiConsts.Space4),
     itemGap: Dp = UiConsts.Space2,
 ) {
-    val colors = MiuixTheme.colorScheme
-    val railGap = UiConsts.NavMenuFloatGap * (1f - settle)
-    val edgeGap = UiConsts.NavMenuFloatMargin * (1f - settle)
-    // A pinned menu is the screen's first segment, so it takes the screen's fill; a floating card
-    // keeps the panel's own.
-    val fill = lerp(panelColor(), colors.background, settle)
+    val fill = MiuixTheme.colorScheme.background
     val cardTap by rememberUpdatedState(onCardTap)
     Box(
         modifier =
             modifier
-                .width(width * reveal)
+                .width(width)
                 .fillMaxHeight()
-                .padding(start = railGap, top = edgeGap, end = edgeGap, bottom = edgeGap),
+                // A card that has not come out yet lies inside the rail's column, where the clip
+                // leaves nothing of it, shadow included.
+                .offset(x = -width * (1f - slide))
+                .padding(top = UiConsts.ScreenInset, end = UiConsts.ScreenInset, bottom = UiConsts.ScreenInset),
     ) {
-        Surface(
+        CodexShellCard(
             modifier = Modifier.fillMaxSize().pointerInput(Unit) { detectTapGestures { cardTap() } },
-            shape = squircleShape(navMenuCorner(settle)),
-            color = fill,
-            shadowElevation = UiConsts.PanelElevation * (1f - settle),
+            shadowElevation = UiConsts.PanelElevation * (1f - settled),
         ) {
-            Column(
-                modifier =
-                    Modifier
-                        // The card's own rectangle, whatever it has unfolded to, so the rows keep
-                        // the width they end up with and the unfold reveals them instead of
-                        // reflowing them.
-                        .requiredWidth(width - railGap - edgeGap)
-                        .fillMaxHeight()
-                        .padding(
-                            // Whatever the card gives up, the rows take back: a pin moves the
-                            // chrome, not the text.
-                            start = UiConsts.NavMenuFloatGap - railGap,
-                            top = UiConsts.NavMenuFloatMargin - edgeGap,
-                            end = UiConsts.NavMenuFloatMargin - edgeGap,
-                            bottom = UiConsts.NavMenuFloatMargin - edgeGap,
-                        ),
-            ) {
+            Column(modifier = Modifier.fillMaxSize()) {
                 Spacer(Modifier.height(topInset + UiConsts.ScreenMargin))
                 // Only the large title: the bar is the panel's header, and the list scrolls beside
                 // it rather than under it, so there is no collapsed step for a second title to name.
@@ -224,19 +204,14 @@ internal fun NavMenuPanel(
                 Spacer(Modifier.height(bottomInset + UiConsts.ScreenMargin))
             }
         }
-        // The menu's right edge is the boundary the two segments share: one hairline there, since
-        // both stand on the screen's fill. A floating card has an edge of its own instead.
-        VerticalDivider(
-            modifier = Modifier.align(Alignment.TopEnd).offset(x = -edgeGap),
-            thickness = UiConsts.DividerThickness,
-            color = colors.dividerLine.copy(alpha = settle * reveal),
-        )
     }
 }
 
 /**
- * The menu's own corners: the panel's card while a pointer floats it, and none once it is pinned,
- * where the screen's clip rounds its left corners into the panel's.
+ * The page card's left edge: the rail's own edge while the menu is shut, and the far side of the
+ * menu's column once the menu card stands pinned beside it. The menu card is drawn out of the rail
+ * as the page gives the column up, so the two keep one gap while they move.
  */
-internal fun navMenuCorner(settle: Float): Dp = UiConsts.PanelCorner * (1f - settle)
+internal fun pageCardStart(railWidth: Dp, menuWidth: Dp, menuRoom: Float): Dp =
+    railWidth + menuWidth * menuRoom
 

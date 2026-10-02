@@ -192,21 +192,10 @@ object UiConsts {
     val NavMenuWidth = 224.dp
 
     /**
-     * Space the menu keeps off the screen's edge while it floats, before a click pins it flush.
+     * Window width from which the rail's menu is a card of its own beside the page.
      *
-     * The panel is one component in both states: this gap is what it fills when it is pinned, and the
-     * rows take the same amount back as padding, so the text is where it was while the card grows out
-     * around it.
-     */
-    val NavMenuFloatGap = 8.dp
-    /** Space the floating menu keeps off the window's other edges; the shadow falls into it. */
-    val NavMenuFloatMargin = 16.dp
-
-    /**
-     * Window width from which the rail's menu takes its own column.
-     *
-     * Below it there is no room for three columns and the menu floats over the page; above it the
-     * page is laid out once at `window - rail - menu` and only ever translated.
+     * Below it there is no room for a card next to the page and the menu floats over it; above it
+     * the page card gives up the menu's column while the menu is pinned.
      */
     val WideContentBreakpoint = 720.dp
 
@@ -330,9 +319,6 @@ object UiConsts {
 
     /** Tint of an inline label chip over the row it sits in. */
     const val BadgeTintAlpha = 0.16f
-
-    /** Thickness of the hairline divider: the ones inside a card, and the shell's two. */
-    val DividerThickness = 0.7.dp
 
     /** Thickness of a control's outline, and of a floating overlay's edge. */
     val OutlineThickness = 0.7.dp

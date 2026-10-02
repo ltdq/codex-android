@@ -198,21 +198,21 @@ internal data class RailMenu(
     /** Whether the menu is drawn at all. */
     val shown: Boolean get() = pinned || onPointer
 
-    /** Whether the menu floats over the page rather than standing as the window's second column. */
+    /** Whether the menu floats over the page rather than standing pinned beside it. */
     val detached: Boolean get() = onPointer && !pinned
 
     /** The section the menu lists; [openPage] is the section the page on screen belongs to. */
     fun section(openPage: NavSection): NavSection = if (pinned) openPage else floating ?: openPage
 
     /**
-     * The pointer rested on a rail item; a pinned column is what it answers to, not the pointer,
+     * The pointer rested on a rail item; a pinned card is what it answers to, not the pointer,
      * and a hover a click spent comes back only by [leave].
      */
     fun hover(section: NavSection): RailMenu =
         if (pinned || hoverSpent) this else copy(floating = section, onPointer = true)
 
     /**
-     * A long press asks for the floating menu, and a pinned column already answers for the section;
+     * A long press asks for the floating menu, and a pinned card already answers for the section;
      * the rail names the item it pressed instead, which is what [pinned] tells it to do. The gesture
      * is the pointer's own, so the hover it stands on lives again.
      */
@@ -229,8 +229,8 @@ internal data class RailMenu(
     fun pin(): RailMenu = copy(pinned = true, floating = null, onPointer = false)
 
     /**
-     * The click that closes the column again; the page takes back the width it gave up, and the
-     * pointer that made the click stays where it is, so the item under it floats nothing.
+     * The click that takes the menu card down again; the page takes back the width it gave up, and
+     * the pointer that made the click stays where it is, so the item under it floats nothing.
      */
     fun unpin(): RailMenu = copy(pinned = false, hoverSpent = true)
 }

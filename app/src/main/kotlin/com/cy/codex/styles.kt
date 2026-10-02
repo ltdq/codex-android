@@ -33,6 +33,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
@@ -104,15 +105,16 @@ private class SquircleShape(private val radius: Dp, private val squircle: Boolea
 }
 
 /**
- * The shell's screen: the menu and the page stack, floating on the rail's own colour ([railColor],
- * washed by [CodexShellBackdrop]), inset by the rail's width and the window's other three edges and
- * rounded at the panel's corner. It clips what it holds, since a page paints its own background edge
- * to edge.
+ * One of the shell's cards: the panel's corner, the screen's fill and the hairline that follows the
+ * silhouette. The page card and the menu card beside it are the same surface, so one recipe draws
+ * both — where a card stands and what it holds are the call site's business. [shadowElevation] is
+ * for the menu while it is still up in the air; a card that stands in the layout has none. It clips
+ * what it holds, since a page paints its own background edge to edge.
  */
 @Composable
-fun CodexShellScreen(
-    railWidth: Dp,
+fun CodexShellCard(
     modifier: Modifier = Modifier,
+    shadowElevation: Dp = 0.dp,
     content: @Composable BoxScope.() -> Unit,
 ) {
     val colors = MiuixTheme.colorScheme
@@ -122,13 +124,7 @@ fun CodexShellScreen(
     Box(
         modifier =
             modifier
-                .fillMaxSize()
-                .padding(
-                    start = railWidth,
-                    top = UiConsts.ScreenInset,
-                    end = UiConsts.ScreenInset,
-                    bottom = UiConsts.ScreenInset,
-                )
+                .shadow(elevation = shadowElevation, shape = shape, clip = false)
                 .clip(shape)
                 .background(colors.background)
                 .drawWithCache {
@@ -144,6 +140,32 @@ fun CodexShellScreen(
                         drawPath(frame, color = colors.outline, style = Stroke(line.toPx()))
                     }
                 },
+        content = content,
+    )
+}
+
+/**
+ * The shell's page card: the page stack floating on the rail's own colour ([railColor], washed by
+ * [CodexShellBackdrop]), inset from the window's edges. [start] is its left edge: the rail's own
+ * while the rail's menu is shut, and the far side of the menu's column once the menu card stands
+ * pinned beside it.
+ */
+@Composable
+fun CodexShellScreen(
+    start: Dp,
+    modifier: Modifier = Modifier,
+    content: @Composable BoxScope.() -> Unit,
+) {
+    CodexShellCard(
+        modifier =
+            modifier
+                .fillMaxSize()
+                .padding(
+                    start = start,
+                    top = UiConsts.ScreenInset,
+                    end = UiConsts.ScreenInset,
+                    bottom = UiConsts.ScreenInset,
+                ),
         content = content,
     )
 }
@@ -182,11 +204,14 @@ private val TwoPi = (2.0 * PI).toFloat()
 /**
  * The rail's colour, lit: the window's base layer, painted under everything the shell draws, as the
  * OS3 background the miuix demo's blur page turns through, with one band of light running down it.
- * Only the four bands the screen leaves are painted, since the cycle repaints it every frame.
+ * Only the bands the cards leave are painted — the window's edges, the rail's column and the menu's,
+ * which the page card gives up for as long as the menu is pinned — since the cycle repaints them
+ * every frame.
  */
 @Composable
 fun CodexShellBackdrop(
     railWidth: Dp,
+    menuWidth: Dp,
     modifier: Modifier = Modifier,
 ) {
     val base = railColor()
@@ -207,19 +232,21 @@ fun CodexShellBackdrop(
             modifier
                 .drawWithCache {
                     val inset = UiConsts.ScreenInset.toPx()
-                    // How far the screen's silhouette reaches out of its corner, which a band must
-                    // cover.
+                    // How far a card's silhouette reaches out of its corner, which a band must cover.
                     val tile = UiConsts.PanelCorner.toPx() * SquircleDefaults.Extension
                     val rail = railWidth.toPx()
                     val top = inset + tile
                     val bottom = size.height - top
+                    // The two segments the page card can leave open, clamped so a window too narrow
+                    // for both keeps the bands disjoint.
+                    val segments = (rail + menuWidth.toPx()).coerceAtMost(size.width - inset)
                     // Disjoint: a pixel two bands reach would take the wash twice, and the seam would
                     // be where they cross.
                     val bands =
                         listOf(
                             Rect(0f, 0f, size.width, top),
                             Rect(0f, bottom, size.width, size.height),
-                            Rect(0f, top, rail, bottom),
+                            Rect(0f, top, segments, bottom),
                             Rect(size.width - inset, top, size.width, bottom),
                         )
                     onDrawBehind {

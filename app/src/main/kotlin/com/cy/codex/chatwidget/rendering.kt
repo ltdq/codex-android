@@ -31,7 +31,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -185,8 +184,6 @@ fun ChatScreen(
     modifier: Modifier = Modifier,
     topInset: Dp = 0.dp,
     bottomInset: Dp = 0.dp,
-    /** How far the composer reaches past the page column on each side, into a shut menu's gutter. */
-    composerGrow: Dp = 0.dp,
     /** How far the floating controls reach past the page column's end, to the window's edge. */
     controlsEndOffset: Dp = 0.dp,
     /**
@@ -381,7 +378,7 @@ fun ChatScreen(
                     ),
             modifier =
                 Modifier.align(Alignment.BottomCenter)
-                    .requiredWidth(maxWidth + composerGrow * 2),
+                    .fillMaxWidth(),
         ) {
             ComposerDock(
                 app = app,
@@ -414,7 +411,7 @@ fun ChatScreen(
                     ),
             modifier =
                 Modifier.align(Alignment.BottomCenter)
-                    .requiredWidth(maxWidth + composerGrow * 2),
+                    .fillMaxWidth(),
         ) {
             lastAgentPage?.let { threadId ->
                 SubAgentPageBar(

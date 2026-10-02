@@ -93,8 +93,8 @@ fun panelColor(): Color {
 }
 
 /**
- * The rail's colour, which is the shell's base layer: the window is painted in it and the screen the
- * menu and the pages stand on floats over it (see [CodexShellScreen]). It is the flat step of the
+ * The rail's colour, which is the shell's base layer: the window is painted in it and the cards the
+ * menu and the pages stand on float over it (see [CodexShellScreen]). It is the flat step of the
  * scheme and no more, since [CodexShellBackdrop] is what colours the base.
  */
 @Composable
