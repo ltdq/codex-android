@@ -2,6 +2,7 @@
 **/build/
 **/target/
 artifacts/
+shots/
 
 # Rust / native
 native/out/

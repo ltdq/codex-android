@@ -43,8 +43,9 @@ MCP 元数据、web search results 与 hook 输出均已接线并有 JVM 测试�
       避让已有动效（`nav_rail.kt` 的 `NavMenuPanel`，`app.kt` 的 `menuSlide` 与 `menuRoom`）。
 - [ ] **窄窗口没有自己的版式**：`wide = maxWidth >= UiConsts.WideContentBreakpoint`
       （`app.kt`）只看窗口宽度，776dp 的手机竖屏也走三列平板版式；菜单固定又是默认
-      （`KeyMenuExpanded` 默认 true），此状态下正文列 460dp（收起时 684dp），
-      `chatwidget/rendering.kt` 的 `panelMax` 只有 432dp，够不到状态卡与 diff 并排所需的
+      （`KeyMenuExpanded` 默认 true），此状态下正文列 460dp（`nav_rail.kt` 的
+      `pageColumnStart` 与 `pageColumnWidth`），菜单卡片收起只把卡片放宽到 684dp，正文列不变，
+      `chatwidget/rendering.kt` 的 `panelMax` 仍只有 432dp，够不到状态卡与 diff 并排所需的
       700dp，diff 卡因此从 `UiConsts.DiffPaneWidth`（520dp）掉到 432dp。
 
 ## 2. Transcript 渲染
