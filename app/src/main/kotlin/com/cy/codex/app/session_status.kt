@@ -1,17 +1,9 @@
 package com.cy.codex.app
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -25,8 +17,13 @@ import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.dp
+import androidx.compose.ui.text.style.TextOverflow
 import com.cy.codex.CodexApp
+import com.cy.codex.CodexPage
+import com.cy.codex.CodexRow
+import com.cy.codex.CodexRowDivider
+import com.cy.codex.CodexSection
+import com.cy.codex.CodexValueRow
 import com.cy.codex.R
 import com.cy.codex.UiConsts
 import com.cy.codex.UiType
@@ -37,7 +34,6 @@ import com.cy.codex.protocol.protocol.v2.Account
 import com.cy.codex.protocol.protocol.v2.AddCreditsNudgeCreditType
 import com.cy.codex.protocol.protocol.v2.AddCreditsNudgeEmailStatus
 import com.cy.codex.protocol.protocol.v2.ThreadUsage
-import com.cy.codex.raisedSurface
 import com.cy.codex.status.accessSummary
 import com.cy.codex.status.agentsSummary
 import com.cy.codex.status.formatCreditMicros
@@ -45,22 +41,14 @@ import com.cy.codex.status.formatEstimatedUsdMicros
 import com.cy.codex.status.formatTokens
 import com.cy.codex.warningColor
 import kotlinx.coroutines.launch
-import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
-import top.yukonga.miuix.kmp.basic.Card
-import top.yukonga.miuix.kmp.basic.CardDefaults
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.icon.MiuixIcons
-import top.yukonga.miuix.kmp.icon.extended.ChevronBackward
 import top.yukonga.miuix.kmp.icon.extended.Copy
-import top.yukonga.miuix.kmp.icon.extended.Info
 import top.yukonga.miuix.kmp.icon.extended.Link
-import top.yukonga.miuix.kmp.icon.extended.Notes
-import top.yukonga.miuix.kmp.icon.extended.Tasks
-import top.yukonga.miuix.kmp.icon.extended.Timer
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 private const val ChatGptUsageUrl = "https://chatgpt.com/codex/settings/usage"
@@ -108,612 +96,385 @@ fun SessionStatusScreen(
     val report = sessionStatusReport(app)
     val copyLabel = stringResource(R.string.clipboard_copy_status)
 
-    Column(modifier = modifier.fillMaxSize().background(colors.background)) {
-        BasicComponent(
-            title = stringResource(R.string.session_status_title),
-            summary = config.displayName,
-            startAction = { StatusBackButton(onBack) },
-            endActions = {
-                if (report != null) {
-                    IconButton(
-                        onClick = { copyToClipboard(context, report, copyLabel) },
-                        minWidth = UiConsts.IconButtonSize,
-                        minHeight = UiConsts.IconButtonSize,
-                    ) {
-                        Icon(
-                            imageVector = MiuixIcons.Copy,
-                            contentDescription = copyLabel,
-                            modifier = Modifier.size(UiConsts.IconHeader),
-                            tint = colors.primary,
-                        )
-                    }
-                }
-            },
-        )
-        Column(
-            modifier =
-                Modifier.weight(1f)
-                    .fillMaxWidth()
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = UiConsts.ScreenMargin)
-                    .padding(bottom = UiConsts.PageBottomInset),
-            verticalArrangement = Arrangement.spacedBy(UiConsts.SectionGap),
-        ) {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                cornerRadius = UiConsts.SectionCorner,
-                insideMargin = PaddingValues(horizontal = 11.dp, vertical = 8.dp),
-                colors =
-                    CardDefaults.defaultColors(
-                        color = raisedSurface(),
-                        contentColor = MiuixTheme.colorScheme.onSurface,
-                    ),
-            ) {
-                BasicComponent(
-                    title = stringResource(R.string.session_status_title),
-                    startAction = {
-                        Icon(
-                            imageVector = MiuixIcons.Info,
-                            contentDescription = null,
-                            modifier = Modifier.size(14.dp),
-                            tint = MiuixTheme.colorScheme.primary,
-                        )
-                    },
-                )
-
-                BasicComponent(
-                    title = stringResource(R.string.session_status_thread_id),
-                    endActions = {
-                        Text(
-                            text = session.threadId.ifEmpty { "—" },
-                            fontFamily = FontFamily.Monospace,
-                            color = MiuixTheme.colorScheme.onSurface,
-                            textAlign = TextAlign.End,
-                        )
-                    },
-                )
-                BasicComponent(
-                    title = stringResource(R.string.session_status_status),
-                    endActions = {
-                        Text(
-                            text = session.status.label().ifEmpty { "—" },
-                            color = MiuixTheme.colorScheme.onSurface,
-                            textAlign = TextAlign.End,
-                        )
-                    },
-                )
-                thread
-                    ?.cliVersion
-                    ?.takeIf { it.isNotBlank() }
-                    ?.let { version ->
-                        // A thread remembers the version that created it; flag when the server has moved on.
-                        val stale = serverVersion != null && serverVersion != version
-                        BasicComponent(
-                            title = stringResource(R.string.session_status_created_by),
-                            endActions = {
-                                Text(
-                                    text =
-                                        if (stale) {
-                                                stringResource(
-                                                    R.string.session_status_version_mismatch,
-                                                    version,
-                                                    serverVersion,
-                                                )
-                                            } else {
-                                                version
-                                            }
-                                            .ifEmpty { "—" },
-                                    fontFamily = FontFamily.Monospace,
-                                    color =
-                                        if (stale) warningColor()
-                                        else null ?: MiuixTheme.colorScheme.onSurface,
-                                    textAlign = TextAlign.End,
-                                )
-                            },
-                        )
-                    }
-                config.forkedFromId?.let { origin ->
-                    BasicComponent(
-                        title = stringResource(R.string.status_card_forked_from_label),
-                        endActions = {
-                            Text(
-                                text = origin.ifEmpty { "—" },
-                                fontFamily = FontFamily.Monospace,
-                                color = MiuixTheme.colorScheme.onSurface,
-                                textAlign = TextAlign.End,
-                            )
-                        },
+    CodexPage(
+        title = stringResource(R.string.session_status_title),
+        description = config.displayName,
+        onBack = onBack,
+        modifier = modifier,
+        actions = {
+            if (report != null) {
+                IconButton(
+                    onClick = { copyToClipboard(context, report, copyLabel) },
+                    minWidth = UiConsts.IconButtonSize,
+                    minHeight = UiConsts.IconButtonSize,
+                ) {
+                    Icon(
+                        imageVector = MiuixIcons.Copy,
+                        contentDescription = copyLabel,
+                        modifier = Modifier.size(UiConsts.IconHeader),
+                        tint = colors.primary,
                     )
                 }
             }
-
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                cornerRadius = UiConsts.SectionCorner,
-                insideMargin = PaddingValues(horizontal = 11.dp, vertical = 8.dp),
-                colors =
-                    CardDefaults.defaultColors(
-                        color = raisedSurface(),
-                        contentColor = MiuixTheme.colorScheme.onSurface,
-                    ),
-            ) {
-                BasicComponent(
-                    title = stringResource(R.string.session_status_directory),
-                    startAction = {
-                        Icon(
-                            imageVector = MiuixIcons.Notes,
-                            contentDescription = null,
-                            modifier = Modifier.size(14.dp),
-                            tint = MiuixTheme.colorScheme.primary,
-                        )
-                    },
-                )
-
-                BasicComponent(
-                    title = stringResource(R.string.session_status_directory),
-                    endActions = {
-                        Text(
-                            text = config.cwd.ifEmpty { "—" },
-                            fontFamily = FontFamily.Monospace,
-                            color = MiuixTheme.colorScheme.onSurface,
-                            textAlign = TextAlign.End,
-                        )
-                    },
-                )
-                config.gitBranch
-                    ?.takeIf { it.isNotBlank() }
-                    ?.let { branch ->
-                        BasicComponent(
-                            title = stringResource(R.string.session_status_branch),
-                            endActions = {
-                                Text(
-                                    text = branch.ifEmpty { "—" },
-                                    fontFamily = FontFamily.Monospace,
-                                    color = MiuixTheme.colorScheme.onSurface,
-                                    textAlign = TextAlign.End,
-                                )
-                            },
-                        )
-                    }
-                if (config.workspaceRoots.isNotEmpty()) {
-                    BasicComponent(
-                        title = stringResource(R.string.session_status_workspace_roots),
-                        endActions = {
+        },
+    ) {
+        CodexSection(stringResource(R.string.session_status_title)) {
+            CodexValueRow(
+                title = stringResource(R.string.session_status_thread_id),
+                value = session.threadId.ifEmpty { "—" },
+            )
+            CodexRowDivider()
+            CodexValueRow(
+                title = stringResource(R.string.session_status_status),
+                value = session.status.label().ifEmpty { "—" },
+                monospace = false,
+            )
+            thread
+                ?.cliVersion
+                ?.takeIf { it.isNotBlank() }
+                ?.let { version ->
+                    // A thread remembers the version that created it; flag when the server has moved on.
+                    val stale = serverVersion != null && serverVersion != version
+                    CodexRowDivider()
+                    CodexRow(
+                        title = stringResource(R.string.session_status_created_by),
+                        endAction = {
                             Text(
-                                text = config.workspaceRoots.joinToString("\n").ifEmpty { "—" },
-                                fontFamily = FontFamily.Monospace,
-                                color = MiuixTheme.colorScheme.onSurface,
-                                textAlign = TextAlign.End,
-                            )
-                        },
-                    )
-                }
-                BasicComponent(
-                    title = stringResource(R.string.status_card_agents_md_label),
-                    endActions = {
-                        Text(
-                            text = agentsSummary(config).ifEmpty { "—" },
-                            color = MiuixTheme.colorScheme.onSurface,
-                            textAlign = TextAlign.End,
-                        )
-                    },
-                )
-            }
-
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                cornerRadius = UiConsts.SectionCorner,
-                insideMargin = PaddingValues(horizontal = 11.dp, vertical = 8.dp),
-                colors =
-                    CardDefaults.defaultColors(
-                        color = raisedSurface(),
-                        contentColor = MiuixTheme.colorScheme.onSurface,
-                    ),
-            ) {
-                BasicComponent(
-                    title = stringResource(R.string.status_card_model_title),
-                    startAction = {
-                        Icon(
-                            imageVector = MiuixIcons.Tasks,
-                            contentDescription = null,
-                            modifier = Modifier.size(14.dp),
-                            tint = MiuixTheme.colorScheme.primary,
-                        )
-                    },
-                )
-
-                BasicComponent(
-                    title = stringResource(R.string.status_card_model_label),
-                    endActions = {
-                        Text(
-                            text = config.modelDisplayName.ifEmpty { config.model }.ifEmpty { "—" },
-                            fontFamily = FontFamily.Monospace,
-                            color = MiuixTheme.colorScheme.onSurface,
-                            textAlign = TextAlign.End,
-                        )
-                    },
-                )
-                BasicComponent(
-                    title = stringResource(R.string.status_card_model_provider_label),
-                    endActions = {
-                        Text(
-                            text = config.modelProviderId.ifEmpty { "—" },
-                            color = MiuixTheme.colorScheme.onSurface,
-                            textAlign = TextAlign.End,
-                        )
-                    },
-                )
-                BasicComponent(
-                    title = stringResource(R.string.status_card_reasoning_label),
-                    endActions = {
-                        Text(
-                            text = config.reasoningEffort?.label().orEmpty().ifEmpty { "—" },
-                            color = MiuixTheme.colorScheme.onSurface,
-                            textAlign = TextAlign.End,
-                        )
-                    },
-                )
-                BasicComponent(
-                    title = stringResource(R.string.status_card_service_tier_label),
-                    endActions = {
-                        Text(
-                            text =
-                                config.serviceTier
-                                    ?: stringResource(R.string.status_card_service_tier_default)
+                                text =
+                                    if (stale) {
+                                            stringResource(
+                                                R.string.session_status_version_mismatch,
+                                                version,
+                                                serverVersion,
+                                            )
+                                        } else {
+                                            version
+                                        }
                                         .ifEmpty { "—" },
-                            color = MiuixTheme.colorScheme.onSurface,
-                            textAlign = TextAlign.End,
-                        )
-                    },
+                                fontSize = UiType.Value,
+                                lineHeight = UiType.ValueLine,
+                                fontFamily = FontFamily.Monospace,
+                                color =
+                                    if (stale) warningColor()
+                                    else null ?: MiuixTheme.colorScheme.onSurface,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        },
+                    )
+                }
+            config.forkedFromId?.let { origin ->
+                CodexRowDivider()
+                CodexValueRow(
+                    title = stringResource(R.string.status_card_forked_from_label),
+                    value = origin.ifEmpty { "—" },
                 )
-                BasicComponent(
-                    title = stringResource(R.string.status_card_collaboration_label),
-                    endActions = {
+            }
+        }
+
+        CodexSection(stringResource(R.string.session_status_directory)) {
+            CodexValueRow(
+                title = stringResource(R.string.session_status_directory),
+                value = config.cwd.ifEmpty { "—" },
+            )
+            config.gitBranch
+                ?.takeIf { it.isNotBlank() }
+                ?.let { branch ->
+                    CodexRowDivider()
+                    CodexValueRow(
+                        title = stringResource(R.string.session_status_branch),
+                        value = branch.ifEmpty { "—" },
+                    )
+                }
+            if (config.workspaceRoots.isNotEmpty()) {
+                CodexRowDivider()
+                CodexRow(
+                    title = stringResource(R.string.session_status_workspace_roots),
+                    endAction = {
+                        // One root per line: the value is a list, so it keeps its own line breaks.
                         Text(
-                            text = config.collaborationMode.label().ifEmpty { "—" },
-                            color = MiuixTheme.colorScheme.onSurface,
-                            textAlign = TextAlign.End,
-                        )
-                    },
-                )
-                BasicComponent(
-                    title = stringResource(R.string.status_card_approval_label),
-                    endActions = {
-                        Text(
-                            text = config.approvalPolicy.label().ifEmpty { "—" },
-                            color = MiuixTheme.colorScheme.onSurface,
-                            textAlign = TextAlign.End,
-                        )
-                    },
-                )
-                BasicComponent(
-                    title = stringResource(R.string.status_card_reviewer_label),
-                    endActions = {
-                        Text(
-                            text = config.approvalsReviewer.label().ifEmpty { "—" },
-                            color = MiuixTheme.colorScheme.onSurface,
-                            textAlign = TextAlign.End,
-                        )
-                    },
-                )
-                BasicComponent(
-                    title = stringResource(R.string.status_card_access_label),
-                    endActions = {
-                        Text(
-                            text = accessSummary(config).ifEmpty { "—" },
+                            text = config.workspaceRoots.joinToString("\n").ifEmpty { "—" },
+                            fontSize = UiType.Value,
+                            lineHeight = UiType.ValueLine,
+                            fontFamily = FontFamily.Monospace,
                             color = MiuixTheme.colorScheme.onSurface,
                             textAlign = TextAlign.End,
                         )
                     },
                 )
             }
+            CodexRowDivider()
+            CodexValueRow(
+                title = stringResource(R.string.status_card_agents_md_label),
+                value = agentsSummary(config).ifEmpty { "—" },
+                monospace = false,
+            )
+        }
 
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                cornerRadius = UiConsts.SectionCorner,
-                insideMargin = PaddingValues(horizontal = 11.dp, vertical = 8.dp),
-                colors =
-                    CardDefaults.defaultColors(
-                        color = raisedSurface(),
-                        contentColor = MiuixTheme.colorScheme.onSurface,
-                    ),
-            ) {
-                BasicComponent(
-                    title = stringResource(R.string.session_status_usage_title),
-                    startAction = {
-                        Icon(
-                            imageVector = MiuixIcons.Timer,
-                            contentDescription = null,
-                            modifier = Modifier.size(14.dp),
-                            tint = MiuixTheme.colorScheme.primary,
-                        )
-                    },
+        CodexSection(stringResource(R.string.status_card_model_title)) {
+            CodexValueRow(
+                title = stringResource(R.string.status_card_model_label),
+                value = config.modelDisplayName.ifEmpty { config.model }.ifEmpty { "—" },
+            )
+            CodexRowDivider()
+            CodexValueRow(
+                title = stringResource(R.string.status_card_model_provider_label),
+                value = config.modelProviderId.ifEmpty { "—" },
+                monospace = false,
+            )
+            CodexRowDivider()
+            CodexValueRow(
+                title = stringResource(R.string.status_card_reasoning_label),
+                value = config.reasoningEffort?.label().orEmpty().ifEmpty { "—" },
+                monospace = false,
+            )
+            CodexRowDivider()
+            CodexValueRow(
+                title = stringResource(R.string.status_card_service_tier_label),
+                value =
+                    config.serviceTier
+                        ?: stringResource(R.string.status_card_service_tier_default)
+                            .ifEmpty { "—" },
+                monospace = false,
+            )
+            CodexRowDivider()
+            CodexValueRow(
+                title = stringResource(R.string.status_card_collaboration_label),
+                value = config.collaborationMode.label().ifEmpty { "—" },
+                monospace = false,
+            )
+            CodexRowDivider()
+            CodexValueRow(
+                title = stringResource(R.string.status_card_approval_label),
+                value = config.approvalPolicy.label().ifEmpty { "—" },
+                monospace = false,
+            )
+            CodexRowDivider()
+            CodexValueRow(
+                title = stringResource(R.string.status_card_reviewer_label),
+                value = config.approvalsReviewer.label().ifEmpty { "—" },
+                monospace = false,
+            )
+            CodexRowDivider()
+            CodexValueRow(
+                title = stringResource(R.string.status_card_access_label),
+                value = accessSummary(config).ifEmpty { "—" },
+                monospace = false,
+            )
+        }
+
+        CodexSection(stringResource(R.string.session_status_usage_title)) {
+            if (account !is Account.Chatgpt) {
+                CodexValueRow(
+                    title = stringResource(R.string.session_status_tokens_total),
+                    value = formatTokens(usage.total.totalTokens).ifEmpty { "—" },
+                    monospace = false,
                 )
-
-                if (account !is Account.Chatgpt) {
-                    BasicComponent(
-                        title = stringResource(R.string.session_status_tokens_total),
-                        endActions = {
-                            Text(
-                                text = formatTokens(usage.total.totalTokens).ifEmpty { "—" },
-                                color = MiuixTheme.colorScheme.onSurface,
-                                textAlign = TextAlign.End,
-                            )
-                        },
-                    )
-                    BasicComponent(
-                        title = stringResource(R.string.session_status_tokens_input),
-                        endActions = {
-                            Text(
-                                text = formatTokens(usage.total.inputTokens).ifEmpty { "—" },
-                                color = MiuixTheme.colorScheme.onSurface,
-                                textAlign = TextAlign.End,
-                            )
-                        },
-                    )
-                    BasicComponent(
-                        title = stringResource(R.string.session_status_tokens_output),
-                        endActions = {
-                            Text(
-                                text = formatTokens(usage.total.outputTokens).ifEmpty { "—" },
-                                color = MiuixTheme.colorScheme.onSurface,
-                                textAlign = TextAlign.End,
-                            )
-                        },
-                    )
-                    BasicComponent(
-                        title = stringResource(R.string.session_status_tokens_cached),
-                        endActions = {
-                            Text(
-                                text = formatTokens(usage.total.cachedInputTokens).ifEmpty { "—" },
-                                color = MiuixTheme.colorScheme.onSurface,
-                                textAlign = TextAlign.End,
-                            )
-                        },
-                    )
-                    BasicComponent(
-                        title = stringResource(R.string.session_status_tokens_reasoning),
-                        endActions = {
-                            Text(
-                                text = formatTokens(usage.total.reasoningOutputTokens).ifEmpty { "—" },
-                                color = MiuixTheme.colorScheme.onSurface,
-                                textAlign = TextAlign.End,
-                            )
-                        },
-                    )
-                }
-                BasicComponent(
-                    title = stringResource(R.string.session_status_context),
-                    endActions = {
+                CodexRowDivider()
+                CodexValueRow(
+                    title = stringResource(R.string.session_status_tokens_input),
+                    value = formatTokens(usage.total.inputTokens).ifEmpty { "—" },
+                    monospace = false,
+                )
+                CodexRowDivider()
+                CodexValueRow(
+                    title = stringResource(R.string.session_status_tokens_output),
+                    value = formatTokens(usage.total.outputTokens).ifEmpty { "—" },
+                    monospace = false,
+                )
+                CodexRowDivider()
+                CodexValueRow(
+                    title = stringResource(R.string.session_status_tokens_cached),
+                    value = formatTokens(usage.total.cachedInputTokens).ifEmpty { "—" },
+                    monospace = false,
+                )
+                CodexRowDivider()
+                CodexValueRow(
+                    title = stringResource(R.string.session_status_tokens_reasoning),
+                    value = formatTokens(usage.total.reasoningOutputTokens).ifEmpty { "—" },
+                    monospace = false,
+                )
+                CodexRowDivider()
+            }
+            CodexValueRow(
+                title = stringResource(R.string.session_status_context),
+                value =
+                    stringResource(
+                        R.string.status_card_usage_percent,
+                        (usage.usedFraction * 100).toInt(),
+                    ) +
+                        " / " +
+                        (contextWindow?.let { formatTokens(it) }
+                                ?: stringResource(R.string.status_card_none))
+                            .ifEmpty { "—" },
+                monospace = false,
+            )
+            val estimateValue = estimate?.let { line ->
+                val credits = formatCreditMicros(line.estimatedUsageCreditsMicros)
+                formatEstimatedUsdMicros(line.estimatedUsageUsdMicros)?.let { usd ->
+                    "$credits credits · $usd"
+                } ?: "$credits credits"
+            }
+            if (estimateValue != null) {
+                CodexRowDivider()
+                CodexValueRow(
+                    title = stringResource(R.string.session_status_estimated_usage),
+                    value = estimateValue.ifEmpty { "—" },
+                    monospace = false,
+                )
+            } else if (estimateFailed) {
+                StatusNote(stringResource(R.string.session_status_load_failed))
+            }
+            spend.individualLimit?.let { limit ->
+                CodexRowDivider()
+                CodexRow(
+                    title = stringResource(R.string.session_status_spend_control),
+                    endAction = {
                         Text(
                             text =
                                 stringResource(
-                                    R.string.status_card_usage_percent,
-                                    (usage.usedFraction * 100).toInt(),
-                                ) +
-                                    " / " +
-                                    (contextWindow?.let { formatTokens(it) }
-                                            ?: stringResource(R.string.status_card_none))
-                                        .ifEmpty { "—" },
-                            color = MiuixTheme.colorScheme.onSurface,
-                            textAlign = TextAlign.End,
+                                        R.string.session_status_spend_control_value,
+                                        limit.used,
+                                        limit.limit,
+                                        limit.remainingPercent,
+                                    )
+                                    .ifEmpty { "—" },
+                            fontSize = UiType.Value,
+                            lineHeight = UiType.ValueLine,
+                            color =
+                                if (spend.spendControlReached == true) colors.error
+                                else null ?: MiuixTheme.colorScheme.onSurface,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
                         )
                     },
                 )
-                val estimateValue = estimate?.let { line ->
-                    val credits = formatCreditMicros(line.estimatedUsageCreditsMicros)
-                    formatEstimatedUsdMicros(line.estimatedUsageUsdMicros)?.let { usd ->
-                        "$credits credits · $usd"
-                    } ?: "$credits credits"
-                }
-                if (estimateValue != null) {
-                    BasicComponent(
-                        title = stringResource(R.string.session_status_estimated_usage),
-                        endActions = {
-                            Text(
-                                text = estimateValue.ifEmpty { "—" },
-                                color = MiuixTheme.colorScheme.onSurface,
-                                textAlign = TextAlign.End,
-                            )
-                        },
+            }
+            if (spend.spendControlReached == true && spend.individualLimit == null) {
+                CodexRowDivider()
+                CodexRow(
+                    title = stringResource(R.string.session_status_spend_control),
+                    endAction = {
+                        Text(
+                            text =
+                                stringResource(R.string.session_status_spend_control_reached)
+                                    .ifEmpty { "—" },
+                            fontSize = UiType.Value,
+                            lineHeight = UiType.ValueLine,
+                            color = colors.error ?: MiuixTheme.colorScheme.onSurface,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    },
+                )
+            }
+        }
+
+        CodexSection(stringResource(R.string.session_status_account)) {
+            accountValue?.let { value ->
+                CodexRow(
+                    title = stringResource(R.string.session_status_account),
+                    summary = value,
+                )
+            }
+            if (accountState.requiresOpenaiAuth) {
+                Button(
+                    onClick = { runCatching { uriHandler.openUri(ChatGptUsageUrl) } },
+                    modifier = Modifier.padding(horizontal = UiConsts.RowInset),
+                    colors = ButtonDefaults.buttonColors(),
+                ) {
+                    Icon(
+                        imageVector = MiuixIcons.Link,
+                        contentDescription = null,
+                        modifier = Modifier.size(UiConsts.IconHeader),
                     )
-                } else if (estimateFailed) {
-                    Text(
-                        text = stringResource(R.string.session_status_load_failed),
-                        modifier =
-                            Modifier.padding(
-                                horizontal = UiConsts.Space4,
-                                vertical = UiConsts.Space7,
-                            ),
-                        fontSize = UiType.Footnote,
-                        lineHeight = UiType.FootnoteLine,
-                        color = colors.onSurfaceVariantSummary,
-                    )
-                }
-                spend.individualLimit?.let { limit ->
-                    BasicComponent(
-                        title = stringResource(R.string.session_status_spend_control),
-                        endActions = {
-                            Text(
-                                text =
-                                    stringResource(
-                                            R.string.session_status_spend_control_value,
-                                            limit.used,
-                                            limit.limit,
-                                            limit.remainingPercent,
-                                        )
-                                        .ifEmpty { "—" },
-                                color =
-                                    if (spend.spendControlReached == true) colors.error
-                                    else null ?: MiuixTheme.colorScheme.onSurface,
-                                textAlign = TextAlign.End,
-                            )
-                        },
-                    )
-                }
-                if (spend.spendControlReached == true && spend.individualLimit == null) {
-                    BasicComponent(
-                        title = stringResource(R.string.session_status_spend_control),
-                        endActions = {
-                            Text(
-                                text =
-                                    stringResource(R.string.session_status_spend_control_reached)
-                                        .ifEmpty { "—" },
-                                color = colors.error ?: MiuixTheme.colorScheme.onSurface,
-                                textAlign = TextAlign.End,
-                            )
-                        },
-                    )
+                    Spacer(Modifier.size(UiConsts.Space6))
+                    Text(text = stringResource(R.string.session_status_chatgpt_usage))
                 }
             }
-
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                cornerRadius = UiConsts.SectionCorner,
-                insideMargin = PaddingValues(horizontal = 11.dp, vertical = 8.dp),
-                colors =
-                    CardDefaults.defaultColors(
-                        color = raisedSurface(),
-                        contentColor = MiuixTheme.colorScheme.onSurface,
-                    ),
-            ) {
-                BasicComponent(
-                    title = stringResource(R.string.session_status_account),
-                    startAction = {
-                        Icon(
-                            imageVector = MiuixIcons.Info,
-                            contentDescription = null,
-                            modifier = Modifier.size(14.dp),
-                            tint = MiuixTheme.colorScheme.primary,
-                        )
-                    },
-                )
-                accountValue?.let { value ->
-                    BasicComponent(
-                        title = stringResource(R.string.session_status_account),
-                        summary = value,
-                    )
-                }
-                if (accountState.requiresOpenaiAuth) {
-                    Button(
-                        onClick = { runCatching { uriHandler.openUri(ChatGptUsageUrl) } },
-                        colors = ButtonDefaults.buttonColors(),
-                    ) {
-                        Icon(
-                            imageVector = MiuixIcons.Link,
-                            contentDescription = null,
-                            modifier = Modifier.size(UiConsts.IconHeader),
-                        )
-                        Spacer(Modifier.size(UiConsts.Space6))
-                        Text(text = stringResource(R.string.session_status_chatgpt_usage))
-                    }
-                }
-                spend.credits?.let { credits ->
-                    BasicComponent(
-                        title = stringResource(R.string.status_card_credits_label),
-                        endActions = {
-                            Text(
-                                text =
-                                    if (credits.unlimited) {
-                                            stringResource(R.string.status_card_credits_unlimited)
-                                        } else {
-                                            credits.balance
-                                                ?: stringResource(R.string.status_card_credits_none)
-                                        }
-                                        .ifEmpty { "—" },
-                                color = MiuixTheme.colorScheme.onSurface,
-                                textAlign = TextAlign.End,
-                            )
-                        },
-                    )
-                }
-                spend.primary?.let { window ->
-                    BasicComponent(
-                        title = stringResource(R.string.status_card_rate_primary),
-                        endActions = {
-                            Text(
-                                text =
-                                    stringResource(
-                                            R.string.status_card_usage_percent,
-                                            window.usedPercent.toInt(),
-                                        )
-                                        .ifEmpty { "—" },
-                                color = MiuixTheme.colorScheme.onSurface,
-                                textAlign = TextAlign.End,
-                            )
-                        },
-                    )
-                }
-                spend.secondary?.let { window ->
-                    BasicComponent(
-                        title = stringResource(R.string.status_card_rate_secondary),
-                        endActions = {
-                            Text(
-                                text =
-                                    stringResource(
-                                            R.string.status_card_usage_percent,
-                                            window.usedPercent.toInt(),
-                                        )
-                                        .ifEmpty { "—" },
-                                color = MiuixTheme.colorScheme.onSurface,
-                                textAlign = TextAlign.End,
-                            )
-                        },
-                    )
-                }
-                // The TUI's nudge CTA comes from a backend banner this client does not parse; the state it
-                // reacts to is already local, so the action lives next to it.
-                val nudgeType =
-                    when {
-                        spend.spendControlReached == true -> AddCreditsNudgeCreditType.UsageLimit
-                        spend.credits?.let { !it.unlimited && !it.hasCredits } == true ->
-                            AddCreditsNudgeCreditType.Credits
-                        else -> null
-                    }
-                if (nudgeType != null) {
-                    Spacer(Modifier.height(UiConsts.Space10))
-                    Button(
-                        onClick = {
-                            nudging = true
-                            nudgeMessage = null
-                            scope.launch {
-                                app.client
-                                    .sendAddCreditsNudgeEmail(nudgeType)
-                                    .onSuccess { response ->
-                                        nudgeMessage =
-                                            when (response.status) {
-                                                AddCreditsNudgeEmailStatus.Sent ->
-                                                    R.string.status_card_add_credits_sent
-                                                AddCreditsNudgeEmailStatus.CooldownActive ->
-                                                    R.string.status_card_add_credits_cooldown
-                                            }
-                                    }
-                                    .onFailure {
-                                        nudgeMessage = R.string.status_card_add_credits_failed
-                                    }
-                                nudging = false
+            spend.credits?.let { credits ->
+                if (accountValue != null) CodexRowDivider()
+                CodexValueRow(
+                    title = stringResource(R.string.status_card_credits_label),
+                    value =
+                        if (credits.unlimited) {
+                                stringResource(R.string.status_card_credits_unlimited)
+                            } else {
+                                credits.balance
+                                    ?: stringResource(R.string.status_card_credits_none)
                             }
-                        },
-                        modifier = Modifier,
-                        enabled = !nudging,
-                        colors = ButtonDefaults.buttonColorsPrimary(),
-                    ) {
-                        Text(text = stringResource(R.string.status_card_add_credits), maxLines = 1)
-                    }
-                    nudgeMessage?.let { message ->
-                        Text(
-                            text = stringResource(message),
-                            modifier =
-                                Modifier.padding(
-                                    horizontal = UiConsts.Space4,
-                                    vertical = UiConsts.Space7,
-                                ),
-                            fontSize = UiType.Footnote,
-                            lineHeight = UiType.FootnoteLine,
-                            color = colors.onSurfaceVariantSummary,
-                        )
-                    }
+                            .ifEmpty { "—" },
+                    monospace = false,
+                )
+            }
+            spend.primary?.let { window ->
+                if (accountValue != null || spend.credits != null) CodexRowDivider()
+                CodexValueRow(
+                    title = stringResource(R.string.status_card_rate_primary),
+                    value =
+                        stringResource(
+                                R.string.status_card_usage_percent,
+                                window.usedPercent.toInt(),
+                            )
+                            .ifEmpty { "—" },
+                    monospace = false,
+                )
+            }
+            spend.secondary?.let { window ->
+                if (accountValue != null || spend.credits != null || spend.primary != null) {
+                    CodexRowDivider()
                 }
+                CodexValueRow(
+                    title = stringResource(R.string.status_card_rate_secondary),
+                    value =
+                        stringResource(
+                                R.string.status_card_usage_percent,
+                                window.usedPercent.toInt(),
+                            )
+                            .ifEmpty { "—" },
+                    monospace = false,
+                )
+            }
+            // The TUI's nudge CTA comes from a backend banner this client does not parse; the state it
+            // reacts to is already local, so the action lives next to it.
+            val nudgeType =
+                when {
+                    spend.spendControlReached == true -> AddCreditsNudgeCreditType.UsageLimit
+                    spend.credits?.let { !it.unlimited && !it.hasCredits } == true ->
+                        AddCreditsNudgeCreditType.Credits
+                    else -> null
+                }
+            if (nudgeType != null) {
+                Spacer(Modifier.height(UiConsts.Space10))
+                Button(
+                    onClick = {
+                        nudging = true
+                        nudgeMessage = null
+                        scope.launch {
+                            app.client
+                                .sendAddCreditsNudgeEmail(nudgeType)
+                                .onSuccess { response ->
+                                    nudgeMessage =
+                                        when (response.status) {
+                                            AddCreditsNudgeEmailStatus.Sent ->
+                                                R.string.status_card_add_credits_sent
+                                            AddCreditsNudgeEmailStatus.CooldownActive ->
+                                                R.string.status_card_add_credits_cooldown
+                                        }
+                                }
+                                .onFailure {
+                                    nudgeMessage = R.string.status_card_add_credits_failed
+                                }
+                            nudging = false
+                        }
+                    },
+                    modifier = Modifier.padding(horizontal = UiConsts.RowInset),
+                    enabled = !nudging,
+                    colors = ButtonDefaults.buttonColorsPrimary(),
+                ) {
+                    Text(text = stringResource(R.string.status_card_add_credits), maxLines = 1)
+                }
+                nudgeMessage?.let { message -> StatusNote(stringResource(message)) }
             }
         }
     }
@@ -824,19 +585,20 @@ private fun statusPlanDisplay(plan: String): String =
         else -> plan.split('_').joinToString(" ") { it.replaceFirstChar(Char::uppercase) }
     }
 
+/** Footnote on a card's inner rail; always the page's own copy, never a value off the wire. */
 @Composable
-private fun StatusBackButton(onBack: (() -> Unit)?) {
-    if (onBack == null) return
-    IconButton(
-        onClick = onBack,
-        minWidth = UiConsts.IconButtonSize,
-        minHeight = UiConsts.IconButtonSize,
-    ) {
-        Icon(
-            imageVector = MiuixIcons.ChevronBackward,
-            contentDescription = stringResource(R.string.session_status_back),
-            modifier = Modifier.size(UiConsts.IconHeader),
-            tint = MiuixTheme.colorScheme.primary,
-        )
-    }
+private fun StatusNote(text: String) {
+    Text(
+        text = text,
+        modifier =
+            Modifier.padding(
+                start = UiConsts.RowInset,
+                end = UiConsts.RowInset,
+                top = UiConsts.Space8,
+                bottom = UiConsts.Space8,
+            ),
+        fontSize = UiType.Footnote,
+        lineHeight = UiType.FootnoteLine,
+        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+    )
 }

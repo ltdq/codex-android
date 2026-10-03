@@ -44,12 +44,14 @@ object DestinationCatalog {
     /**
      * The shell's second segment, per rail item; the project rows come from `thread/list` and have
      * no id, so they are not listed here.
+     *
+     * The chat's own menu lists the whole thread library and the tools that act on the open
+     * session; the archived half of the library hangs off the settings menu instead.
      */
-    val HomeMenu = setOf(Id.New)
+    val HomeMenu = setOf(Id.New, Id.Sessions)
     val PluginsMenu = setOf(Id.Skills, Id.Mcp, Id.Plugins, Id.Apps, Id.Hooks, Id.PluginShares)
 
-    /** The floating session panel: the thread library, then the tools that act on the open thread. */
-    val SessionLibrary = setOf(Id.Sessions, Id.Archived, Id.Workspace)
+    /** What the chat's menu adds under its own groups: the tools that act on the open session. */
     val SessionTools = setOf(
         Id.History,
         Id.Files,
@@ -62,6 +64,9 @@ object DestinationCatalog {
         Id.Realtime,
     )
 
+    /** Adding a workspace: an action, not a page, so it stands on the group it belongs to. */
+    val WorkspaceActions = setOf(Id.Workspace)
+
     /** Pages the settings menu opens directly; its section rows are `SettingsSection`. */
     val SettingsMenu = setOf(
         Id.Account,
@@ -72,6 +77,7 @@ object DestinationCatalog {
         Id.Sandbox,
         Id.Diagnostics,
         Id.Status,
+        Id.Archived,
     )
 
     val Onboarding = setOf(Id.Bedrock)
@@ -82,8 +88,8 @@ object DestinationCatalog {
             addAll(RailPages)
             addAll(HomeMenu)
             addAll(PluginsMenu)
-            addAll(SessionLibrary)
             addAll(SessionTools)
+            addAll(WorkspaceActions)
             addAll(SettingsMenu)
             addAll(Onboarding)
         }
@@ -95,8 +101,8 @@ object DestinationCatalog {
             RailPages,
             HomeMenu,
             PluginsMenu,
-            SessionLibrary,
             SessionTools,
+            WorkspaceActions,
             SettingsMenu,
             Onboarding,
         )

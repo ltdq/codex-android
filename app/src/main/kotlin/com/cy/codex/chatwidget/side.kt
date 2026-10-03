@@ -2,36 +2,16 @@ package com.cy.codex.chatwidget
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.ReadOnlyComposable
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
-import com.cy.codex.DestinationCatalog
 import com.cy.codex.R
 import com.cy.codex.SlashCommands
 import com.cy.codex.ThreadListState
-import top.yukonga.miuix.kmp.icon.MiuixIcons
-import top.yukonga.miuix.kmp.icon.extended.AddFolder
-import top.yukonga.miuix.kmp.icon.extended.Blocklist
-import top.yukonga.miuix.kmp.icon.extended.File
-import top.yukonga.miuix.kmp.icon.extended.Folder
-import top.yukonga.miuix.kmp.icon.extended.Messages
-import top.yukonga.miuix.kmp.icon.extended.Mic
-import top.yukonga.miuix.kmp.icon.extended.Refresh
-import top.yukonga.miuix.kmp.icon.extended.Search
-import top.yukonga.miuix.kmp.icon.extended.Tasks
-import top.yukonga.miuix.kmp.icon.extended.Th1
-import top.yukonga.miuix.kmp.icon.extended.Timer
 
 /**
  * Session model, mirroring the TUI's side panel (`codex-rs/tui/src/chatwidget/side.rs` and
  * `app/side.rs`). Built from `thread/list` through [ThreadListState.grouped]; groups derive from
  * each thread's working directory.
  */
-data class SidebarEntry(
-    val id: String,
-    val title: String,
-    val icon: ImageVector,
-)
-
 data class SidebarSession(
     val id: String,
     val title: String,
@@ -48,30 +28,6 @@ data class SidebarProject(
 )
 
 object SidebarModel {
-
-    /** The thread library: what the open session is switched to, not a tool of the session itself. */
-    @Composable
-    @ReadOnlyComposable
-    fun libraryEntries(): List<SidebarEntry> = listOf(
-        SidebarEntry(DestinationCatalog.Id.Sessions, stringResource(R.string.sidebar_library_all_sessions), MiuixIcons.Messages),
-        SidebarEntry(DestinationCatalog.Id.Archived, stringResource(R.string.sidebar_library_archived), MiuixIcons.Blocklist),
-        SidebarEntry(DestinationCatalog.Id.Workspace, stringResource(R.string.sidebar_add_workspace), MiuixIcons.AddFolder),
-    )
-
-    /** Tools that act on the open thread; session-scoped, so they stay out of the rail's menus. */
-    @Composable
-    @ReadOnlyComposable
-    fun sessionEntries(): List<SidebarEntry> = listOf(
-        SidebarEntry(DestinationCatalog.Id.History, stringResource(R.string.sidebar_library_history), MiuixIcons.Refresh),
-        SidebarEntry(DestinationCatalog.Id.Files, stringResource(R.string.sidebar_library_files), MiuixIcons.File),
-        SidebarEntry(DestinationCatalog.Id.Exec, stringResource(R.string.sidebar_library_exec), MiuixIcons.Th1),
-        SidebarEntry(DestinationCatalog.Id.Terminals, stringResource(R.string.sidebar_library_terminals), MiuixIcons.Timer),
-        SidebarEntry(DestinationCatalog.Id.Review, stringResource(R.string.sidebar_library_review), MiuixIcons.Search),
-        SidebarEntry(DestinationCatalog.Id.Worktree, stringResource(R.string.worktrees_title), MiuixIcons.Folder),
-        SidebarEntry(DestinationCatalog.Id.Diff, stringResource(R.string.git_diff_screen_title), MiuixIcons.File),
-        SidebarEntry(DestinationCatalog.Id.Goal, stringResource(R.string.goal_sheet_title), MiuixIcons.Tasks),
-        SidebarEntry(DestinationCatalog.Id.Realtime, stringResource(R.string.sidebar_library_realtime), MiuixIcons.Mic),
-    )
 
     @Composable
     @ReadOnlyComposable

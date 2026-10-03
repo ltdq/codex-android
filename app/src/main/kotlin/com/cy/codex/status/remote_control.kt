@@ -1,20 +1,15 @@
 package com.cy.codex.status
 
 import android.text.format.DateUtils
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -24,12 +19,19 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.dp
 import com.cy.codex.AppEvent
 import com.cy.codex.CatalogState
+import com.cy.codex.CodexCardGrid
+import com.cy.codex.CodexCatalogCard
+import com.cy.codex.CodexGroupTitle
+import com.cy.codex.CodexPage
+import com.cy.codex.CodexRow
+import com.cy.codex.CodexRowDivider
+import com.cy.codex.CodexSection
+import com.cy.codex.CodexSwitchRow
+import com.cy.codex.CodexValueRow
 import com.cy.codex.R
 import com.cy.codex.ThreadStatusTone
 import com.cy.codex.UiConsts
@@ -40,23 +42,15 @@ import com.cy.codex.protocol.protocol.v2.RemoteControlConnectionStatus
 import com.cy.codex.protocol.protocol.v2.RemoteControlStatus
 import com.cy.codex.raisedSurface
 import com.cy.codex.statusDotColor
-import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
-import top.yukonga.miuix.kmp.basic.Card
-import top.yukonga.miuix.kmp.basic.CardDefaults
-import top.yukonga.miuix.kmp.basic.HorizontalDivider
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.icon.MiuixIcons
-import top.yukonga.miuix.kmp.icon.extended.ChevronBackward
-import top.yukonga.miuix.kmp.icon.extended.Link
 import top.yukonga.miuix.kmp.icon.extended.Phone
 import top.yukonga.miuix.kmp.icon.extended.Refresh
 import top.yukonga.miuix.kmp.icon.extended.ScreenMirroring
-import top.yukonga.miuix.kmp.preference.ArrowPreference
-import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.squircle.squircleBackground
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
@@ -74,90 +68,44 @@ fun RemoteControlScreen(
     val status = catalog.remoteControl
     val relayLabel = status?.status?.label() ?: stringResource(R.string.remote_control_page_unread)
 
-    Column(modifier = modifier.fillMaxSize().background(colors.background)) {
-        BasicComponent(
-            title = stringResource(R.string.remote_control_page_title),
-            summary = relayLabel,
-            startAction = {
-                if (onBack != null) {
-                    IconButton(
-                        onClick = onBack,
-                        minWidth = UiConsts.IconButtonSize,
-                        minHeight = UiConsts.IconButtonSize,
-                    ) {
-                        Icon(
-                            imageVector = MiuixIcons.ChevronBackward,
-                            contentDescription = stringResource(R.string.remote_control_page_back),
-                            modifier = Modifier.size(UiConsts.IconHeader),
-                            tint = MiuixTheme.colorScheme.primary,
-                        )
-                    }
-                }
-            },
-            endActions = {
-                IconButton(
-                    onClick = { onEvent(AppEvent.ReloadRemoteControl) },
-                    minWidth = UiConsts.IconButtonSize,
-                    minHeight = UiConsts.IconButtonSize,
-                ) {
-                    Icon(
-                        imageVector = MiuixIcons.Refresh,
-                        contentDescription = stringResource(R.string.remote_control_page_refresh),
-                        modifier = Modifier.size(UiConsts.IconRefresh),
-                        tint = colors.primary,
-                    )
-                }
-            },
+    CodexPage(
+        title = stringResource(R.string.remote_control_page_title),
+        description = relayLabel,
+        onBack = onBack,
+        modifier = modifier,
+        actions = {
+            IconButton(
+                onClick = { onEvent(AppEvent.ReloadRemoteControl) },
+                minWidth = UiConsts.IconButtonSize,
+                minHeight = UiConsts.IconButtonSize,
+            ) {
+                Icon(
+                    imageVector = MiuixIcons.Refresh,
+                    contentDescription = stringResource(R.string.remote_control_page_refresh),
+                    modifier = Modifier.size(UiConsts.IconRefresh),
+                    tint = colors.primary,
+                )
+            }
+        },
+    ) {
+        ConnectionSection(status = status, onEvent = onEvent)
+        PairingSection(
+            code = catalog.remoteControlPairingCode,
+            claimed = catalog.remoteControlPairingClaimed,
+            onEvent = onEvent,
         )
-        Column(
-            modifier =
-                Modifier.weight(1f)
-                    .fillMaxWidth()
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = UiConsts.ScreenMargin)
-                    .padding(bottom = UiConsts.PageBottomInset),
-            verticalArrangement = Arrangement.spacedBy(UiConsts.SectionGap),
-        ) {
-            ConnectionCard(status = status, onEvent = onEvent)
-            PairingCard(
-                code = catalog.remoteControlPairingCode,
-                claimed = catalog.remoteControlPairingClaimed,
-                onEvent = onEvent,
-            )
-            PairedDevicesCard(clients = catalog.remoteControlClients, onEvent = onEvent)
-        }
+        PairedDevicesSection(clients = catalog.remoteControlClients, onEvent = onEvent)
     }
 }
 
 /** Relay state plus the switch that turns it on; unknown state shows an empty card,
  * because an unchecked switch would report the machine as off. */
 @Composable
-private fun ConnectionCard(
+private fun ConnectionSection(
     status: RemoteControlStatus?,
     onEvent: (AppEvent) -> Unit,
 ) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        cornerRadius = UiConsts.SectionCorner,
-        insideMargin = PaddingValues(horizontal = 11.dp, vertical = 8.dp),
-        colors =
-            CardDefaults.defaultColors(
-                color = raisedSurface(),
-                contentColor = MiuixTheme.colorScheme.onSurface,
-            ),
-    ) {
-        BasicComponent(
-            title = stringResource(R.string.remote_control_connection),
-            startAction = {
-                Icon(
-                    imageVector = MiuixIcons.ScreenMirroring,
-                    contentDescription = null,
-                    modifier = Modifier.size(14.dp),
-                    tint = MiuixTheme.colorScheme.primary,
-                )
-            },
-        )
-
+    CodexSection(stringResource(R.string.remote_control_connection)) {
         if (status == null) {
             Column(
                 modifier =
@@ -208,98 +156,62 @@ private fun ConnectionCard(
                     Text(text = stringResource(R.string.remote_control_page_retry), maxLines = 1)
                 }
             }
-        } else {
-            BasicComponent(
-                title = stringResource(R.string.remote_control_status_label),
-                endActions = {
-                    Text(
-                        text = status.status.label().ifEmpty { "—" },
-                        color =
-                            statusDotColor(status.status.tone())
-                                ?: MiuixTheme.colorScheme.onSurface,
-                        textAlign = TextAlign.End,
-                    )
-                },
-            )
-            HorizontalDivider(modifier = Modifier.padding(vertical = UiConsts.Space1))
-            BasicComponent(
-                title = stringResource(R.string.remote_control_server),
-                endActions = {
-                    Text(
-                        text = status.serverName.ifEmpty { "—" },
-                        color = MiuixTheme.colorScheme.onSurface,
-                        textAlign = TextAlign.End,
-                    )
-                },
-            )
-            HorizontalDivider(modifier = Modifier.padding(vertical = UiConsts.Space1))
-            BasicComponent(
-                title = stringResource(R.string.remote_control_installation),
-                endActions = {
-                    Text(
-                        text = status.installationId.ifEmpty { "—" },
-                        fontFamily = FontFamily.Monospace,
-                        color = MiuixTheme.colorScheme.onSurface,
-                        textAlign = TextAlign.End,
-                    )
-                },
-            )
-            HorizontalDivider(modifier = Modifier.padding(vertical = UiConsts.Space1))
-            BasicComponent(
-                title = stringResource(R.string.remote_control_environment),
-                endActions = {
-                    Text(
-                        text = status.environmentId.orEmpty().ifEmpty { "—" },
-                        color = MiuixTheme.colorScheme.onSurface,
-                        textAlign = TextAlign.End,
-                    )
-                },
-            )
-            SwitchPreference(
-                checked = status.status != RemoteControlConnectionStatus.Disabled,
-                onCheckedChange = { onEvent(AppEvent.SetRemoteControlEnabled(it)) },
-                title = stringResource(R.string.remote_control_relay),
-                summary = stringResource(R.string.remote_control_relay_detail),
-            )
+            return@CodexSection
         }
+
+        CodexRow(
+            title = stringResource(R.string.remote_control_status_label),
+            endAction = {
+                Text(
+                    text = status.status.label().ifEmpty { "—" },
+                    color =
+                        statusDotColor(status.status.tone())
+                            ?: MiuixTheme.colorScheme.onSurface,
+                    textAlign = TextAlign.End,
+                )
+            },
+        )
+        CodexRowDivider()
+        CodexValueRow(
+            title = stringResource(R.string.remote_control_server),
+            value = status.serverName.ifEmpty { "—" },
+            monospace = false,
+        )
+        CodexRowDivider()
+        CodexValueRow(
+            title = stringResource(R.string.remote_control_installation),
+            value = status.installationId.ifEmpty { "—" },
+        )
+        CodexRowDivider()
+        CodexValueRow(
+            title = stringResource(R.string.remote_control_environment),
+            value = status.environmentId.orEmpty().ifEmpty { "—" },
+            monospace = false,
+        )
+        CodexRowDivider()
+        CodexSwitchRow(
+            title = stringResource(R.string.remote_control_relay),
+            summary = stringResource(R.string.remote_control_relay_detail),
+            checked = status.status != RemoteControlConnectionStatus.Disabled,
+            onCheckedChange = { onEvent(AppEvent.SetRemoteControlEnabled(it)) },
+        )
     }
 }
 
 /** Mint, poll, re-mint — the three protocol actions. The poll is a button: nothing pushes
  * the claim, and a self-polling page would have to pick an interval. */
 @Composable
-private fun PairingCard(
+private fun PairingSection(
     code: String?,
     claimed: Boolean?,
     onEvent: (AppEvent) -> Unit,
 ) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        cornerRadius = UiConsts.SectionCorner,
-        insideMargin = PaddingValues(horizontal = 11.dp, vertical = 8.dp),
-        colors =
-            CardDefaults.defaultColors(
-                color = raisedSurface(),
-                contentColor = MiuixTheme.colorScheme.onSurface,
-            ),
-    ) {
-        BasicComponent(
-            title = stringResource(R.string.remote_control_pairing),
-            startAction = {
-                Icon(
-                    imageVector = MiuixIcons.Link,
-                    contentDescription = null,
-                    modifier = Modifier.size(14.dp),
-                    tint = MiuixTheme.colorScheme.primary,
-                )
-            },
-        )
-
+    CodexSection(stringResource(R.string.remote_control_pairing)) {
         if (code == null) {
             RemoteControlNote(stringResource(R.string.remote_control_pairing_detail))
             Button(
                 onClick = { onEvent(AppEvent.StartRemoteControlPairing) },
-                modifier = Modifier.fillMaxWidth().padding(horizontal = UiConsts.Space4),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = UiConsts.RowInset),
                 enabled = true,
                 colors = ButtonDefaults.buttonColorsPrimary(),
             ) {
@@ -307,21 +219,14 @@ private fun PairingCard(
             }
         } else {
             RemoteControlNote(stringResource(R.string.remote_control_pairing_hint))
-            BasicComponent(
+            CodexValueRow(
                 title = stringResource(R.string.remote_control_pairing_code),
-                endActions = {
-                    Text(
-                        text = code.ifEmpty { "—" },
-                        fontFamily = FontFamily.Monospace,
-                        color = MiuixTheme.colorScheme.onSurface,
-                        textAlign = TextAlign.End,
-                    )
-                },
+                value = code.ifEmpty { "—" },
             )
-            HorizontalDivider(modifier = Modifier.padding(vertical = UiConsts.Space1))
-            BasicComponent(
+            CodexRowDivider()
+            CodexRow(
                 title = stringResource(R.string.remote_control_pairing_state),
-                endActions = {
+                endAction = {
                     Text(
                         text =
                             if (claimed == true) {
@@ -343,7 +248,7 @@ private fun PairingCard(
                 onClick = { onEvent(AppEvent.PollRemoteControlPairing) },
                 modifier =
                     Modifier.fillMaxWidth()
-                        .padding(horizontal = UiConsts.Space4, vertical = UiConsts.Space8),
+                        .padding(horizontal = UiConsts.RowInset, vertical = UiConsts.Space8),
                 enabled = claimed != true,
                 colors = ButtonDefaults.buttonColorsPrimary(),
             ) {
@@ -353,7 +258,7 @@ private fun PairingCard(
                 onClick = { onEvent(AppEvent.StartRemoteControlPairing) },
                 modifier =
                     Modifier.fillMaxWidth()
-                        .padding(horizontal = UiConsts.Space4)
+                        .padding(horizontal = UiConsts.RowInset)
                         .padding(bottom = UiConsts.Space8),
                 enabled = true,
                 colors = ButtonDefaults.buttonColors(),
@@ -367,95 +272,69 @@ private fun PairingCard(
 /** Tap expands instead of opening a sheet: the one action per device is destructive. The
  * list is keyed by `environmentId`; a link without one skips the read. */
 @Composable
-private fun PairedDevicesCard(
+private fun PairedDevicesSection(
     clients: List<RemoteControlClient>,
     onEvent: (AppEvent) -> Unit,
 ) {
     var expanded by remember { mutableStateOf<String?>(null) }
 
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        cornerRadius = UiConsts.SectionCorner,
-        insideMargin = PaddingValues(horizontal = 11.dp, vertical = 8.dp),
-        colors =
-            CardDefaults.defaultColors(
-                color = raisedSurface(),
-                contentColor = MiuixTheme.colorScheme.onSurface,
-            ),
-    ) {
-        BasicComponent(
-            title = stringResource(R.string.remote_control_devices),
-            startAction = {
-                Icon(
-                    imageVector = MiuixIcons.Phone,
-                    contentDescription = null,
-                    modifier = Modifier.size(14.dp),
-                    tint = MiuixTheme.colorScheme.primary,
-                )
-            },
-            endActions = {
-                Text(
-                    text = clients.size.toString(),
-                    fontWeight = FontWeight.Medium,
-                    color = MiuixTheme.colorScheme.onSurface,
-                    maxLines = 1,
-                )
-            },
-        )
-
+    Column(modifier = Modifier.fillMaxWidth()) {
+        CodexGroupTitle(stringResource(R.string.remote_control_devices))
         if (clients.isEmpty()) {
-            Column(
-                modifier =
-                    Modifier.fillMaxWidth()
-                        .padding(vertical = UiConsts.Space24, horizontal = UiConsts.Space16),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                Box(
+            CodexSection {
+                Column(
                     modifier =
-                        Modifier.size(UiConsts.IconBoxLarge)
-                            .squircleBackground(
-                                color = raisedSurface(),
-                                cornerRadius = UiConsts.CornerCard,
-                            ),
-                    contentAlignment = Alignment.Center,
+                        Modifier.fillMaxWidth()
+                            .padding(vertical = UiConsts.Space24, horizontal = UiConsts.Space16),
+                    horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    Icon(
-                        imageVector = MiuixIcons.Phone,
-                        contentDescription = null,
-                        modifier = Modifier.size(UiConsts.IconHeader),
-                        tint = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    Box(
+                        modifier =
+                            Modifier.size(UiConsts.IconBoxLarge)
+                                .squircleBackground(
+                                    color = raisedSurface(),
+                                    cornerRadius = UiConsts.CornerCard,
+                                ),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            imageVector = MiuixIcons.Phone,
+                            contentDescription = null,
+                            modifier = Modifier.size(UiConsts.IconHeader),
+                            tint = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                        )
+                    }
+                    Spacer(Modifier.height(UiConsts.Space12))
+                    Text(
+                        text = stringResource(R.string.remote_control_devices_empty),
+                        fontSize = UiType.RowTitle,
+                        lineHeight = UiType.RowTitleLine,
+                        fontWeight = FontWeight.Medium,
+                        color = MiuixTheme.colorScheme.onSurface,
+                        textAlign = TextAlign.Center,
+                    )
+                    Spacer(Modifier.height(UiConsts.Space4))
+                    Text(
+                        text = stringResource(R.string.remote_control_devices_empty_detail),
+                        fontSize = UiType.Meta,
+                        lineHeight = UiType.MetaLine,
+                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                        textAlign = TextAlign.Center,
                     )
                 }
-                Spacer(Modifier.height(UiConsts.Space12))
-                Text(
-                    text = stringResource(R.string.remote_control_devices_empty),
-                    fontSize = UiType.RowTitle,
-                    lineHeight = UiType.RowTitleLine,
-                    fontWeight = FontWeight.Medium,
-                    color = MiuixTheme.colorScheme.onSurface,
-                    textAlign = TextAlign.Center,
-                )
-                Spacer(Modifier.height(UiConsts.Space4))
-                Text(
-                    text = stringResource(R.string.remote_control_devices_empty_detail),
-                    fontSize = UiType.Meta,
-                    lineHeight = UiType.MetaLine,
-                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                    textAlign = TextAlign.Center,
+            }
+        } else {
+            CodexCardGrid(count = clients.size) { index ->
+                val client = clients[index]
+                PairedDeviceCard(
+                    client = client,
+                    expanded = expanded == client.clientId,
+                    onToggle = {
+                        expanded = if (expanded == client.clientId) null else client.clientId
+                    },
+                    onRevoke = { onEvent(AppEvent.RevokeRemoteControlClient(client.clientId)) },
                 )
             }
-        }
-        clients.forEachIndexed { index, client ->
-            if (index > 0)
-                HorizontalDivider(modifier = Modifier.padding(vertical = UiConsts.Space1))
-            PairedDeviceRow(
-                client = client,
-                expanded = expanded == client.clientId,
-                onToggle = {
-                    expanded = if (expanded == client.clientId) null else client.clientId
-                },
-                onRevoke = { onEvent(AppEvent.RevokeRemoteControlClient(client.clientId)) },
-            )
         }
     }
 }
@@ -463,53 +342,54 @@ private fun PairedDevicesCard(
 /** Title falls back to the client id: `displayName` is optional on the wire, and a row
  * with no title leaves the user guessing which device to cut off. */
 @Composable
-private fun PairedDeviceRow(
+private fun PairedDeviceCard(
     client: RemoteControlClient,
     expanded: Boolean,
     onToggle: () -> Unit,
     onRevoke: () -> Unit,
 ) {
-    Column(modifier = Modifier.fillMaxWidth()) {
-        ArrowPreference(
-            title = client.displayName?.takeIf { it.isNotBlank() } ?: client.clientId,
-            summary = deviceSummary(client),
-            endActions = {
-                Text(
-                    text = lastSeenAge(client.lastSeenAt),
-                    style = MiuixTheme.textStyles.body2,
-                    color = MiuixTheme.colorScheme.onSurfaceVariantActions,
-                    maxLines = 1,
-                )
-            },
-            onClick = onToggle,
-        )
-        if (expanded) {
-            Row(
-                modifier =
-                    Modifier.fillMaxWidth()
-                        .padding(
-                            start = UiConsts.Space4,
-                            end = UiConsts.Space4,
-                            bottom = UiConsts.Space8,
-                        ),
-                horizontalArrangement = Arrangement.spacedBy(UiConsts.Space6),
-            ) {
-                Spacer(Modifier.weight(1f))
-                Button(
-                    onClick = onRevoke,
-                    modifier = Modifier,
-                    enabled = true,
-                    colors =
-                        ButtonDefaults.buttonColors(
-                            color = Color.Transparent,
-                            contentColor = MiuixTheme.colorScheme.error,
-                        ),
-                ) {
-                    Text(text = stringResource(R.string.remote_control_device_revoke), maxLines = 1)
+    CodexCatalogCard(
+        title = client.displayName?.takeIf { it.isNotBlank() } ?: client.clientId,
+        description = deviceSummary(client),
+        icon = MiuixIcons.Phone,
+        onClick = onToggle,
+        trailing = {
+            Text(
+                text = lastSeenAge(client.lastSeenAt),
+                style = MiuixTheme.textStyles.body2,
+                color = MiuixTheme.colorScheme.onSurfaceVariantActions,
+                maxLines = 1,
+            )
+        },
+        footer =
+            if (!expanded) {
+                null
+            } else {
+                {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(UiConsts.Space6),
+                    ) {
+                        Spacer(Modifier.weight(1f))
+                        Button(
+                            onClick = onRevoke,
+                            modifier = Modifier,
+                            enabled = true,
+                            colors =
+                                ButtonDefaults.buttonColors(
+                                    color = Color.Transparent,
+                                    contentColor = MiuixTheme.colorScheme.error,
+                                ),
+                        ) {
+                            Text(
+                                text = stringResource(R.string.remote_control_device_revoke),
+                                maxLines = 1,
+                            )
+                        }
+                    }
                 }
-            }
-        }
-    }
+            },
+    )
 }
 
 /** Optional wire fields are joined as-is; a hole would read as "the server does not know
@@ -548,7 +428,12 @@ private fun RemoteControlNote(text: String) {
         text = text,
         modifier =
             Modifier.fillMaxWidth()
-                .padding(horizontal = UiConsts.Space4, vertical = UiConsts.Space6),
+                .padding(
+                    start = UiConsts.RowInset,
+                    end = UiConsts.RowInset,
+                    top = UiConsts.Space6,
+                    bottom = UiConsts.Space6,
+                ),
         fontSize = UiType.Meta,
         lineHeight = UiType.MetaLine,
         color = MiuixTheme.colorScheme.onSurfaceVariantSummary,

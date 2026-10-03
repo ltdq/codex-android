@@ -5,42 +5,24 @@ import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.StringRes
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateListOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.FocusDirection
-import androidx.compose.ui.input.key.Key
-import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.isShiftPressed
-import androidx.compose.ui.input.key.key
-import androidx.compose.ui.input.key.onPreviewKeyEvent
-import androidx.compose.ui.input.key.type
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import com.cy.codex.AppEvent
 import com.cy.codex.BuildConfig
 import com.cy.codex.CatalogState
+import com.cy.codex.CodexNavRow
+import com.cy.codex.CodexPage
+import com.cy.codex.CodexRadioRow
+import com.cy.codex.CodexRow
+import com.cy.codex.CodexRowDivider
+import com.cy.codex.CodexSection
+import com.cy.codex.CodexSwitchRow
+import com.cy.codex.CodexValue
+import com.cy.codex.CodexValueRow
 import com.cy.codex.DestinationCatalog
 import com.cy.codex.PermissionProfileDisabled
 import com.cy.codex.PermissionProfileRowModel
@@ -48,7 +30,6 @@ import com.cy.codex.PermissionSelectionFailure
 import com.cy.codex.R
 import com.cy.codex.SessionState
 import com.cy.codex.UiConsts
-import com.cy.codex.UiType
 import com.cy.codex.app.RecapSettings
 import com.cy.codex.description
 import com.cy.codex.label
@@ -59,23 +40,10 @@ import com.cy.codex.protocol.protocol.v2.ReasoningEffort
 import com.cy.codex.protocol.protocol.v2.ThreadSessionState
 import com.cy.codex.theme.Appearance
 import kotlinx.serialization.json.JsonPrimitive
-import top.yukonga.miuix.kmp.nav.core.NavDisplay
-import top.yukonga.miuix.kmp.nav.core.NavDisplayEffects
-import top.yukonga.miuix.kmp.nav.core.NavKey
-import top.yukonga.miuix.kmp.nav.transition.NavSwipeDirection
-import top.yukonga.miuix.kmp.nav.transition.NavTransitions
-import top.yukonga.miuix.kmp.basic.BasicComponent
-import top.yukonga.miuix.kmp.basic.Card
-import top.yukonga.miuix.kmp.basic.CardDefaults
-import top.yukonga.miuix.kmp.basic.DropdownItem
 import top.yukonga.miuix.kmp.basic.Icon
-import top.yukonga.miuix.kmp.basic.IconButton
-import top.yukonga.miuix.kmp.basic.SmallTitle
-import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.icon.MiuixIcons
-import top.yukonga.miuix.kmp.icon.extended.ChevronBackward
-import top.yukonga.miuix.kmp.icon.extended.ConvertFile
 import top.yukonga.miuix.kmp.icon.extended.Community
+import top.yukonga.miuix.kmp.icon.extended.ConvertFile
 import top.yukonga.miuix.kmp.icon.extended.FolderFill
 import top.yukonga.miuix.kmp.icon.extended.Info
 import top.yukonga.miuix.kmp.icon.extended.Link
@@ -88,61 +56,37 @@ import top.yukonga.miuix.kmp.icon.extended.Share
 import top.yukonga.miuix.kmp.icon.extended.Store
 import top.yukonga.miuix.kmp.icon.extended.Tasks
 import top.yukonga.miuix.kmp.icon.extended.Tune
-import top.yukonga.miuix.kmp.preference.ArrowPreference
-import top.yukonga.miuix.kmp.preference.OverlaySpinnerPreference
-import top.yukonga.miuix.kmp.preference.RadioButtonPreference
-import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.theme.ColorSchemeMode
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
- * Full-screen settings page: the TUI's bottom-pane pickers (bottom_pane/model_popups.rs,
- * permission_popups.rs, experimental_features_view.rs) become one two-level page of
- * miuix-preference rows sending the same events.
+ * The settings body: the TUI's bottom-pane pickers (bottom_pane/model_popups.rs,
+ * permission_popups.rs, experimental_features_view.rs) as option rows on the shell's list grid.
  *
- * The rail's settings menu lists the sections, so a section arrives here as [section]; only
- * `/settings` and the section-list page reach [section] `null`.
+ * One section per page: the rail's settings item opens the body and the menu swaps which section it
+ * holds, so this screen has no section list and no back chevron of its own.
  */
 @Composable
 fun SettingsScreen(
     catalog: CatalogState,
     session: SessionState,
     onEvent: (AppEvent) -> Unit,
-    onBack: (() -> Unit)?,
     onOpenWorkspacePicker: () -> Unit,
     onOpenEntry: (String) -> Unit,
     onOpenShortcuts: () -> Unit,
-    onOpenSection: (SettingsSection) -> Unit,
     configPath: String,
+    section: SettingsSection,
     /** The account read's recovery verdict; gates the model group to Reserve-only (codex-rs/tui/src/chatwidget/luna_reserve_model.rs). */
     ordinaryUsageRecovered: Boolean = false,
-    /** Which section to show; `null` shows the list of sections. */
-    section: SettingsSection? = null,
     modifier: Modifier = Modifier,
 ) {
     val config = session.config
     val preset =
         catalog.modelPreset(config.model)
             ?: catalog.models.firstOrNull { it.isDefault && !it.hidden }
-    if (section == null) {
-        SettingsPage(
-            title = stringResource(R.string.settings_screen_title),
-            summary = stringResource(R.string.settings_home_subtitle),
-            onBack = onBack,
-            modifier = modifier,
-        ) {
-            SettingsHome(
-                catalog = catalog,
-                session = session,
-                onSelect = onOpenSection,
-            )
-        }
-        return
-    }
-    SettingsPage(
+    CodexPage(
         title = stringResource(section.titleRes),
-        summary = stringResource(section.descriptionRes),
-        onBack = onBack,
+        description = stringResource(section.descriptionRes),
         modifier = modifier,
     ) {
         when (section) {
@@ -187,60 +131,6 @@ fun SettingsScreen(
     }
 }
 
-@Composable
-private fun SettingsPage(
-    title: String,
-    summary: String,
-    onBack: (() -> Unit)?,
-    modifier: Modifier = Modifier,
-    content: @Composable () -> Unit,
-) {
-    val focusManager = LocalFocusManager.current
-    Column(
-        modifier = modifier.fillMaxSize().background(MiuixTheme.colorScheme.background),
-    ) {
-        BasicComponent(
-            title = title,
-            summary = summary,
-            startAction = { SettingsBackButton(onBack = onBack) },
-            insideMargin = PaddingValues(14.dp, 10.dp),
-        )
-        Column(
-            modifier =
-                Modifier.weight(1f)
-                    .fillMaxWidth()
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = UiConsts.ScreenMargin)
-                    .padding(top = UiConsts.Space4, bottom = UiConsts.PageBottomInset)
-                    .onPreviewKeyEvent { event ->
-                        if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
-                        when (event.key) {
-                            Key.Escape, Key.Back -> {
-                                onBack?.invoke()
-                                true
-                            }
-
-                            Key.Tab -> {
-                                focusManager.moveFocus(
-                                    if (event.isShiftPressed) {
-                                        FocusDirection.Previous
-                                    } else {
-                                        FocusDirection.Next
-                                    },
-                                )
-                                true
-                            }
-
-                            else -> false
-                        }
-                    },
-            verticalArrangement = Arrangement.spacedBy(UiConsts.SectionGap),
-        ) {
-            content()
-        }
-    }
-}
-
 /** The settings page's two-level nav; [Permissions] is where `/permissions` deep-links. */
 enum class SettingsSection(
     @StringRes val titleRes: Int,
@@ -258,125 +148,29 @@ enum class SettingsSection(
 }
 
 @Composable
-private fun SettingsHome(
-    catalog: CatalogState,
-    session: SessionState,
-    onSelect: (SettingsSection) -> Unit,
-) {
-    val config = session.config
-    SettingsGroup(stringResource(R.string.settings_home_group)) {
-        SettingsSection.entries.forEach { section ->
-            ArrowPreference(
-                title = stringResource(section.titleRes),
-                summary =
-                    when (section) {
-                        SettingsSection.Model ->
-                            catalog.modelPreset(config.model)?.displayName
-                                ?: stringResource(R.string.settings_screen_models_empty)
-
-                        SettingsSection.Permissions -> config.approvalPolicy.label()
-                        SettingsSection.Workspace ->
-                            config.cwd.ifEmpty { stringResource(R.string.settings_screen_no_directory) }
-
-                        SettingsSection.Appearance ->
-                            stringResource(
-                                when (Appearance.themeMode) {
-                                    ColorSchemeMode.System -> R.string.settings_theme_system
-                                    ColorSchemeMode.Light -> R.string.settings_theme_light
-                                    ColorSchemeMode.Dark -> R.string.settings_theme_dark
-                                    else -> R.string.settings_theme_system
-                                },
-                            )
-
-                        SettingsSection.Notifications ->
-                            if (NotificationSettings.enabled) {
-                                stringResource(R.string.settings_notifications_enabled)
-                            } else {
-                                stringResource(R.string.settings_notifications_disabled)
-                            }
-
-                        SettingsSection.Extensions ->
-                            stringResource(R.string.settings_nav_extensions_summary)
-
-                        SettingsSection.Data -> stringResource(R.string.settings_nav_data_summary)
-                        SettingsSection.System -> stringResource(R.string.settings_nav_system_summary)
-                    },
-                startAction = {
-                    Icon(
-                        section.icon,
-                        null,
-                        Modifier.size(UiConsts.IconPreference),
-                        MiuixTheme.colorScheme.primary,
-                    )
-                },
-                onClick = { onSelect(section) },
-            )
-        }
-    }
-}
-
-@Composable
-private fun SettingsGroup(
-    title: String,
-    content: @Composable () -> Unit,
-) {
-    Column(modifier = Modifier.fillMaxWidth()) {
-        SmallTitle(title)
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            cornerRadius = UiConsts.SectionCorner,
-            insideMargin = CardDefaults.InsideMargin,
-            content = { content() },
-        )
-    }
-}
-
-@Composable
 private fun SettingsWorkspaceSection(
     cwd: String,
     roots: List<String>,
     onOpenWorkspacePicker: () -> Unit,
 ) {
-    SettingsGroup(stringResource(R.string.settings_group_workspace)) {
-        ArrowPreference(
+    CodexSection(stringResource(R.string.settings_group_workspace)) {
+        CodexNavRow(
             title = stringResource(R.string.settings_screen_current_directory),
             summary = cwd.ifEmpty { stringResource(R.string.settings_screen_no_directory) },
-            startAction = {
-                Icon(
-                    MiuixIcons.FolderFill,
-                    null,
-                    Modifier.size(UiConsts.IconPreference),
-                    MiuixTheme.colorScheme.primary,
-                )
-            },
             onClick = onOpenWorkspacePicker,
         )
         if (roots.isEmpty()) {
-            BasicComponent(
+            CodexRowDivider()
+            CodexRow(
                 title = stringResource(R.string.settings_screen_no_writable_roots),
-                startAction = {
-                    Icon(
-                        MiuixIcons.FolderFill,
-                        null,
-                        Modifier.size(UiConsts.IconPreference),
-                        MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                    )
-                },
                 enabled = false,
             )
         } else {
             roots.forEach { root ->
-                BasicComponent(
+                CodexRowDivider()
+                CodexValueRow(
                     title = root,
-                    startAction = {
-                        Icon(
-                            MiuixIcons.FolderFill,
-                            null,
-                            Modifier.size(UiConsts.IconPreference),
-                            MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                        )
-                    },
-                    endActions = { MonoValue(stringResource(R.string.settings_screen_writable)) },
+                    value = stringResource(R.string.settings_screen_writable),
                 )
             }
         }
@@ -386,31 +180,24 @@ private fun SettingsWorkspaceSection(
 /** Which layer each effective value came from (`config/read`'s `layers` + `origins`). */
 @Composable
 private fun SettingsConfigSourcesSection(catalog: CatalogState, configPath: String) {
-    val colors = MiuixTheme.colorScheme
     val response = catalog.config
     val layers = response.layers.orEmpty()
 
-    SettingsGroup(stringResource(R.string.settings_group_config_sources)) {
-        BasicComponent(title = "CODEX_HOME/config.toml", summary = configPath)
+    CodexSection(stringResource(R.string.settings_group_config_sources)) {
+        CodexValueRow(title = "CODEX_HOME/config.toml", value = configPath)
         if (layers.isEmpty()) {
-            BasicComponent(
+            CodexRowDivider()
+            CodexRow(
                 title = stringResource(R.string.settings_screen_no_config_layers),
-                startAction = {
-                    Icon(
-                        MiuixIcons.ConvertFile,
-                        null,
-                        Modifier.size(UiConsts.IconPreference),
-                        colors.onSurfaceVariantSummary,
-                    )
-                },
                 enabled = false,
             )
-            return@SettingsGroup
+            return@CodexSection
         }
 
         // Highest precedence first — the order the "why is this value what it is" answer is read in.
         layers.asReversed().forEach { layer ->
-            BasicComponent(
+            CodexRowDivider()
+            CodexRow(
                 title = layer.name.label(),
                 summary =
                     listOfNotNull(
@@ -419,22 +206,14 @@ private fun SettingsConfigSourcesSection(catalog: CatalogState, configPath: Stri
                             layer.version.ifEmpty { null },
                         )
                         .joinToString(" · "),
-                startAction = {
-                    Icon(
-                        MiuixIcons.ConvertFile,
-                        null,
-                        Modifier.size(UiConsts.IconPreference),
-                        if (layer.disabledReason == null) colors.primary
-                        else colors.disabledOnSurface,
-                    )
-                },
-                endActions = {
-                    MonoValue(
+                endAction = {
+                    CodexValue(
                         if (layer.disabledReason == null) {
                             stringResource(R.string.settings_screen_config_active)
                         } else {
                             stringResource(R.string.settings_screen_config_disabled)
-                        }
+                        },
+                        monospace = false,
                     )
                 },
             )
@@ -444,50 +223,47 @@ private fun SettingsConfigSourcesSection(catalog: CatalogState, configPath: Stri
         val origins = response.origins
         CatalogState.RenderedConfigKeys.forEach { key ->
             val value = response.displayValue(key) ?: return@forEach
-            val origin = origins[key]
-            BasicComponent(
+            CodexRowDivider()
+            CodexRow(
                 title = key,
                 summary =
                     buildString {
-                        append(
-                            origin?.name?.label() ?: stringResource(R.string.config_layer_unknown)
-                        )
+                        append(originLabel(origins[key]?.name))
                         append(" · ")
-                        append(origin?.version.orEmpty())
+                        append(origins[key]?.version.orEmpty())
                     },
-                startAction = {
-                    Icon(
-                        MiuixIcons.Tune,
-                        null,
-                        Modifier.size(UiConsts.IconPreference),
-                        colors.onSurfaceVariantSummary,
-                    )
-                },
-                endActions = { MonoValue(value) },
+                endAction = { CodexValue(value) },
             )
         }
     }
 }
 
+@Composable
+private fun originLabel(source: com.cy.codex.protocol.protocol.v2.ConfigLayerSource?): String =
+    source?.label() ?: stringResource(R.string.config_layer_unknown)
+
 /** Theme and motion — client-side choices the app-server has no opinion on; written straight into [Appearance]. */
 @Composable
 private fun SettingsAppearanceSection() {
     val context = LocalContext.current
-    SettingsGroup(stringResource(R.string.settings_group_appearance)) {
-        ThemeOption.entries.forEach { option ->
-            RadioButtonPreference(
+    CodexSection(stringResource(R.string.settings_group_appearance)) {
+        ThemeOption.entries.forEachIndexed { index, option ->
+            if (index > 0) CodexRowDivider()
+            CodexRadioRow(
                 title = stringResource(option.labelRes),
                 selected = Appearance.themeMode == option.mode,
                 onClick = { Appearance.setThemeMode(context, option.mode) },
             )
         }
-        SwitchPreference(
+        CodexRowDivider()
+        CodexSwitchRow(
             title = stringResource(R.string.settings_reduce_motion),
             summary = stringResource(R.string.settings_reduce_motion_summary),
             checked = Appearance.reduceMotion,
             onCheckedChange = { Appearance.setReduceMotion(context, it) },
         )
-        SwitchPreference(
+        CodexRowDivider()
+        CodexSwitchRow(
             title = stringResource(R.string.settings_show_tooltips),
             summary = stringResource(R.string.settings_show_tooltips_summary),
             checked = Appearance.showTooltips,
@@ -504,8 +280,8 @@ private fun SettingsNotificationSection() {
         rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
             NotificationSettings.setEnabled(context, granted)
         }
-    SettingsGroup(stringResource(R.string.settings_group_notifications)) {
-        SwitchPreference(
+    CodexSection(stringResource(R.string.settings_group_notifications)) {
+        CodexSwitchRow(
             title = stringResource(R.string.settings_notifications),
             summary = stringResource(R.string.settings_notifications_summary),
             checked = NotificationSettings.enabled,
@@ -521,13 +297,15 @@ private fun SettingsNotificationSection() {
             },
         )
         if (NotificationSettings.enabled && !agentNotificationsAllowed(context)) {
-            BasicComponent(
+            CodexRowDivider()
+            CodexRow(
                 title = stringResource(R.string.settings_notifications_permission_denied),
                 enabled = false,
             )
         }
         AgentNotification.entries.forEach { type ->
-            SwitchPreference(
+            CodexRowDivider()
+            CodexSwitchRow(
                 title = stringResource(type.labelRes),
                 checked = type in NotificationSettings.types,
                 enabled = NotificationSettings.enabled,
@@ -541,8 +319,8 @@ private fun SettingsNotificationSection() {
 @Composable
 private fun SettingsRecapSection() {
     val context = LocalContext.current
-    SettingsGroup(stringResource(R.string.settings_group_recap)) {
-        SwitchPreference(
+    CodexSection(stringResource(R.string.settings_group_recap)) {
+        CodexSwitchRow(
             title = stringResource(R.string.settings_auto_recap),
             summary = stringResource(R.string.settings_auto_recap_summary),
             checked = RecapSettings.autoRecap,
@@ -554,10 +332,10 @@ private fun SettingsRecapSection() {
 /** Version from [BuildConfig]; the same value initializes the app-server client. */
 @Composable
 private fun SettingsAboutSection() {
-    SettingsGroup(stringResource(R.string.settings_group_about)) {
-        BasicComponent(
+    CodexSection(stringResource(R.string.settings_group_about)) {
+        CodexValueRow(
             title = stringResource(R.string.settings_app_version),
-            endActions = { MonoValue(BuildConfig.VERSION_NAME) },
+            value = BuildConfig.VERSION_NAME,
         )
     }
 }
@@ -566,8 +344,8 @@ private fun SettingsAboutSection() {
 @Composable
 private fun SettingsMemorySection(catalog: CatalogState, onEvent: (AppEvent) -> Unit) {
     val snapshot = catalog.configSnapshot
-    SettingsGroup(stringResource(R.string.settings_group_memory)) {
-        SwitchPreference(
+    CodexSection(stringResource(R.string.settings_group_memory)) {
+        CodexSwitchRow(
             title = stringResource(R.string.memories_screen_use),
             summary = stringResource(R.string.memories_screen_use_detail),
             checked = snapshot.useMemories ?: true,
@@ -575,7 +353,8 @@ private fun SettingsMemorySection(catalog: CatalogState, onEvent: (AppEvent) -> 
                 onEvent(AppEvent.SetMemorySettings(it, snapshot.generateMemories ?: true))
             },
         )
-        SwitchPreference(
+        CodexRowDivider()
+        CodexSwitchRow(
             title = stringResource(R.string.memories_screen_generate),
             summary = stringResource(R.string.memories_screen_generate_detail),
             checked = snapshot.generateMemories ?: true,
@@ -588,18 +367,10 @@ private fun SettingsMemorySection(catalog: CatalogState, onEvent: (AppEvent) -> 
 
 @Composable
 private fun SettingsShortcutsSection(onOpenShortcuts: () -> Unit) {
-    SettingsGroup(stringResource(R.string.settings_group_shortcuts)) {
-        ArrowPreference(
+    CodexSection(stringResource(R.string.settings_group_shortcuts)) {
+        CodexNavRow(
             title = stringResource(R.string.shortcuts_overlay_title),
             summary = stringResource(R.string.settings_shortcuts_summary),
-            startAction = {
-                Icon(
-                    MiuixIcons.Search,
-                    null,
-                    Modifier.size(UiConsts.IconPreference),
-                    MiuixTheme.colorScheme.primary,
-                )
-            },
             onClick = onOpenShortcuts,
         )
     }
@@ -607,8 +378,8 @@ private fun SettingsShortcutsSection(onOpenShortcuts: () -> Unit) {
 
 @Composable
 private fun SettingsSessionLink(config: ThreadSessionState, onOpenEntry: (String) -> Unit) {
-    SettingsGroup(stringResource(R.string.settings_group_session)) {
-        ArrowPreference(
+    CodexSection(stringResource(R.string.settings_group_session)) {
+        CodexNavRow(
             title = stringResource(R.string.settings_tab_session),
             summary =
                 listOfNotNull(
@@ -617,14 +388,6 @@ private fun SettingsSessionLink(config: ThreadSessionState, onOpenEntry: (String
                     )
                     .joinToString(" · ")
                     .ifEmpty { stringResource(R.string.settings_screen_session_not_started) },
-            startAction = {
-                Icon(
-                    MiuixIcons.Info,
-                    null,
-                    Modifier.size(UiConsts.IconPreference),
-                    MiuixTheme.colorScheme.primary,
-                )
-            },
             onClick = { onOpenEntry(DestinationCatalog.Id.Status) },
         )
     }
@@ -667,16 +430,17 @@ private fun SettingsLinksGroup(
     links: List<SettingsLinkSpec>,
     onOpenEntry: (String) -> Unit,
 ) {
-    SettingsGroup(title) {
-        links.forEach { link ->
-            ArrowPreference(
+    CodexSection(title) {
+        links.forEachIndexed { index, link ->
+            if (index > 0) CodexRowDivider()
+            CodexNavRow(
                 title = stringResource(link.titleRes),
                 startAction = {
                     Icon(
-                        link.icon,
-                        null,
-                        Modifier.size(UiConsts.IconPreference),
-                        MiuixTheme.colorScheme.onSurfaceSecondary,
+                        imageVector = link.icon,
+                        contentDescription = null,
+                        modifier = Modifier.size(UiConsts.IconPreference),
+                        tint = MiuixTheme.colorScheme.onSurfaceSecondary,
                     )
                 },
                 onClick = { onOpenEntry(link.id) },
@@ -699,16 +463,17 @@ private fun SettingsExperimentalSection(catalog: CatalogState, onEvent: (AppEven
         catalog.experimentalFeatures.filterNot {
             it.id == "shell_snapshot" || it.id == "shell_zsh_fork"
         }
-    SettingsGroup(stringResource(R.string.settings_group_experimental)) {
+    CodexSection(stringResource(R.string.settings_group_experimental)) {
         if (features.isEmpty()) {
-            BasicComponent(
+            CodexRow(
                 title = stringResource(R.string.settings_screen_experimental_empty),
                 enabled = false,
             )
-            return@SettingsGroup
+            return@CodexSection
         }
-        features.forEach { feature ->
-            SwitchPreference(
+        features.forEachIndexed { index, feature ->
+            if (index > 0) CodexRowDivider()
+            CodexSwitchRow(
                 title = feature.name,
                 summary =
                     listOf(feature.stage, feature.description)
@@ -738,25 +503,27 @@ private fun SettingsModelSection(
         ordinaryUsageRecovered,
         catalog.rateLimits.rateLimitsByLimitId,
     )
-    SettingsGroup(
+    CodexSection(
         stringResource(
             if (mode is ModelPickerMode.Normal) R.string.settings_group_model else R.string.luna_picker_header,
         ),
     ) {
         when (mode) {
-            ModelPickerMode.RestrictedUnavailable -> BasicComponent(
-                title = stringResource(R.string.luna_picker_unavailable),
-                enabled = false,
-            )
+            ModelPickerMode.RestrictedUnavailable ->
+                CodexRow(
+                    title = stringResource(R.string.luna_picker_unavailable),
+                    enabled = false,
+                )
 
             is ModelPickerMode.Restricted -> {
-                RadioButtonPreference(
+                CodexRadioRow(
                     title = mode.row.displayName,
                     summary = mode.row.description.ifEmpty { mode.row.model },
                     selected = true,
                     onClick = { onEvent(AppEvent.SetModel(LUNA_RESERVE_MODEL)) },
                 )
-                BasicComponent(
+                CodexRowDivider()
+                CodexRow(
                     title = stringResource(R.string.luna_picker_subtitle),
                     enabled = false,
                 )
@@ -764,14 +531,15 @@ private fun SettingsModelSection(
 
             is ModelPickerMode.Normal -> {
                 if (mode.rows.isEmpty()) {
-                    BasicComponent(
+                    CodexRow(
                         title = stringResource(R.string.settings_screen_models_empty),
                         enabled = false,
                     )
-                    return@SettingsGroup
+                    return@CodexSection
                 }
-                mode.rows.forEach { model ->
-                    RadioButtonPreference(
+                mode.rows.forEachIndexed { index, model ->
+                    if (index > 0) CodexRowDivider()
+                    CodexRadioRow(
                         title = model.displayName,
                         summary =
                             listOfNotNull(
@@ -802,9 +570,10 @@ private fun SettingsModelSection(
                     (stringResource(R.string.settings_oss_ollama) to
                         stringResource(R.string.settings_oss_ollama_summary)),
             )
-        SettingsGroup(stringResource(R.string.settings_group_oss_provider)) {
-            providers.forEach { (id, labels) ->
-                RadioButtonPreference(
+        CodexSection(stringResource(R.string.settings_group_oss_provider)) {
+            providers.forEachIndexed { index, (id, labels) ->
+                if (index > 0) CodexRowDivider()
+                CodexRadioRow(
                     title = labels.first,
                     summary = labels.second,
                     selected = catalog.config.snapshot.ossProvider == id,
@@ -821,27 +590,26 @@ private fun SettingsModelSection(
     val efforts = (mode as? ModelPickerMode.Restricted)?.row?.supportedReasoningEfforts
         ?: preset?.supportedReasoningEfforts.orEmpty()
     if (efforts.isNotEmpty()) {
-        val selectedIndex = effort?.let(efforts::indexOf)?.coerceAtLeast(0) ?: 0
-        SettingsGroup(stringResource(R.string.settings_group_effort)) {
-            OverlaySpinnerPreference(
-                items = efforts.map { option -> DropdownItem(text = option.label()) },
-                selectedIndex = selectedIndex,
-                title = stringResource(R.string.settings_screen_effort_title),
-                summary = stringResource(R.string.settings_screen_effort_summary),
-                onSelectedIndexChange = {
-                    val selected = efforts[it]
-                    onEvent(
-                        if (mode is ModelPickerMode.Restricted) {
-                            AppEvent.SetReasoningEffort(selected)
-                        } else {
-                            AppEvent.WriteConfigValue(
-                                "model_reasoning_effort",
-                                JsonPrimitive(selected.wire),
-                            )
-                        },
-                    )
-                },
-            )
+        CodexSection(stringResource(R.string.settings_group_effort)) {
+            efforts.forEachIndexed { index, option ->
+                if (index > 0) CodexRowDivider()
+                CodexRadioRow(
+                    title = option.label(),
+                    selected = option == effort,
+                    onClick = {
+                        onEvent(
+                            if (mode is ModelPickerMode.Restricted) {
+                                AppEvent.SetReasoningEffort(option)
+                            } else {
+                                AppEvent.WriteConfigValue(
+                                    "model_reasoning_effort",
+                                    JsonPrimitive(option.wire),
+                                )
+                            },
+                        )
+                    },
+                )
+            }
         }
     }
 }
@@ -854,9 +622,10 @@ private fun SettingsApprovalSection(
     onEvent: (AppEvent) -> Unit,
 ) {
     val autoReviewAvailable = catalog.autoReviewAvailable
-    SettingsGroup(stringResource(R.string.settings_group_approval)) {
-        AskForApproval.entries.forEach { option ->
-            RadioButtonPreference(
+    CodexSection(stringResource(R.string.settings_group_approval)) {
+        AskForApproval.entries.forEachIndexed { index, option ->
+            if (index > 0) CodexRowDivider()
+            CodexRadioRow(
                 title = option.label(),
                 summary = option.description(),
                 selected = option == config.approvalPolicy,
@@ -865,26 +634,27 @@ private fun SettingsApprovalSection(
                 },
             )
         }
-        BasicComponent(
+        CodexRowDivider()
+        CodexValueRow(
             title = stringResource(R.string.runtime_android_sandbox),
             summary = stringResource(R.string.runtime_android_sandbox_detail),
-            endActions = { MonoValue(stringResource(R.string.runtime_fixed)) },
+            value = stringResource(R.string.runtime_fixed),
         )
-        BasicComponent(
+        CodexRowDivider()
+        CodexValueRow(
             title = stringResource(R.string.settings_screen_network_access),
-            endActions = {
-                MonoValue(stringResource(R.string.settings_screen_network_allowed))
-            },
+            value = stringResource(R.string.settings_screen_network_allowed),
         )
     }
 
     // A reviewer decides *who* answers a request, not *whether* it is raised. AutoReview is
     // offered only when guardian_approval is on and configRequirements/read allows it.
-    SettingsGroup(stringResource(R.string.settings_group_reviewer)) {
+    CodexSection(stringResource(R.string.settings_group_reviewer)) {
         ApprovalsReviewer.entries
             .filter { it != ApprovalsReviewer.AutoReview || autoReviewAvailable }
-            .forEach { option ->
-                RadioButtonPreference(
+            .forEachIndexed { index, option ->
+                if (index > 0) CodexRowDivider()
+                CodexRadioRow(
                     title = option.label(),
                     summary = option.description(),
                     selected = option == config.approvalsReviewer,
@@ -904,7 +674,7 @@ private fun SettingsApprovalSection(
 
     if (config.approvalPolicy == AskForApproval.Granular) {
         val granular = config.granularApproval
-        SettingsGroup(stringResource(R.string.settings_group_granular)) {
+        CodexSection(stringResource(R.string.settings_group_granular)) {
             // Shown, not switched: there is no write path for the per-class policy, and a switch that
             // silently does nothing is worse than one that says it cannot move.
             listOf(
@@ -918,8 +688,9 @@ private fun SettingsApprovalSection(
                     stringResource(R.string.settings_screen_granular_mcp) to
                         granular.mcpElicitations,
                 )
-                .forEach { (label, asks) ->
-                    SwitchPreference(
+                .forEachIndexed { index, (label, asks) ->
+                    if (index > 0) CodexRowDivider()
+                    CodexSwitchRow(
                         title = label,
                         summary =
                             if (asks) {
@@ -949,17 +720,22 @@ private fun SettingsPermissionProfilesGroup(
     onEvent: (AppEvent) -> Unit,
 ) {
     val rows = catalog.permissionProfileRows(config.activePermissionProfile)
-    SettingsGroup(stringResource(R.string.settings_group_permissions)) {
+    CodexSection(stringResource(R.string.settings_group_permissions)) {
         when {
-            catalog.permissionDiscoveryUnsupported -> BasicComponent(
+            catalog.permissionDiscoveryUnsupported -> CodexRow(
                 title = stringResource(R.string.settings_permission_discovery_unsupported),
+                enabled = false,
             )
 
-            rows.isEmpty() -> BasicComponent(
+            rows.isEmpty() -> CodexRow(
                 title = stringResource(R.string.settings_screen_permissions_empty),
+                enabled = false,
             )
 
-            else -> rows.forEach { row -> PermissionProfileRow(row, onEvent) }
+            else -> rows.forEachIndexed { index, row ->
+                if (index > 0) CodexRowDivider()
+                PermissionProfileRow(row, onEvent)
+            }
         }
         selectionError?.let { error ->
             val message = when (error) {
@@ -969,7 +745,8 @@ private fun SettingsPermissionProfilesGroup(
                 is PermissionSelectionFailure.Failed ->
                     stringResource(R.string.settings_permission_select_failed, error.detail.orEmpty())
             }
-            BasicComponent(title = message)
+            CodexRowDivider()
+            CodexRow(title = message, enabled = false)
         }
     }
 }
@@ -989,42 +766,11 @@ private fun PermissionProfileRow(
 
         null -> null
     }
-    RadioButtonPreference(
+    CodexRadioRow(
         title = row.id,
         summary = listOfNotNull(row.description?.takeIf { it.isNotBlank() }, reason).joinToString(" · "),
         selected = row.selected,
         enabled = row.disabledReason == null,
         onClick = { onEvent(AppEvent.SetPermissionProfile(row.id)) },
     )
-}
-
-/** Monospace by convention so ids, paths and counts line up. */
-@Composable
-private fun MonoValue(text: String) {
-    Text(
-        text = text,
-        fontSize = UiType.Body,
-        lineHeight = UiType.BodyLine,
-        fontFamily = FontFamily.Monospace,
-        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-        maxLines = 1,
-        overflow = TextOverflow.Ellipsis,
-    )
-}
-
-@Composable
-private fun SettingsBackButton(onBack: (() -> Unit)?) {
-    if (onBack == null) return
-    IconButton(
-        onClick = onBack,
-        minWidth = UiConsts.IconButtonSize,
-        minHeight = UiConsts.IconButtonSize,
-    ) {
-        Icon(
-            MiuixIcons.ChevronBackward,
-            stringResource(R.string.settings_screen_back),
-            Modifier.size(UiConsts.IconHeader),
-            MiuixTheme.colorScheme.primary,
-        )
-    }
 }

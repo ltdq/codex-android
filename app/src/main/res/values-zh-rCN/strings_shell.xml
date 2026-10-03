@@ -1,5 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!-- ui_kit.kt -->
+    <string name="page_back">返回</string>
+    <string name="search_clear">清除搜索</string>
+
     <!-- SessionListScreen.kt -->
     <string name="session_list_title">会话</string>
     <string name="session_list_subtitle">%1$d 个会话</string>

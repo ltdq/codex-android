@@ -108,7 +108,6 @@ import top.yukonga.miuix.kmp.basic.Surface
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.basic.Check
-import top.yukonga.miuix.kmp.icon.extended.ChevronBackward
 import top.yukonga.miuix.kmp.icon.extended.ChevronForward
 import top.yukonga.miuix.kmp.icon.extended.Close
 import top.yukonga.miuix.kmp.icon.extended.Community
@@ -2027,24 +2026,6 @@ fun StatusCardButton(
                 tint = if (open) colors.onPrimary else colors.primary,
             )
         }
-    }
-}
-
-@Composable
-fun BackChevron(
-    onClick: () -> Unit,
-    description: String = stringResource(R.string.status_card_back),
-    buttonSize: Dp = 34.dp,
-    iconSize: Dp = 18.dp,
-) {
-    val colors = MiuixTheme.colorScheme
-    IconButton(onClick = onClick, minWidth = buttonSize, minHeight = buttonSize) {
-        Icon(
-            imageVector = MiuixIcons.ChevronBackward,
-            contentDescription = description,
-            modifier = Modifier.size(iconSize),
-            tint = colors.primary,
-        )
     }
 }
 

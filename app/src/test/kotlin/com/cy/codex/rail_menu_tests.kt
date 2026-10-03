@@ -3,6 +3,7 @@ package com.cy.codex
 import org.junit.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -76,12 +77,23 @@ class RailMenuTest {
     }
 
     @Test
-    fun `unpinning takes the column down and gives the page its width back`() {
+    fun `unpinning takes the column down and leaves the page its own column`() {
         val menu = RailMenu(pinned = true).unpin()
 
         assertFalse(menu.shown)
         assertFalse(menu.detached)
         assertEquals(NavSection.Home, menu.section(NavSection.Home))
+    }
+
+    /** The shell keys the list's state on this section, so a card put away must list the same one. */
+    @Test
+    fun `a card put away and pinned again lists the section it was pinned on`() {
+        val pinned = RailMenu(pinned = true)
+        val shut = pinned.unpin()
+        val again = shut.pin()
+
+        assertEquals(pinned.section(NavSection.Home), shut.section(NavSection.Home))
+        assertEquals(pinned.section(NavSection.Home), again.section(NavSection.Home))
     }
 
     @Test
@@ -115,5 +127,28 @@ class RailMenuTest {
         assertFalse(menu.shown)
         assertFalse(menu.detached)
         assertEquals(NavSection.Home, menu.section(NavSection.Home))
+    }
+
+    /** Clicking the item of the section the page is in puts the menu up or down, nothing else. */
+    @Test
+    fun `a click on the open section's item only puts its menu up or down`() {
+        val shut =
+            RailMenu(pinned = true).click(current = NavSection.Plugins, tapped = NavSection.Plugins)
+        assertFalse(shut.pinned)
+        assertNull(shut.opens)
+
+        val up =
+            RailMenu(pinned = false).click(current = NavSection.Plugins, tapped = NavSection.Plugins)
+        assertTrue(up.pinned)
+        assertNull(up.opens)
+    }
+
+    @Test
+    fun `a click on another rail item moves the page to that section`() {
+        val click =
+            RailMenu(pinned = false).click(current = NavSection.Plugins, tapped = NavSection.Projects)
+
+        assertTrue(click.pinned)
+        assertEquals(NavSection.Projects, click.opens)
     }
 }

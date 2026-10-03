@@ -1,16 +1,9 @@
 package com.cy.codex.chatwidget
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.ReadOnlyComposable
@@ -22,12 +15,18 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.cy.codex.AppEvent
 import com.cy.codex.CatalogState
+import com.cy.codex.CodexCardGrid
+import com.cy.codex.CodexCatalogCard
+import com.cy.codex.CodexGroupTitle
+import com.cy.codex.CodexPage
+import com.cy.codex.CodexRow
+import com.cy.codex.CodexRowDivider
+import com.cy.codex.CodexSection
+import com.cy.codex.CodexValueRow
 import com.cy.codex.R
 import com.cy.codex.ThreadStatusTone
 import com.cy.codex.UiConsts
@@ -40,16 +39,10 @@ import com.cy.codex.protocol.protocol.v2.WindowsSandboxSetupMode
 import com.cy.codex.statusDotColor
 import com.cy.codex.successColor
 import kotlinx.coroutines.launch
-import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
-import top.yukonga.miuix.kmp.basic.Card
-import top.yukonga.miuix.kmp.basic.HorizontalDivider
-import top.yukonga.miuix.kmp.basic.Icon
-import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.icon.MiuixIcons
-import top.yukonga.miuix.kmp.icon.extended.ChevronBackward
 import top.yukonga.miuix.kmp.icon.extended.Lock
 import top.yukonga.miuix.kmp.icon.extended.Settings
 import top.yukonga.miuix.kmp.theme.MiuixTheme
@@ -106,8 +99,8 @@ fun WindowsSandboxScreen(
         }
     }
 
-    // Buttons stay enabled while an attempt is in flight: setupStart answers before the work is
-    // done, and a refused start never sends the completion that would re-enable a button.
+    // Both modes stay pressable while an attempt is in flight: setupStart answers before the work
+    // is done, and a refused start never sends the completion that would re-enable them.
     val request: (WindowsSandboxSetupMode) -> Unit = { mode ->
         pending = mode
         outcome = null
@@ -136,239 +129,119 @@ fun WindowsSandboxScreen(
             completed != null -> colors.error
             else -> null
         }
-    val statusLabel = if (status != null) status.label() else null
-
-    Column(modifier = modifier.fillMaxSize().background(colors.background)) {
-        BasicComponent(
-            title = stringResource(R.string.windows_sandbox_title),
-            summary = stringResource(R.string.windows_sandbox_subtitle),
-            startAction = {
-                if (onBack != null) {
-                    IconButton(
-                        onClick = onBack,
-                        minWidth = UiConsts.IconButtonSize,
-                        minHeight = UiConsts.IconButtonSize,
-                    ) {
-                        Icon(
-                            imageVector = MiuixIcons.ChevronBackward,
-                            contentDescription = stringResource(R.string.windows_sandbox_back),
-                            modifier = Modifier.size(UiConsts.IconHeader),
-                            tint = MiuixTheme.colorScheme.primary,
-                        )
-                    }
-                }
-            },
-            insideMargin = PaddingValues(14.dp, 10.dp),
-        )
-        Column(
-            modifier =
-                Modifier.weight(1f)
-                    .fillMaxWidth()
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = UiConsts.ScreenMargin)
-                    .padding(bottom = UiConsts.PageBottomInset),
-            verticalArrangement = Arrangement.spacedBy(UiConsts.SectionGap),
-        ) {
-            Card(
-                cornerRadius = UiConsts.SectionCorner,
-                insideMargin = PaddingValues(horizontal = 11.dp, vertical = 8.dp),
-            ) {
-                BasicComponent(
-                    title = stringResource(R.string.windows_sandbox_readiness_card),
-                    startAction = {
-                        Icon(
-                            imageVector = MiuixIcons.Lock,
-                            contentDescription = null,
-                            modifier = Modifier.size(14.dp),
-                            tint = MiuixTheme.colorScheme.primary,
-                        )
-                    },
-                    endActions = {
-                        if (statusLabel != null) {
-                            Text(
-                                text = statusLabel,
-                                fontSize = 13.sp,
-                                lineHeight = 18.sp,
-                                fontWeight = FontWeight.Medium,
-                                color = MiuixTheme.colorScheme.onSurface,
-                                maxLines = 1,
-                            )
-                        }
-                    },
-                )
-
-                BasicComponent(
-                    title = stringResource(R.string.windows_sandbox_fact_readiness),
-                    endActions = {
-                        Text(
-                            text =
-                                when {
-                                    status != null -> status.label()
-                                    loading -> stringResource(R.string.windows_sandbox_reading)
-                                    else -> stringResource(R.string.windows_sandbox_unknown)
-                                }.ifEmpty { "—" },
-                            color =
-                                (if (status != null) statusDotColor(status.tone()) else null)
-                                    ?: MiuixTheme.colorScheme.onSurface,
-                            textAlign = TextAlign.End,
-                            fontSize = UiType.Detail,
-                        )
-                    },
-                    insideMargin =
-                        PaddingValues(horizontal = UiConsts.Space4, vertical = UiConsts.Space7),
-                )
-                HorizontalDivider(modifier = Modifier.padding(vertical = UiConsts.Space1))
-                BasicComponent(
-                    title = stringResource(R.string.windows_sandbox_fact_meaning),
-                    endActions = {
-                        Text(
-                            text = if (status != null) status.detail() else "".ifEmpty { "—" },
-                            color = MiuixTheme.colorScheme.onSurface,
-                            textAlign = TextAlign.End,
-                            fontSize = UiType.Detail,
-                        )
-                    },
-                    insideMargin =
-                        PaddingValues(horizontal = UiConsts.Space4, vertical = UiConsts.Space7),
-                )
-                HorizontalDivider(modifier = Modifier.padding(vertical = UiConsts.Space1))
-                BasicComponent(
-                    title = stringResource(R.string.windows_sandbox_fact_setup),
-                    endActions = {
-                        Text(
-                            text = setupValue.ifEmpty { "—" },
-                            color = (setupTint) ?: MiuixTheme.colorScheme.onSurface,
-                            textAlign = TextAlign.End,
-                            fontSize = UiType.Detail,
-                        )
-                    },
-                    insideMargin =
-                        PaddingValues(horizontal = UiConsts.Space4, vertical = UiConsts.Space7),
-                )
-                if (failure != null) {
-                    HorizontalDivider(modifier = Modifier.padding(vertical = UiConsts.Space1))
+    CodexPage(
+        title = stringResource(R.string.windows_sandbox_title),
+        description = stringResource(R.string.windows_sandbox_subtitle),
+        onBack = onBack,
+        modifier = modifier,
+    ) {
+        CodexSection(stringResource(R.string.windows_sandbox_readiness_card)) {
+            CodexRow(
+                title = stringResource(R.string.windows_sandbox_fact_readiness),
+                endAction = {
                     Text(
-                        text = failure.orEmpty(),
-                        modifier =
-                            Modifier.padding(
-                                horizontal = UiConsts.Space4,
-                                vertical = UiConsts.Space8,
-                            ),
-                        fontSize = UiType.Meta,
-                        lineHeight = UiType.MetaLine,
-                        color = colors.error,
+                        text =
+                            when {
+                                status != null -> status.label()
+                                loading -> stringResource(R.string.windows_sandbox_reading)
+                                else -> stringResource(R.string.windows_sandbox_unknown)
+                            }.ifEmpty { "—" },
+                        fontSize = UiType.Value,
+                        lineHeight = UiType.ValueLine,
+                        color =
+                            (if (status != null) statusDotColor(status.tone()) else null)
+                                ?: colors.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
-                }
-            }
-            Card(
-                cornerRadius = UiConsts.SectionCorner,
-                insideMargin = PaddingValues(horizontal = 11.dp, vertical = 8.dp),
-            ) {
-                BasicComponent(
-                    title = stringResource(R.string.windows_sandbox_setup_card),
-                    startAction = {
-                        Icon(
-                            imageVector = MiuixIcons.Settings,
-                            contentDescription = null,
-                            modifier = Modifier.size(14.dp),
-                            tint = MiuixTheme.colorScheme.primary,
-                        )
-                    },
-                )
-
+                },
+            )
+            CodexRowDivider()
+            CodexValueRow(
+                title = stringResource(R.string.windows_sandbox_fact_meaning),
+                value = status?.detail() ?: "—",
+            )
+            CodexRowDivider()
+            CodexRow(
+                title = stringResource(R.string.windows_sandbox_fact_setup),
+                endAction = {
+                    Text(
+                        text = setupValue.ifEmpty { "—" },
+                        fontSize = UiType.Value,
+                        lineHeight = UiType.ValueLine,
+                        color = setupTint ?: colors.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                },
+            )
+            if (failure != null) {
+                CodexRowDivider()
                 Text(
-                    text = stringResource(R.string.windows_sandbox_setup_detail),
+                    text = failure.orEmpty(),
                     modifier =
                         Modifier.padding(
-                            horizontal = UiConsts.Space4,
-                            vertical = UiConsts.Space4,
+                            start = UiConsts.RowInset,
+                            end = UiConsts.RowInset,
+                            top = UiConsts.Space8,
+                            bottom = UiConsts.Space8,
                         ),
                     fontSize = UiType.Meta,
                     lineHeight = UiType.MetaLine,
-                    color = colors.onSurfaceVariantSummary,
-                )
-                Row(
-                    modifier =
-                        Modifier.fillMaxWidth()
-                            .padding(horizontal = UiConsts.Space4, vertical = UiConsts.Space6),
-                    horizontalArrangement = Arrangement.spacedBy(UiConsts.Space6),
-                ) {
-                    Button(
-                        onClick = { request(WindowsSandboxSetupMode.Elevated) },
-                        modifier = Modifier.weight(1f),
-                        colors = ButtonDefaults.buttonColorsPrimary(),
-                        cornerRadius = UiConsts.ButtonHeight / 2,
-                        minHeight = UiConsts.ButtonHeight,
-                        insideMargin =
-                            PaddingValues(
-                                horizontal = UiConsts.ButtonPaddingHorizontal,
-                                vertical = 0.dp,
-                            ),
-                    ) {
-                        Text(
-                            text = stringResource(R.string.windows_sandbox_setup_elevated),
-                            fontSize = UiType.Action,
-                            lineHeight = UiType.ActionLine,
-                            fontWeight = FontWeight.Medium,
-                            maxLines = 1,
-                            softWrap = false,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                    Button(
-                        onClick = { request(WindowsSandboxSetupMode.Unelevated) },
-                        modifier = Modifier.weight(1f),
-                        colors = ButtonDefaults.buttonColors(),
-                        cornerRadius = UiConsts.ButtonHeight / 2,
-                        minHeight = UiConsts.ButtonHeight,
-                        insideMargin =
-                            PaddingValues(
-                                horizontal = UiConsts.ButtonPaddingHorizontal,
-                                vertical = 0.dp,
-                            ),
-                    ) {
-                        Text(
-                            text = stringResource(R.string.windows_sandbox_setup_unelevated),
-                            fontSize = UiType.Action,
-                            lineHeight = UiType.ActionLine,
-                            fontWeight = FontWeight.Medium,
-                            maxLines = 1,
-                            softWrap = false,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                }
-                Text(
-                    text = stringResource(R.string.windows_sandbox_setup_host_note),
-                    modifier =
-                        Modifier.padding(
-                            horizontal = UiConsts.Space4,
-                            vertical = UiConsts.Space2,
-                        ),
-                    fontSize = UiType.Footnote,
-                    lineHeight = UiType.FootnoteLine,
-                    color = colors.onSurfaceVariantSummary,
+                    color = colors.error,
                 )
             }
-            Button(
-                onClick = { generation++ },
-                modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(),
-                cornerRadius = UiConsts.ButtonHeight / 2,
-                minHeight = UiConsts.ButtonHeight,
-                insideMargin =
-                    PaddingValues(horizontal = UiConsts.ButtonPaddingHorizontal, vertical = 0.dp),
-            ) {
-                Text(
-                    text = stringResource(R.string.windows_sandbox_recheck),
-                    fontSize = UiType.Action,
-                    lineHeight = UiType.ActionLine,
-                    fontWeight = FontWeight.Medium,
-                    maxLines = 1,
-                    softWrap = false,
-                    overflow = TextOverflow.Ellipsis,
+        }
+        val modes = listOf(WindowsSandboxSetupMode.Elevated, WindowsSandboxSetupMode.Unelevated)
+        Column(modifier = Modifier.fillMaxWidth()) {
+            CodexGroupTitle(stringResource(R.string.windows_sandbox_setup_card))
+            Text(
+                text = stringResource(R.string.windows_sandbox_setup_detail),
+                modifier = Modifier.padding(bottom = UiConsts.Space10),
+                fontSize = UiType.Meta,
+                lineHeight = UiType.MetaLine,
+                color = colors.onSurfaceVariantSummary,
+            )
+            CodexCardGrid(count = modes.size) { index ->
+                val mode = modes[index]
+                CodexCatalogCard(
+                    title = mode.label(),
+                    description = null,
+                    icon =
+                        if (mode == WindowsSandboxSetupMode.Elevated) {
+                            MiuixIcons.Lock
+                        } else {
+                            MiuixIcons.Settings
+                        },
+                    onClick = { request(mode) },
                 )
             }
+            Text(
+                text = stringResource(R.string.windows_sandbox_setup_host_note),
+                modifier = Modifier.padding(top = UiConsts.Space8),
+                fontSize = UiType.Footnote,
+                lineHeight = UiType.FootnoteLine,
+                color = colors.onSurfaceVariantSummary,
+            )
+        }
+        Button(
+            onClick = { generation++ },
+            modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.buttonColors(),
+            cornerRadius = UiConsts.ButtonHeight / 2,
+            minHeight = UiConsts.ButtonHeight,
+            insideMargin =
+                PaddingValues(horizontal = UiConsts.ButtonPaddingHorizontal, vertical = 0.dp),
+        ) {
+            Text(
+                text = stringResource(R.string.windows_sandbox_recheck),
+                fontSize = UiType.Action,
+                lineHeight = UiType.ActionLine,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                softWrap = false,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
     }
 }

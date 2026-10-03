@@ -9,10 +9,16 @@
 
     <!-- NavMenuPanel.kt -->
     <string name="nav_menu_title">Codex</string>
+    <string name="nav_menu_home_group">Session</string>
+    <string name="nav_menu_conversations_group">Conversations</string>
+    <string name="nav_menu_all_conversations">All conversations</string>
+    <string name="nav_menu_archived_group">Archived</string>
+    <string name="nav_menu_archived_conversations">Archived chats</string>
+    <string name="nav_menu_extensions_group">Extensions</string>
+    <string name="nav_menu_shares_group">Sharing</string>
+    <string name="nav_menu_settings_group">General</string>
     <string name="nav_menu_account_group">Account and data</string>
-
-    <!-- SessionToolsPanel.kt -->
-    <string name="sidebar_library_header">Sessions</string>
-    <string name="session_tools_open">Open the session panel</string>
-    <string name="session_tools_close">Close the session panel</string>
+    <string name="nav_menu_search">Search</string>
+    <string name="nav_menu_no_matches">No matches</string>
+    <string name="nav_menu_empty">Nothing here yet</string>
 </resources>

@@ -1,32 +1,24 @@
 package com.cy.codex.bottom_pane
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import com.cy.codex.AppEvent
 import com.cy.codex.CatalogState
+import com.cy.codex.CodexCardGrid
+import com.cy.codex.CodexCatalogCard
+import com.cy.codex.CodexEmptyRow
+import com.cy.codex.CodexGroupTitle
+import com.cy.codex.CodexPage
 import com.cy.codex.R
 import com.cy.codex.UiConsts
 import com.cy.codex.UiType
@@ -34,17 +26,10 @@ import com.cy.codex.codeSurface
 import com.cy.codex.label
 import com.cy.codex.protocol.protocol.v2.SkillEntry
 import com.cy.codex.protocol.protocol.v2.SkillScope
-import com.cy.codex.raisedSurface
-import top.yukonga.miuix.kmp.basic.BasicComponent
-import top.yukonga.miuix.kmp.basic.Card
-import top.yukonga.miuix.kmp.basic.CardDefaults
-import top.yukonga.miuix.kmp.basic.HorizontalDivider
-import top.yukonga.miuix.kmp.basic.Icon
-import top.yukonga.miuix.kmp.basic.IconButton
+import com.cy.codex.squircleShape
 import top.yukonga.miuix.kmp.basic.Switch
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.icon.MiuixIcons
-import top.yukonga.miuix.kmp.icon.extended.ChevronBackward
 import top.yukonga.miuix.kmp.icon.extended.Community
 import top.yukonga.miuix.kmp.icon.extended.FolderFill
 import top.yukonga.miuix.kmp.icon.extended.Layers
@@ -63,64 +48,26 @@ fun SkillsScreen(
     onBack: (() -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
-    val colors = MiuixTheme.colorScheme
     val skills = catalog.skills
     val enabled = skills.count { it.enabled }
 
-    Column(modifier = modifier.fillMaxSize().background(colors.background)) {
-        BasicComponent(
-            title = stringResource(R.string.skills_screen_title),
-            summary = stringResource(R.string.skills_screen_subtitle, skills.size, enabled),
-            startAction = { SkillsBackButton(onBack) },
-            insideMargin = PaddingValues(14.dp, 10.dp),
-        )
-        Column(
-            modifier =
-                Modifier.weight(1f)
-                    .fillMaxWidth()
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = UiConsts.ScreenMargin)
-                    .padding(bottom = UiConsts.PageBottomInset),
-            verticalArrangement = Arrangement.spacedBy(UiConsts.SectionGap),
-        ) {
-            if (skills.isEmpty()) {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    cornerRadius = UiConsts.SectionCorner,
-                    insideMargin = PaddingValues(horizontal = 11.dp, vertical = 8.dp),
-                    colors =
-                        CardDefaults.defaultColors(
-                            color = raisedSurface(),
-                            contentColor = MiuixTheme.colorScheme.onSurface,
-                        ),
-                ) {
-                    BasicComponent(
-                        title = stringResource(R.string.skills_screen_title),
-                        startAction = {
-                            Icon(
-                                imageVector = MiuixIcons.Layers,
-                                contentDescription = null,
-                                modifier = Modifier.size(UiConsts.IconInline),
-                                tint = MiuixTheme.colorScheme.primary,
-                            )
-                        },
-                        insideMargin = PaddingValues(0.dp),
-                    )
-                    Spacer(Modifier.height(UiConsts.Space8))
-
-                    Text(
-                        text = stringResource(R.string.skills_screen_empty),
-                        modifier = Modifier.padding(vertical = UiConsts.Space4),
-                        fontSize = UiType.Meta,
-                        lineHeight = UiType.MetaLine,
-                        color = colors.disabledOnSurface,
-                    )
-                }
-            } else {
-                SkillScope.entries.forEach { scope ->
-                    val group = skills.filter { it.scope == scope }
-                    if (group.isNotEmpty()) {
-                        SkillsScopeCard(scope = scope, group = group, onEvent = onEvent)
+    CodexPage(
+        title = stringResource(R.string.skills_screen_title),
+        description = stringResource(R.string.skills_screen_subtitle, skills.size, enabled),
+        onBack = onBack,
+        modifier = modifier,
+    ) {
+        if (skills.isEmpty()) {
+            CodexEmptyRow(stringResource(R.string.skills_screen_empty))
+        } else {
+            SkillScope.entries.forEach { scope ->
+                val group = skills.filter { it.scope == scope }
+                if (group.isNotEmpty()) {
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        CodexGroupTitle(scope.label())
+                        CodexCardGrid(count = group.size) { index ->
+                            SkillCard(skill = group[index], onEvent = onEvent)
+                        }
                     }
                 }
             }
@@ -128,128 +75,43 @@ fun SkillsScreen(
     }
 }
 
+/** One skill as a catalogue card: its scope's mark, its name, what it does, and its switch. */
 @Composable
-private fun SkillsScopeCard(
-    scope: SkillScope,
-    group: List<SkillEntry>,
-    onEvent: (AppEvent) -> Unit,
-) {
-    val colors = MiuixTheme.colorScheme
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        cornerRadius = UiConsts.SectionCorner,
-        insideMargin = PaddingValues(horizontal = 11.dp, vertical = 8.dp),
-        colors =
-            CardDefaults.defaultColors(
-                color = raisedSurface(),
-                contentColor = MiuixTheme.colorScheme.onSurface,
-            ),
-    ) {
-        BasicComponent(
-            title = scope.label(),
-            startAction = {
-                Icon(
-                    imageVector = skillsScopeIcon(scope),
-                    contentDescription = null,
-                    modifier = Modifier.size(UiConsts.IconInline),
-                    tint = MiuixTheme.colorScheme.primary,
-                )
-            },
-            insideMargin = PaddingValues(0.dp),
-            endActions = { Text(text = group.size.toString(), maxLines = 1) },
-        )
-        Spacer(Modifier.height(UiConsts.Space8))
-
-        group.forEachIndexed { index, skill ->
-            if (index > 0) SkillsDivider()
-            Column(
-                modifier =
-                    Modifier.fillMaxWidth()
-                        .padding(horizontal = UiConsts.Space4, vertical = UiConsts.Space8)
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = skill.name,
-                            fontSize = UiType.RowTitle,
-                            lineHeight = UiType.RowTitleLine,
-                            fontWeight = FontWeight.Medium,
-                            color = colors.onSurface,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                        Spacer(Modifier.height(UiConsts.Space2))
-                        Text(
-                            text =
-                                if (skill.enabled) {
-                                    stringResource(R.string.skills_screen_enabled)
-                                } else {
-                                    stringResource(R.string.skills_screen_disabled)
-                                },
-                            fontSize = UiType.Chip,
-                            lineHeight = UiType.ChipLine,
-                            color = if (skill.enabled) colors.primary else colors.disabledOnSurface,
-                        )
-                    }
-                    Spacer(Modifier.width(UiConsts.Space10))
-                    Switch(
-                        checked = skill.enabled,
-                        onCheckedChange = { onEvent(AppEvent.SetSkillEnabled(skill.name, it)) },
-                    )
-                }
-                if (skill.description.isNotEmpty()) {
-                    Spacer(Modifier.height(UiConsts.Space2))
-                    Text(
-                        text = skill.description,
-                        fontSize = UiType.Meta,
-                        lineHeight = UiType.MetaLine,
-                        color = colors.onSurfaceVariantSummary,
-                    )
-                }
-                if (skill.path.isNotEmpty()) {
-                    Spacer(Modifier.height(UiConsts.Space5))
+private fun SkillCard(skill: SkillEntry, onEvent: (AppEvent) -> Unit) {
+    CodexCatalogCard(
+        title = skill.name,
+        description = skill.description.ifEmpty { null },
+        icon = skillsScopeIcon(skill.scope),
+        enabled = skill.enabled,
+        trailing = {
+            Switch(
+                checked = skill.enabled,
+                onCheckedChange = { onEvent(AppEvent.SetSkillEnabled(skill.name, it)) },
+            )
+        },
+        footer =
+            if (skill.path.isEmpty()) {
+                null
+            } else {
+                {
                     Text(
                         text = skill.path,
                         modifier =
                             Modifier.fillMaxWidth()
-                                .clip(SkillsRowShape)
+                                .clip(squircleShape(UiConsts.CornerChip))
                                 .background(codeSurface())
-                                .padding(horizontal = UiConsts.Space7, vertical = UiConsts.Space4),
+                                .padding(horizontal = UiConsts.Space8, vertical = UiConsts.Space4),
                         fontSize = UiType.Code,
                         lineHeight = UiType.CodeLine,
                         fontFamily = FontFamily.Monospace,
-                        color = colors.onSurfaceVariantSummary,
+                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
-            }
-        }
-    }
+            },
+    )
 }
-
-@Composable
-private fun SkillsBackButton(onBack: (() -> Unit)?) {
-    if (onBack == null) return
-    IconButton(
-        onClick = onBack,
-        minWidth = UiConsts.IconButtonSize,
-        minHeight = UiConsts.IconButtonSize,
-    ) {
-        Icon(
-            imageVector = MiuixIcons.ChevronBackward,
-            contentDescription = stringResource(R.string.skills_screen_back),
-            modifier = Modifier.size(UiConsts.IconHeader),
-            tint = MiuixTheme.colorScheme.primary,
-        )
-    }
-}
-
-@Composable
-private fun SkillsDivider() =
-    HorizontalDivider(modifier = Modifier.padding(vertical = UiConsts.Space1))
-
-private val SkillsRowShape = RoundedCornerShape(UiConsts.RowCorner)
 
 private fun skillsScopeIcon(scope: SkillScope): ImageVector =
     when (scope) {

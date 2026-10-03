@@ -5,10 +5,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -45,21 +43,14 @@ import com.cy.codex.protocol.protocol.v2.Thread
 import com.cy.codex.protocol.protocol.v2.ThreadReadParams
 import com.cy.codex.protocol.protocol.v2.ThreadSection
 import com.cy.codex.protocol.protocol.v2.UserInput
-import com.cy.codex.status.BackChevron
 import kotlinx.coroutines.launch
-import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
-import top.yukonga.miuix.kmp.basic.Card
-import top.yukonga.miuix.kmp.basic.CardDefaults
-import top.yukonga.miuix.kmp.basic.HorizontalDivider
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Add
-import top.yukonga.miuix.kmp.icon.extended.GridView
-import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /** How many lines an expanded card's transcript preview shows; the upstream cap is six. */
@@ -130,10 +121,8 @@ private sealed interface ResumePreviewState {
 @Composable
 fun SessionListScreen(
     app: CodexApp,
-    onBack: () -> Unit,
+    onBack: (() -> Unit)?,
     modifier: Modifier = Modifier,
-    horizontalPadding: Dp = 12.dp,
-    bottomPadding: Dp = 24.dp,
     rowSpacing: Dp = 6.dp,
 ) {
     val colors = MiuixTheme.colorScheme
@@ -179,65 +168,45 @@ fun SessionListScreen(
         }
     }
 
-    Column(modifier = modifier.fillMaxSize()) {
-        BasicComponent(
-            title = stringResource(R.string.session_list_title),
-            summary = stringResource(R.string.session_list_subtitle, visible.size),
-            startAction = {
-                BackChevron(
-                    onClick = onBack,
-                    description = stringResource(R.string.session_list_back),
+    CodexPage(
+        title = stringResource(R.string.session_list_title),
+        description = stringResource(R.string.session_list_subtitle, visible.size),
+        onBack = onBack,
+        modifier = modifier,
+        // The body is the picker's own lazy list; the frame must not scroll it.
+        scroll = false,
+        actions = {
+            // The chip is a toggle, not a status tone: it names which half of the list is on screen.
+            Button(
+                onClick = { app.onAppEvent(AppEvent.SetThreadListScope(!showArchived)) },
+                modifier = Modifier,
+                enabled = true,
+                colors =
+                    if (showArchived) ButtonDefaults.buttonColorsPrimary()
+                    else ButtonDefaults.buttonColors(),
+            ) {
+                Text(
+                    text =
+                        stringResource(
+                            if (showArchived) {
+                                R.string.session_list_filter_archived
+                            } else {
+                                R.string.session_list_filter_active
+                            }
+                        ),
+                    maxLines = 1,
                 )
-            },
-            endActions = {
-                // The chip is a toggle, not a status tone: it names which half of the list is on screen.
-                Button(
-                    onClick = { app.onAppEvent(AppEvent.SetThreadListScope(!showArchived)) },
-                    modifier = Modifier,
-                    enabled = true,
-                    colors =
-                        if (showArchived) ButtonDefaults.buttonColorsPrimary()
-                        else ButtonDefaults.buttonColors(),
-                ) {
-                    Text(
-                        text =
-                            stringResource(
-                                if (showArchived) {
-                                    R.string.session_list_filter_archived
-                                } else {
-                                    R.string.session_list_filter_active
-                                }
-                            ),
-                        maxLines = 1,
-                    )
-                }
-            },
-        )
-
-        TextField(
+            }
+        },
+    ) {
+        CodexSearchField(
             value = query,
             onValueChange = { query = it },
-            modifier =
-                Modifier.padding(
-                        start = horizontalPadding,
-                        end = horizontalPadding,
-                        top = UiConsts.Space8,
-                        bottom = UiConsts.Space6,
-                    )
-                    .fillMaxWidth(),
-            label = stringResource(R.string.resume_picker_search_hint),
-            useLabelAsPlaceholder = true,
-            singleLine = true,
+            placeholder = stringResource(R.string.resume_picker_search_hint),
         )
 
         LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding =
-                PaddingValues(
-                    start = horizontalPadding,
-                    end = horizontalPadding,
-                    bottom = bottomPadding,
-                ),
+            modifier = Modifier.weight(1f).fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(rowSpacing),
         ) {
             item(key = "sections") {
@@ -282,7 +251,8 @@ fun SessionListScreen(
                     onRenameDraft = { renameDraft = it },
                     onOpen = {
                         app.openThread(thread.id)
-                        onBack()
+                        // A rail page has no page to go back to; the thread it opened is the page.
+                        onBack?.invoke()
                     },
                     onFork = { app.onAppEvent(AppEvent.ForkThread(thread.id)) },
                     onRenameStart = {
@@ -558,7 +528,10 @@ private fun PreviewLine(text: String, error: Boolean = false) {
     )
 }
 
-/** `threadSection/…` grouping, distinct from the sidebar's cwd-derived directory grouping. */
+/**
+ * `threadSection/…` grouping, distinct from the sidebar's cwd-derived directory grouping; a section
+ * being renamed keeps a plain row, because no grid row carries an editor.
+ */
 @Composable
 private fun SectionsCard(
     sections: List<ThreadSection>,
@@ -567,42 +540,11 @@ private fun SectionsCard(
     onRenamingChange: (String?) -> Unit,
     onCreate: () -> Unit,
 ) {
-    val colors = MiuixTheme.colorScheme
     var draft by remember(renaming) { mutableStateOf("") }
 
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        cornerRadius = UiConsts.SectionCorner,
-        insideMargin = PaddingValues(horizontal = 11.dp, vertical = 8.dp),
-        colors =
-            CardDefaults.defaultColors(
-                color = raisedSurface(),
-                contentColor = MiuixTheme.colorScheme.onSurface,
-            ),
-    ) {
-        BasicComponent(
-            title = stringResource(R.string.session_list_sections),
-            startAction = {
-                Icon(
-                    imageVector = MiuixIcons.GridView,
-                    contentDescription = null,
-                    modifier = Modifier.size(14.dp),
-                    tint = MiuixTheme.colorScheme.primary,
-                )
-            },
-            endActions = {
-                Text(
-                    text = sections.size.toString(),
-                    fontWeight = FontWeight.Medium,
-                    color = MiuixTheme.colorScheme.onSurface,
-                    maxLines = 1,
-                )
-            },
-        )
-
+    CodexSection(stringResource(R.string.session_list_sections)) {
         sections.forEachIndexed { index, section ->
-            if (index > 0)
-                HorizontalDivider(modifier = Modifier.padding(vertical = UiConsts.Space1))
+            if (index > 0) CodexRowDivider()
             if (renaming == section.id) {
                 Row(
                     modifier =
@@ -630,39 +572,27 @@ private fun SectionsCard(
                     )
                 }
             } else {
-                Row(
-                    modifier =
-                        Modifier.fillMaxWidth()
-                            .padding(horizontal = UiConsts.Space4, vertical = UiConsts.Space8),
-                    horizontalArrangement = Arrangement.spacedBy(UiConsts.Space6),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        text = section.name,
-                        modifier = Modifier.weight(1f),
-                        fontSize = UiType.RowTitle,
-                        lineHeight = UiType.RowTitleLine,
-                        fontWeight = FontWeight.Medium,
-                        color = colors.onSurface,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    SessionAction(
-                        label = stringResource(R.string.session_list_rename),
-                        onClick = {
-                            draft = section.name
-                            onRenamingChange(section.id)
-                        },
-                    )
-                    SessionAction(
-                        label = stringResource(R.string.session_list_delete),
-                        onClick = { onEvent(AppEvent.DeleteSection(section.id)) },
-                        destructive = true,
-                    )
-                }
+                CodexRow(
+                    title = section.name,
+                    endAction = {
+                        SessionAction(
+                            label = stringResource(R.string.session_list_rename),
+                            onClick = {
+                                draft = section.name
+                                onRenamingChange(section.id)
+                            },
+                        )
+                        Spacer(Modifier.width(UiConsts.Space6))
+                        SessionAction(
+                            label = stringResource(R.string.session_list_delete),
+                            onClick = { onEvent(AppEvent.DeleteSection(section.id)) },
+                            destructive = true,
+                        )
+                    },
+                )
             }
         }
-        ArrowPreference(
+        CodexNavRow(
             title = stringResource(R.string.session_list_section_new),
             summary = stringResource(R.string.session_list_section_new_detail),
             startAction = {
@@ -670,9 +600,7 @@ private fun SectionsCard(
                     imageVector = MiuixIcons.Add,
                     contentDescription = null,
                     modifier = Modifier.size(UiConsts.IconPreference),
-                    tint =
-                        if (true) MiuixTheme.colorScheme.primary
-                        else MiuixTheme.colorScheme.disabledOnSurface,
+                    tint = MiuixTheme.colorScheme.primary,
                 )
             },
             onClick = onCreate,

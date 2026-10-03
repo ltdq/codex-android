@@ -188,6 +188,22 @@ object UiConsts {
     /** Icon inside a rail item; the rail is icon-only, so its glyphs carry the whole column. */
     val NavRailIconSize = 26.dp
 
+    /**
+     * The mark at the head of the rail.
+     *
+     * A tile rather than an icon, and wider than [NavRailIconSize] because of it: the column's head
+     * has to read as the app before it reads as one more item.
+     */
+    val NavRailLogoSize = 36.dp
+
+    /**
+     * The block the rail's head keeps for [NavRailLogoSize].
+     *
+     * The rail's own square, so the mark is the head of the column rather than a row of it: the items
+     * below start a whole block down, and the head is clear of the window's top edge by its own gap.
+     */
+    val NavRailHeadHeight = 64.dp
+
     /** Preferred width of the shell's expanded menu, the middle segment. */
     val NavMenuWidth = 224.dp
 
@@ -195,9 +211,51 @@ object UiConsts {
      * Window width from which the rail's menu is a card of its own beside the page.
      *
      * Below it there is no room for a card next to the page and the menu floats over it; above it
-     * the page card gives up the menu's column while the menu is pinned.
+     * the page stands beside the menu's column while the menu is pinned there, and keeps that
+     * column's width once the menu is put away.
      */
     val WideContentBreakpoint = 720.dp
+
+    /**
+     * The list grid.
+     *
+     * The second segment's option rows and the pages' rows are one grid, and it has two rails:
+     * [PageGutter] is the outer one, where the page header, the group titles and the cards' edges
+     * stand, and [RowInset] is the inner one, where the content of a row stands. Every list in the
+     * shell resolves to one of the two, which is what makes a settings card, a menu row and a
+     * catalogue card line up instead of each carrying its own margin.
+     */
+    val PageGutter = 16.dp
+    val PageHeaderTop = 22.dp
+    val PageHeaderBottom = 16.dp
+
+    /** Content inset of a row inside a card, the gap after its leading icon, and its own height. */
+    val RowInset = 16.dp
+    val RowGap = 12.dp
+    val RowMinHeight = 48.dp
+    val RowVerticalPadding = 9.dp
+
+    /** Gap a group title keeps from the card under it. */
+    val GroupTitleBottom = 6.dp
+
+    /**
+     * An option row of the second segment.
+     *
+     * The menu's own step: shorter than a card row, and inset from the card's edge rather than
+     * padded to its width, so the selected row reads as a rounded option under the pointer.
+     */
+    val MenuRowHeight = 32.dp
+    val MenuRowInset = 6.dp
+    val MenuRowPadding = 10.dp
+    val MenuGroupTop = 10.dp
+    val MenuGroupBottom = 4.dp
+    val MenuSearchHeight = 30.dp
+
+    /** Catalogue cards: the grid the plugin pages lay their entries out in. */
+    val CatalogMinWidth = 260.dp
+    val CatalogGap = 12.dp
+    val CatalogIconBox = 40.dp
+    val CatalogPadding = 14.dp
 
     /** Space kept between the transcript's first row and the top edge. */
     val TranscriptTopInset = 96.dp

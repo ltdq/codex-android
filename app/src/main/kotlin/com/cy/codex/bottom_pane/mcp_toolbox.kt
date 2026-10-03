@@ -2,17 +2,14 @@ package com.cy.codex.bottom_pane
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
@@ -29,10 +26,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.cy.codex.AppEvent
+import com.cy.codex.CodexPage
+import com.cy.codex.CodexRow
+import com.cy.codex.CodexRowDivider
+import com.cy.codex.CodexSection
+import com.cy.codex.CodexSwitchRow
+import com.cy.codex.CodexValueRow
 import com.cy.codex.R
 import com.cy.codex.UiConsts
 import com.cy.codex.UiType
@@ -43,26 +45,13 @@ import com.cy.codex.protocol.AppServerClient
 import com.cy.codex.protocol.AppServerEvent
 import com.cy.codex.protocol.protocol.v2.McpResourceReadResponse
 import com.cy.codex.protocol.protocol.v2.McpServerToolCallResponse
-import com.cy.codex.raisedSurface
 import com.cy.codex.successColor
 import com.cy.codex.warningColor
 import kotlinx.coroutines.launch
-import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
-import top.yukonga.miuix.kmp.basic.Card
-import top.yukonga.miuix.kmp.basic.CardDefaults
-import top.yukonga.miuix.kmp.basic.HorizontalDivider
-import top.yukonga.miuix.kmp.basic.Icon
-import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextField
-import top.yukonga.miuix.kmp.icon.MiuixIcons
-import top.yukonga.miuix.kmp.icon.extended.ChevronBackward
-import top.yukonga.miuix.kmp.icon.extended.File
-import top.yukonga.miuix.kmp.icon.extended.Link
-import top.yukonga.miuix.kmp.icon.extended.Tasks
-import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
@@ -81,7 +70,6 @@ fun McpToolboxScreen(
     onBack: (() -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
-    val colors = MiuixTheme.colorScheme
     val scope = rememberCoroutineScope()
 
     var resourceUri by remember(server) { mutableStateOf("") }
@@ -164,62 +152,36 @@ fun McpToolboxScreen(
         }
     }
 
-    Column(modifier = modifier.fillMaxSize().background(colors.background)) {
-        BasicComponent(
-            title = stringResource(R.string.mcp_toolbox_title),
-            summary = server,
-            startAction = {
-                if (onBack != null) {
-                    IconButton(
-                        onClick = onBack,
-                        minWidth = UiConsts.IconButtonSize,
-                        minHeight = UiConsts.IconButtonSize,
-                    ) {
-                        Icon(
-                            imageVector = MiuixIcons.ChevronBackward,
-                            contentDescription = stringResource(R.string.mcp_toolbox_back),
-                            modifier = Modifier.size(UiConsts.IconHeader),
-                            tint = MiuixTheme.colorScheme.primary,
-                        )
-                    }
-                }
-            },
-            insideMargin = PaddingValues(14.dp, 10.dp),
+    CodexPage(
+        title = stringResource(R.string.mcp_toolbox_title),
+        description = server,
+        onBack = onBack,
+        modifier = modifier,
+    ) {
+        ResourceSection(
+            uri = resourceUri,
+            onUriChange = { resourceUri = it },
+            reading = reading,
+            response = resource,
+            failure = resourceFailure,
+            onRead = { readResource() },
         )
-        Column(
-            modifier =
-                Modifier.weight(1f)
-                    .fillMaxWidth()
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = UiConsts.ScreenMargin)
-                    .padding(bottom = UiConsts.PageBottomInset),
-            verticalArrangement = Arrangement.spacedBy(UiConsts.SectionGap),
-        ) {
-            ResourceCard(
-                uri = resourceUri,
-                onUriChange = { resourceUri = it },
-                reading = reading,
-                response = resource,
-                failure = resourceFailure,
-                onRead = { readResource() },
-            )
-            ToolCard(
-                tool = toolName,
-                onToolChange = { toolName = it },
-                arguments = toolArguments,
-                onArgumentsChange = { toolArguments = it },
-                calling = calling,
-                response = toolResult,
-                failure = toolFailure,
-                onCall = { callTool() },
-            )
-        }
+        ToolSection(
+            tool = toolName,
+            onToolChange = { toolName = it },
+            arguments = toolArguments,
+            onArgumentsChange = { toolArguments = it },
+            calling = calling,
+            response = toolResult,
+            failure = toolFailure,
+            onCall = { callTool() },
+        )
     }
 }
 
 /** Resource half: a uri in, one body out. The mime type is shown, not guessed; the first content renders. */
 @Composable
-private fun ResourceCard(
+private fun ResourceSection(
     uri: String,
     onUriChange: (String) -> Unit,
     reading: Boolean,
@@ -227,121 +189,81 @@ private fun ResourceCard(
     failure: String?,
     onRead: () -> Unit,
 ) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        cornerRadius = UiConsts.SectionCorner,
-        insideMargin = PaddingValues(horizontal = 11.dp, vertical = 8.dp),
-        colors =
-            CardDefaults.defaultColors(
-                color = raisedSurface(),
-                contentColor = MiuixTheme.colorScheme.onSurface,
-            ),
-    ) {
-        BasicComponent(
-            title = stringResource(R.string.mcp_toolbox_resource_section),
-            startAction = {
-                Icon(
-                    imageVector = MiuixIcons.File,
-                    contentDescription = null,
-                    modifier = Modifier.size(UiConsts.IconInline),
-                    tint = MiuixTheme.colorScheme.primary,
-                )
-            },
-            insideMargin = PaddingValues(0.dp),
-        )
-        Spacer(Modifier.height(UiConsts.Space8))
-
-        Column(modifier = Modifier.fillMaxWidth()) {
-            Text(
-                text = stringResource(R.string.mcp_toolbox_resource_uri),
-                style = MiuixTheme.textStyles.body2,
-                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-            )
-            Spacer(Modifier.height(UiConsts.Space4))
-            TextField(
-                value = uri,
-                onValueChange = onUriChange,
-                modifier = Modifier.fillMaxWidth(),
-                label = stringResource(R.string.mcp_toolbox_resource_uri_placeholder),
-                useLabelAsPlaceholder = true,
-                singleLine = true,
-                keyboardActions =
-                    KeyboardActions(
-                        onDone = { onRead() },
-                        onGo = { onRead() },
-                        onSend = { onRead() },
-                    ),
-            )
-        }
-        Spacer(Modifier.height(UiConsts.Space8))
-        Button(
-            onClick = onRead,
-            modifier = Modifier.fillMaxWidth(),
-            enabled = uri.isNotBlank() && !reading,
-            colors = ButtonDefaults.buttonColors(),
-            cornerRadius = UiConsts.ButtonHeight / 2,
-            minWidth = 0.dp,
-            minHeight = UiConsts.ButtonHeight,
-            insideMargin =
-                PaddingValues(horizontal = UiConsts.ButtonPaddingHorizontal, vertical = 0.dp),
-        ) {
-            Text(
-                text = stringResource(R.string.mcp_toolbox_resource_read),
-                maxLines = 1,
-                softWrap = false,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-        if (failure != null) {
-            Spacer(Modifier.height(UiConsts.Space8))
-            ServerFailure(text = failure)
-        }
-        if (response != null) {
-            // A read may answer with several contents; render the first.
-            val content = response.contents.firstOrNull()
-            Spacer(Modifier.height(UiConsts.Space8))
-            BasicComponent(
-                title = stringResource(R.string.mcp_toolbox_resource_uri_label),
-                endActions = {
-                    Text(
-                        text = content?.uri.orEmpty().ifEmpty { "—" },
-                        fontFamily = if (true) FontFamily.Monospace else null,
-                        color = MiuixTheme.colorScheme.onSurface,
-                        textAlign = TextAlign.End,
-                        fontSize = UiType.Detail,
-                    )
-                },
-                insideMargin =
-                    PaddingValues(horizontal = UiConsts.Space4, vertical = UiConsts.Space7),
-            )
-            HorizontalDivider(modifier = Modifier.padding(vertical = UiConsts.Space1))
-            BasicComponent(
-                title = stringResource(R.string.mcp_toolbox_resource_mime),
-                endActions = {
-                    Text(
-                        text = content?.mimeType.orEmpty().ifEmpty { "—" },
-                        fontFamily = null,
-                        color = MiuixTheme.colorScheme.onSurface,
-                        textAlign = TextAlign.End,
-                        fontSize = UiType.Detail,
-                    )
-                },
-                insideMargin =
-                    PaddingValues(horizontal = UiConsts.Space4, vertical = UiConsts.Space7),
-            )
-            Spacer(Modifier.height(UiConsts.Space8))
-            val body = content?.text
-            if (body.isNullOrEmpty()) {
-                // No text can mean bytes or empty; saying so separates "the server had nothing" from "the page lost it".
+    CodexSection(stringResource(R.string.mcp_toolbox_resource_section)) {
+        Column(modifier = Modifier.fillMaxWidth().padding(vertical = UiConsts.Space8)) {
+            Column(modifier = Modifier.fillMaxWidth().padding(horizontal = UiConsts.RowInset)) {
                 Text(
-                    text = stringResource(R.string.mcp_toolbox_resource_no_text),
-                    modifier = Modifier.padding(horizontal = UiConsts.Space4),
-                    fontSize = UiType.Meta,
-                    lineHeight = UiType.MetaLine,
-                    color = warningColor(),
+                    text = stringResource(R.string.mcp_toolbox_resource_uri),
+                    style = MiuixTheme.textStyles.body2,
+                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                 )
-            } else {
-                MonospaceOutput(text = body)
+                Spacer(Modifier.height(UiConsts.Space4))
+                TextField(
+                    value = uri,
+                    onValueChange = onUriChange,
+                    modifier = Modifier.fillMaxWidth(),
+                    label = stringResource(R.string.mcp_toolbox_resource_uri_placeholder),
+                    useLabelAsPlaceholder = true,
+                    singleLine = true,
+                    keyboardActions =
+                        KeyboardActions(
+                            onDone = { onRead() },
+                            onGo = { onRead() },
+                            onSend = { onRead() },
+                        ),
+                )
+            }
+            Spacer(Modifier.height(UiConsts.Space8))
+            Button(
+                onClick = onRead,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = UiConsts.RowInset),
+                enabled = uri.isNotBlank() && !reading,
+                colors = ButtonDefaults.buttonColors(),
+                cornerRadius = UiConsts.ButtonHeight / 2,
+                minWidth = 0.dp,
+                minHeight = UiConsts.ButtonHeight,
+                insideMargin =
+                    PaddingValues(horizontal = UiConsts.ButtonPaddingHorizontal, vertical = 0.dp),
+            ) {
+                Text(
+                    text = stringResource(R.string.mcp_toolbox_resource_read),
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            if (failure != null) {
+                Spacer(Modifier.height(UiConsts.Space8))
+                ServerFailure(text = failure)
+            }
+            if (response != null) {
+                // A read may answer with several contents; render the first.
+                val content = response.contents.firstOrNull()
+                Spacer(Modifier.height(UiConsts.Space8))
+                CodexValueRow(
+                    title = stringResource(R.string.mcp_toolbox_resource_uri_label),
+                    value = content?.uri.orEmpty().ifEmpty { "—" },
+                )
+                CodexRowDivider()
+                CodexValueRow(
+                    title = stringResource(R.string.mcp_toolbox_resource_mime),
+                    value = content?.mimeType.orEmpty().ifEmpty { "—" },
+                    monospace = false,
+                )
+                Spacer(Modifier.height(UiConsts.Space8))
+                val body = content?.text
+                if (body.isNullOrEmpty()) {
+                    // No text can mean bytes or empty; saying so separates "the server had nothing" from "the page lost it".
+                    Text(
+                        text = stringResource(R.string.mcp_toolbox_resource_no_text),
+                        modifier = Modifier.padding(horizontal = UiConsts.RowInset),
+                        fontSize = UiType.Meta,
+                        lineHeight = UiType.MetaLine,
+                        color = warningColor(),
+                    )
+                } else {
+                    MonospaceOutput(text = body)
+                }
             }
         }
     }
@@ -349,7 +271,7 @@ private fun ResourceCard(
 
 /** Tool half: a name, JSON arguments, and the answer; `isError` is the tool's own failure and still renders. */
 @Composable
-private fun ToolCard(
+private fun ToolSection(
     tool: String,
     onToolChange: (String) -> Unit,
     arguments: String,
@@ -361,112 +283,91 @@ private fun ToolCard(
 ) {
     val colors = MiuixTheme.colorScheme
     val emptyOutput = stringResource(R.string.mcp_toolbox_result_empty)
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        cornerRadius = UiConsts.SectionCorner,
-        insideMargin = PaddingValues(horizontal = 11.dp, vertical = 8.dp),
-        colors =
-            CardDefaults.defaultColors(
-                color = raisedSurface(),
-                contentColor = MiuixTheme.colorScheme.onSurface,
-            ),
-    ) {
-        BasicComponent(
-            title = stringResource(R.string.mcp_toolbox_tool_section),
-            startAction = {
-                Icon(
-                    imageVector = MiuixIcons.Tasks,
-                    contentDescription = null,
-                    modifier = Modifier.size(UiConsts.IconInline),
-                    tint = MiuixTheme.colorScheme.primary,
+    CodexSection(stringResource(R.string.mcp_toolbox_tool_section)) {
+        Column(modifier = Modifier.fillMaxWidth().padding(vertical = UiConsts.Space8)) {
+            Column(modifier = Modifier.fillMaxWidth().padding(horizontal = UiConsts.RowInset)) {
+                Text(
+                    text = stringResource(R.string.mcp_toolbox_tool_name),
+                    style = MiuixTheme.textStyles.body2,
+                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                 )
-            },
-            insideMargin = PaddingValues(0.dp),
-        )
-        Spacer(Modifier.height(UiConsts.Space8))
-
-        Column(modifier = Modifier.fillMaxWidth()) {
-            Text(
-                text = stringResource(R.string.mcp_toolbox_tool_name),
-                style = MiuixTheme.textStyles.body2,
-                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-            )
-            Spacer(Modifier.height(UiConsts.Space4))
-            TextField(
-                value = tool,
-                onValueChange = onToolChange,
-                modifier = Modifier.fillMaxWidth(),
-                label = stringResource(R.string.mcp_toolbox_tool_name_placeholder),
-                useLabelAsPlaceholder = true,
-                singleLine = true,
-                keyboardActions =
-                    KeyboardActions(
-                        onDone = { onCall() },
-                        onGo = { onCall() },
-                        onSend = { onCall() },
-                    ),
-            )
-        }
-        Spacer(Modifier.height(UiConsts.Space8))
-        Column(modifier = Modifier.fillMaxWidth()) {
-            Text(
-                text = stringResource(R.string.mcp_toolbox_tool_arguments),
-                style = MiuixTheme.textStyles.body2,
-                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-            )
-            Spacer(Modifier.height(UiConsts.Space4))
-            TextField(
-                value = arguments,
-                onValueChange = onArgumentsChange,
-                singleLine = false,
-                modifier = Modifier.fillMaxWidth(),
-                label = stringResource(R.string.mcp_toolbox_tool_arguments_placeholder),
-                useLabelAsPlaceholder = true,
-            )
-        }
-        Spacer(Modifier.height(UiConsts.Space8))
-        Button(
-            onClick = onCall,
-            modifier = Modifier.fillMaxWidth(),
-            enabled = tool.isNotBlank() && !calling,
-            colors = ButtonDefaults.buttonColors(),
-            cornerRadius = UiConsts.ButtonHeight / 2,
-            minWidth = 0.dp,
-            minHeight = UiConsts.ButtonHeight,
-            insideMargin =
-                PaddingValues(horizontal = UiConsts.ButtonPaddingHorizontal, vertical = 0.dp),
-        ) {
-            Text(
-                text = stringResource(R.string.mcp_toolbox_tool_call),
-                maxLines = 1,
-                softWrap = false,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-        if (failure != null) {
+                Spacer(Modifier.height(UiConsts.Space4))
+                TextField(
+                    value = tool,
+                    onValueChange = onToolChange,
+                    modifier = Modifier.fillMaxWidth(),
+                    label = stringResource(R.string.mcp_toolbox_tool_name_placeholder),
+                    useLabelAsPlaceholder = true,
+                    singleLine = true,
+                    keyboardActions =
+                        KeyboardActions(
+                            onDone = { onCall() },
+                            onGo = { onCall() },
+                            onSend = { onCall() },
+                        ),
+                )
+            }
             Spacer(Modifier.height(UiConsts.Space8))
-            ServerFailure(text = failure)
-        }
-        if (response != null) {
+            Column(modifier = Modifier.fillMaxWidth().padding(horizontal = UiConsts.RowInset)) {
+                Text(
+                    text = stringResource(R.string.mcp_toolbox_tool_arguments),
+                    style = MiuixTheme.textStyles.body2,
+                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                )
+                Spacer(Modifier.height(UiConsts.Space4))
+                TextField(
+                    value = arguments,
+                    onValueChange = onArgumentsChange,
+                    singleLine = false,
+                    modifier = Modifier.fillMaxWidth(),
+                    label = stringResource(R.string.mcp_toolbox_tool_arguments_placeholder),
+                    useLabelAsPlaceholder = true,
+                )
+            }
             Spacer(Modifier.height(UiConsts.Space8))
-            Text(
-                text =
-                    if (response.isError) {
-                        stringResource(R.string.mcp_toolbox_tool_error)
-                    } else {
-                        stringResource(R.string.mcp_toolbox_tool_ok)
-                    },
-                modifier = Modifier.padding(horizontal = UiConsts.Space4),
-                fontSize = UiType.Meta,
-                lineHeight = UiType.MetaLine,
-                color = if (response.isError) colors.error else successColor(),
-            )
-            Spacer(Modifier.height(UiConsts.Space6))
-            val blocks = projectMcpResult(response.result)
-            if (blocks.isEmpty()) {
-                MonospaceOutput(text = response.result.ifEmpty { emptyOutput })
-            } else {
-                ToolResultBlocks(blocks)
+            Button(
+                onClick = onCall,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = UiConsts.RowInset),
+                enabled = tool.isNotBlank() && !calling,
+                colors = ButtonDefaults.buttonColors(),
+                cornerRadius = UiConsts.ButtonHeight / 2,
+                minWidth = 0.dp,
+                minHeight = UiConsts.ButtonHeight,
+                insideMargin =
+                    PaddingValues(horizontal = UiConsts.ButtonPaddingHorizontal, vertical = 0.dp),
+            ) {
+                Text(
+                    text = stringResource(R.string.mcp_toolbox_tool_call),
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            if (failure != null) {
+                Spacer(Modifier.height(UiConsts.Space8))
+                ServerFailure(text = failure)
+            }
+            if (response != null) {
+                Spacer(Modifier.height(UiConsts.Space8))
+                Text(
+                    text =
+                        if (response.isError) {
+                            stringResource(R.string.mcp_toolbox_tool_error)
+                        } else {
+                            stringResource(R.string.mcp_toolbox_tool_ok)
+                        },
+                    modifier = Modifier.padding(horizontal = UiConsts.RowInset),
+                    fontSize = UiType.Meta,
+                    lineHeight = UiType.MetaLine,
+                    color = if (response.isError) colors.error else successColor(),
+                )
+                Spacer(Modifier.height(UiConsts.Space6))
+                val blocks = projectMcpResult(response.result)
+                if (blocks.isEmpty()) {
+                    MonospaceOutput(text = response.result.ifEmpty { emptyOutput })
+                } else {
+                    ToolResultBlocks(blocks)
+                }
             }
         }
     }
@@ -474,53 +375,24 @@ private fun ToolCard(
 
 /** Stream half: one switch plus pushed events; the local boolean is intent because the protocol has no "is open" read. */
 @Composable
-private fun StreamCard(
+private fun StreamSection(
     streaming: Boolean,
     events: List<String>,
     onStreamingChange: (Boolean) -> Unit,
 ) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        cornerRadius = UiConsts.SectionCorner,
-        insideMargin = PaddingValues(horizontal = 11.dp, vertical = 8.dp),
-        colors =
-            CardDefaults.defaultColors(
-                color = raisedSurface(),
-                contentColor = MiuixTheme.colorScheme.onSurface,
-            ),
-    ) {
-        BasicComponent(
-            title = stringResource(R.string.mcp_toolbox_stream_section),
-            startAction = {
-                Icon(
-                    imageVector = MiuixIcons.Link,
-                    contentDescription = null,
-                    modifier = Modifier.size(UiConsts.IconInline),
-                    tint = MiuixTheme.colorScheme.primary,
-                )
-            },
-            insideMargin = PaddingValues(0.dp),
-            endActions = { Text(text = events.size.toString(), maxLines = 1) },
-        )
-        Spacer(Modifier.height(UiConsts.Space8))
-
-        SwitchPreference(
+    CodexSection(stringResource(R.string.mcp_toolbox_stream_section)) {
+        CodexSwitchRow(
             title = stringResource(R.string.mcp_toolbox_stream_switch),
             summary = stringResource(R.string.mcp_toolbox_stream_switch_detail),
             checked = streaming,
             onCheckedChange = onStreamingChange,
         )
-        Spacer(Modifier.height(UiConsts.Space8))
         if (events.isEmpty()) {
-            Text(
-                text = stringResource(R.string.mcp_toolbox_stream_empty),
-                modifier = Modifier.padding(horizontal = UiConsts.Space4),
-                fontSize = UiType.Meta,
-                lineHeight = UiType.MetaLine,
-                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-            )
+            CodexRow(title = stringResource(R.string.mcp_toolbox_stream_empty), enabled = false)
         } else {
-            MonospaceOutput(text = events.joinToString("\n"))
+            Column(modifier = Modifier.fillMaxWidth().padding(vertical = UiConsts.Space8)) {
+                MonospaceOutput(text = events.joinToString("\n"))
+            }
         }
     }
 }
@@ -533,6 +405,7 @@ private fun ServerFailure(text: String) {
         text = text,
         modifier =
             Modifier.fillMaxWidth()
+                .padding(horizontal = UiConsts.RowInset)
                 .clip(OutputShape)
                 .background(colors.error.copy(alpha = 0.12f))
                 .padding(horizontal = UiConsts.Space8, vertical = UiConsts.Space6),
@@ -548,6 +421,7 @@ private fun MonospaceOutput(text: String) {
     Box(
         modifier =
             Modifier.fillMaxWidth()
+                .padding(horizontal = UiConsts.RowInset)
                 .clip(OutputShape)
                 .background(codeSurface())
                 .heightIn(min = OutputMinHeight, max = OutputMaxHeight)

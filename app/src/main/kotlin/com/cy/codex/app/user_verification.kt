@@ -1,15 +1,10 @@
 package com.cy.codex.app
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
@@ -19,11 +14,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.dp
+import androidx.compose.ui.text.style.TextOverflow
 import com.cy.codex.AppEvent
 import com.cy.codex.CatalogState
+import com.cy.codex.CodexPage
+import com.cy.codex.CodexRow
+import com.cy.codex.CodexRowDivider
+import com.cy.codex.CodexSection
+import com.cy.codex.CodexValueRow
 import com.cy.codex.R
 import com.cy.codex.UiConsts
 import com.cy.codex.UiType
@@ -31,23 +29,14 @@ import com.cy.codex.label
 import com.cy.codex.protocol.protocol.v2.UserVerificationEnrollResponse
 import com.cy.codex.protocol.protocol.v2.UserVerificationStatusResponse
 import com.cy.codex.protocol.protocol.v2.UserVerificationVerifyParams
-import com.cy.codex.raisedSurface
 import com.cy.codex.successColor
 import com.cy.codex.warningColor
-import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
-import top.yukonga.miuix.kmp.basic.Card
-import top.yukonga.miuix.kmp.basic.CardDefaults
-import top.yukonga.miuix.kmp.basic.HorizontalDivider
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.icon.MiuixIcons
-import top.yukonga.miuix.kmp.icon.extended.ChevronBackward
-import top.yukonga.miuix.kmp.icon.extended.Info
-import top.yukonga.miuix.kmp.icon.extended.Lock
-import top.yukonga.miuix.kmp.icon.extended.Ok
 import top.yukonga.miuix.kmp.icon.extended.Refresh
 import top.yukonga.miuix.kmp.theme.LocalDismissState
 import top.yukonga.miuix.kmp.theme.MiuixTheme
@@ -77,62 +66,36 @@ fun UserVerificationScreen(
         }
     var signing by remember { mutableStateOf(false) }
 
-    Column(modifier = modifier.fillMaxSize().background(colors.background)) {
-        BasicComponent(
-            title = stringResource(R.string.user_verification_page_title),
-            summary = subtitle,
-            startAction = {
-                if (onBack != null) {
-                    IconButton(
-                        onClick = onBack,
-                        minWidth = UiConsts.IconButtonSize,
-                        minHeight = UiConsts.IconButtonSize,
-                    ) {
-                        Icon(
-                            imageVector = MiuixIcons.ChevronBackward,
-                            contentDescription = stringResource(R.string.user_verification_page_back),
-                            modifier = Modifier.size(UiConsts.IconHeader),
-                            tint = MiuixTheme.colorScheme.primary,
-                        )
-                    }
-                }
-            },
-            endActions = {
-                IconButton(
-                    onClick = { onEvent(AppEvent.ReloadUserVerification) },
-                    minWidth = UiConsts.IconButtonSize,
-                    minHeight = UiConsts.IconButtonSize,
-                ) {
-                    Icon(
-                        imageVector = MiuixIcons.Refresh,
-                        contentDescription =
-                            stringResource(R.string.user_verification_page_refresh),
-                        modifier = Modifier.size(UiConsts.IconRefresh),
-                        tint = colors.primary,
-                    )
-                }
-            },
-        )
-        Column(
-            modifier =
-                Modifier.weight(1f)
-                    .fillMaxWidth()
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = UiConsts.ScreenMargin)
-                    .padding(bottom = UiConsts.PageBottomInset),
-            verticalArrangement = Arrangement.spacedBy(UiConsts.SectionGap),
-        ) {
-            UserVerificationStatusCard(shape = shape, status = status)
-            when (shape) {
-                UserVerificationShape.Unavailable -> UnavailableCard(onEvent = onEvent)
-                UserVerificationShape.NotEnrolled -> EnrollCard(onEvent = onEvent)
-                UserVerificationShape.Enrolled ->
-                    EnrolledCard(
-                        credential = catalog.userVerificationCredential,
-                        onEvent = onEvent,
-                        onSign = { signing = true },
-                    )
+    CodexPage(
+        title = stringResource(R.string.user_verification_page_title),
+        description = subtitle,
+        onBack = onBack,
+        modifier = modifier,
+        actions = {
+            IconButton(
+                onClick = { onEvent(AppEvent.ReloadUserVerification) },
+                minWidth = UiConsts.IconButtonSize,
+                minHeight = UiConsts.IconButtonSize,
+            ) {
+                Icon(
+                    imageVector = MiuixIcons.Refresh,
+                    contentDescription = stringResource(R.string.user_verification_page_refresh),
+                    modifier = Modifier.size(UiConsts.IconRefresh),
+                    tint = colors.primary,
+                )
             }
+        },
+    ) {
+        UserVerificationStatusSection(shape = shape, status = status)
+        when (shape) {
+            UserVerificationShape.Unavailable -> UnavailableSection(onEvent = onEvent)
+            UserVerificationShape.NotEnrolled -> EnrollSection(onEvent = onEvent)
+            UserVerificationShape.Enrolled ->
+                EnrolledSection(
+                    credential = catalog.userVerificationCredential,
+                    onEvent = onEvent,
+                    onSign = { signing = true },
+                )
         }
     }
 
@@ -183,7 +146,7 @@ private fun UserVerificationStatusResponse?.shape(): UserVerificationShape =
 
 // Credential id monospace: compared by eye against what the server holds.
 @Composable
-private fun UserVerificationStatusCard(
+private fun UserVerificationStatusSection(
     shape: UserVerificationShape,
     status: UserVerificationStatusResponse?,
 ) {
@@ -194,74 +157,39 @@ private fun UserVerificationStatusCard(
             UserVerificationShape.Unavailable -> warningColor()
             UserVerificationShape.NotEnrolled -> MiuixTheme.colorScheme.onSurface
         }
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        cornerRadius = UiConsts.SectionCorner,
-        insideMargin = PaddingValues(horizontal = 11.dp, vertical = 8.dp),
-        colors =
-            CardDefaults.defaultColors(
-                color = raisedSurface(),
-                contentColor = MiuixTheme.colorScheme.onSurface,
-            ),
-    ) {
-        BasicComponent(
-            title = stringResource(R.string.user_verification_page_status),
-            startAction = {
-                Icon(
-                    imageVector = MiuixIcons.Lock,
-                    contentDescription = null,
-                    modifier = Modifier.size(14.dp),
-                    tint = MiuixTheme.colorScheme.primary,
-                )
-            },
-        )
-
-        BasicComponent(
+    CodexSection(stringResource(R.string.user_verification_page_status)) {
+        CodexRow(
             title = stringResource(R.string.user_verification_page_state_label),
-            endActions = {
+            endAction = {
                 Text(
                     text = shape.label().ifEmpty { "—" },
-                    color = tint ?: MiuixTheme.colorScheme.onSurface,
-                    textAlign = TextAlign.End,
+                    fontSize = UiType.Value,
+                    lineHeight = UiType.ValueLine,
+                    color = tint,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
             },
         )
         if (shape == UserVerificationShape.Unavailable) {
-            HorizontalDivider(modifier = Modifier.padding(vertical = UiConsts.Space1))
-            BasicComponent(
+            CodexRowDivider()
+            CodexValueRow(
                 title = stringResource(R.string.user_verification_page_reason),
-                endActions = {
-                    Text(
-                        text = status?.unavailableReason?.label().orEmpty().ifEmpty { "—" },
-                        color = MiuixTheme.colorScheme.onSurface,
-                        textAlign = TextAlign.End,
-                    )
-                },
+                value = status?.unavailableReason?.label().orEmpty().ifEmpty { "—" },
+                monospace = false,
             )
-            HorizontalDivider(modifier = Modifier.padding(vertical = UiConsts.Space1))
-            BasicComponent(
+            CodexRowDivider()
+            CodexValueRow(
                 title = stringResource(R.string.user_verification_page_message),
-                endActions = {
-                    Text(
-                        text = status?.unavailableMessage.orEmpty().ifEmpty { "—" },
-                        color = MiuixTheme.colorScheme.onSurface,
-                        textAlign = TextAlign.End,
-                    )
-                },
+                value = status?.unavailableMessage.orEmpty().ifEmpty { "—" },
+                monospace = false,
             )
         }
         if (shape == UserVerificationShape.Enrolled) {
-            HorizontalDivider(modifier = Modifier.padding(vertical = UiConsts.Space1))
-            BasicComponent(
+            CodexRowDivider()
+            CodexValueRow(
                 title = stringResource(R.string.user_verification_page_credential_id),
-                endActions = {
-                    Text(
-                        text = status?.credentialId.orEmpty().ifEmpty { "—" },
-                        fontFamily = FontFamily.Monospace,
-                        color = MiuixTheme.colorScheme.onSurface,
-                        textAlign = TextAlign.End,
-                    )
-                },
+                value = status?.credentialId.orEmpty().ifEmpty { "—" },
             )
         }
     }
@@ -269,33 +197,18 @@ private fun UserVerificationStatusCard(
 
 // Enroll and sign are hidden: the capability lives on the device; re-read alone can change the answer.
 @Composable
-private fun UnavailableCard(onEvent: (AppEvent) -> Unit) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        cornerRadius = UiConsts.SectionCorner,
-        insideMargin = PaddingValues(horizontal = 11.dp, vertical = 8.dp),
-        colors =
-            CardDefaults.defaultColors(
-                color = raisedSurface(),
-                contentColor = MiuixTheme.colorScheme.onSurface,
-            ),
-    ) {
-        BasicComponent(
-            title = stringResource(R.string.user_verification_page_unavailable),
-            startAction = {
-                Icon(
-                    imageVector = MiuixIcons.Info,
-                    contentDescription = null,
-                    modifier = Modifier.size(14.dp),
-                    tint = MiuixTheme.colorScheme.primary,
-                )
-            },
-        )
-
+private fun UnavailableSection(onEvent: (AppEvent) -> Unit) {
+    CodexSection(stringResource(R.string.user_verification_page_unavailable)) {
         UserVerificationNote(stringResource(R.string.user_verification_page_unavailable_detail))
         Button(
             onClick = { onEvent(AppEvent.ReloadUserVerification) },
-            modifier = Modifier.fillMaxWidth().padding(horizontal = UiConsts.Space4),
+            modifier =
+                Modifier.fillMaxWidth()
+                    .padding(
+                        start = UiConsts.RowInset,
+                        end = UiConsts.RowInset,
+                        bottom = UiConsts.RowInset,
+                    ),
             enabled = true,
             colors = ButtonDefaults.buttonColors(),
         ) {
@@ -306,33 +219,18 @@ private fun UnavailableCard(onEvent: (AppEvent) -> Unit) {
 
 // `userVerification/enroll` mints or reuses a local credential; it signs, registers or prompts for nothing.
 @Composable
-private fun EnrollCard(onEvent: (AppEvent) -> Unit) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        cornerRadius = UiConsts.SectionCorner,
-        insideMargin = PaddingValues(horizontal = 11.dp, vertical = 8.dp),
-        colors =
-            CardDefaults.defaultColors(
-                color = raisedSurface(),
-                contentColor = MiuixTheme.colorScheme.onSurface,
-            ),
-    ) {
-        BasicComponent(
-            title = stringResource(R.string.user_verification_page_enroll),
-            startAction = {
-                Icon(
-                    imageVector = MiuixIcons.Ok,
-                    contentDescription = null,
-                    modifier = Modifier.size(14.dp),
-                    tint = MiuixTheme.colorScheme.primary,
-                )
-            },
-        )
-
+private fun EnrollSection(onEvent: (AppEvent) -> Unit) {
+    CodexSection(stringResource(R.string.user_verification_page_enroll)) {
         UserVerificationNote(stringResource(R.string.user_verification_page_enroll_note))
         Button(
             onClick = { onEvent(AppEvent.EnrollUserVerification) },
-            modifier = Modifier.fillMaxWidth().padding(horizontal = UiConsts.Space4),
+            modifier =
+                Modifier.fillMaxWidth()
+                    .padding(
+                        start = UiConsts.RowInset,
+                        end = UiConsts.RowInset,
+                        bottom = UiConsts.RowInset,
+                    ),
             enabled = true,
             colors = ButtonDefaults.buttonColorsPrimary(),
         ) {
@@ -343,66 +241,31 @@ private fun EnrollCard(onEvent: (AppEvent) -> Unit) {
 
 // Public metadata comes from the enroll answer; the status never carries it.
 @Composable
-private fun EnrolledCard(
+private fun EnrolledSection(
     credential: UserVerificationEnrollResponse?,
     onEvent: (AppEvent) -> Unit,
     onSign: () -> Unit,
 ) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        cornerRadius = UiConsts.SectionCorner,
-        insideMargin = PaddingValues(horizontal = 11.dp, vertical = 8.dp),
-        colors =
-            CardDefaults.defaultColors(
-                color = raisedSurface(),
-                contentColor = MiuixTheme.colorScheme.onSurface,
-            ),
-    ) {
-        BasicComponent(
-            title = stringResource(R.string.user_verification_page_credential),
-            startAction = {
-                Icon(
-                    imageVector = MiuixIcons.Lock,
-                    contentDescription = null,
-                    modifier = Modifier.size(14.dp),
-                    tint = MiuixTheme.colorScheme.primary,
-                )
-            },
-        )
-
+    CodexSection(stringResource(R.string.user_verification_page_credential)) {
         if (credential != null) {
             credential.algorithm
                 ?.takeIf { it.isNotBlank() }
                 ?.let { algorithm ->
-                    BasicComponent(
+                    CodexValueRow(
                         title = stringResource(R.string.user_verification_page_algorithm),
-                        endActions = {
-                            Text(
-                                text = algorithm.ifEmpty { "—" },
-                                fontFamily = FontFamily.Monospace,
-                                color = MiuixTheme.colorScheme.onSurface,
-                                textAlign = TextAlign.End,
-                            )
-                        },
+                        value = algorithm.ifEmpty { "—" },
                     )
-                    HorizontalDivider(modifier = Modifier.padding(vertical = UiConsts.Space1))
+                    CodexRowDivider()
                 }
             credential.publicKey
                 ?.takeIf { it.isNotBlank() }
                 ?.let { key ->
                     val ellipsis = stringResource(R.string.user_verification_page_ellipsis)
-                    BasicComponent(
+                    CodexValueRow(
                         title = stringResource(R.string.user_verification_page_public_key),
-                        endActions = {
-                            Text(
-                                text = truncated(key, ellipsis).ifEmpty { "—" },
-                                fontFamily = FontFamily.Monospace,
-                                color = MiuixTheme.colorScheme.onSurface,
-                                textAlign = TextAlign.End,
-                            )
-                        },
+                        value = truncated(key, ellipsis).ifEmpty { "—" },
                     )
-                    HorizontalDivider(modifier = Modifier.padding(vertical = UiConsts.Space1))
+                    CodexRowDivider()
                 }
             if (credential.algorithm.isNullOrBlank() || credential.publicKey.isNullOrBlank()) {
                 UserVerificationNote(
@@ -412,7 +275,13 @@ private fun EnrolledCard(
         }
         Button(
             onClick = onSign,
-            modifier = Modifier.fillMaxWidth().padding(horizontal = UiConsts.Space4),
+            modifier =
+                Modifier.fillMaxWidth()
+                    .padding(
+                        start = UiConsts.RowInset,
+                        end = UiConsts.RowInset,
+                        top = UiConsts.Space10,
+                    ),
             enabled = true,
             colors = ButtonDefaults.buttonColorsPrimary(),
         ) {
@@ -422,8 +291,8 @@ private fun EnrolledCard(
             modifier =
                 Modifier.fillMaxWidth()
                     .padding(
-                        start = UiConsts.Space4,
-                        end = UiConsts.Space4,
+                        start = UiConsts.RowInset,
+                        end = UiConsts.RowInset,
                         top = UiConsts.Space8,
                     ),
             verticalArrangement = Arrangement.spacedBy(UiConsts.Space8),
@@ -460,7 +329,7 @@ private fun UserVerificationNote(text: String) {
         text = text,
         modifier =
             Modifier.fillMaxWidth()
-                .padding(horizontal = UiConsts.Space4, vertical = UiConsts.Space6),
+                .padding(horizontal = UiConsts.RowInset, vertical = UiConsts.Space6),
         fontSize = UiType.Meta,
         lineHeight = UiType.MetaLine,
         color = MiuixTheme.colorScheme.onSurfaceVariantSummary,

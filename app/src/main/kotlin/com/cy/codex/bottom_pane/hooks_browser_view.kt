@@ -1,21 +1,15 @@
 package com.cy.codex.bottom_pane
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -28,24 +22,24 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.cy.codex.AppEvent
 import com.cy.codex.CatalogState
+import com.cy.codex.CodexCardGrid
+import com.cy.codex.CodexCatalogCard
+import com.cy.codex.CodexEmptyRow
+import com.cy.codex.CodexGroupTitle
+import com.cy.codex.CodexPage
+import com.cy.codex.CodexRow
+import com.cy.codex.CodexRowDivider
+import com.cy.codex.CodexSection
 import com.cy.codex.R
 import com.cy.codex.UiConsts
 import com.cy.codex.UiType
 import com.cy.codex.codeSurface
 import com.cy.codex.protocol.protocol.v2.HookMetadata
-import com.cy.codex.raisedSurface
-import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
-import top.yukonga.miuix.kmp.basic.Card
-import top.yukonga.miuix.kmp.basic.CardDefaults
-import top.yukonga.miuix.kmp.basic.HorizontalDivider
-import top.yukonga.miuix.kmp.basic.Icon
-import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.Switch
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.icon.MiuixIcons
-import top.yukonga.miuix.kmp.icon.extended.ChevronBackward
 import top.yukonga.miuix.kmp.icon.extended.ConvertFile
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
@@ -67,165 +61,51 @@ fun HooksScreen(
     // First-seen event order: the server's display order, not the alphabet.
     val groups = hooks.groupBy { it.eventName }
 
-    Column(modifier = modifier.fillMaxSize().background(colors.background)) {
-        BasicComponent(
-            title = stringResource(R.string.hooks_screen_title),
-            summary = stringResource(R.string.hooks_screen_subtitle, hooks.size, enabled, review),
-            startAction = { HooksBackButton(onBack) },
-            insideMargin = PaddingValues(14.dp, 10.dp),
-        )
-        Column(
-            modifier =
-                Modifier.weight(1f)
-                    .fillMaxWidth()
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = UiConsts.ScreenMargin)
-                    .padding(bottom = UiConsts.PageBottomInset),
-            verticalArrangement = Arrangement.spacedBy(UiConsts.SectionGap),
-        ) {
-            if (hooks.isEmpty()) {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    cornerRadius = UiConsts.SectionCorner,
-                    insideMargin = PaddingValues(horizontal = 11.dp, vertical = 8.dp),
-                    colors =
-                        CardDefaults.defaultColors(
-                            color = raisedSurface(),
-                            contentColor = MiuixTheme.colorScheme.onSurface,
-                        ),
-                ) {
-                    BasicComponent(
-                        title = stringResource(R.string.hooks_screen_section),
-                        startAction = {
-                            Icon(
-                                imageVector = MiuixIcons.ConvertFile,
-                                contentDescription = null,
-                                modifier = Modifier.size(UiConsts.IconInline),
-                                tint = MiuixTheme.colorScheme.primary,
-                            )
-                        },
-                        insideMargin = PaddingValues(0.dp),
-                    )
-                    Spacer(Modifier.height(UiConsts.Space8))
-
-                    Text(
-                        text = stringResource(R.string.hooks_screen_empty),
-                        modifier = Modifier.padding(vertical = UiConsts.Space4),
-                        fontSize = UiType.Meta,
-                        lineHeight = UiType.MetaLine,
-                        color = colors.disabledOnSurface,
-                    )
-                }
-            } else {
-                groups.forEach { (event, eventHooks) ->
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        cornerRadius = UiConsts.SectionCorner,
-                        insideMargin = PaddingValues(horizontal = 11.dp, vertical = 8.dp),
-                        colors =
-                            CardDefaults.defaultColors(
-                                color = raisedSurface(),
-                                contentColor = MiuixTheme.colorScheme.onSurface,
-                            ),
-                    ) {
-                        BasicComponent(
-                            title = event,
-                            startAction = {
-                                Icon(
-                                    imageVector = MiuixIcons.ConvertFile,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(UiConsts.IconInline),
-                                    tint = MiuixTheme.colorScheme.primary,
-                                )
-                            },
-                            insideMargin = PaddingValues(0.dp),
-                            endActions = { Text(text = eventHooks.size.toString(), maxLines = 1) },
-                        )
-                        Spacer(Modifier.height(UiConsts.Space8))
-
-                        eventHooks.forEachIndexed { index, hook ->
-                            if (index > 0) HooksDivider()
-                            HooksRow(hook, onEvent)
-                        }
+    CodexPage(
+        title = stringResource(R.string.hooks_screen_title),
+        description = stringResource(R.string.hooks_screen_subtitle, hooks.size, enabled, review),
+        onBack = onBack,
+        modifier = modifier,
+    ) {
+        if (hooks.isEmpty()) {
+            CodexEmptyRow(stringResource(R.string.hooks_screen_empty))
+        } else {
+            groups.forEach { (event, eventHooks) ->
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    CodexGroupTitle(event)
+                    CodexCardGrid(count = eventHooks.size) { index ->
+                        HooksCard(hook = eventHooks[index], onEvent = onEvent)
                     }
                 }
             }
-            // `hooks/list` reports problems on the same call; without this card a broken hook silently disappears.
-            if (catalog.hookWarnings.isNotEmpty() || catalog.hookErrors.isNotEmpty()) {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    cornerRadius = UiConsts.SectionCorner,
-                    insideMargin = PaddingValues(horizontal = 11.dp, vertical = 8.dp),
-                    colors =
-                        CardDefaults.defaultColors(
-                            color = raisedSurface(),
-                            contentColor = MiuixTheme.colorScheme.onSurface,
-                        ),
-                ) {
-                    BasicComponent(
-                        title = stringResource(R.string.hooks_screen_issues),
-                        startAction = {
-                            Icon(
-                                imageVector = MiuixIcons.ConvertFile,
-                                contentDescription = null,
-                                modifier = Modifier.size(UiConsts.IconInline),
-                                tint = MiuixTheme.colorScheme.primary,
-                            )
-                        },
-                        insideMargin = PaddingValues(0.dp),
+        }
+        // `hooks/list` reports problems on the same call; without this section a broken hook
+        // silently disappears.
+        if (catalog.hookWarnings.isNotEmpty() || catalog.hookErrors.isNotEmpty()) {
+            CodexSection(stringResource(R.string.hooks_screen_issues)) {
+                catalog.hookErrors.forEachIndexed { index, error ->
+                    if (index > 0) CodexRowDivider()
+                    HooksIssueRow(
+                        text = error.message.ifBlank { error.path },
+                        path = error.path.takeIf { it.isNotBlank() && it != error.message },
+                        tint = colors.error,
                     )
-                    Spacer(Modifier.height(UiConsts.Space8))
-
-                    catalog.hookErrors.forEachIndexed { index, error ->
-                        if (index > 0) HooksDivider()
-                        HooksIssueRow(
-                            text = error.message.ifBlank { error.path },
-                            path = error.path.takeIf { it.isNotBlank() && it != error.message },
-                            tint = colors.error,
-                        )
-                    }
-                    catalog.hookWarnings.forEachIndexed { index, warning ->
-                        if (index > 0 || catalog.hookErrors.isNotEmpty()) HooksDivider()
-                        HooksIssueRow(
-                            text = warning,
-                            path = null,
-                            tint = colors.onSurfaceVariantSummary,
-                        )
-                    }
+                }
+                catalog.hookWarnings.forEachIndexed { index, warning ->
+                    if (index > 0 || catalog.hookErrors.isNotEmpty()) CodexRowDivider()
+                    HooksIssueRow(
+                        text = warning,
+                        path = null,
+                        tint = colors.onSurfaceVariantSummary,
+                    )
                 }
             }
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                cornerRadius = UiConsts.SectionCorner,
-                insideMargin = PaddingValues(horizontal = 11.dp, vertical = 8.dp),
-                colors =
-                    CardDefaults.defaultColors(
-                        color = raisedSurface(),
-                        contentColor = MiuixTheme.colorScheme.onSurface,
-                    ),
-            ) {
-                BasicComponent(
-                    title = stringResource(R.string.hooks_screen_section),
-                    startAction = {
-                        Icon(
-                            imageVector = MiuixIcons.ConvertFile,
-                            contentDescription = null,
-                            modifier = Modifier.size(UiConsts.IconInline),
-                            tint = MiuixTheme.colorScheme.primary,
-                        )
-                    },
-                    insideMargin = PaddingValues(0.dp),
-                )
-                Spacer(Modifier.height(UiConsts.Space8))
-
-                Text(
-                    text = stringResource(R.string.hooks_screen_note),
-                    modifier = Modifier.padding(vertical = UiConsts.Space6),
-                    fontSize = UiType.Footnote,
-                    lineHeight = UiType.FootnoteLine,
-                    color = colors.disabledOnSurface,
-                )
-            }
+        }
+        CodexSection(stringResource(R.string.hooks_screen_section)) {
+            CodexRow(
+                title = stringResource(R.string.hooks_screen_note),
+                enabled = false,
+            )
         }
     }
 }
@@ -239,112 +119,97 @@ internal val HookMetadata.needsReview: Boolean
 private val HookMetadata.trusted: Boolean
     get() = trustStatus.equals("trusted", ignoreCase = true)
 
+/** One hook as a catalogue card: its key, its handler, its trust, and its switch. */
 @Composable
-private fun HooksRow(hook: HookMetadata, onEvent: (AppEvent) -> Unit) {
+private fun HooksCard(hook: HookMetadata, onEvent: (AppEvent) -> Unit) {
     val colors = MiuixTheme.colorScheme
     val blocked = hook.isManaged || hook.needsReview
-    Row(
-        modifier =
-            Modifier.fillMaxWidth()
-                .padding(horizontal = UiConsts.Space4, vertical = UiConsts.Space9),
-        verticalAlignment = Alignment.Top,
-    ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = hook.key,
-                    modifier = Modifier.weight(1f, fill = false),
-                    fontSize = UiType.RowTitle,
-                    lineHeight = UiType.RowTitleLine,
-                    fontWeight = FontWeight.Medium,
-                    color = colors.onSurface,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Spacer(Modifier.width(UiConsts.Space6))
-                if (hook.isManaged) {
-                    HooksChip(
-                        stringResource(R.string.hooks_screen_trust_managed),
-                        colors.disabledOnSurface,
-                    )
-                } else if (hook.needsReview) {
-                    HooksChip(stringResource(R.string.hooks_screen_trust_review), colors.error)
-                } else if (hook.trusted) {
-                    HooksChip(stringResource(R.string.hooks_screen_trust_trusted), colors.primary)
-                }
-            }
-            Spacer(Modifier.height(UiConsts.Space5))
-            Text(
-                text = hook.handlerSummary(),
-                modifier =
-                    Modifier.fillMaxWidth()
-                        .clip(HooksRowShape)
-                        .background(codeSurface())
-                        .padding(horizontal = UiConsts.Space7, vertical = UiConsts.Space5),
-                fontSize = UiType.Code,
-                lineHeight = UiType.CodeLine,
-                fontFamily = FontFamily.Monospace,
-                color = colors.onSurfaceVariantSummary,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
+    CodexCatalogCard(
+        title = hook.key,
+        description = hook.detailSummary().ifEmpty { null },
+        icon = MiuixIcons.ConvertFile,
+        enabled = !blocked,
+        trailing = {
+            Switch(
+                checked = hook.enabled,
+                enabled = !blocked,
+                // The write lands asynchronously; the card shows the server's answer, not a local guess.
+                onCheckedChange = { enabled -> onEvent(AppEvent.SetHookEnabled(hook.key, enabled)) },
             )
-            val detail = hook.detailSummary()
-            if (detail.isNotEmpty()) {
-                Spacer(Modifier.height(UiConsts.Space5))
+        },
+        footer = {
+            Column(modifier = Modifier.fillMaxWidth()) {
                 Text(
-                    text = detail,
-                    fontSize = UiType.Footnote,
-                    lineHeight = UiType.FootnoteLine,
+                    text = hook.handlerSummary(),
+                    modifier =
+                        Modifier.fillMaxWidth()
+                            .clip(HooksRowShape)
+                            .background(codeSurface())
+                            .padding(horizontal = UiConsts.Space8, vertical = UiConsts.Space5),
+                    fontSize = UiType.Code,
+                    lineHeight = UiType.CodeLine,
+                    fontFamily = FontFamily.Monospace,
                     color = colors.onSurfaceVariantSummary,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
-            }
-            when {
-                hook.isManaged -> {
-                    Spacer(Modifier.height(UiConsts.Space5))
-                    Text(
-                        text = stringResource(R.string.hooks_screen_managed_note),
-                        fontSize = UiType.Footnote,
-                        lineHeight = UiType.FootnoteLine,
-                        color = colors.disabledOnSurface,
-                    )
-                }
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(top = UiConsts.Space8),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    when {
+                        hook.isManaged -> HooksChip(
+                            stringResource(R.string.hooks_screen_trust_managed),
+                            colors.disabledOnSurface,
+                        )
 
-                hook.needsReview && hook.currentHash.isNotBlank() -> {
-                    Spacer(Modifier.height(UiConsts.Space7))
-                    Button(
-                        onClick = { onEvent(AppEvent.SetHookTrust(hook.key, hook.currentHash)) },
-                        modifier = Modifier,
-                        enabled = true,
-                        colors = ButtonDefaults.buttonColorsPrimary(),
-                        cornerRadius = UiConsts.ButtonHeightCompact / 2,
-                        minWidth = 0.dp,
-                        minHeight = UiConsts.ButtonHeightCompact,
-                        insideMargin =
-                            PaddingValues(
-                                horizontal = UiConsts.ButtonPaddingHorizontalCompact,
-                                vertical = 0.dp,
-                            ),
-                    ) {
-                        Text(
-                            text = stringResource(R.string.hooks_screen_trust_action),
-                            maxLines = 1,
-                            softWrap = false,
+                        hook.needsReview -> HooksChip(
+                            stringResource(R.string.hooks_screen_trust_review),
+                            colors.error,
+                        )
+
+                        hook.trusted -> HooksChip(
+                            stringResource(R.string.hooks_screen_trust_trusted),
+                            colors.primary,
+                        )
+                    }
+                    Spacer(Modifier.weight(1f))
+                    when {
+                        hook.isManaged -> Text(
+                            text = stringResource(R.string.hooks_screen_managed_note),
+                            fontSize = UiType.Footnote,
+                            lineHeight = UiType.FootnoteLine,
+                            color = colors.disabledOnSurface,
+                            maxLines = 2,
                             overflow = TextOverflow.Ellipsis,
                         )
+
+                        hook.needsReview && hook.currentHash.isNotBlank() -> Button(
+                            onClick = { onEvent(AppEvent.SetHookTrust(hook.key, hook.currentHash)) },
+                            colors = ButtonDefaults.buttonColorsPrimary(),
+                            cornerRadius = UiConsts.ButtonHeightCompact / 2,
+                            minWidth = 0.dp,
+                            minHeight = UiConsts.ButtonHeightCompact,
+                            insideMargin =
+                                PaddingValues(
+                                    horizontal = UiConsts.ButtonPaddingHorizontalCompact,
+                                    vertical = 0.dp,
+                                ),
+                        ) {
+                            Text(
+                                text = stringResource(R.string.hooks_screen_trust_action),
+                                fontSize = UiType.Action,
+                                lineHeight = UiType.ActionLine,
+                                maxLines = 1,
+                                softWrap = false,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
                     }
                 }
             }
-        }
-        Spacer(Modifier.width(UiConsts.Space10))
-        Switch(
-            checked = hook.enabled,
-            enabled = !blocked,
-            // The write lands asynchronously; the row shows the server's answer, not a local guess.
-            onCheckedChange = { enabled -> onEvent(AppEvent.SetHookEnabled(hook.key, enabled)) },
-        )
-    }
+        },
+    )
 }
 
 /** The handler line under a hook's key: a shell command, an MCP tool, or the bare handler type. */
@@ -370,7 +235,7 @@ private fun HooksIssueRow(text: String, path: String?, tint: Color) {
     Column(
         modifier =
             Modifier.fillMaxWidth()
-                .padding(horizontal = UiConsts.Space4, vertical = UiConsts.Space7)
+                .padding(horizontal = UiConsts.RowInset, vertical = UiConsts.Space7)
     ) {
         Text(
             text = text,
@@ -394,23 +259,6 @@ private fun HooksIssueRow(text: String, path: String?, tint: Color) {
 }
 
 @Composable
-private fun HooksBackButton(onBack: (() -> Unit)?) {
-    if (onBack == null) return
-    IconButton(
-        onClick = onBack,
-        minWidth = UiConsts.IconButtonSize,
-        minHeight = UiConsts.IconButtonSize,
-    ) {
-        Icon(
-            imageVector = MiuixIcons.ChevronBackward,
-            contentDescription = stringResource(R.string.hooks_screen_back),
-            modifier = Modifier.size(UiConsts.IconHeader),
-            tint = MiuixTheme.colorScheme.primary,
-        )
-    }
-}
-
-@Composable
 private fun HooksChip(text: String, tint: Color) {
     Box(
         modifier =
@@ -429,9 +277,5 @@ private fun HooksChip(text: String, tint: Color) {
         )
     }
 }
-
-@Composable
-private fun HooksDivider() =
-    HorizontalDivider(modifier = Modifier.padding(vertical = UiConsts.Space1))
 
 private val HooksRowShape = RoundedCornerShape(UiConsts.RowCorner)

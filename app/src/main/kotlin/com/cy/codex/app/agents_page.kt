@@ -6,13 +6,13 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -24,19 +24,28 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import com.cy.codex.AppEvent
 import com.cy.codex.CodexApp
+import com.cy.codex.CodexCardGrid
+import com.cy.codex.CodexCatalogCard
+import com.cy.codex.CodexEmptyRow
+import com.cy.codex.CodexPage
+import com.cy.codex.CodexRow
+import com.cy.codex.CodexSearchField
 import com.cy.codex.R
 import com.cy.codex.UiConsts
 import com.cy.codex.UiType
 import com.cy.codex.canReadThreadUsage
+import com.cy.codex.label
 import com.cy.codex.protocol.protocol.v2.AgentRunStatus
 import com.cy.codex.protocol.protocol.v2.ThreadStatus
 import com.cy.codex.protocol.protocol.v2.ThreadUsage
@@ -45,18 +54,19 @@ import com.cy.codex.sheetSideMargin
 import com.cy.codex.status.formatCreditMicros
 import com.cy.codex.status.formatEstimatedUsdMicros
 import com.cy.codex.status.formatTokens
+import com.cy.codex.statusDotColor
+import com.cy.codex.usageColor
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
-import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
-import top.yukonga.miuix.kmp.basic.Icon
-import top.yukonga.miuix.kmp.basic.IconButton
+import top.yukonga.miuix.kmp.basic.LinearProgressIndicator
+import top.yukonga.miuix.kmp.basic.ProgressIndicatorDefaults
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.icon.MiuixIcons
-import top.yukonga.miuix.kmp.icon.extended.ChevronBackward
+import top.yukonga.miuix.kmp.icon.extended.Community
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.window.WindowBottomSheet
 
@@ -145,88 +155,72 @@ fun AgentsScreen(
         }
     }
 
-    Column(modifier = modifier.fillMaxSize().background(colors.background)) {
-        BasicComponent(
-            title = stringResource(R.string.agents_overview_title),
-            summary =
-                stringResource(
-                    R.string.agents_screen_subtitle,
-                    entries.size,
-                    formatTokens(totalTokens),
-                ),
-            startAction = { AgentsBackButton(onBack) },
+    CodexPage(
+        title = stringResource(R.string.agents_overview_title),
+        description =
+            stringResource(
+                R.string.agents_screen_subtitle,
+                entries.size,
+                formatTokens(totalTokens),
+            ),
+        onBack = onBack,
+        modifier = modifier,
+    ) {
+        CodexSearchField(
+            value = query,
+            onValueChange = { query = it },
+            placeholder = stringResource(R.string.agents_screen_filter),
         )
-        Column(
-            modifier =
-                Modifier.weight(1f)
-                    .fillMaxWidth()
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = UiConsts.ScreenMargin)
-                    .padding(bottom = UiConsts.PageBottomInset),
-            verticalArrangement = Arrangement.spacedBy(UiConsts.Space6),
-        ) {
-            TextField(
-                value = query,
-                onValueChange = { query = it },
-                modifier = Modifier.fillMaxWidth(),
-                label = stringResource(R.string.agents_screen_filter),
-                useLabelAsPlaceholder = true,
-                singleLine = true,
-            )
-            Spacer(Modifier.height(UiConsts.Space2))
-            if (filtered.isEmpty()) {
-                Text(
-                    text =
-                        stringResource(
-                            if (entries.isEmpty()) R.string.agents_overview_empty
-                            else R.string.agent_picker_empty
-                        ),
-                    modifier = Modifier.fillMaxWidth().padding(vertical = UiConsts.Space20),
-                    fontSize = UiType.Body,
-                    lineHeight = UiType.BodyLine,
-                    color = colors.onSurfaceVariantSummary,
+        if (filtered.isEmpty()) {
+            CodexEmptyRow(
+                stringResource(
+                    if (entries.isEmpty()) R.string.agents_overview_empty
+                    else R.string.agent_picker_empty
                 )
-            } else {
-                filtered.forEach { agent ->
-                    AgentRosterRow(
-                        entry = agent,
-                        selected = agent.threadId == (app.selectedAgent ?: session.threadId),
-                        onClick = { app.openAgentSummary(agent.threadId) },
-                        tokens = agent.tokens,
-                        busiestTokens = busiest,
-                    )
-                    AgentActions(
-                        agent = agent,
-                        onStop = { app.onAppEvent(AppEvent.StopThreadTurn(agent.threadId)) },
-                        onUsage = if (canReadUsage) {
-                            { usageTarget = if (usageTarget == agent.threadId) null else agent.threadId }
-                        } else null,
-                        onRename = {
-                            renameTarget = agent
-                            renameText = agent.name
-                        },
-                        onArchive = { archiveTarget = agent },
-                    )
-                    if (usageTarget == agent.threadId && canReadUsage) {
-                        val value = estimate?.let {
-                            listOfNotNull(
-                                stringResource(
-                                    R.string.account_screen_credits_balance,
-                                    formatCreditMicros(it.estimatedUsageCreditsMicros),
-                                ),
-                                formatEstimatedUsdMicros(it.estimatedUsageUsdMicros),
-                            ).joinToString(" · ")
-                        } ?: if (estimateFailed) {
-                            stringResource(R.string.session_status_load_failed)
+            )
+        } else {
+            CodexCardGrid(count = filtered.size) { index ->
+                val agent = filtered[index]
+                AgentCard(
+                    agent = agent,
+                    selected = agent.threadId == (app.selectedAgent ?: session.threadId),
+                    tokens = agent.tokens,
+                    busiestTokens = busiest,
+                    usage =
+                        if (usageTarget == agent.threadId && canReadUsage) {
+                            estimate?.let {
+                                listOfNotNull(
+                                    stringResource(
+                                        R.string.account_screen_credits_balance,
+                                        formatCreditMicros(it.estimatedUsageCreditsMicros),
+                                    ),
+                                    formatEstimatedUsdMicros(it.estimatedUsageUsdMicros),
+                                ).joinToString(" · ")
+                            } ?: if (estimateFailed) {
+                                stringResource(R.string.session_status_load_failed)
+                            } else {
+                                "…"
+                            }
                         } else {
-                            "…"
-                        }
-                        BasicComponent(
-                            title = stringResource(R.string.session_status_estimated_usage),
-                            summary = value,
-                        )
-                    }
-                }
+                            null
+                        },
+                    onClick = { app.openAgentSummary(agent.threadId) },
+                    onStop = { app.onAppEvent(AppEvent.StopThreadTurn(agent.threadId)) },
+                    onUsage =
+                        if (canReadUsage) {
+                            {
+                                usageTarget =
+                                    if (usageTarget == agent.threadId) null else agent.threadId
+                            }
+                        } else {
+                            null
+                        },
+                    onRename = {
+                        renameTarget = agent
+                        renameText = agent.name
+                    },
+                    onArchive = { archiveTarget = agent },
+                )
             }
         }
     }
@@ -356,6 +350,127 @@ private fun AgentRosterEntry.canStop(): Boolean =
         else -> status == AgentRunStatus.Running || status == AgentRunStatus.PendingInit
     }
 
+/** One roster entry as a catalogue card: its liveness on the header, what it can be told under it. */
+@Composable
+private fun AgentCard(
+    agent: AgentRosterEntry,
+    selected: Boolean,
+    tokens: Int,
+    busiestTokens: Int,
+    usage: String?,
+    onClick: () -> Unit,
+    onStop: () -> Unit,
+    onUsage: (() -> Unit)?,
+    onRename: () -> Unit,
+    onArchive: () -> Unit,
+) {
+    val colors = MiuixTheme.colorScheme
+    CodexCatalogCard(
+        title = agent.name,
+        description =
+            agent.task?.takeIf { it.isNotBlank() }
+                ?: stringResource(R.string.agents_overview_no_task),
+        icon = MiuixIcons.Community,
+        onClick = onClick,
+        trailing = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                StatusDot(tone = agent.tone())
+                Spacer(Modifier.width(UiConsts.Space6))
+                RoleTag(role = agent.role)
+                Spacer(Modifier.width(UiConsts.Space6))
+                Text(
+                    text = agent.statusLabel(),
+                    fontSize = UiType.Footnote,
+                    lineHeight = UiType.FootnoteLine,
+                    color = statusDotColor(agent.tone()),
+                    maxLines = 1,
+                )
+                if (selected) {
+                    Spacer(Modifier.width(UiConsts.Space6))
+                    Text(
+                        text = stringResource(R.string.agents_overview_current),
+                        modifier =
+                            Modifier.clip(RoundedCornerShape(UiConsts.BadgeCorner))
+                                .background(colors.primary.copy(alpha = 0.14f))
+                                .padding(horizontal = UiConsts.Space5, vertical = UiConsts.Space1),
+                        fontSize = UiType.Badge,
+                        lineHeight = UiType.BadgeLine,
+                        fontWeight = FontWeight.Medium,
+                        color = colors.primary,
+                        maxLines = 1,
+                    )
+                }
+            }
+        },
+        footer = {
+            val meta = listOfNotNull(agent.model, agent.effort?.label(), agent.itemId)
+            if (meta.isNotEmpty()) {
+                Text(
+                    text = meta.joinToString(" · "),
+                    fontSize = UiType.Footnote,
+                    lineHeight = UiType.FootnoteLine,
+                    color = colors.onSurfaceVariantSummary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            if (busiestTokens > 0) {
+                Spacer(Modifier.height(UiConsts.Space8))
+                AgentTokenMeter(tokens = tokens, busiestTokens = busiestTokens)
+            }
+            AgentActions(
+                agent = agent,
+                onStop = onStop,
+                onUsage = onUsage,
+                onRename = onRename,
+                onArchive = onArchive,
+            )
+            if (usage != null) {
+                CodexRow(
+                    title = stringResource(R.string.session_status_estimated_usage),
+                    summary = usage,
+                )
+            }
+        },
+    )
+}
+
+/** The agent's share of the page's tokens, against the busiest one on screen. */
+@Composable
+private fun AgentTokenMeter(tokens: Int, busiestTokens: Int) {
+    val colors = MiuixTheme.colorScheme
+    val fraction = (tokens.toFloat() / busiestTokens.toFloat()).coerceIn(0f, 1f)
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(UiConsts.Space8),
+    ) {
+        LinearProgressIndicator(
+            modifier = Modifier.weight(1f),
+            progress = fraction,
+            colors =
+                ProgressIndicatorDefaults.progressIndicatorColors(
+                    foregroundColor = usageColor(fraction),
+                    backgroundColor = colors.onSurface.copy(alpha = 0.08f),
+                ),
+            height = UiConsts.ProgressHeightRow,
+        )
+        Text(
+            text =
+                if (tokens > 0) {
+                    formatTokens(tokens.toLong())
+                } else {
+                    stringResource(R.string.agents_overview_tokens_none)
+                },
+            modifier = Modifier.width(UiConsts.TokenValueWidth),
+            fontSize = UiType.Footnote,
+            lineHeight = UiType.FootnoteLine,
+            color = colors.onSurfaceVariantSummary,
+            maxLines = 1,
+        )
+    }
+}
+
 @Composable
 private fun AgentActions(
     agent: AgentRosterEntry,
@@ -369,7 +484,7 @@ private fun AgentActions(
         modifier =
             Modifier.fillMaxWidth()
                 .horizontalScroll(rememberScrollState())
-                .padding(start = UiConsts.Space16, bottom = UiConsts.Space4),
+                .padding(bottom = UiConsts.Space4),
         horizontalArrangement = Arrangement.spacedBy(UiConsts.Space6),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -445,21 +560,5 @@ private fun SheetActions(
         ) {
             Text(text = confirm, maxLines = 1)
         }
-    }
-}
-
-@Composable
-private fun AgentsBackButton(onBack: () -> Unit) {
-    IconButton(
-        onClick = onBack,
-        minWidth = UiConsts.IconButtonSize,
-        minHeight = UiConsts.IconButtonSize,
-    ) {
-        Icon(
-            imageVector = MiuixIcons.ChevronBackward,
-            contentDescription = stringResource(R.string.agents_screen_back),
-            modifier = Modifier.size(UiConsts.IconHeader),
-            tint = MiuixTheme.colorScheme.primary,
-        )
     }
 }

@@ -1,7 +1,6 @@
 package com.cy.codex.chatwidget
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -9,7 +8,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -42,6 +40,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.cy.codex.AppEvent
 import com.cy.codex.CatalogState
+import com.cy.codex.CodexCardGrid
+import com.cy.codex.CodexCatalogCard
+import com.cy.codex.CodexEmptyRow
+import com.cy.codex.CodexGroupTitle
+import com.cy.codex.CodexPage
+import com.cy.codex.CodexSearchField
+import com.cy.codex.CodexSection
+import com.cy.codex.CodexSwitchRow
 import com.cy.codex.PluginInstallAuthFlow
 import com.cy.codex.R
 import com.cy.codex.UiConsts
@@ -59,20 +65,15 @@ import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.HorizontalDivider
 import top.yukonga.miuix.kmp.basic.Icon
-import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.Switch
 import top.yukonga.miuix.kmp.basic.Text
-import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.icon.MiuixIcons
-import top.yukonga.miuix.kmp.icon.extended.ChevronBackward
 import top.yukonga.miuix.kmp.icon.extended.Community
 import top.yukonga.miuix.kmp.icon.extended.Info
 import top.yukonga.miuix.kmp.icon.extended.Link
 import top.yukonga.miuix.kmp.icon.extended.Store
 import top.yukonga.miuix.kmp.icon.extended.Tasks
 import top.yukonga.miuix.kmp.preference.ArrowPreference
-import top.yukonga.miuix.kmp.preference.SwitchPreference
-import top.yukonga.miuix.kmp.squircle.squircleSurface
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.window.WindowBottomSheet
 
@@ -141,141 +142,100 @@ fun PluginsScreen(
         }
     }
 
-    Column(modifier = modifier.fillMaxSize().background(colors.background)) {
-        BasicComponent(
-            title = stringResource(R.string.plugins_screen_title),
-            summary =
-                stringResource(R.string.plugins_screen_subtitle, installed.size, marketplace.size),
-            startAction = { PluginsBackButton(onBack) },
-            insideMargin = PaddingValues(14.dp, 10.dp),
+    CodexPage(
+        title = stringResource(R.string.plugins_screen_title),
+        description = stringResource(R.string.plugins_screen_subtitle, installed.size, marketplace.size),
+        onBack = onBack,
+        modifier = modifier,
+    ) {
+        // The catalogue is searched server-side, so the field stands above the groups rather than
+        // in a card of its own.
+        CodexSearchField(
+            value = term,
+            onValueChange = ::search,
+            placeholder = stringResource(R.string.plugins_screen_search),
         )
-        Column(
-            modifier =
-                Modifier.fillMaxWidth()
-                    .padding(horizontal = UiConsts.ScreenMargin)
-                    .padding(bottom = UiConsts.Space10)
-        ) {
-            TextField(
-                value = term,
-                onValueChange = ::search,
-                label = (stringResource(R.string.plugins_screen_search)).orEmpty(),
-                useLabelAsPlaceholder = true,
-                singleLine = true,
-            )
-            SwitchPreference(
+        CodexSection {
+            CodexSwitchRow(
                 title = stringResource(R.string.plugins_screen_installed_only),
                 summary = stringResource(R.string.plugins_screen_installed_only_detail),
                 checked = installedOnly,
                 onCheckedChange = ::setInstalledOnly,
             )
-            Row(
-                modifier =
-                    Modifier.fillMaxWidth()
-                        .horizontalScroll(rememberScrollState())
-                        .padding(top = UiConsts.Space6),
-                horizontalArrangement = Arrangement.spacedBy(UiConsts.Space6),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                val tabs = listOf<String?>(null) + catalog.marketplaces.map { it.name }
-                tabs.forEach { tab ->
-                    Button(
-                        onClick = {
-                            selectedMarketplace = tab
-                            results = null
+        }
+        Row(
+            modifier =
+                Modifier.fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(UiConsts.Space6),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            val tabs = listOf<String?>(null) + catalog.marketplaces.map { it.name }
+            tabs.forEach { tab ->
+                Button(
+                    onClick = {
+                        selectedMarketplace = tab
+                        results = null
+                    },
+                    colors =
+                        if (selectedMarketplace == tab) {
+                            ButtonDefaults.buttonColorsPrimary()
+                        } else {
+                            ButtonDefaults.buttonColors()
                         },
-                        colors =
-                            if (selectedMarketplace == tab) {
-                                ButtonDefaults.buttonColorsPrimary()
-                            } else {
-                                ButtonDefaults.buttonColors()
-                            },
-                        cornerRadius = UiConsts.ButtonHeightCompact / 2,
-                        minHeight = UiConsts.ButtonHeightCompact,
-                        insideMargin =
-                            PaddingValues(
-                                horizontal = UiConsts.ButtonPaddingHorizontalCompact,
-                                vertical = 0.dp,
-                            ),
-                    ) {
-                        Text(
-                            text = tab ?: stringResource(R.string.plugins_screen_all),
-                            fontSize = UiType.Action,
-                            lineHeight = UiType.ActionLine,
-                            fontWeight = FontWeight.Medium,
-                            maxLines = 1,
-                            softWrap = false,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
+                    cornerRadius = UiConsts.ButtonHeightCompact / 2,
+                    minHeight = UiConsts.ButtonHeightCompact,
+                    insideMargin =
+                        PaddingValues(
+                            horizontal = UiConsts.ButtonPaddingHorizontalCompact,
+                            vertical = 0.dp,
+                        ),
+                ) {
+                    Text(
+                        text = tab ?: stringResource(R.string.plugins_screen_all),
+                        fontSize = UiType.Action,
+                        lineHeight = UiType.ActionLine,
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 1,
+                        softWrap = false,
+                        overflow = TextOverflow.Ellipsis,
+                    )
                 }
             }
         }
-        Column(
-            modifier =
-                Modifier.weight(1f)
-                    .fillMaxWidth()
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = UiConsts.ScreenMargin)
-                    .padding(bottom = UiConsts.PageBottomInset),
-            verticalArrangement = Arrangement.spacedBy(UiConsts.SectionGap),
-        ) {
-            error?.let { Text(it, color = colors.error, fontSize = UiType.Meta) }
-            MarketplacesCard(catalog.marketplaces, onEvent, onAdd = { addingMarketplace = true })
-            if (plugins.isEmpty()) {
-                Card(
-                    cornerRadius = UiConsts.SectionCorner,
-                    insideMargin = PaddingValues(horizontal = 11.dp, vertical = 8.dp),
-                ) {
-                    BasicComponent(
-                        title = stringResource(R.string.plugins_screen_title),
-                        startAction = {
-                            Icon(
-                                imageVector = MiuixIcons.Store,
-                                contentDescription = null,
-                                modifier = Modifier.size(14.dp),
-                                tint = MiuixTheme.colorScheme.primary,
-                            )
-                        },
-                    )
-
-                    Text(
-                        text = stringResource(R.string.plugins_screen_empty),
-                        modifier = Modifier.padding(vertical = UiConsts.Space4),
-                        fontSize = UiType.Meta,
-                        lineHeight = UiType.MetaLine,
-                        color = colors.disabledOnSurface,
-                    )
-                }
-            } else {
-                PluginGroupCard(
-                    title = stringResource(R.string.plugins_screen_installed),
-                    emptyText = stringResource(R.string.plugins_screen_installed_empty),
-                    onEvent = onEvent,
-                    entries = installed,
-                    onOpen = { plugin ->
-                        scope.launch {
-                            client
-                                .readPlugin(plugin.name, plugin.marketplace.ifEmpty { null })
-                                .onSuccess { detail = it }
-                                .onFailure { error = it.message }
-                        }
-                    },
-                )
-                PluginGroupCard(
-                    title = stringResource(R.string.plugins_screen_marketplace),
-                    emptyText = stringResource(R.string.plugins_screen_marketplace_empty),
-                    onEvent = onEvent,
-                    entries = marketplace,
-                    onOpen = { plugin ->
-                        scope.launch {
-                            client
-                                .readPlugin(plugin.name, plugin.marketplace.ifEmpty { null })
-                                .onSuccess { detail = it }
-                                .onFailure { error = it.message }
-                        }
-                    },
-                )
-            }
+        error?.let { Text(it, color = MiuixTheme.colorScheme.error, fontSize = UiType.Meta) }
+        MarketplacesCard(catalog.marketplaces, onEvent, onAdd = { addingMarketplace = true })
+        if (plugins.isEmpty()) {
+            CodexEmptyRow(stringResource(R.string.plugins_screen_empty))
+        } else {
+            PluginGroup(
+                title = stringResource(R.string.plugins_screen_installed),
+                emptyText = stringResource(R.string.plugins_screen_installed_empty),
+                onEvent = onEvent,
+                entries = installed,
+                onOpen = { plugin ->
+                    scope.launch {
+                        client
+                            .readPlugin(plugin.name, plugin.marketplace.ifEmpty { null })
+                            .onSuccess { detail = it }
+                            .onFailure { error = it.message }
+                    }
+                },
+            )
+            PluginGroup(
+                title = stringResource(R.string.plugins_screen_marketplace),
+                emptyText = stringResource(R.string.plugins_screen_marketplace_empty),
+                onEvent = onEvent,
+                entries = marketplace,
+                onOpen = { plugin ->
+                    scope.launch {
+                        client
+                            .readPlugin(plugin.name, plugin.marketplace.ifEmpty { null })
+                            .onSuccess { detail = it }
+                            .onFailure { error = it.message }
+                    }
+                },
+            )
         }
     }
 
@@ -508,92 +468,100 @@ private fun PluginInstallAuthSheet(
     }
 }
 
+/** One catalogue group: its title, then its plugins as cards. */
 @Composable
-private fun PluginGroupCard(
+private fun PluginGroup(
     title: String,
     emptyText: String,
     onEvent: (AppEvent) -> Unit,
     entries: List<PluginEntry>,
     onOpen: (PluginEntry) -> Unit,
 ) {
-    val colors = MiuixTheme.colorScheme
-    Card(
-        cornerRadius = UiConsts.SectionCorner,
-        insideMargin = PaddingValues(horizontal = 11.dp, vertical = 8.dp),
-    ) {
-        BasicComponent(
-            title = title,
-            startAction = {
-                Icon(
-                    imageVector = MiuixIcons.Store,
-                    contentDescription = null,
-                    modifier = Modifier.size(14.dp),
-                    tint = MiuixTheme.colorScheme.primary,
-                )
-            },
-            endActions = {
-                Text(
-                    text = entries.size.toString(),
-                    fontSize = 13.sp,
-                    lineHeight = 18.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = MiuixTheme.colorScheme.onSurface,
-                    maxLines = 1,
-                )
-            },
-        )
-
+    Column(modifier = Modifier.fillMaxWidth()) {
+        CodexGroupTitle(title)
         if (entries.isEmpty()) {
             Text(
                 text = emptyText,
-                modifier = Modifier.padding(vertical = UiConsts.Space4),
                 fontSize = UiType.Meta,
                 lineHeight = UiType.MetaLine,
-                color = colors.disabledOnSurface,
+                color = MiuixTheme.colorScheme.disabledOnSurface,
             )
         } else {
-            entries.forEachIndexed { index, plugin ->
-                if (index > 0) PluginsDivider()
-                PluginRow(plugin, onEvent, onOpen)
+            CodexCardGrid(count = entries.size) { index ->
+                PluginCard(entries[index], onEvent, onOpen)
             }
         }
     }
 }
 
+/** One plugin as a catalogue card: its name, what it does, its version and its install state. */
 @Composable
-private fun PluginRow(
+private fun PluginCard(
     plugin: PluginEntry,
     onEvent: (AppEvent) -> Unit,
     onOpen: (PluginEntry) -> Unit,
 ) {
     val colors = MiuixTheme.colorScheme
-    Row(
-        modifier =
-            Modifier.fillMaxWidth()
-                .squircleSurface(color = Color.Transparent, cornerRadius = UiConsts.RowCorner)
-                .combinedClickable(onClick = { onOpen(plugin) })
-                .padding(horizontal = UiConsts.Space4, vertical = UiConsts.Space8),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = plugin.name,
-                fontSize = UiType.RowTitle,
-                lineHeight = UiType.RowTitleLine,
-                fontWeight = FontWeight.Medium,
-                color = colors.onSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            if (plugin.description.isNotEmpty()) {
-                Text(
-                    text = plugin.description,
-                    fontSize = UiType.Meta,
-                    lineHeight = UiType.MetaLine,
-                    color = colors.onSurfaceVariantSummary,
-                )
+    CodexCatalogCard(
+        title = plugin.name,
+        description = plugin.description.ifEmpty { null },
+        icon = MiuixIcons.Store,
+        enabled = plugin.installed,
+        onClick = { onOpen(plugin) },
+        trailing = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (plugin.installed) {
+                    Switch(
+                        checked = plugin.enabled,
+                        onCheckedChange = { onEvent(AppEvent.SetPluginEnabled(plugin.id, it)) },
+                    )
+                    Spacer(Modifier.width(UiConsts.Space8))
+                }
+                Button(
+                    onClick = {
+                        if (plugin.installed) {
+                            onEvent(AppEvent.UninstallPlugin(plugin.id))
+                        } else {
+                            onEvent(
+                                AppEvent.InstallPlugin(
+                                    plugin.name,
+                                    plugin.marketplace.ifEmpty { null },
+                                )
+                            )
+                        }
+                    },
+                    colors =
+                        if (plugin.installed) {
+                            ButtonDefaults.buttonColors()
+                        } else {
+                            ButtonDefaults.buttonColorsPrimary()
+                        },
+                    cornerRadius = UiConsts.ButtonHeightCompact / 2,
+                    minHeight = UiConsts.ButtonHeightCompact,
+                    insideMargin =
+                        PaddingValues(
+                            horizontal = UiConsts.ButtonPaddingHorizontalCompact,
+                            vertical = 0.dp,
+                        ),
+                ) {
+                    Text(
+                        text =
+                            if (plugin.installed) {
+                                stringResource(R.string.plugins_screen_installed)
+                            } else {
+                                stringResource(R.string.plugins_screen_install)
+                            },
+                        fontSize = UiType.Action,
+                        lineHeight = UiType.ActionLine,
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 1,
+                        softWrap = false,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
-            Spacer(Modifier.height(UiConsts.Space3))
+        },
+        footer = {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     text =
@@ -603,7 +571,7 @@ private fun PluginRow(
                     fontSize = UiType.Caption,
                     lineHeight = UiType.CaptionLine,
                     fontFamily = FontFamily.Monospace,
-                    color = colors.disabledOnSurface,
+                    color = colors.onSurfaceVariantSummary,
                 )
                 Spacer(Modifier.width(UiConsts.Space6))
                 PluginsChip(
@@ -614,72 +582,8 @@ private fun PluginRow(
                     tint = colors.onSurfaceVariantSummary,
                 )
             }
-        }
-        Spacer(Modifier.width(UiConsts.Space10))
-        if (plugin.installed) {
-            Switch(
-                checked = plugin.enabled,
-                onCheckedChange = { onEvent(AppEvent.SetPluginEnabled(plugin.id, it)) },
-            )
-            Spacer(Modifier.width(UiConsts.Space8))
-        }
-        Button(
-            onClick = {
-                if (plugin.installed) {
-                    onEvent(AppEvent.UninstallPlugin(plugin.id))
-                } else {
-                    onEvent(
-                        AppEvent.InstallPlugin(plugin.name, plugin.marketplace.ifEmpty { null })
-                    )
-                }
-            },
-            colors =
-                if (plugin.installed) {
-                    ButtonDefaults.buttonColors()
-                } else {
-                    ButtonDefaults.buttonColorsPrimary()
-                },
-            cornerRadius = UiConsts.ButtonHeightCompact / 2,
-            minHeight = UiConsts.ButtonHeightCompact,
-            insideMargin =
-                PaddingValues(
-                    horizontal = UiConsts.ButtonPaddingHorizontalCompact,
-                    vertical = 0.dp,
-                ),
-        ) {
-            Text(
-                text =
-                    if (plugin.installed) {
-                        stringResource(R.string.plugins_screen_installed)
-                    } else {
-                        stringResource(R.string.plugins_screen_install)
-                    },
-                fontSize = UiType.Action,
-                lineHeight = UiType.ActionLine,
-                fontWeight = FontWeight.Medium,
-                maxLines = 1,
-                softWrap = false,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-    }
-}
-
-@Composable
-private fun PluginsBackButton(onBack: (() -> Unit)?) {
-    if (onBack == null) return
-    IconButton(
-        onClick = onBack,
-        minWidth = UiConsts.IconButtonSize,
-        minHeight = UiConsts.IconButtonSize,
-    ) {
-        Icon(
-            imageVector = MiuixIcons.ChevronBackward,
-            contentDescription = stringResource(R.string.plugins_screen_back),
-            modifier = Modifier.size(UiConsts.IconHeader),
-            tint = MiuixTheme.colorScheme.primary,
-        )
-    }
+        },
+    )
 }
 
 @Composable
@@ -700,10 +604,6 @@ private fun PluginsChip(text: String, tint: Color) {
         )
     }
 }
-
-@Composable
-private fun PluginsDivider() =
-    HorizontalDivider(modifier = Modifier.padding(vertical = UiConsts.Space1))
 
 /** One plugin's manifest: plugin/read, plus plugin/skill/read for one skill's body. */
 @Composable

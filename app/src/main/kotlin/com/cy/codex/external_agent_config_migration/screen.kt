@@ -1,25 +1,20 @@
 package com.cy.codex.external_agent_config_migration
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.ReadOnlyComposable
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -30,9 +25,16 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.cy.codex.AppEvent
 import com.cy.codex.CatalogState
+import com.cy.codex.CodexCardGrid
+import com.cy.codex.CodexCatalogCard
+import com.cy.codex.CodexGroupTitle
+import com.cy.codex.CodexPage
+import com.cy.codex.CodexRow
+import com.cy.codex.CodexRowDivider
+import com.cy.codex.CodexSection
+import com.cy.codex.CodexValue
 import com.cy.codex.ImportProgress
 import com.cy.codex.R
 import com.cy.codex.UiConsts
@@ -44,24 +46,17 @@ import com.cy.codex.raisedSurface
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
-import top.yukonga.miuix.kmp.basic.Card
-import top.yukonga.miuix.kmp.basic.HorizontalDivider
 import top.yukonga.miuix.kmp.basic.Icon
-import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.LinearProgressIndicator
 import top.yukonga.miuix.kmp.basic.ProgressIndicatorDefaults
+import top.yukonga.miuix.kmp.basic.Switch
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.icon.MiuixIcons
-import top.yukonga.miuix.kmp.icon.extended.ChevronBackward
 import top.yukonga.miuix.kmp.icon.extended.ConvertFile
 import top.yukonga.miuix.kmp.icon.extended.Info
 import top.yukonga.miuix.kmp.icon.extended.Notes
-import top.yukonga.miuix.kmp.icon.extended.Stopwatch
-import top.yukonga.miuix.kmp.icon.extended.Tasks
-import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.squircle.squircleBackground
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
@@ -78,7 +73,6 @@ fun ExternalAgentImportScreen(
     onBack: (() -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
-    val colors = MiuixTheme.colorScheme
     val items = catalog.externalAgentConfig
     val histories = catalog.externalAgentImportHistories
     // No per-item id on the wire: selection is keyed by type, scope and description.
@@ -93,52 +87,26 @@ fun ExternalAgentImportScreen(
     // One event covers both reads; a failed detection still leaves the history on screen.
     LaunchedEffect(Unit) { onEvent(AppEvent.ReloadExternalAgentConfig) }
 
-    Column(modifier = modifier.fillMaxSize().background(colors.background)) {
-        BasicComponent(
-            title = stringResource(R.string.migration_screen_title),
-            summary = stringResource(R.string.migration_screen_subtitle, items.size),
-            startAction = {
-                if (onBack != null) {
-                    IconButton(
-                        onClick = onBack,
-                        minWidth = UiConsts.IconButtonSize,
-                        minHeight = UiConsts.IconButtonSize,
-                    ) {
-                        Icon(
-                            imageVector = MiuixIcons.ChevronBackward,
-                            contentDescription = stringResource(R.string.migration_screen_back),
-                            modifier = Modifier.size(UiConsts.IconHeader),
-                            tint = MiuixTheme.colorScheme.primary,
-                        )
-                    }
-                }
-            },
-            insideMargin = PaddingValues(14.dp, 10.dp),
+    CodexPage(
+        title = stringResource(R.string.migration_screen_title),
+        description = stringResource(R.string.migration_screen_subtitle, items.size),
+        onBack = onBack,
+        modifier = modifier,
+    ) {
+        MigrationDetectSection(onEvent = onEvent)
+        MigrationSelectionSection(
+            items = items,
+            selected = selection,
+            selectedCount = selected.size,
+            onToggle = { key, checked -> selection[key] = checked },
+            onSelectAll = { value -> items.forEach { selection[it.selectionKey()] = value } },
+            onImport = { onEvent(AppEvent.ImportExternalAgentConfig(selected)) },
         )
-        Column(
-            modifier =
-                Modifier.weight(1f)
-                    .fillMaxWidth()
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = UiConsts.ScreenMargin)
-                    .padding(bottom = UiConsts.PageBottomInset),
-            verticalArrangement = Arrangement.spacedBy(UiConsts.SectionGap),
-        ) {
-            MigrationDetectCard(onEvent = onEvent)
-            MigrationSelectionCard(
-                items = items,
-                selected = selection,
-                selectedCount = selected.size,
-                onToggle = { key, checked -> selection[key] = checked },
-                onSelectAll = { value -> items.forEach { selection[it.selectionKey()] = value } },
-                onImport = { onEvent(AppEvent.ImportExternalAgentConfig(selected)) },
-            )
-            val progress = catalog.externalAgentImport
-            if (progress != null) {
-                MigrationProgressCard(progress = progress)
-            }
-            MigrationHistoryCard(histories = histories)
+        val progress = catalog.externalAgentImport
+        if (progress != null) {
+            MigrationProgressSection(progress = progress)
         }
+        MigrationHistorySection(histories = histories)
     }
 }
 
@@ -150,28 +118,17 @@ private fun ExternalAgentConfigMigrationItem.selectionKey(): String =
 /** The detect step; its button is secondary — a read that writes nothing must not compete with
  * the import for the page's one filled pill. */
 @Composable
-private fun MigrationDetectCard(onEvent: (AppEvent) -> Unit) {
+private fun MigrationDetectSection(onEvent: (AppEvent) -> Unit) {
     val colors = MiuixTheme.colorScheme
-    Card(
-        cornerRadius = UiConsts.SectionCorner,
-        insideMargin = PaddingValues(horizontal = 11.dp, vertical = 8.dp),
-    ) {
-        BasicComponent(
-            title = stringResource(R.string.migration_detect_section),
-            startAction = {
-                Icon(
-                    imageVector = MiuixIcons.ConvertFile,
-                    contentDescription = null,
-                    modifier = Modifier.size(14.dp),
-                    tint = MiuixTheme.colorScheme.primary,
-                )
-            },
-        )
-
+    CodexSection(stringResource(R.string.migration_detect_section)) {
         Row(
             modifier =
                 Modifier.fillMaxWidth()
-                    .padding(horizontal = UiConsts.Space4)
+                    .padding(
+                        start = UiConsts.RowInset,
+                        end = UiConsts.RowInset,
+                        top = UiConsts.Space8,
+                    )
                     .clip(remember { RoundedCornerShape(UiConsts.CornerRow) })
                     .background(codeSurface())
                     .padding(horizontal = UiConsts.Space8, vertical = UiConsts.Space7),
@@ -192,10 +149,16 @@ private fun MigrationDetectCard(onEvent: (AppEvent) -> Unit) {
                 color = colors.onSurfaceVariantSummary,
             )
         }
-        Spacer(Modifier.height(UiConsts.Space10))
         Button(
             onClick = { onEvent(AppEvent.DetectExternalAgentConfig) },
-            modifier = Modifier.fillMaxWidth().padding(horizontal = UiConsts.Space4),
+            modifier =
+                Modifier.fillMaxWidth()
+                    .padding(
+                        start = UiConsts.RowInset,
+                        end = UiConsts.RowInset,
+                        top = UiConsts.Space10,
+                        bottom = UiConsts.Space8,
+                    ),
             colors = ButtonDefaults.buttonColors(),
             cornerRadius = UiConsts.ButtonHeight / 2,
             minHeight = UiConsts.ButtonHeight,
@@ -218,7 +181,7 @@ private fun MigrationDetectCard(onEvent: (AppEvent) -> Unit) {
 /** The choose step; draft selection lives here, not in [CatalogState] — a half-made choice is not
  * server state, and the progress card below vanishes with the run. */
 @Composable
-private fun MigrationSelectionCard(
+private fun MigrationSelectionSection(
     items: List<ExternalAgentConfigMigrationItem>,
     selected: Map<String, Boolean>,
     selectedCount: Int,
@@ -227,79 +190,54 @@ private fun MigrationSelectionCard(
     onImport: () -> Unit,
 ) {
     val colors = MiuixTheme.colorScheme
-    Card(
-        cornerRadius = UiConsts.SectionCorner,
-        insideMargin = PaddingValues(horizontal = 11.dp, vertical = 8.dp),
-    ) {
-        BasicComponent(
-            title = stringResource(R.string.migration_selection_section),
-            startAction = {
-                Icon(
-                    imageVector = MiuixIcons.Tasks,
-                    contentDescription = null,
-                    modifier = Modifier.size(14.dp),
-                    tint = MiuixTheme.colorScheme.primary,
-                )
-            },
-            endActions = {
-                (items.size.toString())?.let {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        CodexGroupTitle(stringResource(R.string.migration_selection_section))
+        if (items.isEmpty()) {
+            CodexSection {
+                Column(
+                    modifier =
+                        Modifier.fillMaxWidth()
+                            .padding(vertical = UiConsts.Space24, horizontal = UiConsts.Space16),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Box(
+                        modifier =
+                            Modifier.size(UiConsts.IconBoxLarge)
+                                .squircleBackground(
+                                    color = raisedSurface(),
+                                    cornerRadius = UiConsts.CornerCard,
+                                ),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            imageVector = MiuixIcons.ConvertFile,
+                            contentDescription = null,
+                            modifier = Modifier.size(UiConsts.IconHeader),
+                            tint = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                        )
+                    }
+                    Spacer(Modifier.height(UiConsts.Space12))
                     Text(
-                        text = it,
-                        fontSize = 13.sp,
-                        lineHeight = 18.sp,
+                        text = stringResource(R.string.migration_selection_empty),
+                        fontSize = UiType.RowTitle,
+                        lineHeight = UiType.RowTitleLine,
                         fontWeight = FontWeight.Medium,
                         color = MiuixTheme.colorScheme.onSurface,
-                        maxLines = 1,
+                        textAlign = TextAlign.Center,
+                    )
+                    Spacer(Modifier.height(UiConsts.Space4))
+                    Text(
+                        text = stringResource(R.string.migration_selection_empty_detail),
+                        fontSize = UiType.Meta,
+                        lineHeight = UiType.MetaLine,
+                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                        textAlign = TextAlign.Center,
                     )
                 }
-            },
-        )
-
-        if (items.isEmpty()) {
-            Column(
-                modifier =
-                    Modifier.fillMaxWidth()
-                        .padding(vertical = UiConsts.Space24, horizontal = UiConsts.Space16),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                Box(
-                    modifier =
-                        Modifier.size(UiConsts.IconBoxLarge)
-                            .squircleBackground(
-                                color = raisedSurface(),
-                                cornerRadius = UiConsts.CornerCard,
-                            ),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        imageVector = MiuixIcons.ConvertFile,
-                        contentDescription = null,
-                        modifier = Modifier.size(UiConsts.IconHeader),
-                        tint = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                    )
-                }
-                Spacer(Modifier.height(UiConsts.Space12))
-                Text(
-                    text = stringResource(R.string.migration_selection_empty),
-                    fontSize = UiType.RowTitle,
-                    lineHeight = UiType.RowTitleLine,
-                    fontWeight = FontWeight.Medium,
-                    color = MiuixTheme.colorScheme.onSurface,
-                    textAlign = TextAlign.Center,
-                )
-                Spacer(Modifier.height(UiConsts.Space4))
-                Text(
-                    text = stringResource(R.string.migration_selection_empty_detail),
-                    fontSize = UiType.Meta,
-                    lineHeight = UiType.MetaLine,
-                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                    textAlign = TextAlign.Center,
-                )
             }
-        }
-        if (items.isNotEmpty()) {
+        } else {
             Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = UiConsts.Space4),
+                modifier = Modifier.fillMaxWidth().padding(bottom = UiConsts.Space6),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Button(
@@ -356,29 +294,18 @@ private fun MigrationSelectionCard(
                     maxLines = 1,
                 )
             }
-            Spacer(Modifier.height(UiConsts.Space6))
+            CodexCardGrid(count = items.size) { index ->
+                val item = items[index]
+                MigrationItemCard(
+                    item = item,
+                    checked = selected[item.selectionKey()] == true,
+                    onToggle = { onToggle(item.selectionKey(), it) },
+                )
+            }
         }
-        items.forEachIndexed { index, item ->
-            if (index > 0)
-                HorizontalDivider(modifier = Modifier.padding(vertical = UiConsts.Space1))
-            val kind = migrationItemTypeLabel(item.itemType)
-            val subtitle =
-                when {
-                    item.description.isBlank() -> item.cwd ?: kind
-                    item.cwd == null -> "$kind · ${item.description}"
-                    else -> "$kind · ${item.description} · ${item.cwd}"
-                }
-            SwitchPreference(
-                title = item.description.ifBlank { kind },
-                summary = subtitle,
-                checked = selected[item.selectionKey()] == true,
-                onCheckedChange = { onToggle(item.selectionKey(), it) },
-            )
-        }
-        Spacer(Modifier.height(UiConsts.Space10))
         Button(
             onClick = onImport,
-            modifier = Modifier.fillMaxWidth().padding(horizontal = UiConsts.Space4),
+            modifier = Modifier.fillMaxWidth().padding(top = UiConsts.SectionGap),
             enabled = selectedCount > 0,
             colors = ButtonDefaults.buttonColorsPrimary(),
             cornerRadius = UiConsts.ButtonHeight / 2,
@@ -397,6 +324,31 @@ private fun MigrationSelectionCard(
             )
         }
     }
+}
+
+/** One detected item as a catalogue card: what it is, where it came from, and its pick. */
+@Composable
+private fun MigrationItemCard(
+    item: ExternalAgentConfigMigrationItem,
+    checked: Boolean,
+    onToggle: (Boolean) -> Unit,
+) {
+    val kind = migrationItemTypeLabel(item.itemType)
+    val subtitle =
+        when {
+            item.description.isBlank() -> item.cwd ?: kind
+            item.cwd == null -> "$kind · ${item.description}"
+            else -> "$kind · ${item.description} · ${item.cwd}"
+        }
+    CodexCatalogCard(
+        title = item.description.ifBlank { kind },
+        description = subtitle,
+        icon = MiuixIcons.ConvertFile,
+        onClick = { onToggle(!checked) },
+        trailing = {
+            Switch(checked = checked, onCheckedChange = onToggle)
+        },
+    )
 }
 
 @Composable
@@ -418,9 +370,9 @@ private fun migrationItemTypeLabel(type: String): String =
         }
     )
 
-/** Composed only while an import runs, so the card's presence *is* the running state. */
+/** Composed only while an import runs, so the section's presence *is* the running state. */
 @Composable
-private fun MigrationProgressCard(progress: ImportProgress) {
+private fun MigrationProgressSection(progress: ImportProgress) {
     val colors = MiuixTheme.colorScheme
     // Zero total = unknown size; clamp instead of divide, or the bar draws NaN.
     val fraction =
@@ -429,51 +381,28 @@ private fun MigrationProgressCard(progress: ImportProgress) {
         } else {
             0f
         }
-    Card(
-        cornerRadius = UiConsts.SectionCorner,
-        insideMargin = PaddingValues(horizontal = 11.dp, vertical = 8.dp),
-    ) {
-        BasicComponent(
-            title = stringResource(R.string.migration_progress_section),
-            startAction = {
-                Icon(
-                    imageVector = MiuixIcons.Stopwatch,
-                    contentDescription = null,
-                    modifier = Modifier.size(14.dp),
-                    tint = MiuixTheme.colorScheme.primary,
-                )
-            },
-            endActions = {
-                (stringResource(
+    CodexSection(stringResource(R.string.migration_progress_section)) {
+        CodexRow(
+            title = progress.label,
+            endAction = {
+                CodexValue(
+                    stringResource(
                         R.string.migration_progress_count,
                         progress.imported,
                         progress.total,
-                    ))
-                    ?.let {
-                        Text(
-                            text = it,
-                            fontSize = 13.sp,
-                            lineHeight = 18.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = MiuixTheme.colorScheme.onSurface,
-                            maxLines = 1,
-                        )
-                    }
+                    )
+                )
             },
         )
-
-        Text(
-            text = progress.label,
-            modifier = Modifier.padding(horizontal = UiConsts.Space4),
-            fontSize = UiType.Meta,
-            lineHeight = UiType.MetaLine,
-            color = colors.onSurface,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        Spacer(Modifier.height(UiConsts.Space8))
         LinearProgressIndicator(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = UiConsts.Space4),
+            modifier =
+                Modifier.fillMaxWidth()
+                    .padding(
+                        start = UiConsts.RowInset,
+                        end = UiConsts.RowInset,
+                        top = UiConsts.Space8,
+                        bottom = UiConsts.Space8,
+                    ),
             progress = fraction,
             colors =
                 ProgressIndicatorDefaults.progressIndicatorColors(
@@ -487,36 +416,9 @@ private fun MigrationProgressCard(progress: ImportProgress) {
 
 /** The audit trail, newest first; read-only — history is the server's record of a completed import. */
 @Composable
-private fun MigrationHistoryCard(histories: List<ExternalAgentConfigImportHistory>) {
+private fun MigrationHistorySection(histories: List<ExternalAgentConfigImportHistory>) {
     val ordered = remember(histories) { histories.sortedByDescending { it.completedAtMs } }
-    Card(
-        cornerRadius = UiConsts.SectionCorner,
-        insideMargin = PaddingValues(horizontal = 11.dp, vertical = 8.dp),
-    ) {
-        BasicComponent(
-            title = stringResource(R.string.migration_history_section),
-            startAction = {
-                Icon(
-                    imageVector = MiuixIcons.Notes,
-                    contentDescription = null,
-                    modifier = Modifier.size(14.dp),
-                    tint = MiuixTheme.colorScheme.primary,
-                )
-            },
-            endActions = {
-                (histories.size.toString())?.let {
-                    Text(
-                        text = it,
-                        fontSize = 13.sp,
-                        lineHeight = 18.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = MiuixTheme.colorScheme.onSurface,
-                        maxLines = 1,
-                    )
-                }
-            },
-        )
-
+    CodexSection(stringResource(R.string.migration_history_section)) {
         if (ordered.isEmpty()) {
             Column(
                 modifier =
@@ -560,8 +462,7 @@ private fun MigrationHistoryCard(histories: List<ExternalAgentConfigImportHistor
             }
         }
         ordered.forEachIndexed { index, history ->
-            if (index > 0)
-                HorizontalDivider(modifier = Modifier.padding(vertical = UiConsts.Space1))
+            if (index > 0) CodexRowDivider()
             MigrationHistoryRow(history = history)
         }
     }
@@ -571,46 +472,22 @@ private fun MigrationHistoryCard(histories: List<ExternalAgentConfigImportHistor
  * the epoch ms it arrives as. */
 @Composable
 private fun MigrationHistoryRow(history: ExternalAgentConfigImportHistory) {
-    val colors = MiuixTheme.colorScheme
     val stamp = migrationTimeLabel(history.completedAtMs)
-    Column(
-        modifier =
-            Modifier.fillMaxWidth()
-                .padding(horizontal = UiConsts.Space4, vertical = UiConsts.Space8)
-    ) {
-        Text(
-            text = history.providerId ?: history.importId,
-            fontSize = UiType.RowTitle,
-            lineHeight = UiType.RowTitleLine,
-            fontWeight = FontWeight.Medium,
-            color = colors.onSurface,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-        )
-        Spacer(Modifier.height(UiConsts.Space2))
-        Text(
-            text =
-                stringResource(
-                    R.string.migration_history_counts,
-                    history.successes.size,
-                    history.failures.size,
-                ),
-            fontSize = UiType.Meta,
-            lineHeight = UiType.MetaLine,
-            color = colors.onSurfaceVariantSummary,
-            maxLines = 1,
-        )
-        if (stamp != null) {
-            Spacer(Modifier.height(UiConsts.Space2))
-            Text(
-                text = stamp,
-                fontSize = UiType.Meta,
-                lineHeight = UiType.MetaLine,
-                color = colors.onSurfaceVariantSummary,
-                maxLines = 1,
-            )
-        }
-    }
+    CodexRow(
+        title = history.providerId ?: history.importId,
+        summary =
+            stringResource(
+                R.string.migration_history_counts,
+                history.successes.size,
+                history.failures.size,
+            ),
+        endAction =
+            if (stamp == null) {
+                null
+            } else {
+                { CodexValue(stamp, monospace = false) }
+            },
+    )
 }
 
 /** Null for `0` — the wire default, which would print 1970. */

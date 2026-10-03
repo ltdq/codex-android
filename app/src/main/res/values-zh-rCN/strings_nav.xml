@@ -9,10 +9,16 @@
 
     <!-- NavMenuPanel.kt -->
     <string name="nav_menu_title">Codex</string>
+    <string name="nav_menu_home_group">会话</string>
+    <string name="nav_menu_conversations_group">对话</string>
+    <string name="nav_menu_all_conversations">全部对话</string>
+    <string name="nav_menu_archived_group">已归档</string>
+    <string name="nav_menu_archived_conversations">已归档的聊天</string>
+    <string name="nav_menu_extensions_group">扩展</string>
+    <string name="nav_menu_shares_group">共享</string>
+    <string name="nav_menu_settings_group">常规</string>
     <string name="nav_menu_account_group">账户与数据</string>
-
-    <!-- SessionToolsPanel.kt -->
-    <string name="sidebar_library_header">会话</string>
-    <string name="session_tools_open">打开会话面板</string>
-    <string name="session_tools_close">关闭会话面板</string>
+    <string name="nav_menu_search">搜索</string>
+    <string name="nav_menu_no_matches">无匹配项</string>
+    <string name="nav_menu_empty">暂无内容</string>
 </resources>

@@ -1,6 +1,5 @@
 package com.cy.codex.chatwidget
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -32,22 +31,21 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
+import com.cy.codex.CodexCatalogCard
+import com.cy.codex.CodexEmptyRow
+import com.cy.codex.CodexPage
 import com.cy.codex.R
 import com.cy.codex.UiConsts
 import com.cy.codex.UiType
 import com.cy.codex.protocol.AppServerClient
 import com.cy.codex.protocol.protocol.v2.FileMetadata
 import com.cy.codex.runtime.CodexApplication
-import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Icon
-import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.LinearProgressIndicator
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.icon.MiuixIcons
-import top.yukonga.miuix.kmp.icon.extended.ChevronBackward
 import top.yukonga.miuix.kmp.icon.extended.ChevronForward
 import top.yukonga.miuix.kmp.icon.extended.ConvertFile
 import top.yukonga.miuix.kmp.icon.extended.FolderFill
@@ -101,18 +99,17 @@ fun WorkspacePickerScreen(
         }
     val crumbs = remember(currentPath) { workspaceCrumbs(currentPath) }
 
-    Column(modifier = modifier.fillMaxSize().background(colors.background)) {
-        BasicComponent(
-            title = stringResource(R.string.workspace_picker_title),
-            summary = currentPath,
-            startAction = { WorkspaceBackButton(onBack) },
-            insideMargin = PaddingValues(14.dp, 10.dp),
-        )
+    CodexPage(
+        title = stringResource(R.string.workspace_picker_title),
+        description = currentPath,
+        onBack = onBack,
+        modifier = modifier,
+        scroll = false,
+    ) {
         Row(
             modifier =
                 Modifier.fillMaxWidth()
-                    .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = UiConsts.Space12, vertical = UiConsts.Space2),
+                    .horizontalScroll(rememberScrollState()),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             crumbs.forEachIndexed { index, crumb ->
@@ -155,16 +152,12 @@ fun WorkspacePickerScreen(
                 else ->
                     LazyColumn(
                         modifier = Modifier.fillMaxSize(),
-                        contentPadding =
-                            PaddingValues(
-                                horizontal = UiConsts.ScreenMargin,
-                                vertical = UiConsts.Space6,
-                            ),
-                        verticalArrangement = Arrangement.spacedBy(UiConsts.Space2),
+                        contentPadding = PaddingValues(vertical = UiConsts.Space6),
+                        verticalArrangement = Arrangement.spacedBy(UiConsts.CatalogGap),
                     ) {
                         if (currentPath != "/") {
                             item(key = "..") {
-                                WorkspaceEntryRow(
+                                WorkspaceEntryCard(
                                     name = "..",
                                     detail = stringResource(R.string.workspace_picker_parent),
                                     isDirectory = true,
@@ -173,7 +166,7 @@ fun WorkspacePickerScreen(
                             }
                         }
                         items(directories, key = { it.path }) { entry ->
-                            WorkspaceEntryRow(
+                            WorkspaceEntryCard(
                                 name = entry.name,
                                 detail = entry.path,
                                 isDirectory = true,
@@ -181,7 +174,7 @@ fun WorkspacePickerScreen(
                             )
                         }
                         items(files, key = { it.path }) { entry ->
-                            WorkspaceEntryRow(
+                            WorkspaceEntryCard(
                                 name = entry.name,
                                 detail = workspaceFormatSize(entry.size),
                                 isDirectory = false,
@@ -190,22 +183,14 @@ fun WorkspacePickerScreen(
                         }
                         if (directories.isEmpty() && files.isEmpty()) {
                             item(key = "empty") {
-                                Text(
-                                    text = stringResource(R.string.workspace_picker_empty),
-                                    modifier = Modifier.padding(vertical = UiConsts.Space10),
-                                    fontSize = UiType.Meta,
-                                    lineHeight = UiType.MetaLine,
-                                    color = colors.disabledOnSurface,
-                                )
+                                CodexEmptyRow(stringResource(R.string.workspace_picker_empty))
                             }
                         }
                     }
             }
         }
         Row(
-            modifier =
-                Modifier.fillMaxWidth()
-                    .padding(horizontal = UiConsts.ScreenMargin, vertical = UiConsts.Space12),
+            modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(modifier = Modifier.weight(1f)) {
@@ -247,67 +232,34 @@ fun WorkspacePickerScreen(
     }
 }
 
+/** One entry as a catalogue card: a directory opens, a file is only listed. */
 @Composable
-private fun WorkspaceEntryRow(
+private fun WorkspaceEntryCard(
     name: String,
     detail: String,
     isDirectory: Boolean,
     onClick: (() -> Unit)?,
 ) {
-    val colors = MiuixTheme.colorScheme
-    Row(
-        modifier =
-            Modifier.fillMaxWidth()
-                .then(
-                    if (onClick != null) {
-                        Modifier.squircleSurface(
-                                color = Color.Transparent,
-                                cornerRadius = UiConsts.RowCorner,
-                            )
-                            .combinedClickable(onClick = onClick)
-                    } else {
-                        Modifier
-                    }
-                )
-                .padding(horizontal = UiConsts.Space8, vertical = UiConsts.Space9),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Icon(
-            imageVector = if (isDirectory) MiuixIcons.FolderFill else MiuixIcons.ConvertFile,
-            contentDescription = null,
-            modifier = Modifier.size(UiConsts.IconRow),
-            tint = if (isDirectory) colors.primary else colors.onSurfaceVariantSummary,
-        )
-        Spacer(Modifier.width(UiConsts.Space9))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = name,
-                fontSize = UiType.RowTitle,
-                lineHeight = UiType.RowTitleLine,
-                fontWeight = if (isDirectory) FontWeight.Medium else FontWeight.Normal,
-                color = if (onClick != null) colors.onSurface else colors.onSurfaceVariantSummary,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                text = detail,
-                fontSize = UiType.Caption,
-                lineHeight = UiType.CaptionLine,
-                fontFamily = FontFamily.Monospace,
-                color = colors.disabledOnSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-        if (onClick != null) {
-            Icon(
-                imageVector = MiuixIcons.ChevronForward,
-                contentDescription = null,
-                modifier = Modifier.size(UiConsts.IconChevron),
-                tint = colors.onSurfaceVariantSummary,
-            )
-        }
-    }
+    CodexCatalogCard(
+        title = name,
+        description = detail,
+        icon = if (isDirectory) MiuixIcons.FolderFill else MiuixIcons.ConvertFile,
+        enabled = isDirectory,
+        onClick = onClick,
+        trailing =
+            if (isDirectory) {
+                {
+                    Icon(
+                        imageVector = MiuixIcons.ChevronForward,
+                        contentDescription = null,
+                        modifier = Modifier.size(UiConsts.IconChevron),
+                        tint = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    )
+                }
+            } else {
+                null
+            },
+    )
 }
 
 @Composable
@@ -333,22 +285,6 @@ private fun WorkspaceMessage(
             color = if (isError) colors.error else colors.onSurfaceVariantSummary,
             maxLines = 3,
             overflow = TextOverflow.Ellipsis,
-        )
-    }
-}
-
-@Composable
-private fun WorkspaceBackButton(onBack: () -> Unit) {
-    IconButton(
-        onClick = onBack,
-        minWidth = UiConsts.IconButtonSize,
-        minHeight = UiConsts.IconButtonSize,
-    ) {
-        Icon(
-            imageVector = MiuixIcons.ChevronBackward,
-            contentDescription = stringResource(R.string.workspace_picker_back),
-            modifier = Modifier.size(UiConsts.IconHeader),
-            tint = MiuixTheme.colorScheme.primary,
         )
     }
 }

@@ -7,13 +7,10 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -31,6 +28,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.cy.codex.AppEvent
 import com.cy.codex.CatalogState
+import com.cy.codex.CodexNavRow
+import com.cy.codex.CodexPage
+import com.cy.codex.CodexRow
+import com.cy.codex.CodexRowDivider
+import com.cy.codex.CodexSection
+import com.cy.codex.CodexValue
 import com.cy.codex.R
 import com.cy.codex.UiConsts
 import com.cy.codex.UiType
@@ -43,18 +46,14 @@ import com.cy.codex.protocol.protocol.v2.PluginShareEntry
 import com.cy.codex.protocol.protocol.v2.PluginSharePrincipal
 import com.cy.codex.protocol.protocol.v2.PluginShareTarget
 import com.cy.codex.raisedSurface
-import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
-import top.yukonga.miuix.kmp.basic.HorizontalDivider
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Add
-import top.yukonga.miuix.kmp.icon.extended.ChevronBackward
-import top.yukonga.miuix.kmp.icon.extended.Info
 import top.yukonga.miuix.kmp.icon.extended.Link
 import top.yukonga.miuix.kmp.icon.extended.Refresh
 import top.yukonga.miuix.kmp.icon.extended.Store
@@ -84,75 +83,49 @@ fun PluginSharesScreen(
     var publishing by remember { mutableStateOf(false) }
     var addingMarketplace by remember { mutableStateOf(false) }
 
-    Column(modifier = modifier.fillMaxSize().background(colors.background)) {
-        BasicComponent(
-            title = stringResource(R.string.plugin_shares_screen_title),
-            summary =
-                stringResource(
-                    R.string.plugin_shares_screen_subtitle,
-                    shares.size,
-                    marketplaces.size,
-                ),
-            startAction = {
-                if (onBack != null) {
-                    IconButton(
-                        onClick = onBack,
-                        minWidth = UiConsts.IconButtonSize,
-                        minHeight = UiConsts.IconButtonSize,
-                    ) {
-                        Icon(
-                            imageVector = MiuixIcons.ChevronBackward,
-                            contentDescription = stringResource(R.string.plugin_shares_screen_back),
-                            modifier = Modifier.size(UiConsts.IconHeader),
-                            tint = MiuixTheme.colorScheme.primary,
-                        )
-                    }
-                }
-            },
-            endActions = {
-                // One refresh for both catalogs: a user who suspects one is stale cannot tell which.
-                IconButton(
-                    onClick = { onEvent(AppEvent.ReloadPluginShares) },
-                    minWidth = UiConsts.IconButtonSize,
-                    minHeight = UiConsts.IconButtonSize,
-                ) {
-                    Icon(
-                        imageVector = MiuixIcons.Refresh,
-                        contentDescription = stringResource(R.string.plugin_shares_screen_refresh),
-                        modifier = Modifier.size(UiConsts.IconRefresh),
-                        tint = colors.primary,
-                    )
-                }
-            },
-            insideMargin = PaddingValues(14.dp, 10.dp),
-        )
-        Column(
-            modifier =
-                Modifier.weight(1f)
-                    .fillMaxWidth()
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = UiConsts.ScreenMargin)
-                    .padding(bottom = UiConsts.PageBottomInset),
-            verticalArrangement = Arrangement.spacedBy(UiConsts.SectionGap),
-        ) {
-            SharesCard(
-                shares = shares,
-                onEvent = onEvent,
-                onUpdateTargets = { updatingTargets = it },
-            )
-            PublishCard(onPublish = { publishing = true })
-            MarketplacesCard(
-                marketplaces = marketplaces,
-                onEvent = onEvent,
-                onAdd = { addingMarketplace = true },
-            )
-            ReconcileButton(onEvent = onEvent)
-            if (reconciled.isNotEmpty() || upgraded.isNotEmpty()) {
-                LastRunCard(
-                    reconciledPlugins = reconciled,
-                    upgradedMarketplaces = upgraded,
+    CodexPage(
+        title = stringResource(R.string.plugin_shares_screen_title),
+        description =
+            stringResource(
+                R.string.plugin_shares_screen_subtitle,
+                shares.size,
+                marketplaces.size,
+            ),
+        onBack = onBack,
+        modifier = modifier,
+        actions = {
+            // One refresh for both catalogs: a user who suspects one is stale cannot tell which.
+            IconButton(
+                onClick = { onEvent(AppEvent.ReloadPluginShares) },
+                minWidth = UiConsts.IconButtonSize,
+                minHeight = UiConsts.IconButtonSize,
+            ) {
+                Icon(
+                    imageVector = MiuixIcons.Refresh,
+                    contentDescription = stringResource(R.string.plugin_shares_screen_refresh),
+                    modifier = Modifier.size(UiConsts.IconRefresh),
+                    tint = MiuixTheme.colorScheme.primary,
                 )
             }
+        },
+    ) {
+        SharesCard(
+            shares = shares,
+            onEvent = onEvent,
+            onUpdateTargets = { updatingTargets = it },
+        )
+        PublishCard(onPublish = { publishing = true })
+        MarketplacesCard(
+            marketplaces = marketplaces,
+            onEvent = onEvent,
+            onAdd = { addingMarketplace = true },
+        )
+        ReconcileButton(onEvent = onEvent)
+        if (reconciled.isNotEmpty() || upgraded.isNotEmpty()) {
+            LastRunCard(
+                reconciledPlugins = reconciled,
+                upgradedMarketplaces = upgraded,
+            )
         }
     }
 
@@ -206,32 +179,7 @@ private fun SharesCard(
 ) {
     var selected by remember { mutableStateOf<String?>(null) }
 
-    Card(
-        cornerRadius = UiConsts.SectionCorner,
-        insideMargin = PaddingValues(horizontal = 11.dp, vertical = 8.dp),
-    ) {
-        BasicComponent(
-            title = stringResource(R.string.plugin_shares_shares_title),
-            startAction = {
-                Icon(
-                    imageVector = MiuixIcons.Link,
-                    contentDescription = null,
-                    modifier = Modifier.size(14.dp),
-                    tint = MiuixTheme.colorScheme.primary,
-                )
-            },
-            endActions = {
-                Text(
-                    text = shares.size.toString(),
-                    fontSize = 13.sp,
-                    lineHeight = 18.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = MiuixTheme.colorScheme.onSurface,
-                    maxLines = 1,
-                )
-            },
-        )
-
+    CodexSection(stringResource(R.string.plugin_shares_shares_title)) {
         if (shares.isEmpty()) {
             Column(
                 modifier =
@@ -275,8 +223,7 @@ private fun SharesCard(
             }
         }
         shares.forEachIndexed { index, share ->
-            if (index > 0)
-                HorizontalDivider(modifier = Modifier.padding(vertical = UiConsts.Space1))
+            if (index > 0) CodexRowDivider()
             PluginShareRow(
                 share = share,
                 expanded = selected == share.remotePluginId,
@@ -477,23 +424,8 @@ private fun ShareTargetsSheet(
 /** Path-only form: no targets/discoverability means private — the safe default for copying off the machine. */
 @Composable
 private fun PublishCard(onPublish: () -> Unit) {
-    Card(
-        cornerRadius = UiConsts.SectionCorner,
-        insideMargin = PaddingValues(horizontal = 11.dp, vertical = 8.dp),
-    ) {
-        BasicComponent(
-            title = stringResource(R.string.plugin_shares_publish_title),
-            startAction = {
-                Icon(
-                    imageVector = MiuixIcons.UploadCloud,
-                    contentDescription = null,
-                    modifier = Modifier.size(14.dp),
-                    tint = MiuixTheme.colorScheme.primary,
-                )
-            },
-        )
-
-        ArrowPreference(
+    CodexSection(stringResource(R.string.plugin_shares_publish_title)) {
+        CodexNavRow(
             title = stringResource(R.string.plugin_shares_publish_row),
             summary = stringResource(R.string.plugin_shares_publish_row_detail),
             startAction = {
@@ -517,33 +449,8 @@ internal fun MarketplacesCard(
 ) {
     var selected by remember { mutableStateOf<String?>(null) }
 
-    Card(
-        cornerRadius = UiConsts.SectionCorner,
-        insideMargin = PaddingValues(horizontal = 11.dp, vertical = 8.dp),
-    ) {
-        BasicComponent(
-            title = stringResource(R.string.plugin_shares_marketplaces_title),
-            startAction = {
-                Icon(
-                    imageVector = MiuixIcons.Store,
-                    contentDescription = null,
-                    modifier = Modifier.size(14.dp),
-                    tint = MiuixTheme.colorScheme.primary,
-                )
-            },
-            endActions = {
-                Text(
-                    text = marketplaces.size.toString(),
-                    fontSize = 13.sp,
-                    lineHeight = 18.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = MiuixTheme.colorScheme.onSurface,
-                    maxLines = 1,
-                )
-            },
-        )
-
-        ArrowPreference(
+    CodexSection(stringResource(R.string.plugin_shares_marketplaces_title)) {
+        CodexNavRow(
             title = stringResource(R.string.plugin_shares_marketplace_add),
             summary = stringResource(R.string.plugin_shares_marketplace_add_detail),
             startAction = {
@@ -598,10 +505,9 @@ internal fun MarketplacesCard(
                 )
             }
         } else {
-            HorizontalDivider(modifier = Modifier.padding(vertical = UiConsts.Space1))
+            CodexRowDivider()
             marketplaces.forEachIndexed { index, marketplace ->
-                if (index > 0)
-                    HorizontalDivider(modifier = Modifier.padding(vertical = UiConsts.Space1))
+                if (index > 0) CodexRowDivider()
                 MarketplaceRow(
                     marketplace = marketplace,
                     expanded = selected == marketplace.name,
@@ -626,7 +532,7 @@ private fun MarketplaceRow(
 ) {
     val source = marketplace.path.ifBlank { marketplace.description }.takeIf { it.isNotBlank() }
     Column(modifier = Modifier.fillMaxWidth()) {
-        ArrowPreference(
+        CodexNavRow(
             title = marketplace.name,
             summary = source,
             onClick = onToggle,
@@ -769,63 +675,30 @@ private fun LastRunCard(
     reconciledPlugins: List<String>,
     upgradedMarketplaces: List<String>,
 ) {
-    Card(
-        cornerRadius = UiConsts.SectionCorner,
-        insideMargin = PaddingValues(horizontal = 11.dp, vertical = 8.dp),
-    ) {
-        BasicComponent(
-            title = stringResource(R.string.plugin_shares_last_run_title),
-            startAction = {
-                Icon(
-                    imageVector = MiuixIcons.Info,
-                    contentDescription = null,
-                    modifier = Modifier.size(14.dp),
-                    tint = MiuixTheme.colorScheme.primary,
-                )
-            },
-            endActions = {
-                Text(
-                    text = (reconciledPlugins.size + upgradedMarketplaces.size).toString(),
-                    fontSize = 13.sp,
-                    lineHeight = 18.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = MiuixTheme.colorScheme.onSurface,
-                    maxLines = 1,
-                )
-            },
-        )
-
+    CodexSection(stringResource(R.string.plugin_shares_last_run_title)) {
         if (reconciledPlugins.isNotEmpty()) {
-            BasicComponent(
+            CodexRow(
                 title = stringResource(R.string.plugin_shares_last_run_reconciled),
-                endActions = {
-                    Text(
-                        text = reconciledPlugins.joinToString(", ").ifEmpty { "—" },
-                        color = MiuixTheme.colorScheme.onSurface,
-                        textAlign = TextAlign.End,
-                        fontSize = UiType.Detail,
+                endAction = {
+                    CodexValue(
+                        reconciledPlugins.joinToString(", ").ifEmpty { "—" },
+                        monospace = false,
                     )
                 },
-                insideMargin =
-                    PaddingValues(horizontal = UiConsts.Space4, vertical = UiConsts.Space7),
             )
         }
         if (reconciledPlugins.isNotEmpty() && upgradedMarketplaces.isNotEmpty()) {
-            HorizontalDivider(modifier = Modifier.padding(vertical = UiConsts.Space1))
+            CodexRowDivider()
         }
         if (upgradedMarketplaces.isNotEmpty()) {
-            BasicComponent(
+            CodexRow(
                 title = stringResource(R.string.plugin_shares_last_run_upgraded),
-                endActions = {
-                    Text(
-                        text = upgradedMarketplaces.joinToString(", ").ifEmpty { "—" },
-                        color = MiuixTheme.colorScheme.onSurface,
-                        textAlign = TextAlign.End,
-                        fontSize = UiType.Detail,
+                endAction = {
+                    CodexValue(
+                        upgradedMarketplaces.joinToString(", ").ifEmpty { "—" },
+                        monospace = false,
                     )
                 },
-                insideMargin =
-                    PaddingValues(horizontal = UiConsts.Space4, vertical = UiConsts.Space7),
             )
         }
     }

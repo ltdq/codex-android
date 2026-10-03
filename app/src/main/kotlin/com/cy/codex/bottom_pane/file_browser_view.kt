@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -32,11 +31,18 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
+import com.cy.codex.CodexCardGrid
+import com.cy.codex.CodexCatalogCard
+import com.cy.codex.CodexEmptyRow
+import com.cy.codex.CodexGroupTitle
+import com.cy.codex.CodexNavRow
+import com.cy.codex.CodexPage
+import com.cy.codex.CodexRow
+import com.cy.codex.CodexRowDivider
+import com.cy.codex.CodexSection
 import com.cy.codex.R
 import com.cy.codex.UiConsts
 import com.cy.codex.UiType
@@ -47,30 +53,21 @@ import com.cy.codex.fileName
 import com.cy.codex.parentPath
 import com.cy.codex.protocol.AppServerClient
 import com.cy.codex.protocol.protocol.v2.FileMetadata
-import com.cy.codex.raisedSurface
 import com.cy.codex.sheetColor
 import com.cy.codex.sheetSideMargin
 import kotlinx.coroutines.launch
-import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonColors
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
-import top.yukonga.miuix.kmp.basic.Card
-import top.yukonga.miuix.kmp.basic.CardDefaults
-import top.yukonga.miuix.kmp.basic.HorizontalDivider
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.AddFolder
-import top.yukonga.miuix.kmp.icon.extended.ChevronBackward
 import top.yukonga.miuix.kmp.icon.extended.ConvertFile
 import top.yukonga.miuix.kmp.icon.extended.FolderFill
 import top.yukonga.miuix.kmp.icon.extended.Info
 import top.yukonga.miuix.kmp.icon.extended.Refresh
-import top.yukonga.miuix.kmp.icon.extended.Tune
-import top.yukonga.miuix.kmp.preference.ArrowPreference
-import top.yukonga.miuix.kmp.squircle.squircleBackground
 import top.yukonga.miuix.kmp.squircle.squircleBorder
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.window.WindowBottomSheet
@@ -185,132 +182,84 @@ fun FileBrowserScreen(
     }
     BackHandler(enabled = current != path) { current = fileBrowserParent(current) }
 
-    Column(modifier = modifier.fillMaxSize().background(colors.background)) {
-        BasicComponent(
-            title = fileBrowserName(current),
-            summary = parentPath(current).ifEmpty { null },
-            startAction = {
-                IconButton(
-                    onClick = back,
-                    minWidth = UiConsts.IconButtonSize,
-                    minHeight = UiConsts.IconButtonSize,
-                ) {
-                    Icon(
-                        imageVector = MiuixIcons.ChevronBackward,
-                        contentDescription = stringResource(R.string.file_browser_back),
-                        modifier = Modifier.size(UiConsts.IconHeader),
-                        tint = MiuixTheme.colorScheme.primary,
-                    )
-                }
-            },
-            endActions = {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(
-                        onClick = { revision++ },
-                        minWidth = UiConsts.IconButtonSize,
-                        minHeight = UiConsts.IconButtonSize,
-                    ) {
-                        Icon(
-                            imageVector = MiuixIcons.Refresh,
-                            contentDescription = stringResource(R.string.file_browser_refresh),
-                            modifier = Modifier.size(UiConsts.IconRefresh),
-                            tint = colors.primary,
-                        )
-                    }
-                    if (picking) {
-                        Spacer(Modifier.width(UiConsts.Space6))
-                        Button(
-                            onClick = { onPick(current) },
-                            colors = ButtonDefaults.buttonColorsPrimary(),
-                            cornerRadius = UiConsts.ButtonHeightCompact / 2,
-                            minWidth = 0.dp,
-                            minHeight = UiConsts.ButtonHeightCompact,
-                            insideMargin =
-                                PaddingValues(
-                                    horizontal = UiConsts.ButtonPaddingHorizontalCompact,
-                                    vertical = 0.dp,
-                                ),
-                        ) {
-                            Text(
-                                text = stringResource(R.string.file_browser_use_directory),
-                                maxLines = 1,
-                                softWrap = false,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        }
-                    }
-                }
-            },
-            insideMargin = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
-        )
-        Column(
-            modifier =
-                Modifier.weight(1f)
-                    .fillMaxWidth()
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = UiConsts.ScreenMargin)
-                    .padding(bottom = UiConsts.PageBottomInset),
-            verticalArrangement = Arrangement.spacedBy(UiConsts.SectionGap),
-        ) {
-            if (writeFailure != null) {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    cornerRadius = UiConsts.SectionCorner,
-                    insideMargin = PaddingValues(horizontal = 11.dp, vertical = 8.dp),
-                    colors =
-                        CardDefaults.defaultColors(
-                            color = raisedSurface(),
-                            contentColor = MiuixTheme.colorScheme.onSurface,
+    CodexPage(
+        title = fileBrowserName(current),
+        description = parentPath(current).ifEmpty { null },
+        onBack = back,
+        modifier = modifier,
+        actions = {
+            IconButton(
+                onClick = { revision++ },
+                minWidth = UiConsts.IconButtonSize,
+                minHeight = UiConsts.IconButtonSize,
+            ) {
+                Icon(
+                    imageVector = MiuixIcons.Refresh,
+                    contentDescription = stringResource(R.string.file_browser_refresh),
+                    modifier = Modifier.size(UiConsts.IconRefresh),
+                    tint = colors.primary,
+                )
+            }
+            if (picking) {
+                Spacer(Modifier.width(UiConsts.Space6))
+                Button(
+                    onClick = { onPick(current) },
+                    colors = ButtonDefaults.buttonColorsPrimary(),
+                    cornerRadius = UiConsts.ButtonHeightCompact / 2,
+                    minWidth = 0.dp,
+                    minHeight = UiConsts.ButtonHeightCompact,
+                    insideMargin =
+                        PaddingValues(
+                            horizontal = UiConsts.ButtonPaddingHorizontalCompact,
+                            vertical = 0.dp,
                         ),
                 ) {
-                    BasicComponent(
-                        title = stringResource(R.string.file_browser_action_failed_title),
-                        startAction = {
-                            Icon(
-                                imageVector = MiuixIcons.Info,
-                                contentDescription = null,
-                                modifier = Modifier.size(14.dp),
-                                tint = MiuixTheme.colorScheme.primary,
-                            )
-                        },
-                        insideMargin = PaddingValues(0.dp),
+                    Text(
+                        text = stringResource(R.string.file_browser_use_directory),
+                        maxLines = 1,
+                        softWrap = false,
+                        overflow = TextOverflow.Ellipsis,
                     )
-                    Spacer(Modifier.height(8.dp))
-                    FileBrowserNote(writeFailure.orEmpty(), error = true)
                 }
             }
-            FileListingCard(
-                rows = rows,
-                reading = reading,
-                failure = readFailure,
-                onOpen = { entry ->
-                    if (entry.isDirectory) current = entry.path else previewPath = entry.path
-                },
+        },
+    ) {
+        if (writeFailure != null) {
+            CodexSection(stringResource(R.string.file_browser_action_failed_title)) {
+                FileBrowserNote(writeFailure.orEmpty(), error = true)
+            }
+        }
+        FileListingSection(
+            rows = rows,
+            reading = reading,
+            failure = readFailure,
+            onOpen = { entry ->
+                if (entry.isDirectory) current = entry.path else previewPath = entry.path
+            },
+        )
+        previewPath?.let { open ->
+            FilePreviewSection(
+                path = open,
+                preview = preview,
+                metadata = metadata,
+                picking = picking,
+                watched = open in watched,
+                onToggleWatch = { toggleWatch(open) },
+                onRename = { sheet = FileSheet.Rename(open, isDirectory = false) },
+                onCopy = { sheet = FileSheet.Copy(open, isDirectory = false) },
+                onDelete = { sheet = FileSheet.Delete(open, isDirectory = false) },
             )
-            previewPath?.let { open ->
-                FilePreviewCard(
-                    path = open,
-                    preview = preview,
-                    metadata = metadata,
-                    picking = picking,
-                    watched = open in watched,
-                    onToggleWatch = { toggleWatch(open) },
-                    onRename = { sheet = FileSheet.Rename(open, isDirectory = false) },
-                    onCopy = { sheet = FileSheet.Copy(open, isDirectory = false) },
-                    onDelete = { sheet = FileSheet.Delete(open, isDirectory = false) },
-                )
-            }
-            if (!picking) {
-                FolderActionsCard(
-                    watched = current in watched,
-                    onNewFolder = { sheet = FileSheet.NewFolder(current) },
-                    onNewFile = { sheet = FileSheet.NewFile(current) },
-                    onToggleWatch = { toggleWatch(current) },
-                    onRename = { sheet = FileSheet.Rename(current, isDirectory = true) },
-                    onCopy = { sheet = FileSheet.Copy(current, isDirectory = true) },
-                    onDelete = { sheet = FileSheet.Delete(current, isDirectory = true) },
-                )
-            }
+        }
+        if (!picking) {
+            FolderActionsSection(
+                watched = current in watched,
+                onNewFolder = { sheet = FileSheet.NewFolder(current) },
+                onNewFile = { sheet = FileSheet.NewFile(current) },
+                onToggleWatch = { toggleWatch(current) },
+                onRename = { sheet = FileSheet.Rename(current, isDirectory = true) },
+                onCopy = { sheet = FileSheet.Copy(current, isDirectory = true) },
+                onDelete = { sheet = FileSheet.Delete(current, isDirectory = true) },
+            )
         }
     }
 
@@ -554,163 +503,78 @@ fun FileBrowserScreen(
 
 /** Directory listing; a failure is drawn where an empty folder would be, because `fs/readDirectory` answers both with the same empty list. */
 @Composable
-private fun FileListingCard(
+private fun FileListingSection(
     rows: List<FileMetadata>,
     reading: Boolean,
     failure: String?,
     onOpen: (FileMetadata) -> Unit,
 ) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        cornerRadius = UiConsts.SectionCorner,
-        insideMargin = PaddingValues(horizontal = 11.dp, vertical = 8.dp),
-        colors =
-            CardDefaults.defaultColors(
-                color = raisedSurface(),
-                contentColor = MiuixTheme.colorScheme.onSurface,
-            ),
-    ) {
-        BasicComponent(
-            title = stringResource(R.string.file_browser_contents),
-            startAction = {
-                Icon(
-                    imageVector = MiuixIcons.FolderFill,
-                    contentDescription = null,
-                    modifier = Modifier.size(14.dp),
-                    tint = MiuixTheme.colorScheme.primary,
-                )
-            },
-            endActions = {
-                (if (failure == null) rows.size.toString() else null)?.let {
-                    Text(
-                        text = it,
-                        fontWeight = FontWeight.Medium,
-                        color = MiuixTheme.colorScheme.onSurface,
-                        maxLines = 1,
-                    )
-                }
-            },
-            insideMargin = PaddingValues(0.dp),
-        )
-        Spacer(Modifier.height(8.dp))
+    Column(modifier = Modifier.fillMaxWidth()) {
+        CodexGroupTitle(stringResource(R.string.file_browser_contents))
         when {
             failure != null ->
-                Column(
-                    modifier =
-                        Modifier.fillMaxWidth()
-                            .padding(vertical = UiConsts.Space24, horizontal = UiConsts.Space16),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    Box(
-                        modifier =
-                            Modifier.size(UiConsts.IconBoxLarge)
-                                .squircleBackground(
-                                    color = raisedSurface(),
-                                    cornerRadius = UiConsts.CornerCard,
-                                ),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Icon(
-                            imageVector = MiuixIcons.Info,
-                            contentDescription = null,
-                            modifier = Modifier.size(UiConsts.IconHeader),
-                            tint = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                        )
-                    }
-                    Spacer(Modifier.height(UiConsts.Space12))
-                    Text(
-                        text = stringResource(R.string.file_browser_read_failed),
-                        fontSize = UiType.RowTitle,
-                        lineHeight = UiType.RowTitleLine,
-                        fontWeight = FontWeight.Medium,
-                        color = MiuixTheme.colorScheme.onSurface,
-                        textAlign = TextAlign.Center,
-                    )
-                    Spacer(Modifier.height(UiConsts.Space4))
-                    Text(
-                        text = failure,
-                        fontSize = UiType.Meta,
-                        lineHeight = UiType.MetaLine,
-                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                        textAlign = TextAlign.Center,
-                    )
-                }
-
-            rows.isEmpty() && reading ->
-                FileBrowserNote(stringResource(R.string.file_browser_reading))
-
-            rows.isEmpty() ->
-                Column(
-                    modifier =
-                        Modifier.fillMaxWidth()
-                            .padding(vertical = UiConsts.Space24, horizontal = UiConsts.Space16),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    Box(
-                        modifier =
-                            Modifier.size(UiConsts.IconBoxLarge)
-                                .squircleBackground(
-                                    color = raisedSurface(),
-                                    cornerRadius = UiConsts.CornerCard,
-                                ),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Icon(
-                            imageVector = MiuixIcons.FolderFill,
-                            contentDescription = null,
-                            modifier = Modifier.size(UiConsts.IconHeader),
-                            tint = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                        )
-                    }
-                    Spacer(Modifier.height(UiConsts.Space12))
-                    Text(
-                        text = stringResource(R.string.file_browser_empty),
-                        fontSize = UiType.RowTitle,
-                        lineHeight = UiType.RowTitleLine,
-                        fontWeight = FontWeight.Medium,
-                        color = MiuixTheme.colorScheme.onSurface,
-                        textAlign = TextAlign.Center,
-                    )
-                    Spacer(Modifier.height(UiConsts.Space4))
-                    Text(
-                        text = stringResource(R.string.file_browser_empty_detail),
-                        fontSize = UiType.Meta,
-                        lineHeight = UiType.MetaLine,
-                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                        textAlign = TextAlign.Center,
-                    )
-                }
-
-            else ->
-                rows.forEach { entry ->
-                    ArrowPreference(
-                        title = entry.name,
-                        summary =
-                            if (entry.isDirectory) {
-                                stringResource(R.string.file_browser_folder)
-                            } else {
-                                fileBrowserSize(entry.size)
-                            },
+                CodexSection {
+                    CodexRow(
+                        title = stringResource(R.string.file_browser_read_failed),
+                        summary = failure,
                         startAction = {
                             Icon(
-                                imageVector =
-                                    if (entry.isDirectory) MiuixIcons.FolderFill
-                                    else MiuixIcons.ConvertFile,
+                                imageVector = MiuixIcons.Info,
                                 contentDescription = null,
                                 modifier = Modifier.size(UiConsts.IconPreference),
                                 tint = MiuixTheme.colorScheme.primary,
                             )
                         },
-                        onClick = { onOpen(entry) },
                     )
+                }
+
+            rows.isEmpty() && reading ->
+                CodexEmptyRow(stringResource(R.string.file_browser_reading))
+
+            rows.isEmpty() ->
+                CodexSection {
+                    CodexRow(
+                        title = stringResource(R.string.file_browser_empty),
+                        summary = stringResource(R.string.file_browser_empty_detail),
+                        enabled = false,
+                        startAction = {
+                            Icon(
+                                imageVector = MiuixIcons.FolderFill,
+                                contentDescription = null,
+                                modifier = Modifier.size(UiConsts.IconPreference),
+                                tint = MiuixTheme.colorScheme.disabledOnSurface,
+                            )
+                        },
+                    )
+                }
+
+            else ->
+                CodexCardGrid(count = rows.size) { index ->
+                    FileEntryCard(entry = rows[index], onOpen = onOpen)
                 }
         }
     }
 }
 
+/** One directory entry as a catalogue card: what it is, and what it weighs when it is a file. */
+@Composable
+private fun FileEntryCard(entry: FileMetadata, onOpen: (FileMetadata) -> Unit) {
+    CodexCatalogCard(
+        title = entry.name,
+        description =
+            if (entry.isDirectory) {
+                stringResource(R.string.file_browser_folder)
+            } else {
+                fileBrowserSize(entry.size)
+            },
+        icon = if (entry.isDirectory) MiuixIcons.FolderFill else MiuixIcons.ConvertFile,
+        onClick = { onOpen(entry) },
+    )
+}
+
 /** One open file, on a bounded code surface so a long file cannot push the actions off the page. */
 @Composable
-private fun FilePreviewCard(
+private fun FilePreviewSection(
     path: String,
     preview: FilePreview?,
     metadata: FileMetadata?,
@@ -724,109 +588,34 @@ private fun FilePreviewCard(
     val colors = MiuixTheme.colorScheme
     val body = preview
     val text = body?.text
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        cornerRadius = UiConsts.SectionCorner,
-        insideMargin = PaddingValues(horizontal = 11.dp, vertical = 8.dp),
-        colors =
-            CardDefaults.defaultColors(
-                color = raisedSurface(),
-                contentColor = MiuixTheme.colorScheme.onSurface,
-            ),
-    ) {
-        BasicComponent(
-            title = fileBrowserName(path),
-            startAction = {
-                Icon(
-                    imageVector = MiuixIcons.ConvertFile,
-                    contentDescription = null,
-                    modifier = Modifier.size(14.dp),
-                    tint = MiuixTheme.colorScheme.primary,
-                )
-            },
-            endActions = {
-                (body?.let { fileBrowserSize(it.bytes) })?.let {
-                    Text(
-                        text = it,
-                        fontWeight = FontWeight.Medium,
-                        color = MiuixTheme.colorScheme.onSurface,
-                        maxLines = 1,
-                    )
-                }
-            },
-            insideMargin = PaddingValues(0.dp),
-        )
-        Spacer(Modifier.height(8.dp))
+    CodexSection(fileBrowserName(path)) {
         if (metadata != null) {
-            BasicComponent(
+            FileMetaRow(
                 title = stringResource(R.string.file_browser_meta_kind),
-                endActions = {
-                    Text(
-                        text =
-                            (stringResource(
-                                    if (metadata.isDirectory) {
-                                        R.string.file_browser_meta_directory
-                                    } else {
-                                        R.string.file_browser_meta_file
-                                    }
-                                ))
-                                .ifEmpty { "—" },
-                        modifier = Modifier.weight(1f, fill = false),
-                        fontSize = UiType.Detail,
-                        lineHeight = UiType.DetailLine,
-                        fontFamily = null,
-                        color = MiuixTheme.colorScheme.onSurface,
-                        textAlign = TextAlign.End,
-                        maxLines = 1,
-                    )
-                },
-                insideMargin =
-                    PaddingValues(horizontal = UiConsts.Space4, vertical = UiConsts.Space7),
+                value =
+                    stringResource(
+                        if (metadata.isDirectory) {
+                            R.string.file_browser_meta_directory
+                        } else {
+                            R.string.file_browser_meta_file
+                        }
+                    ),
             )
-            HorizontalDivider(modifier = Modifier.padding(vertical = UiConsts.Space1))
-            BasicComponent(
+            CodexRowDivider()
+            FileMetaRow(
                 title = stringResource(R.string.file_browser_meta_size),
-                endActions = {
-                    Text(
-                        text = (fileBrowserSize(metadata.size)).ifEmpty { "—" },
-                        modifier = Modifier.weight(1f, fill = false),
-                        fontSize = UiType.Detail,
-                        lineHeight = UiType.DetailLine,
-                        fontFamily = null,
-                        color = MiuixTheme.colorScheme.onSurface,
-                        textAlign = TextAlign.End,
-                        maxLines = 1,
-                    )
-                },
-                insideMargin =
-                    PaddingValues(horizontal = UiConsts.Space4, vertical = UiConsts.Space7),
+                value = fileBrowserSize(metadata.size),
             )
             if (metadata.modifiedAt > 0L) {
-                HorizontalDivider(modifier = Modifier.padding(vertical = UiConsts.Space1))
-                BasicComponent(
+                CodexRowDivider()
+                FileMetaRow(
                     title = stringResource(R.string.file_browser_meta_modified),
-                    endActions = {
-                        Text(
-                            text =
-                                (android.text.format.DateUtils.getRelativeTimeSpanString(
-                                            metadata.modifiedAt
-                                        )
-                                        .toString())
-                                    .ifEmpty { "—" },
-                            modifier = Modifier.weight(1f, fill = false),
-                            fontSize = UiType.Detail,
-                            lineHeight = UiType.DetailLine,
-                            fontFamily = null,
-                            color = MiuixTheme.colorScheme.onSurface,
-                            textAlign = TextAlign.End,
-                            maxLines = 1,
-                        )
-                    },
-                    insideMargin =
-                        PaddingValues(horizontal = UiConsts.Space4, vertical = UiConsts.Space7),
+                    value =
+                        android.text.format.DateUtils.getRelativeTimeSpanString(metadata.modifiedAt)
+                            .toString(),
                 )
             }
-            HorizontalDivider(modifier = Modifier.padding(vertical = UiConsts.Space1))
+            CodexRowDivider()
         }
         when {
             body == null -> FileBrowserNote(stringResource(R.string.file_browser_preview_reading))
@@ -882,8 +671,26 @@ private fun FilePreviewCard(
     }
 }
 
+/** One `fs/getMetadata` field; the value reads the page's tone rather than the grid's quiet one. */
 @Composable
-private fun FolderActionsCard(
+private fun FileMetaRow(title: String, value: String) {
+    CodexRow(
+        title = title,
+        endAction = {
+            Text(
+                text = value,
+                fontSize = UiType.Value,
+                lineHeight = UiType.ValueLine,
+                color = MiuixTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        },
+    )
+}
+
+@Composable
+private fun FolderActionsSection(
     watched: Boolean,
     onNewFolder: () -> Unit,
     onNewFile: () -> Unit,
@@ -892,30 +699,8 @@ private fun FolderActionsCard(
     onCopy: () -> Unit,
     onDelete: () -> Unit,
 ) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        cornerRadius = UiConsts.SectionCorner,
-        insideMargin = PaddingValues(horizontal = 11.dp, vertical = 8.dp),
-        colors =
-            CardDefaults.defaultColors(
-                color = raisedSurface(),
-                contentColor = MiuixTheme.colorScheme.onSurface,
-            ),
-    ) {
-        BasicComponent(
-            title = stringResource(R.string.file_browser_folder_actions),
-            startAction = {
-                Icon(
-                    imageVector = MiuixIcons.Tune,
-                    contentDescription = null,
-                    modifier = Modifier.size(14.dp),
-                    tint = MiuixTheme.colorScheme.primary,
-                )
-            },
-            insideMargin = PaddingValues(0.dp),
-        )
-        Spacer(Modifier.height(8.dp))
-        ArrowPreference(
+    CodexSection(stringResource(R.string.file_browser_folder_actions)) {
+        CodexNavRow(
             title = stringResource(R.string.file_browser_new_folder),
             summary = stringResource(R.string.file_browser_new_folder_detail),
             startAction = {
@@ -928,7 +713,7 @@ private fun FolderActionsCard(
             },
             onClick = onNewFolder,
         )
-        ArrowPreference(
+        CodexNavRow(
             title = stringResource(R.string.file_browser_new_file),
             summary = stringResource(R.string.file_browser_new_file_detail),
             startAction = {
@@ -941,7 +726,7 @@ private fun FolderActionsCard(
             },
             onClick = onNewFile,
         )
-        HorizontalDivider(modifier = Modifier.padding(vertical = UiConsts.Space1))
+        CodexRowDivider()
         EntryActions(
             watched = watched,
             onToggleWatch = onToggleWatch,

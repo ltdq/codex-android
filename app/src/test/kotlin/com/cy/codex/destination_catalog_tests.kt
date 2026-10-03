@@ -23,9 +23,18 @@ class DestinationCatalogTest {
     }
 
     @Test
-    fun `session tools stay out of the rail's menus`() {
-        assertTrue(DestinationCatalog.SessionTools.intersect(DestinationCatalog.HomeMenu).isEmpty())
-        assertTrue(DestinationCatalog.SessionTools.intersect(DestinationCatalog.PluginsMenu).isEmpty())
-        assertTrue(DestinationCatalog.SessionTools.intersect(DestinationCatalog.SettingsMenu).isEmpty())
+    fun `session tools are rows of the chat's own menu`() {
+        assertTrue(
+            DestinationCatalog.SessionTools.intersect(DestinationCatalog.PluginsMenu).isEmpty(),
+            "a session tool is also a plugin page",
+        )
+        assertTrue(
+            DestinationCatalog.SessionTools.intersect(DestinationCatalog.SettingsMenu).isEmpty(),
+            "a session tool is also a settings page",
+        )
+        assertTrue(
+            DestinationCatalog.SessionTools.intersect(DestinationCatalog.HomeMenu).isEmpty(),
+            "the tools and the chat's own entries share an id",
+        )
     }
 }

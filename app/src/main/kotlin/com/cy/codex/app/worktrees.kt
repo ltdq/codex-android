@@ -1,19 +1,10 @@
 package com.cy.codex.app
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -21,33 +12,25 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
+import com.cy.codex.CodexCardGrid
+import com.cy.codex.CodexCatalogCard
+import com.cy.codex.CodexEmptyRow
+import com.cy.codex.CodexGroupTitle
+import com.cy.codex.CodexPage
+import com.cy.codex.CodexSection
 import com.cy.codex.R
 import com.cy.codex.UiConsts
 import com.cy.codex.UiType
 import com.cy.codex.protocol.AppServerClient
-import com.cy.codex.raisedSurface
 import kotlinx.coroutines.launch
-import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
-import top.yukonga.miuix.kmp.basic.Card
-import top.yukonga.miuix.kmp.basic.CardDefaults
-import top.yukonga.miuix.kmp.basic.Icon
-import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.icon.MiuixIcons
-import top.yukonga.miuix.kmp.icon.extended.ChevronBackward
 import top.yukonga.miuix.kmp.icon.extended.FolderFill
-import top.yukonga.miuix.kmp.icon.extended.Merge
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /** One entry of `git worktree list --porcelain`. */
@@ -100,7 +83,6 @@ fun WorktreesScreen(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val colors = MiuixTheme.colorScheme
     val scope = rememberCoroutineScope()
     val repository = cwd.ifBlank { "/" }
     var entries by remember(repository) { mutableStateOf<List<GitWorktree>>(emptyList()) }
@@ -126,89 +108,46 @@ fun WorktreesScreen(
         loading = false
     }
 
-    Column(modifier = modifier.fillMaxSize().background(colors.background)) {
-        BasicComponent(
-            title = stringResource(R.string.worktrees_title),
-            summary = repository,
-            startAction = { WorktreesBackButton(onBack) },
-        )
-        Column(
-            modifier =
-                Modifier.weight(1f)
-                    .fillMaxWidth()
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = UiConsts.ScreenMargin)
-                    .padding(bottom = UiConsts.PageBottomInset),
-            verticalArrangement = Arrangement.spacedBy(UiConsts.SectionGap),
-        ) {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                cornerRadius = UiConsts.SectionCorner,
-                insideMargin = PaddingValues(horizontal = 11.dp, vertical = 8.dp),
-                colors =
-                    CardDefaults.defaultColors(
-                        color = raisedSurface(),
-                        contentColor = MiuixTheme.colorScheme.onSurface,
-                    ),
-            ) {
-                BasicComponent(
-                    title = stringResource(R.string.worktrees_title),
-                    startAction = {
-                        Icon(
-                            imageVector = MiuixIcons.Merge,
-                            contentDescription = null,
-                            modifier = Modifier.size(14.dp),
-                            tint = MiuixTheme.colorScheme.primary,
-                        )
-                    },
-                )
-
-                when {
-                    loading -> WorktreesNote(stringResource(R.string.worktrees_loading))
-                    error != null -> WorktreesNote(error!!, isError = true)
-                    entries.isEmpty() -> WorktreesNote(stringResource(R.string.worktrees_empty))
-                    else -> entries.forEach { entry -> WorktreeRow(entry, repository, onOpen) }
-                }
+    CodexPage(
+        title = stringResource(R.string.worktrees_title),
+        description = repository,
+        onBack = onBack,
+        modifier = modifier,
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            CodexGroupTitle(stringResource(R.string.worktrees_title))
+            when {
+                loading -> WorktreesNote(stringResource(R.string.worktrees_loading))
+                error != null -> WorktreesNote(error!!, isError = true)
+                entries.isEmpty() -> CodexEmptyRow(stringResource(R.string.worktrees_empty))
+                else ->
+                    CodexCardGrid(count = entries.size) { index ->
+                        WorktreeCard(entries[index], repository, onOpen)
+                    }
             }
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                cornerRadius = UiConsts.SectionCorner,
-                insideMargin = PaddingValues(horizontal = 11.dp, vertical = 8.dp),
-                colors =
-                    CardDefaults.defaultColors(
-                        color = raisedSurface(),
-                        contentColor = MiuixTheme.colorScheme.onSurface,
-                    ),
+        }
+        CodexSection(stringResource(R.string.worktrees_create_group)) {
+            Column(
+                modifier =
+                    Modifier.fillMaxWidth()
+                        .padding(horizontal = UiConsts.RowInset, vertical = UiConsts.Space12),
             ) {
-                BasicComponent(
-                    title = stringResource(R.string.worktrees_create_group),
-                    startAction = {
-                        Icon(
-                            imageVector = MiuixIcons.FolderFill,
-                            contentDescription = null,
-                            modifier = Modifier.size(14.dp),
-                            tint = MiuixTheme.colorScheme.primary,
-                        )
-                    },
+                Text(
+                    text = stringResource(R.string.worktrees_branch_label),
+                    fontSize = UiType.Meta,
+                    lineHeight = UiType.MetaLine,
+                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    maxLines = 1,
                 )
-                Column(modifier = Modifier) {
-                    Text(
-                        text = stringResource(R.string.worktrees_branch_label),
-                        fontSize = UiType.Meta,
-                        lineHeight = UiType.MetaLine,
-                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                        maxLines = 1,
-                    )
-                    Spacer(Modifier.height(UiConsts.Space4))
-                    TextField(
-                        value = branch,
-                        onValueChange = { branch = it },
-                        modifier = Modifier.fillMaxWidth(),
-                        label = "feature/my-change",
-                        useLabelAsPlaceholder = true,
-                        singleLine = true,
-                    )
-                }
+                Spacer(Modifier.height(UiConsts.Space4))
+                TextField(
+                    value = branch,
+                    onValueChange = { branch = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = "feature/my-change",
+                    useLabelAsPlaceholder = true,
+                    singleLine = true,
+                )
                 if (createError != null) {
                     Spacer(Modifier.height(UiConsts.Space6))
                     WorktreesNote(createError!!, isError = true)
@@ -263,64 +202,34 @@ fun WorktreesScreen(
     }
 }
 
+/** One worktree as a catalogue card: its path, its branch, and the marker the session runs under. */
 @Composable
-private fun WorktreeRow(entry: GitWorktree, current: String, onOpen: (String) -> Unit) {
-    val colors = MiuixTheme.colorScheme
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        cornerRadius = UiConsts.RowCorner,
-        insideMargin = PaddingValues(horizontal = UiConsts.Space4, vertical = UiConsts.Space9),
-        colors =
-            CardDefaults.defaultColors(color = Color.Transparent, contentColor = colors.onSurface),
-        showIndication = true,
+private fun WorktreeCard(entry: GitWorktree, current: String, onOpen: (String) -> Unit) {
+    CodexCatalogCard(
+        title = entry.path,
+        description =
+            when {
+                entry.bare -> stringResource(R.string.worktrees_bare)
+                entry.detached -> stringResource(R.string.worktrees_detached)
+                else -> entry.branch
+            },
+        icon = MiuixIcons.FolderFill,
         onClick = { onOpen(entry.path) },
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Icon(
-                imageVector = MiuixIcons.FolderFill,
-                contentDescription = null,
-                modifier = Modifier.size(UiConsts.IconRow),
-                tint =
-                    if (entry.path == current) colors.primary else colors.onSurfaceVariantSummary,
-            )
-            Spacer(Modifier.width(UiConsts.Space9))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = entry.path,
-                    fontSize = UiType.RowTitle,
-                    lineHeight = UiType.RowTitleLine,
-                    fontFamily = FontFamily.Monospace,
-                    fontWeight =
-                        if (entry.path == current) FontWeight.SemiBold else FontWeight.Normal,
-                    color = colors.onSurface,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    text =
-                        when {
-                            entry.bare -> stringResource(R.string.worktrees_bare)
-                            entry.detached -> stringResource(R.string.worktrees_detached)
-                            entry.branch != null -> entry.branch
-                            else -> ""
-                        },
-                    fontSize = UiType.Footnote,
-                    lineHeight = UiType.FootnoteLine,
-                    color = colors.onSurfaceVariantSummary,
-                    maxLines = 1,
-                )
-            }
+        trailing =
             if (entry.path == current) {
-                Spacer(Modifier.width(UiConsts.Space6))
-                Text(
-                    text = stringResource(R.string.session_list_current),
-                    fontSize = UiType.Chip,
-                    lineHeight = UiType.ChipLine,
-                    color = colors.primary,
-                )
-            }
-        }
-    }
+                {
+                    Text(
+                        text = stringResource(R.string.session_list_current),
+                        fontSize = UiType.Chip,
+                        lineHeight = UiType.ChipLine,
+                        color = MiuixTheme.colorScheme.primary,
+                        maxLines = 1,
+                    )
+                }
+            } else {
+                null
+            },
+    )
 }
 
 @Composable
@@ -333,20 +242,4 @@ private fun WorktreesNote(text: String, isError: Boolean = false) {
         color =
             if (isError) MiuixTheme.colorScheme.error else MiuixTheme.colorScheme.disabledOnSurface,
     )
-}
-
-@Composable
-private fun WorktreesBackButton(onBack: () -> Unit) {
-    IconButton(
-        onClick = onBack,
-        minWidth = UiConsts.IconButtonSize,
-        minHeight = UiConsts.IconButtonSize,
-    ) {
-        Icon(
-            imageVector = MiuixIcons.ChevronBackward,
-            contentDescription = stringResource(R.string.worktrees_back),
-            modifier = Modifier.size(UiConsts.IconHeader),
-            tint = MiuixTheme.colorScheme.primary,
-        )
-    }
 }

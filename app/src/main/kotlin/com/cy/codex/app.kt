@@ -18,8 +18,10 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -141,10 +143,14 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SnackbarHost
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
 
+import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.extended.AddFolder
 import top.yukonga.miuix.kmp.nav.core.NavBackStack
 import top.yukonga.miuix.kmp.nav.core.NavDisplay
 import top.yukonga.miuix.kmp.nav.core.NavDisplayEffects
@@ -207,6 +213,24 @@ class CodexApp(
     val surfaces: NavBackStack = navBackStackOf(Surface.Chat)
 
     val surface: Surface get() = surfaces.lastOrNull() as? Surface ?: Surface.Chat
+
+    /**
+     * Which settings section the body shows.
+     *
+     * The rail item opens the settings body and the menu only swaps what it holds, so the section is
+     * shell state rather than a route: two settings pages in the back stack would be two pages the
+     * user never asked for.
+     */
+    var settingsSection by mutableStateOf(com.cy.codex.chatwidget.SettingsSection.Model)
+
+    /**
+     * The page each rail item was last on.
+     *
+     * The rail controls the body, so landing on a section has to bring back the page the user left
+     * it on rather than the section's root: a menu row only swaps what the body holds, and a rail
+     * item that reset it would throw that choice away.
+     */
+    private val sectionPages = mutableStateMapOf<NavSection, Surface>()
 
     var startupLoading by mutableStateOf(false)
         private set
@@ -1024,7 +1048,7 @@ class CodexApp(
             reportUnavailableCommand(spec.name)
             return
         }
-        when (spec?.name ?: event.command.removePrefix("/")) {
+        when (val name = spec?.name ?: event.command.removePrefix("/")) {
             "new" -> onAppEvent(AppEvent.NewThread(widget.state.config.cwd))
             // No scrollback on a phone: clearing and starting a new conversation are the same act.
             "clear" -> onAppEvent(AppEvent.NewThread(widget.state.config.cwd))
@@ -1050,8 +1074,8 @@ class CodexApp(
             "apps" -> if (connectorsAvailable) openSurface(Surface.Apps) else {
                 scope.launch { snackbar.showSnackbar(context.getString(R.string.slash_apps_requires_chatgpt)) }
             }
-            "settings" -> openSurface(Surface.Settings)
-            "theme" -> openSurface(Surface.Settings)
+            "settings" -> openSettingsSection(SettingsSection.Model)
+            "theme" -> openSettingsSection(SettingsSection.Appearance)
             "cd" -> openSurface(Surface.WorkspacePicker)
             "import" -> openSurface(Surface.ExternalAgentImport)
             "feedback" -> openSurface(Surface.Diagnostics)
@@ -1070,9 +1094,11 @@ class CodexApp(
             }
             "status" -> openSurface(Surface.SessionStatus)
             "copy" -> copyMenuOpen = true
-            "model", "approvals" -> openSurface(Surface.Settings)
+            "model", "approvals" -> openSettingsSection(
+                if (name == "approvals") SettingsSection.Permissions else SettingsSection.Model,
+            )
             // The settings menu lists its own sections, so this link names one directly.
-            "permissions" -> openSurface(Surface.SettingsDetail(SettingsSection.Permissions))
+            "permissions" -> openSettingsSection(SettingsSection.Permissions)
             "memories" -> openSurface(Surface.Memories)
 
             // `/plan` toggles: the phone has no mode-cycle binding, so one command must do both or
@@ -1819,6 +1845,38 @@ class CodexApp(
             return
         }
         surfaces.add(next)
+        onPageOpened(next)
+    }
+
+    /**
+     * Show a page of the section the open page belongs to.
+     *
+     * The second segment only changes what the body holds, so a row that names another page of the
+     * same section swaps it in place instead of stacking it: back then leaves the section rather
+     * than walking through every page the menu passed over.
+     */
+    fun openSectionPage(next: Surface) {
+        sectionPages[sectionOf(next)] = next
+        val swapped = sectionPageSwap(surfaces.filterIsInstance<Surface>(), next)
+        if (swapped == null) {
+            openSurface(next)
+            return
+        }
+        syncSurfaces(swapped)
+        onPageOpened(next)
+    }
+
+    /** Make the back stack [target], touching only the entries that differ from what is on it. */
+    private fun syncSurfaces(target: List<Surface>) {
+        while (surfaces.size > target.size) surfaces.removeAt(surfaces.lastIndex)
+        target.forEachIndexed { index, surface ->
+            if (index == surfaces.size) surfaces.add(surface)
+            else if (surfaces[index] != surface) surfaces[index] = surface
+        }
+    }
+
+    /** What opening a page reads from the server; the route decides, the stack does not. */
+    private fun onPageOpened(next: Surface) {
         when (next) {
             Surface.Account -> {
                 onAppEvent(AppEvent.ReloadAccount)
@@ -1830,12 +1888,12 @@ class CodexApp(
             Surface.Plugins -> onAppEvent(AppEvent.ReloadPlugins)
             Surface.Apps -> onAppEvent(AppEvent.ReloadApps)
             Surface.Memories -> onAppEvent(AppEvent.ReloadMemories)
-            Surface.Settings, is Surface.SettingsDetail -> {
+            Surface.Settings -> {
                 onAppEvent(AppEvent.ReloadConfig)
                 load({ client.listExperimentalFeatures() }) { catalog.experimentalFeatures = it }
                 loadPermissionProfiles()
             }
-            Surface.Sessions -> {
+            Surface.Sessions, Surface.Archived -> {
                 onAppEvent(AppEvent.RefreshThreadList)
                 load({ client.listSections() }) { threads.sections = it }
             }
@@ -1850,18 +1908,19 @@ class CodexApp(
 
     /**
      * Land on a rail item's root page; the pages of the section being left are dropped, so back
-     * never walks out of one section and into another.
+     * never walks out of one section and into another. The section comes back on the page it was
+     * left on, which is what the menu beside it was switching.
      */
     fun openSection(section: NavSection) {
         closeAllSurfaces()
-        val root = sectionRoot(section)
+        val root = sectionPages[section] ?: sectionRoot(section)
         if (root != Surface.Chat) openSurface(root)
     }
 
-    /** Show a settings section; the section already on top is replaced instead of stacked under it. */
-    fun openSettingsSection(section: SettingsSection) {
-        if (surfaces.lastOrNull() is Surface.SettingsDetail) surfaces.removeAt(surfaces.lastIndex)
-        openSurface(Surface.SettingsDetail(section))
+    /** Show a settings section: the body the rail opened swaps its content to it. */
+    fun openSettingsSection(section: com.cy.codex.chatwidget.SettingsSection) {
+        settingsSection = section
+        openSectionPage(Surface.Settings)
     }
 
     /**
@@ -2519,12 +2578,12 @@ fun CodexScreen(
             val railWidth = UiConsts.NavRailWidth
             val menuWidth = UiConsts.NavMenuWidth
             // Wide window: the menu card and the page card are two cards side by side, so the page
-            // gives up the menu's column while the menu is pinned beside it. Narrow: the menu only
+            // stands beside the menu's column while the menu is pinned there. Narrow: the menu only
             // ever floats over the page, which keeps the width it needs.
             val wide = maxWidth >= UiConsts.WideContentBreakpoint
             // How far the menu card has come down onto the page: 0 while it still floats over it, 1
-            // once a click has pinned it beside it. The card's shadow and the room the page gives up
-            // ride this one number, on the panel's own motion, so the two never drift apart.
+            // once a click has pinned it beside it. The card's own edge and its shadow ride this one
+            // number, on the panel's own motion, so the two never drift apart.
             val menuRoom by
                 animateFloatAsState(
                     targetValue = if (wide && railMenu.pinned) 1f else 0f,
@@ -2532,18 +2591,23 @@ fun CodexScreen(
                     label = "menuRoom",
                 )
             // The page card: the rail's edge while the menu is shut, the menu's far side once it is
-            // pinned. The page column keeps the window's own gutter inside it, so the card moves and
-            // the content in it does not.
-            val pageStart =
+            // pinned. Only the card moves. The page column is the layout's own width, centred in the
+            // card, so a card that takes the menu's column back does it around a page that reflows
+            // nothing.
+            val cardStart =
                 pageCardStart(railWidth = railWidth, menuWidth = menuWidth, menuRoom = menuRoom)
-            val pageWidth =
-                (maxWidth - pageStart - UiConsts.ScreenMargin * 2).coerceAtLeast(0.dp)
+            val columnStart =
+                pageColumnStart(railWidth = railWidth, menuWidth = menuWidth, roomForMenu = wide)
+            val pageWidth = pageColumnWidth(windowWidth = maxWidth, columnStart = columnStart)
+            val columnOffset =
+                pageColumnOffset(windowWidth = maxWidth, cardStart = cardStart, pageWidth = pageWidth)
             // Whether the menu is up: a click pins it into the layout, the pointer only floats it.
             val menuUp = railMenu.shown
             // How far the menu card has been drawn out of the rail. A card of this shell comes out
             // of the rail's edge and goes back into it rather than appearing where it stands, and it
-            // rides the panel's own motion, so it stays one gap away from the page card while the
-            // page is giving the column up: a pin is one movement of the pair, not two.
+            // rides the panel's own motion, so the menu card and the page card keep one gap between
+            // them while the page card gives the column up: a pin is one movement of the pair, not
+            // two.
             val menuSlide by
                 animateFloatAsState(
                     targetValue = if (menuUp) 1f else 0f,
@@ -2560,18 +2624,21 @@ fun CodexScreen(
             LaunchedEffect(wide) {
                 if (!wide && !menuChosen && railMenu.pinned) railMenu = railMenu.unpin()
             }
-            // A second tap on the open section unpins its menu, whichever page of that section is on
-            // screen; any other item switches section and pins that section's menu.
+            // A click on the open section's item only puts its menu up or down: the page keeps the
+            // item it was opened on, since the section's own root is not what that item promises. Any
+            // other item switches section and pins that section's menu.
             val onRailSelect: (NavSection) -> Unit = { tapped ->
-                if (railMenu.pinned && tapped == section) {
-                    setPinned(false)
-                } else {
-                    setPinned(true)
-                    app.openSection(tapped)
-                }
+                val click = railMenu.click(current = section, tapped = tapped)
+                setPinned(click.pinned)
+                click.opens?.let(app::openSection)
             }
 
             val menuSection = railMenu.section(section)
+            // Where the reader stands in the rows. The state is the shell's, not the card's: the card
+            // is put away and drawn out again, and only a section's own rows start the list over.
+            val menuListState = remember(menuSection) { LazyListState() }
+            // The search is the card's own and does not outlive the section it narrows.
+            var menuQuery by remember(menuSection) { mutableStateOf("") }
             // The section's rows are built while the panel is drawn; the panel outlives the pick by
             // its own retract, and holds an empty list only once it is gone from the screen.
             val menuRows =
@@ -2582,7 +2649,7 @@ fun CodexScreen(
                         projects = SidebarModel.projects(app.threads, includeArchived = false),
                         expandedProjects = expandedProjects,
                         selectedThreadId = app.widget.state.threadId,
-                        selectedRowId = navRowIdOf(app.surface),
+                        selectedRowId = navRowIdOf(app.surface, app.settingsSection),
                     )
                 } else {
                     emptyList()
@@ -2600,13 +2667,15 @@ fun CodexScreen(
                         if (settings != null) {
                             app.openSettingsSection(settings)
                         } else {
-                            openSurfaceFor(app, row.id)
+                            // A row of the open section's menu swaps the body; it does not stack.
+                            openSurfaceFor(app, row.id, inSection = true)
                         }
                     }
 
+                    // A group's own action is the destination its title row carries.
+                    is NavMenuRow.Header -> row.action?.let { openSurfaceFor(app, it, inSection = true) }
                     is NavMenuRow.Project -> toggleProject(row.project.id)
                     is NavMenuRow.Session -> app.openThread(row.session.id)
-                    is NavMenuRow.Header -> Unit
                 }
                 // Choosing a row is what a floating menu is pinned by: the page the choice opened
                 // becomes the section the card beside the page now lists.
@@ -2626,20 +2695,21 @@ fun CodexScreen(
                     ),
             ) {
                 // The base the shell stands on, the page card floating on it and the rail on the
-                // base's own column.
+                // base's own column. The card is drawn around the page rather than sized by it: the
+                // page keeps the column the layout gives it while the card slides under it.
                 CodexShellBackdrop(
                     railWidth = railWidth,
                     menuWidth = menuWidth,
                     modifier = Modifier.matchParentSize(),
                 )
-                CodexShellScreen(start = pageStart) {
+                CodexShellScreen(start = cardStart) {
                     NavDisplay(
                         backStack = app.surfaces,
                         modifier =
                             Modifier.align(Alignment.TopStart)
-                                // Drawn on the page card: the column keeps the window's own gutter,
-                                // wherever the menu has pushed the card to.
-                                .offset(x = UiConsts.ScreenMargin)
+                                // The page's own column: the layout's width, centred in the card,
+                                // menu or no menu.
+                                .offset(x = columnOffset)
                                 .width(pageWidth)
                                 .fillMaxHeight(),
                         onBack = app::closeSurface,
@@ -2746,29 +2816,12 @@ fun CodexScreen(
                                 catalog = app.catalog,
                                 session = app.widget.state,
                                 onEvent = app::onAppEvent,
-                                onBack = null,
                                 onOpenWorkspacePicker = { app.openSurface(Surface.WorkspacePicker) },
                                 onOpenEntry = { id -> openSurfaceFor(app, id) },
                                 onOpenShortcuts = { shortcutsHelp.toggle() },
-                                onOpenSection = { app.openSettingsSection(it) },
                                 configPath = runtime.configPath,
                                 ordinaryUsageRecovered = app.backendBanner.ordinaryUsageRecovered,
-                            )
-                        }
-
-                        entry<Surface.SettingsDetail>(swipeDismiss = NavSwipeDirection.None) { route ->
-                            SettingsScreen(
-                                catalog = app.catalog,
-                                session = app.widget.state,
-                                onEvent = app::onAppEvent,
-                                onBack = null,
-                                onOpenWorkspacePicker = { app.openSurface(Surface.WorkspacePicker) },
-                                onOpenEntry = { id -> openSurfaceFor(app, id) },
-                                onOpenShortcuts = { shortcutsHelp.toggle() },
-                                onOpenSection = { app.openSettingsSection(it) },
-                                configPath = runtime.configPath,
-                                ordinaryUsageRecovered = app.backendBanner.ordinaryUsageRecovered,
-                                section = route.section,
+                                section = app.settingsSection,
                             )
                         }
 
@@ -2812,6 +2865,11 @@ fun CodexScreen(
                             SessionListScreen(app = app, onBack = app::closeSurface)
                         }
 
+                        entry<Surface.Archived>(swipeDismiss = NavSwipeDirection.None) {
+                            LaunchedEffect(Unit) { app.onAppEvent(AppEvent.SetThreadListScope(true)) }
+                            SessionListScreen(app = app, onBack = null)
+                        }
+
                         entry<Surface.WorkspacePicker>(swipeDismiss = NavSwipeDirection.None) {
                             WorkspacePickerScreen(
                                 client = app.client,
@@ -2833,6 +2891,7 @@ fun CodexScreen(
                                 onBack = null,
                                 onOpenEnvironment = { app.openSurface(Surface.EnvironmentDetail(it)) },
                                 onOpenProject = { app.onAppEvent(AppEvent.NewThread(it)) },
+                                onAddWorkspace = { app.openSurface(Surface.WorkspacePicker) },
                             )
                         }
 
@@ -3032,6 +3091,9 @@ fun CodexScreen(
                             },
                             slide = menuSlide,
                             settled = menuRoom,
+                            listState = menuListState,
+                            query = menuQuery,
+                            onQueryChange = { menuQuery = it },
                             topInset = topInset,
                             bottomInset = bottomInset,
                         )
@@ -3047,6 +3109,8 @@ fun CodexScreen(
                     // A pinned card cannot be floated, so the pointer names its item instead.
                     showTooltips = railMenu.pinned,
                     modifier = Modifier.align(Alignment.TopStart),
+                    // The head of the rail is the one thing on it that has to clear the cutout.
+                    topInset = topInset,
                 )
                 // The floating menu takes back first, since it is what the user just put up; the
                 // pinned card a narrow window keeps is the one that needs the page's back gesture.

@@ -1,5 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!-- ui_kit.kt -->
+    <string name="page_back">Back</string>
+    <string name="search_clear">Clear search</string>
+
     <!-- CodexScreen.kt -->
     <!-- A filesystem path, not copy: it is the workspace picker's starting directory. -->
 

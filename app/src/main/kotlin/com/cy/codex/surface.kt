@@ -22,12 +22,13 @@ sealed interface Surface : NavKey {
     data object Chat : Surface
 
     // ---- catalogs -----------------------------------------------------------
-    data object Settings : Surface
-
     /**
-     * One settings section, opened from the rail's settings menu, which already lists every section.
+     * The settings body.
+     *
+     * One page for every section: the rail's settings item opens it and the menu swaps which
+     * section it holds (see `CodexApp.settingsSection`), so a section is not a route of its own.
      */
-    data class SettingsDetail(val section: com.cy.codex.chatwidget.SettingsSection) : Surface
+    data object Settings : Surface
 
     data object Account : Surface
     data object McpServers : Surface
@@ -39,6 +40,14 @@ sealed interface Surface : NavKey {
 
     /** Session picker, opened from the sidebar or `/resume`. */
     data object Sessions : Surface
+
+    /**
+     * The archived half of the thread library.
+     *
+     * A surface of its own rather than a mode of [Sessions]: the archived chats hang off the
+     * settings menu, and the rail highlights the section the page was opened from.
+     */
+    data object Archived : Surface
 
     // ---- projects and execution environments --------------------------------
     /** Saved projects, and the environments a thread can be run on. */

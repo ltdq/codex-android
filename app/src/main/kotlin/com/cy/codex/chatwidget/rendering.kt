@@ -464,26 +464,8 @@ fun ChatScreen(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 StatusCardButton(open = panelState.open, onClick = { panelState.toggle() })
-                Spacer(Modifier.width(UiConsts.Space8))
-                // The menu hangs off this chip, so the chip is what the popup anchors to and measures;
-                // the popup itself is drawn by the root Scaffold's host, over the composer.
-                Box {
-                    SessionPanelButton(
-                        open = sessionPanelOpen,
-                        onClick = { sessionPanelOpen = !sessionPanelOpen },
-                    )
-                    SessionMenuPopup(
-                        show = sessionPanelOpen,
-                        library = SidebarModel.libraryEntries(),
-                        tools = SidebarModel.sessionEntries(),
-                        onAction = { entry ->
-                            sessionPanelOpen = false
-                            openSurfaceFor(app, entry.id)
-                        },
-                        onDismiss = { sessionPanelOpen = false },
-                    )
-                }
                 if (viewedAgent != null) {
+                    Spacer(Modifier.width(UiConsts.Space8))
                     IconButton(
                         onClick = { app.openAgentSummary(viewedAgent) },
                         minWidth = UiConsts.ChipSize,
@@ -1004,47 +986,49 @@ private fun onApprovalDecision(
 }
 
 /** Shared route table for the rail's menus and Settings, so the two placements cannot drift. */
-internal fun openSurfaceFor(app: CodexApp, id: String) {
+internal fun openSurfaceFor(app: CodexApp, id: String, inSection: Boolean = false) {
+    // A row of the open section's menu swaps the body it names; anything else stacks.
+    val open: (Surface) -> Unit = if (inSection) app::openSectionPage else app::openSurface
     // Routes needing a subject read the open session: a caller-passed id could name one no longer open.
     val threadId = app.widget.state.threadId
     val cwd = app.widget.state.config.cwd.ifBlank { app.defaultWorkspace }
     when (id) {
         "new" -> app.onAppEvent(AppEvent.NewThread())
-        "workspace" -> app.openSurface(Surface.WorkspacePicker)
+        "workspace" -> open(Surface.WorkspacePicker)
         "sessions" -> {
             app.onAppEvent(AppEvent.SetThreadListScope(false))
-            app.openSurface(Surface.Sessions)
+            open(Surface.Sessions)
         }
-        "mcp" -> app.openSurface(Surface.McpServers)
-        "skills" -> app.openSurface(Surface.Skills)
-        "plugins" -> app.openSurface(Surface.Plugins)
-        "hooks" -> app.openSurface(Surface.Hooks)
-        "apps" -> app.openSurface(Surface.Apps)
-        "settings" -> app.openSurface(Surface.Settings)
-        "account" -> app.openSurface(Surface.Account)
+        "mcp" -> open(Surface.McpServers)
+        "skills" -> open(Surface.Skills)
+        "plugins" -> open(Surface.Plugins)
+        "hooks" -> open(Surface.Hooks)
+        "apps" -> open(Surface.Apps)
+        "settings" -> open(Surface.Settings)
+        "account" -> open(Surface.Account)
         "archived" -> {
             app.onAppEvent(AppEvent.SetThreadListScope(true))
-            app.openSurface(Surface.Sessions)
+            open(Surface.Archived)
         }
-        "projects" -> app.openSurface(Surface.Projects)
-        "remote_control" -> app.openSurface(Surface.RemoteControl)
-        "verification" -> app.openSurface(Surface.UserVerification)
-        "plugin_shares" -> app.openSurface(Surface.PluginShares)
-        "memories" -> app.openSurface(Surface.Memories)
-        "migration" -> app.openSurface(Surface.ExternalAgentImport)
-        "bedrock" -> app.openSurface(Surface.Bedrock)
-        "diagnostics" -> app.openSurface(Surface.Diagnostics)
-        "sandbox" -> app.openSurface(Surface.WindowsSandbox)
-        "files" -> app.openSurface(Surface.FileBrowser(cwd, picking = false))
-        "exec" -> app.openSurface(Surface.ExecCommand)
-        "terminals" -> app.openSurface(Surface.BackgroundTerminals)
-        "realtime" -> app.openSurface(Surface.Realtime)
+        "projects" -> open(Surface.Projects)
+        "remote_control" -> open(Surface.RemoteControl)
+        "verification" -> open(Surface.UserVerification)
+        "plugin_shares" -> open(Surface.PluginShares)
+        "memories" -> open(Surface.Memories)
+        "migration" -> open(Surface.ExternalAgentImport)
+        "bedrock" -> open(Surface.Bedrock)
+        "diagnostics" -> open(Surface.Diagnostics)
+        "sandbox" -> open(Surface.WindowsSandbox)
+        "files" -> open(Surface.FileBrowser(cwd, picking = false))
+        "exec" -> open(Surface.ExecCommand)
+        "terminals" -> open(Surface.BackgroundTerminals)
+        "realtime" -> open(Surface.Realtime)
         "review" -> app.onAppEvent(AppEvent.SubmitSlashCommand("review", ""))
-        "worktree" -> app.openSurface(Surface.Worktrees)
-        "diff" -> app.openSurface(Surface.Diff)
+        "worktree" -> open(Surface.Worktrees)
+        "diff" -> open(Surface.Diff)
         "goal" -> app.onAppEvent(AppEvent.SubmitSlashCommand("goal", ""))
-        "history" -> app.openSurface(Surface.ThreadHistory)
-        "status" -> app.openSurface(Surface.SessionStatus)
+        "history" -> open(Surface.ThreadHistory)
+        "status" -> open(Surface.SessionStatus)
         else -> Unit
     }
     // Read so the compiler sees this table depends on the open session.

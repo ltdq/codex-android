@@ -1,18 +1,12 @@
 package com.cy.codex.app
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -21,12 +15,17 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.dp
 import com.cy.codex.AppEvent
 import com.cy.codex.CatalogState
+import com.cy.codex.CodexCardGrid
+import com.cy.codex.CodexCatalogCard
+import com.cy.codex.CodexPage
+import com.cy.codex.CodexRowDivider
+import com.cy.codex.CodexSection
+import com.cy.codex.CodexValue
+import com.cy.codex.CodexValueRow
 import com.cy.codex.R
 import com.cy.codex.UiConsts
 import com.cy.codex.UiType
@@ -36,23 +35,17 @@ import com.cy.codex.protocol.protocol.v2.ServerDiagnosticsResponse
 import com.cy.codex.raisedSurface
 import com.cy.codex.usageColor
 import java.util.Locale
-import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
-import top.yukonga.miuix.kmp.basic.Card
-import top.yukonga.miuix.kmp.basic.CardDefaults
-import top.yukonga.miuix.kmp.basic.HorizontalDivider
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.LinearProgressIndicator
 import top.yukonga.miuix.kmp.basic.ProgressIndicatorDefaults
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.icon.MiuixIcons
-import top.yukonga.miuix.kmp.icon.extended.ChevronBackward
 import top.yukonga.miuix.kmp.icon.extended.Info
 import top.yukonga.miuix.kmp.icon.extended.Refresh
 import top.yukonga.miuix.kmp.icon.extended.Tasks
-import top.yukonga.miuix.kmp.icon.extended.UploadCloud
 import top.yukonga.miuix.kmp.squircle.squircleBackground
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
@@ -67,63 +60,37 @@ fun DiagnosticsScreen(
     onBack: (() -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
-    val colors = MiuixTheme.colorScheme
     val diagnostics = catalog.diagnostics
     var reporting by remember { mutableStateOf(false) }
 
-    Column(modifier = modifier.fillMaxSize().background(colors.background)) {
-        BasicComponent(
-            title = stringResource(R.string.diagnostics_screen_title),
-            summary = diagnosticsSubtitle(diagnostics),
-            startAction = {
-                if (onBack != null) {
-                    IconButton(
-                        onClick = onBack,
-                        minWidth = UiConsts.IconButtonSize,
-                        minHeight = UiConsts.IconButtonSize,
-                    ) {
-                        Icon(
-                            imageVector = MiuixIcons.ChevronBackward,
-                            contentDescription = stringResource(R.string.diagnostics_screen_back),
-                            modifier = Modifier.size(UiConsts.IconHeader),
-                            tint = MiuixTheme.colorScheme.primary,
-                        )
-                    }
-                }
-            },
-            endActions = {
-                IconButton(
-                    onClick = { onEvent(AppEvent.ReloadDiagnostics) },
-                    minWidth = UiConsts.IconButtonSize,
-                    minHeight = UiConsts.IconButtonSize,
-                ) {
-                    Icon(
-                        imageVector = MiuixIcons.Refresh,
-                        contentDescription = stringResource(R.string.diagnostics_screen_refresh),
-                        modifier = Modifier.size(UiConsts.IconRefresh),
-                        tint = colors.primary,
-                    )
-                }
-            },
-        )
-        Column(
-            modifier =
-                Modifier.weight(1f)
-                    .fillMaxWidth()
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = UiConsts.ScreenMargin)
-                    .padding(bottom = UiConsts.PageBottomInset),
-            verticalArrangement = Arrangement.spacedBy(UiConsts.SectionGap),
-        ) {
-            if (diagnostics == null) {
-                DiagnosticsEmptyCard(onRead = { onEvent(AppEvent.ReloadDiagnostics) })
-            } else {
-                DiagnosticsProcessCard(diagnostics.process)
-                DiagnosticsGaugesCard(diagnostics.gauges)
+    CodexPage(
+        title = stringResource(R.string.diagnostics_screen_title),
+        description = diagnosticsSubtitle(diagnostics),
+        onBack = onBack,
+        modifier = modifier,
+        actions = {
+            IconButton(
+                onClick = { onEvent(AppEvent.ReloadDiagnostics) },
+                minWidth = UiConsts.IconButtonSize,
+                minHeight = UiConsts.IconButtonSize,
+            ) {
+                Icon(
+                    imageVector = MiuixIcons.Refresh,
+                    contentDescription = stringResource(R.string.diagnostics_screen_refresh),
+                    modifier = Modifier.size(UiConsts.IconRefresh),
+                    tint = MiuixTheme.colorScheme.primary,
+                )
             }
-            // Always shown: an unanswered probe is exactly when a report is worth most.
-            DiagnosticsFeedbackCard(onReport = { reporting = true })
+        },
+    ) {
+        if (diagnostics == null) {
+            DiagnosticsEmptySection(onRead = { onEvent(AppEvent.ReloadDiagnostics) })
+        } else {
+            DiagnosticsProcessSection(diagnostics.process)
+            DiagnosticsGaugesSection(diagnostics.gauges)
         }
+        // Always shown: an unanswered probe is exactly when a report is worth most.
+        DiagnosticsFeedbackSection(onReport = { reporting = true })
     }
 
     if (reporting) {
@@ -149,29 +116,8 @@ private fun diagnosticsSubtitle(diagnostics: ServerDiagnosticsResponse?): String
 
 // Distinguishes "client has not asked" from "server reported nothing".
 @Composable
-private fun DiagnosticsEmptyCard(onRead: () -> Unit) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        cornerRadius = UiConsts.SectionCorner,
-        insideMargin = PaddingValues(horizontal = 11.dp, vertical = 8.dp),
-        colors =
-            CardDefaults.defaultColors(
-                color = raisedSurface(),
-                contentColor = MiuixTheme.colorScheme.onSurface,
-            ),
-    ) {
-        BasicComponent(
-            title = stringResource(R.string.diagnostics_screen_section_server),
-            startAction = {
-                Icon(
-                    imageVector = MiuixIcons.Info,
-                    contentDescription = null,
-                    modifier = Modifier.size(14.dp),
-                    tint = MiuixTheme.colorScheme.primary,
-                )
-            },
-        )
-
+private fun DiagnosticsEmptySection(onRead: () -> Unit) {
+    CodexSection(stringResource(R.string.diagnostics_screen_section_server)) {
         Column(
             modifier =
                 Modifier.fillMaxWidth()
@@ -224,146 +170,56 @@ private fun DiagnosticsEmptyCard(onRead: () -> Unit) {
     }
 }
 
-// pid/version are monospace: copied into reports; proportional faces blur l and 1.
 @Composable
-private fun DiagnosticsProcessCard(process: ServerDiagnosticsProcess) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        cornerRadius = UiConsts.SectionCorner,
-        insideMargin = PaddingValues(horizontal = 11.dp, vertical = 8.dp),
-        colors =
-            CardDefaults.defaultColors(
-                color = raisedSurface(),
-                contentColor = MiuixTheme.colorScheme.onSurface,
-            ),
-    ) {
-        BasicComponent(
-            title = stringResource(R.string.diagnostics_process_section),
-            startAction = {
-                Icon(
-                    imageVector = MiuixIcons.Info,
-                    contentDescription = null,
-                    modifier = Modifier.size(14.dp),
-                    tint = MiuixTheme.colorScheme.primary,
-                )
-            },
-        )
-
-        BasicComponent(
+private fun DiagnosticsProcessSection(process: ServerDiagnosticsProcess) {
+    CodexSection(stringResource(R.string.diagnostics_process_section)) {
+        CodexValueRow(
             title = stringResource(R.string.diagnostics_process_pid),
-            endActions = {
-                Text(
-                    text = formatGaugeValue(process.id.toDouble()).ifEmpty { "—" },
-                    fontFamily = FontFamily.Monospace,
-                    color = MiuixTheme.colorScheme.onSurface,
-                    textAlign = TextAlign.End,
-                )
-            },
+            value = formatGaugeValue(process.id.toDouble()).ifEmpty { "—" },
         )
-        HorizontalDivider(modifier = Modifier.padding(vertical = UiConsts.Space1))
-        BasicComponent(
+        CodexRowDivider()
+        CodexValueRow(
             title = stringResource(R.string.diagnostics_process_resident),
-            endActions = {
-                Text(
-                    text =
-                        process.residentMemoryBytes?.let(::formatBytes).orEmpty().ifEmpty { "—" },
-                    fontFamily = FontFamily.Monospace,
-                    color = MiuixTheme.colorScheme.onSurface,
-                    textAlign = TextAlign.End,
-                )
-            },
+            value = process.residentMemoryBytes?.let(::formatBytes).orEmpty().ifEmpty { "—" },
         )
-        HorizontalDivider(modifier = Modifier.padding(vertical = UiConsts.Space1))
-        BasicComponent(
+        CodexRowDivider()
+        CodexValueRow(
             title = stringResource(R.string.diagnostics_process_footprint),
-            endActions = {
-                Text(
-                    text =
-                        process.physicalFootprintBytes?.let(::formatBytes).orEmpty().ifEmpty {
-                            "—"
-                        },
-                    fontFamily = FontFamily.Monospace,
-                    color = MiuixTheme.colorScheme.onSurface,
-                    textAlign = TextAlign.End,
-                )
-            },
+            value =
+                process.physicalFootprintBytes?.let(::formatBytes).orEmpty().ifEmpty { "—" },
         )
     }
 }
 
 // `server/…` gauges carry no unit or ceiling: bars are relative to the same reading's peak.
 @Composable
-private fun DiagnosticsGaugesCard(gauges: List<ServerDiagnosticsGauge>) {
-    val colors = MiuixTheme.colorScheme
+private fun DiagnosticsGaugesSection(gauges: List<ServerDiagnosticsGauge>) {
     // Peak zero means no scale: bars stay empty and divide-by-zero is avoided.
     val peak = gauges.maxOfOrNull { it.value }?.takeIf { it > 0L } ?: 0L
 
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        cornerRadius = UiConsts.SectionCorner,
-        insideMargin = PaddingValues(horizontal = 11.dp, vertical = 8.dp),
-        colors =
-            CardDefaults.defaultColors(
-                color = raisedSurface(),
-                contentColor = MiuixTheme.colorScheme.onSurface,
-            ),
-    ) {
-        BasicComponent(
+    CodexSection {
+        CodexValueRow(
             title = stringResource(R.string.diagnostics_gauges_section),
-            startAction = {
-                Icon(
-                    imageVector = MiuixIcons.Tasks,
-                    contentDescription = null,
-                    modifier = Modifier.size(14.dp),
-                    tint = MiuixTheme.colorScheme.primary,
-                )
-            },
-            endActions = {
-                Text(
-                    text = gauges.size.toString(),
-                    fontWeight = FontWeight.Medium,
-                    color = MiuixTheme.colorScheme.onSurface,
-                    maxLines = 1,
-                )
-            },
+            value = gauges.size.toString(),
         )
-
         if (gauges.isEmpty()) {
-            Text(
-                text = stringResource(R.string.diagnostics_gauges_empty),
-                modifier =
-                    Modifier.padding(
-                        horizontal = UiConsts.Space4,
-                        vertical = UiConsts.Space6,
-                    ),
-                fontSize = UiType.Meta,
-                lineHeight = UiType.MetaLine,
-                color = colors.disabledOnSurface,
-            )
+            DiagnosticsNote(stringResource(R.string.diagnostics_gauges_empty))
         } else {
-            gauges.forEachIndexed { index, gauge ->
-                if (index > 0)
-                    HorizontalDivider(modifier = Modifier.padding(vertical = UiConsts.Space1))
-                DiagnosticsGaugeRow(gauge = gauge, peak = peak)
-            }
-            Spacer(Modifier.height(UiConsts.Space8))
-            Text(
-                text =
-                    stringResource(
-                        R.string.diagnostics_gauges_note,
-                        formatGaugeValue(peak.toDouble()),
-                    ),
-                modifier = Modifier.padding(horizontal = UiConsts.Space4),
-                fontSize = UiType.Footnote,
-                lineHeight = UiType.FootnoteLine,
-                color = colors.disabledOnSurface,
+            DiagnosticsNote(
+                stringResource(
+                    R.string.diagnostics_gauges_note,
+                    formatGaugeValue(peak.toDouble()),
+                )
             )
         }
+    }
+    CodexCardGrid(count = gauges.size) { index ->
+        DiagnosticsGaugeCard(gauge = gauges[index], peak = peak)
     }
 }
 
 @Composable
-private fun DiagnosticsGaugeRow(gauge: ServerDiagnosticsGauge, peak: Long) {
+private fun DiagnosticsGaugeCard(gauge: ServerDiagnosticsGauge, peak: Long) {
     val colors = MiuixTheme.colorScheme
     val fraction =
         if (peak > 0L) {
@@ -371,32 +227,42 @@ private fun DiagnosticsGaugeRow(gauge: ServerDiagnosticsGauge, peak: Long) {
         } else {
             0f
         }
-    Column(modifier = Modifier.fillMaxWidth()) {
-        BasicComponent(
-            title = gauge.name,
-            endActions = {
-                Text(
-                    text = formatGaugeValue(gauge.value.toDouble()).ifEmpty { "—" },
-                    fontFamily = FontFamily.Monospace,
-                    color = MiuixTheme.colorScheme.onSurface,
-                    textAlign = TextAlign.End,
-                )
-            },
-        )
-        LinearProgressIndicator(
-            progress = fraction,
-            modifier =
-                Modifier.fillMaxWidth()
-                    .padding(horizontal = UiConsts.Space4)
-                    .padding(bottom = UiConsts.Space8),
-            colors =
-                ProgressIndicatorDefaults.progressIndicatorColors(
-                    foregroundColor = usageColor(fraction),
-                    backgroundColor = colors.onBackground.copy(alpha = 0.08f),
-                ),
-            height = UiConsts.ProgressHeightRow,
-        )
-    }
+    CodexCatalogCard(
+        title = gauge.name,
+        description = null,
+        icon = MiuixIcons.Tasks,
+        trailing = { CodexValue(formatGaugeValue(gauge.value.toDouble()).ifEmpty { "—" }) },
+        footer = {
+            LinearProgressIndicator(
+                progress = fraction,
+                modifier = Modifier.fillMaxWidth(),
+                colors =
+                    ProgressIndicatorDefaults.progressIndicatorColors(
+                        foregroundColor = usageColor(fraction),
+                        backgroundColor = colors.onBackground.copy(alpha = 0.08f),
+                    ),
+                height = UiConsts.ProgressHeightRow,
+            )
+        },
+    )
+}
+
+/** Footnote on a card's inner rail; always the page's own copy, never a value off the wire. */
+@Composable
+private fun DiagnosticsNote(text: String) {
+    Text(
+        text = text,
+        modifier =
+            Modifier.padding(
+                start = UiConsts.RowInset,
+                end = UiConsts.RowInset,
+                top = UiConsts.Space8,
+                bottom = UiConsts.Space8,
+            ),
+        fontSize = UiType.Footnote,
+        lineHeight = UiType.FootnoteLine,
+        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+    )
 }
 
 // Locale pinned so the decimal point cannot shift under a translated build.
@@ -427,41 +293,19 @@ private fun formatBytes(bytes: Long): String {
  * required (the server files under it), reason optional.
  */
 @Composable
-private fun DiagnosticsFeedbackCard(onReport: () -> Unit) {
-    val colors = MiuixTheme.colorScheme
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        cornerRadius = UiConsts.SectionCorner,
-        insideMargin = PaddingValues(horizontal = 11.dp, vertical = 8.dp),
-        colors =
-            CardDefaults.defaultColors(
-                color = raisedSurface(),
-                contentColor = MiuixTheme.colorScheme.onSurface,
-            ),
-    ) {
-        BasicComponent(
-            title = stringResource(R.string.diagnostics_feedback_section),
-            startAction = {
-                Icon(
-                    imageVector = MiuixIcons.UploadCloud,
-                    contentDescription = null,
-                    modifier = Modifier.size(14.dp),
-                    tint = MiuixTheme.colorScheme.primary,
-                )
-            },
-        )
-
-        Text(
-            text = stringResource(R.string.diagnostics_feedback_body),
-            modifier = Modifier.padding(horizontal = UiConsts.Space4),
-            fontSize = UiType.Meta,
-            lineHeight = UiType.MetaLine,
-            color = colors.onSurfaceVariantSummary,
-        )
-        Spacer(Modifier.height(UiConsts.Space10))
+private fun DiagnosticsFeedbackSection(onReport: () -> Unit) {
+    CodexSection(stringResource(R.string.diagnostics_feedback_section)) {
+        DiagnosticsNote(stringResource(R.string.diagnostics_feedback_body))
         Button(
             onClick = onReport,
-            modifier = Modifier.fillMaxWidth(),
+            modifier =
+                Modifier.fillMaxWidth()
+                    .padding(
+                        start = UiConsts.RowInset,
+                        end = UiConsts.RowInset,
+                        top = UiConsts.Space4,
+                        bottom = UiConsts.RowInset,
+                    ),
             enabled = true,
             colors = ButtonDefaults.buttonColors(),
         ) {

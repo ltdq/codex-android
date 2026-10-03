@@ -148,7 +148,8 @@ fun CodexShellCard(
  * The shell's page card: the page stack floating on the rail's own colour ([railColor], washed by
  * [CodexShellBackdrop]), inset from the window's edges. [start] is its left edge: the rail's own
  * while the rail's menu is shut, and the far side of the menu's column once the menu card stands
- * pinned beside it.
+ * pinned beside it. Only the card's own edge moves: where the page stands inside it is the caller's
+ * to place, so a page keeps the column the layout gave it while the card slides under it.
  */
 @Composable
 fun CodexShellScreen(
@@ -294,7 +295,10 @@ fun CodexShellBackdrop(
 /**
  * The shell's navigation rail: the window's edge column the sections are switched from. Unlike the
  * library's labelled `NavigationRail` it is icon-only, pinned to the window's edges and never
- * scrolls, and it draws no surface or divider of its own, being the window's base layer.
+ * scrolls, and it draws no surface or divider of its own, being the window's base layer. [header] is
+ * the rail's own head — the app's mark, which is not an item — and it takes a block of its own,
+ * clear of the window's top inset, with the items starting below it. [topInset] is the window's own;
+ * a rail with no header keeps the items' own gap to the top edge instead.
  */
 @Composable
 fun CodexNavigationRail(
@@ -302,6 +306,8 @@ fun CodexNavigationRail(
     width: Dp = UiConsts.NavRailWidth,
     itemSize: Dp = UiConsts.NavRailItemSize,
     itemGap: Dp = UiConsts.Space8,
+    header: (@Composable () -> Unit)? = null,
+    topInset: Dp = 0.dp,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     // The item's own inset is also the column's first and last gap, so an icon's centre sits as far
@@ -311,7 +317,18 @@ fun CodexNavigationRail(
         modifier = modifier.width(width).fillMaxHeight().selectableGroup(),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Spacer(Modifier.height(edgeGap))
+        if (header != null) {
+            Spacer(Modifier.height(railHeadTop(topInset)))
+            Box(
+                modifier = Modifier.height(UiConsts.NavRailHeadHeight).fillMaxWidth(),
+                contentAlignment = Alignment.Center,
+            ) {
+                header()
+            }
+            Spacer(Modifier.height(UiConsts.Space12))
+        } else {
+            Spacer(Modifier.height(edgeGap))
+        }
         // Items only: the gaps to the window's edges are the item's inset, not list spacing.
         Column(
             modifier = Modifier.weight(1f).fillMaxWidth(),
