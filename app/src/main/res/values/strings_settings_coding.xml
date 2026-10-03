@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- chatwidget/settings_coding.kt and settings_archived.kt: the desktop's 编码 and 已归档 pages.
+     Desktop copy is verbatim; the rows the port cannot act on stay disabled, holding its values. -->
+<resources>
+    <!-- 钩子 -->
+    <string name="settings_hooks_empty">No hooks found</string>
+    <string name="settings_hooks_empty_summary">Configured hooks will appear here</string>
+    <string name="settings_hooks_group">Configured hooks</string>
+    <string name="settings_hooks_review">Review and trust hooks</string>
+    <string name="settings_hooks_count">%1$d hooks</string>
+
+    <!-- 连接 -->
+    <string name="settings_connections_group_ssh">SSH connections from this computer</string>
+    <string name="settings_connections_add">Add</string>
+    <string name="settings_connections_empty">No SSH connections yet</string>
+    <string name="settings_connections_empty_summary">Connected computers will appear here</string>
+
+    <!-- 代码审查 -->
+    <string name="settings_review_group">Review</string>
+    <string name="settings_review_unavailable">More review settings live in the desktop app</string>
+
+    <!-- Git -->
+    <string name="settings_git_branch_prefix">Branch prefix</string>
+    <string name="settings_git_branch_prefix_summary">The prefix ChatGPT uses when creating branches</string>
+    <string name="settings_git_merge_method">Pull request merge method</string>
+    <string name="settings_git_merge_method_summary">How ChatGPT merges pull requests</string>
+    <string name="settings_git_merge">Merge</string>
+    <string name="settings_git_squash">Squash</string>
+    <string name="settings_git_force_push">Always force push</string>
+    <string name="settings_git_force_push_summary">Use --force-with-lease when pushing from ChatGPT</string>
+    <string name="settings_git_draft_pull_request">Create draft pull requests</string>
+    <string name="settings_git_draft_pull_request_summary">Default to a draft pull request when ChatGPT opens one</string>
+    <string name="settings_git_review_presentation">How review results are presented</string>
+    <string name="settings_git_review_presentation_summary">Start /review in the current chat where possible, or in a separate review chat</string>
+    <string name="settings_git_review_inline">Inline</string>
+    <string name="settings_git_review_separate">Separate</string>
+    <string name="settings_git_group_watch">Watch and fix pull requests</string>
+    <string name="settings_git_auto_merge">Auto-merge when ready</string>
+    <string name="settings_git_auto_merge_summary">Keep watching until the pull request merges</string>
+    <string name="settings_git_watch_instructions">Watch instructions</string>
+    <string name="settings_git_watch_instructions_placeholder">e.g. comment /merge once checks pass, and approve unrelated Chromatic changes…</string>
+    <string name="settings_git_group_commit">Commit messages</string>
+    <string name="settings_git_group_commit_summary">Added to the commit message generation prompt</string>
+    <string name="settings_git_commit_guidance">Commit message guidance</string>
+    <string name="settings_git_commit_placeholder">Add commit message guidance…</string>
+    <string name="settings_git_group_pull_request">Pull request descriptions</string>
+    <string name="settings_git_group_pull_request_summary">Added to the pull request title/description generation prompt</string>
+    <string name="settings_git_pull_request_guidance">Pull request guidance</string>
+    <string name="settings_git_pull_request_placeholder">Add pull request guidance…</string>
+    <string name="settings_git_field_confirm">Save</string>
+
+    <!-- 环境 -->
+    <string name="settings_environment_group_projects">Choose projects</string>
+    <string name="settings_environment_add_project">Add project</string>
+    <string name="settings_environment_no_projects">No projects yet</string>
+
+    <!-- Worktrees -->
+    <string name="settings_worktrees_root">Worktree root</string>
+    <string name="settings_worktrees_root_summary">Where ChatGPT creates managed worktrees. Leave empty for the default location</string>
+    <string name="settings_worktrees_fetch">Always fetch upstream before creating a worktree</string>
+    <string name="settings_worktrees_fetch_summary">Codex normally fetches branch updates during regular git operations. This also fetches upstream before every new worktree.</string>
+    <string name="settings_worktrees_auto_delete">Delete old worktrees automatically</string>
+    <string name="settings_worktrees_auto_delete_summary">Recommended for most users. Turn this off only if you want to manage old worktrees and disk usage by hand.</string>
+    <string name="settings_worktrees_limit">Auto-delete limit</string>
+    <string name="settings_worktrees_limit_summary">How many managed worktrees to keep; older ones are cleaned up past that. ChatGPT snapshots a worktree before deleting it, so a cleaned-up worktree should always be recoverable.</string>
+    <string name="settings_worktrees_empty">No worktrees yet</string>
+    <string name="settings_worktrees_empty_summary">Worktrees created by ChatGPT will appear here</string>
+    <string name="settings_worktrees_field_confirm">Save</string>
+
+    <!-- 已归档的聊天 -->
+    <string name="settings_archived_empty">No archived chats yet</string>
+</resources>

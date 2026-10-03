@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- chatwidget/settings_agent.kt, in Chinese: the desktop app's wording, verbatim. The English
+     values live in values/strings_settings_agent.xml. -->
+<resources>
+    <string name="settings_agent_group_defaults">智能体默认设置</string>
+    <string name="settings_agent_user_configuration">用户配置</string>
+    <string name="settings_agent_user">用户</string>
+    <string name="settings_agent_open_config">打开 config.toml</string>
+    <string name="settings_agent_open">打开</string>
+    <string name="settings_agent_approval_policy">批准策略</string>
+    <string name="settings_agent_approval_policy_summary">选择 ChatGPT 何时请求批准</string>
+    <string name="settings_agent_sandbox">沙盒设置</string>
+    <string name="settings_agent_sandbox_summary">选择 ChatGPT 运行命令时的权限范围</string>
+    <string name="settings_agent_web_search">网页搜索</string>
+    <string name="settings_agent_web_search_summary">选择 ChatGPT 访问网络的方式</string>
+    <string name="settings_agent_web_search_off">关闭</string>
+    <string name="settings_agent_web_search_cached">缓存</string>
+    <string name="settings_agent_web_search_live">实时</string>
+    <string name="settings_agent_verbosity">输出详细程度</string>
+    <string name="settings_agent_verbosity_summary">选择 ChatGPT 回复包含细节的详细程度</string>
+    <string name="settings_agent_verbosity_model_default">模型默认</string>
+    <string name="settings_agent_verbosity_low">低</string>
+    <string name="settings_agent_verbosity_medium">中</string>
+    <string name="settings_agent_verbosity_high">高</string>
+    <string name="settings_agent_reasoning_summary">推理摘要</string>
+    <string name="settings_agent_reasoning_summary_summary">选择 ChatGPT 总结其推理的方式</string>
+    <string name="settings_agent_reasoning_summary_auto">自动</string>
+    <string name="settings_agent_reasoning_summary_concise">简洁</string>
+    <string name="settings_agent_reasoning_summary_detailed">详细</string>
+    <string name="settings_agent_reasoning_summary_off">关闭</string>
+
+    <string name="settings_agent_group_model_features">模型功能</string>
+    <string name="settings_agent_available_efforts">可用推理强度</string>
+    <string name="settings_agent_available_efforts_summary">选择在模型控件中显示哪些推理强度级别。可用性因模型而异</string>
+
+    <string name="settings_agent_group_workspace_dependencies">工作空间依赖项</string>
+    <string name="settings_agent_dependencies">Codex 依赖项</string>
+    <string name="settings_agent_dependencies_summary">允许 ChatGPT 安装并提供随附的 Node.js 和 Python 工具</string>
+    <string name="settings_agent_diagnose">诊断 Codex 工作空间中的问题</string>
+    <string name="settings_agent_diagnose_summary">检查当前捆绑包并记录诊断日志</string>
+    <string name="settings_agent_diagnose_action">诊断</string>
+    <string name="settings_agent_reset_workspace">重置并安装工作空间</string>
+    <string name="settings_agent_reset_workspace_summary">下载新的软件包并安装，然后重新加载工具</string>
+    <string name="settings_agent_reinstall_action">重新安装</string>
+    <string name="settings_agent_current_version">当前版本</string>
+
+    <string name="settings_personalization_group_memory">Codex 记忆</string>
+    <string name="settings_personalization_group_memory_summary">配置 Codex 在 Local 上管理记忆的方式。</string>
+    <string name="settings_personalization_use_memories">启用 Codex 记忆功能</string>
+    <string name="settings_personalization_use_memories_summary">根据 Local 上的聊天创建记忆，并使用这些记忆为今后在 Local 上的聊天提供个性化体验</string>
+    <string name="settings_personalization_generate_memories">允许从使用工具的聊天中生成记忆</string>
+    <string name="settings_personalization_generate_memories_summary">从使用过 MCP 工具或网页搜索的聊天生成记忆</string>
+    <string name="settings_personalization_delete_memories">删除 Codex 记忆</string>
+    <string name="settings_personalization_delete_memories_summary">删除 Local 上的全部 Codex 记忆</string>
+    <string name="settings_personalization_delete_action">删除</string>
+    <string name="settings_personalization_group_instructions">自定义指令</string>
+    <string name="settings_personalization_instructions">Codex 指令</string>
+    <!-- The desktop's own sentence, kept in English in both locales. -->
+    <string name="settings_personalization_instructions_summary">Edit the AGENTS.md file on the selected machine. Repository instructions may also apply.</string>
+
+    <string name="settings_pets_unavailable">虚拟宠物是桌面应用的形态，此设备上没有可配置项</string>
+</resources>

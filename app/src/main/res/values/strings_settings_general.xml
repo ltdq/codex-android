@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- chatwidget/settings_general.kt: 常规 and 导入, the two pages of the desktop's 个人 group that
+     the app can act on at all. Copy is the desktop app's, verbatim. -->
+<resources>
+    <string name="settings_general_group_permissions">Permissions</string>
+    <string name="settings_general_default_permissions">Default permissions</string>
+    <string name="settings_general_default_permissions_summary">By default, ChatGPT can read and edit files in its workspace. It can request extra access when it needs it</string>
+    <string name="settings_general_full_access">Full access</string>
+    <string name="settings_general_full_access_summary">With full access, ChatGPT can edit any file on your computer and run commands with network access without your approval. This significantly increases the risk of data loss, leakage or unexpected behavior.</string>
+
+    <string name="settings_general_group_general">General</string>
+    <string name="settings_general_tasks_folder">Folder for tasks outside projects</string>
+    <string name="settings_general_tasks_folder_summary">Where tasks started outside a project store their data by default.</string>
+    <string name="settings_general_change">Change</string>
+    <string name="settings_general_default_editor">Default file open location</string>
+    <string name="settings_general_default_editor_summary">Where files and folders open by default</string>
+    <string name="settings_general_terminal_shell">Integrated terminal shell</string>
+    <string name="settings_general_terminal_shell_summary">Which shell the integrated terminal opens.</string>
+    <string name="settings_general_language">Language</string>
+    <string name="settings_general_language_summary">Interface language</string>
+    <string name="settings_general_language_auto">Auto-detect</string>
+    <string name="settings_general_confirm_close">Confirm before closing a window</string>
+    <string name="settings_general_confirm_close_summary">Warn when a tab-close shortcut would close the window</string>
+    <string name="settings_general_full_view">Open the full view by default</string>
+    <string name="settings_general_full_view_summary">Show the chat and the content in one tab strip when a task starts</string>
+    <string name="settings_general_bottom_panel">Bottom panel</string>
+    <string name="settings_general_bottom_panel_summary">Show the bottom panel control in the app title bar</string>
+    <string name="settings_general_terminal_position">Default terminal position</string>
+    <string name="settings_general_terminal_position_summary">Where terminal shortcuts and environment actions open a terminal tab</string>
+    <string name="settings_general_terminal_bottom">Bottom</string>
+    <string name="settings_general_terminal_side">Right</string>
+    <string name="settings_general_compress_history">Compress locally stored chat history</string>
+    <string name="settings_general_compress_history_summary">Compress older local chat history to save disk space. Takes effect after ChatGPT restarts.</string>
+    <string name="settings_general_licenses">Open source licenses</string>
+    <string name="settings_general_licenses_summary">Third-party notices for bundled dependencies</string>
+    <string name="settings_general_view">View</string>
+    <string name="settings_general_plugins">Plugins</string>
+    <string name="settings_general_plugins_summary">Let ChatGPT use installed plugins</string>
+
+    <string name="settings_general_group_editor">Editor</string>
+    <string name="settings_general_plain_text">Plain text editor</string>
+    <string name="settings_general_plain_text_summary">Keep code, Markdown and links as plain text while writing a message</string>
+    <string name="settings_general_context_usage">Show context window usage</string>
+    <string name="settings_general_send_shortcut">Send shortcut</string>
+    <string name="settings_general_send_shortcut_summary">Whether Enter sends the prompt or inserts a new line</string>
+    <string name="settings_general_send_enter">Enter</string>
+    <string name="settings_general_follow_up">Follow-up handling</string>
+    <string name="settings_general_follow_up_summary">Queue follow-up messages while ChatGPT is running, or steer the current run. Ctrl+Enter does the opposite for one message</string>
+    <string name="settings_general_follow_up_queue">Queue</string>
+    <string name="settings_general_follow_up_steer">Steer</string>
+
+    <string name="settings_general_group_popup">Popup window</string>
+    <string name="settings_general_popup_shortcut">Popup shortcut</string>
+    <string name="settings_general_popup_shortcut_summary">Set a global shortcut for the popup window. Left unset it stays closed.</string>
+    <string name="settings_general_popup_shortcut_value">Off</string>
+    <string name="settings_general_standalone_chat">Use a standalone chat by default</string>
+    <string name="settings_general_standalone_chat_summary">Start new chats outside any project</string>
+
+    <string name="settings_general_group_notifications">Notifications</string>
+    <string name="settings_general_turn_notifications">Turn completion notifications</string>
+    <string name="settings_general_turn_notifications_summary">When to be told that ChatGPT has finished</string>
+    <string name="settings_general_notify_off">Never</string>
+    <string name="settings_general_notify_unfocused">Only when unfocused</string>
+    <string name="settings_general_permission_notifications">Permission notifications</string>
+    <string name="settings_general_permission_notifications_summary">Show a reminder when notification permission is needed</string>
+    <string name="settings_general_question_notifications">Question notifications</string>
+    <string name="settings_general_question_notifications_summary">Notify when a question has to be answered to continue</string>
+    <string name="settings_general_dot_notifications">Enable dot notifications</string>
+    <string name="settings_general_dot_notifications_summary">Show alerts when your dot sends you a message</string>
+    <string name="settings_general_notification_sound">Notification sound</string>
+    <string name="settings_general_notification_sound_summary">Sound for task completion, permission requests and questions</string>
+    <string name="settings_general_notification_sound_default">Default</string>
+
+    <string name="settings_general_group_experiments">Fun experiments</string>
+    <string name="settings_general_confetti">Confetti</string>
+    <string name="settings_general_confetti_summary">Let Codex fire confetti in the app when you ask for it!</string>
+
+    <string name="settings_import_group_sync">Automatic sync</string>
+    <string name="settings_import_keep_sync">Keep the import in sync</string>
+    <string name="settings_import_keep_sync_summary">Sync is paused. What you picked has been saved</string>
+    <string name="settings_import_sync_content">What to sync</string>
+    <string name="settings_import_sync_content_summary">Available after the first import</string>
+    <string name="settings_import_sync_custom">Custom</string>
+    <string name="settings_import_group_from_other">Import from other AI apps</string>
+    <string name="settings_import_from_other_summary">Configurations detected that can be added to ChatGPT</string>
+    <string name="settings_import_claude_code">Claude Code</string>
+</resources>

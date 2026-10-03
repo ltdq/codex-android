@@ -6,7 +6,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -36,6 +35,8 @@ import top.yukonga.miuix.kmp.basic.TooltipAnchorPosition
 import top.yukonga.miuix.kmp.basic.TooltipBox
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.AddFolder
+import top.yukonga.miuix.kmp.icon.extended.ExpandMore
+import top.yukonga.miuix.kmp.icon.extended.More
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
@@ -262,8 +263,20 @@ internal fun NavMenuPanel(
                                     title = row.title,
                                     icon = row.icon,
                                     selected = row.selected,
+                                    enabled = row.enabled,
                                     onClick = { onRow(row) },
                                 )
+
+                            // The rest of a truncated list: the desktop's 展开显示, one row.
+                            is NavMenuRow.ShowMore ->
+                                CodexMenuRow(
+                                    title = row.title,
+                                    icon = MiuixIcons.ExpandMore,
+                                    selected = false,
+                                    onClick = { onRow(row) },
+                                )
+
+                            is NavMenuRow.Note -> CodexMenuNoteRow(text = row.text)
 
                             is NavMenuRow.Project ->
                                 CodexMenuProjectRow(
@@ -288,14 +301,21 @@ internal fun NavMenuPanel(
 
 /**
  * The action a menu group carries on its title row: the group's own destination, so the row that
- * names the projects is also where a workspace is added.
+ * names the projects is also where a workspace is added, and the row that names the recent threads
+ * is also the way to the whole library.
  */
 @Composable
 private fun MenuGroupAction(id: String, onClick: () -> Unit) {
     val description =
         when (id) {
             DestinationCatalog.Id.Workspace -> stringResource(R.string.sidebar_add_workspace)
+            DestinationCatalog.Id.Sessions -> stringResource(R.string.sidebar_library_all_sessions)
             else -> id
+        }
+    val icon =
+        when (id) {
+            DestinationCatalog.Id.Workspace -> MiuixIcons.AddFolder
+            else -> MiuixIcons.More
         }
     IconButton(
         onClick = onClick,
@@ -303,7 +323,7 @@ private fun MenuGroupAction(id: String, onClick: () -> Unit) {
         minHeight = UiConsts.IconButtonCompact,
     ) {
         Icon(
-            imageVector = MiuixIcons.AddFolder,
+            imageVector = icon,
             contentDescription = description,
             modifier = Modifier.size(UiConsts.IconRow),
             tint = MiuixTheme.colorScheme.primary,

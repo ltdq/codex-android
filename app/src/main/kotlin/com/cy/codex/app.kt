@@ -59,6 +59,7 @@ import com.cy.codex.app.DiagnosticsScreen
 import com.cy.codex.app.SUB_AGENT_SOURCE_KINDS
 import com.cy.codex.app.EnvironmentDetailScreen
 import com.cy.codex.app.ProjectsScreen
+import com.cy.codex.app.ScheduledScreen
 import com.cy.codex.app.isProjectTrusted
 import com.cy.codex.app.SessionStatusScreen
 import com.cy.codex.app.SubAgentSummarySheet
@@ -221,7 +222,7 @@ class CodexApp(
      * shell state rather than a route: two settings pages in the back stack would be two pages the
      * user never asked for.
      */
-    var settingsSection by mutableStateOf(com.cy.codex.chatwidget.SettingsSection.Model)
+    var settingsSection by mutableStateOf(com.cy.codex.chatwidget.SettingsSection.General)
 
     /**
      * The page each rail item was last on.
@@ -1074,7 +1075,7 @@ class CodexApp(
             "apps" -> if (connectorsAvailable) openSurface(Surface.Apps) else {
                 scope.launch { snackbar.showSnackbar(context.getString(R.string.slash_apps_requires_chatgpt)) }
             }
-            "settings" -> openSettingsSection(SettingsSection.Model)
+            "settings" -> openSettingsSection(SettingsSection.General)
             "theme" -> openSettingsSection(SettingsSection.Appearance)
             "cd" -> openSurface(Surface.WorkspacePicker)
             "import" -> openSurface(Surface.ExternalAgentImport)
@@ -1094,11 +1095,10 @@ class CodexApp(
             }
             "status" -> openSurface(Surface.SessionStatus)
             "copy" -> copyMenuOpen = true
-            "model", "approvals" -> openSettingsSection(
-                if (name == "approvals") SettingsSection.Permissions else SettingsSection.Model,
-            )
-            // The settings menu lists its own sections, so this link names one directly.
-            "permissions" -> openSettingsSection(SettingsSection.Permissions)
+            // `/model`, `/approvals` and `/permissions` all land on 配置, which carries the model's
+            // effort, the approval policy, the sandbox and the named permission profiles.
+            "model", "approvals" -> openSettingsSection(SettingsSection.Agent)
+            "permissions" -> openSettingsSection(SettingsSection.Agent)
             "memories" -> openSurface(Surface.Memories)
 
             // `/plan` toggles: the phone has no mode-cycle binding, so one command must do both or
@@ -2650,6 +2650,7 @@ fun CodexScreen(
                         expandedProjects = expandedProjects,
                         selectedThreadId = app.widget.state.threadId,
                         selectedRowId = navRowIdOf(app.surface, app.settingsSection),
+                        recent = SidebarModel.recent(app.threads, includeArchived = false),
                     )
                 } else {
                     emptyList()
@@ -2676,6 +2677,9 @@ fun CodexScreen(
                     is NavMenuRow.Header -> row.action?.let { openSurfaceFor(app, it, inSection = true) }
                     is NavMenuRow.Project -> toggleProject(row.project.id)
                     is NavMenuRow.Session -> app.openThread(row.session.id)
+                    // 展开显示 hands the truncated list over to the page that holds all of it.
+                    is NavMenuRow.ShowMore -> openSurfaceFor(app, row.id, inSection = true)
+                    is NavMenuRow.Note -> Unit
                 }
                 // Choosing a row is what a floating menu is pinned by: the page the choice opened
                 // becomes the section the card beside the page now lists.
@@ -2893,6 +2897,10 @@ fun CodexScreen(
                                 onOpenProject = { app.onAppEvent(AppEvent.NewThread(it)) },
                                 onAddWorkspace = { app.openSurface(Surface.WorkspacePicker) },
                             )
+                        }
+
+                        entry<Surface.Scheduled>(swipeDismiss = NavSwipeDirection.None) {
+                            ScheduledScreen()
                         }
 
                         entry<Surface.EnvironmentDetail>(swipeDismiss = NavSwipeDirection.None) { route ->

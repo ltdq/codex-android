@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- chatwidget/settings_appearance.kt: 外观 and 语音, the desktop's appearance and voice pages. Copy is
+     the desktop app's; where it prints a row untranslated, the English stands in both locales. -->
+<resources>
+    <string name="settings_appearance_group_visual">Visual style</string>
+    <string name="settings_appearance_mode">Mode</string>
+    <string name="settings_appearance_theme">Theme</string>
+    <string name="settings_appearance_accent_color">Accent color</string>
+    <string name="settings_appearance_default">Default</string>
+    <string name="settings_appearance_background">Background</string>
+    <string name="settings_appearance_foreground">Foreground</string>
+    <string name="settings_appearance_font">Font</string>
+    <string name="settings_appearance_system">System</string>
+
+    <string name="settings_appearance_group_advanced">Advanced</string>
+    <string name="settings_appearance_interface_font_size">Interface font size</string>
+    <string name="settings_appearance_interface_font_size_summary">Adjust the base font size of ChatGPT</string>
+    <string name="settings_appearance_code_font_size">Code font size</string>
+    <string name="settings_appearance_code_font_size_summary">Adjust the base font size for code in chats and diffs</string>
+    <string name="settings_appearance_reduce_motion">Reduce motion</string>
+    <string name="settings_appearance_reduce_motion_summary">Reduce animated effects or match the system setting</string>
+    <string name="settings_appearance_reduce_motion_on">On</string>
+    <string name="settings_appearance_reduce_motion_off">Off</string>
+    <string name="settings_appearance_split_light_dark">Set light and dark mode separately</string>
+    <string name="settings_appearance_split_light_dark_summary">Pick their own theme, colors and font</string>
+
+    <string name="settings_appearance_interface_font_style">Interface font style</string>
+    <string name="settings_appearance_regular">Regular</string>
+    <string name="settings_appearance_content_font">Content font</string>
+    <string name="settings_appearance_same_as_interface_font">Same as interface font</string>
+    <string name="settings_appearance_code_font">Code font</string>
+    <string name="settings_appearance_translucent_sidebar">Translucent sidebar</string>
+    <string name="settings_appearance_contrast">Contrast</string>
+    <string name="settings_appearance_diff_markers">Diff markers</string>
+    <string name="settings_appearance_diff_markers_summary">Show changes with colors or +/− marks</string>
+    <string name="settings_appearance_diff_markers_color">Color</string>
+    <string name="settings_appearance_diff_markers_signs">+−</string>
+    <string name="settings_appearance_pointer_cursor">Use pointer cursor</string>
+    <string name="settings_appearance_pointer_cursor_summary">Switch to a pointer cursor when hovering interactive elements</string>
+
+    <string name="settings_voice_group_general">General</string>
+    <string name="settings_voice_microphone">Microphone</string>
+    <string name="settings_voice_microphone_summary">Used for voice chats and dictation</string>
+    <string name="settings_voice_microphone_default">System default</string>
+    <string name="settings_voice_language">Language</string>
+    <string name="settings_voice_language_retry">Retry</string>
+
+    <string name="settings_voice_group_voice_chat">Voice chat</string>
+    <string name="settings_voice_unavailable">Voice chat unavailable</string>
+    <string name="settings_voice_unavailable_summary">Voice chat is not available for your account or workspace</string>
+
+    <string name="settings_voice_group_dictation">Dictation</string>
+    <string name="settings_voice_dictation_shortcut">Dictation shortcut</string>
+    <string name="settings_voice_dictation_shortcut_summary">Hold to dictate, or press twice for hands-free</string>
+    <string name="settings_voice_dictation_shortcut_off">Off</string>
+    <string name="settings_voice_recent_recordings">Recent recordings</string>
+    <string name="settings_voice_recent_recordings_summary">Your 20 most recent recordings are kept on this device</string>
+
+    <string name="settings_voice_dictionary">Dictation dictionary</string>
+    <string name="settings_voice_dictionary_summary">Words or phrases dictation should recognize</string>
+    <string name="settings_voice_dictionary_add">Add entry</string>
+</resources>

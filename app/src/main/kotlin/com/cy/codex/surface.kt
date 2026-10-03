@@ -44,10 +44,18 @@ sealed interface Surface : NavKey {
     /**
      * The archived half of the thread library.
      *
-     * A surface of its own rather than a mode of [Sessions]: the archived chats hang off the
+     * A surface of its own rather than a mode of [Sessions]: the archived chats are a page of the
      * settings menu, and the rail highlights the section the page was opened from.
      */
     data object Archived : Surface
+
+    /**
+     * The rail's 定时任务 item.
+     *
+     * Scheduled tasks are the desktop app's own feature and the app-server has no method for them,
+     * so the page shows the empty state the desktop shows and nothing acts on it yet.
+     */
+    data object Scheduled : Surface
 
     // ---- projects and execution environments --------------------------------
     /** Saved projects, and the environments a thread can be run on. */

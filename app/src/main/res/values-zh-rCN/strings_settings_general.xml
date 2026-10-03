@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- chatwidget/settings_general.kt: 常规 与 导入。文案取自 Codex 桌面应用，逐字对齐。 -->
+<resources>
+    <string name="settings_general_group_permissions">权限</string>
+    <string name="settings_general_default_permissions">默认权限</string>
+    <string name="settings_general_default_permissions_summary">默认情况下，ChatGPT 可以读取和编辑其工作空间中的文件。需要时，它可以请求额外访问权限</string>
+    <string name="settings_general_full_access">完整访问权限</string>
+    <string name="settings_general_full_access_summary">当 ChatGPT 以完整访问权限运行时，它无需你的批准即可编辑你电脑上的任何文件，并运行可访问网络的命令。这会显著增加数据丢失、泄露或意外行为的风险。</string>
+
+    <string name="settings_general_group_general">常规</string>
+    <string name="settings_general_tasks_folder">无项目任务文件夹</string>
+    <string name="settings_general_tasks_folder_summary">在项目外启动的任务默认存储数据的位置。</string>
+    <string name="settings_general_change">更改</string>
+    <string name="settings_general_default_editor">默认文件打开位置</string>
+    <string name="settings_general_default_editor_summary">默认打开文件和文件夹的位置</string>
+    <string name="settings_general_terminal_shell">集成终端 Shell</string>
+    <string name="settings_general_terminal_shell_summary">选择要在集成终端中打开的 Shell。</string>
+    <string name="settings_general_language">语言</string>
+    <string name="settings_general_language_summary">应用界面语言</string>
+    <string name="settings_general_language_auto">自动检测</string>
+    <string name="settings_general_confirm_close">Confirm before closing a window</string>
+    <string name="settings_general_confirm_close_summary">Warn when a tab-close shortcut would close the window</string>
+    <string name="settings_general_full_view">默认采用完整视图</string>
+    <string name="settings_general_full_view_summary">开始新任务时，在同一标签页栏中显示聊天和内容</string>
+    <string name="settings_general_bottom_panel">底部面板</string>
+    <string name="settings_general_bottom_panel_summary">在应用标题栏中显示底部面板控件</string>
+    <string name="settings_general_terminal_position">默认终端位置</string>
+    <string name="settings_general_terminal_position_summary">选择终端快捷键和环境操作在何处打开终端标签页</string>
+    <string name="settings_general_terminal_bottom">底部</string>
+    <string name="settings_general_terminal_side">右侧</string>
+    <string name="settings_general_compress_history">压缩本地保存的聊天历史记录</string>
+    <string name="settings_general_compress_history_summary">压缩较早的本地聊天历史记录，以节省磁盘空间。重启 ChatGPT 后更改生效。</string>
+    <string name="settings_general_licenses">打开源许可证</string>
+    <string name="settings_general_licenses_summary">捆绑依赖项的第三方声明</string>
+    <string name="settings_general_view">查看</string>
+    <string name="settings_general_plugins">插件</string>
+    <string name="settings_general_plugins_summary">允许 ChatGPT 使用已安装的插件</string>
+
+    <string name="settings_general_group_editor">编辑器</string>
+    <string name="settings_general_plain_text">纯文本编辑器</string>
+    <string name="settings_general_plain_text_summary">撰写消息时，将代码、Markdown 和链接保留为纯文本</string>
+    <string name="settings_general_context_usage">显示上下文窗口使用情况</string>
+    <string name="settings_general_send_shortcut">发送快捷键</string>
+    <string name="settings_general_send_shortcut_summary">选择按 Enter 时是发送提示还是插入新行</string>
+    <string name="settings_general_send_enter">按 Enter 键</string>
+    <string name="settings_general_follow_up">跟进处理方式</string>
+    <string name="settings_general_follow_up_summary">在 ChatGPT 运行时将后续消息加入队列，或引导当前运行。按 Ctrl+↵ 可对单条消息执行相反操作</string>
+    <string name="settings_general_follow_up_queue">排队</string>
+    <string name="settings_general_follow_up_steer">引导</string>
+
+    <string name="settings_general_group_popup">弹出窗口</string>
+    <string name="settings_general_popup_shortcut">弹出窗口快捷键</string>
+    <string name="settings_general_popup_shortcut_summary">为弹出窗口设置全局快捷键。不设置则保持关闭。</string>
+    <string name="settings_general_popup_shortcut_value">关闭</string>
+    <string name="settings_general_standalone_chat">默认使用独立聊天</string>
+    <string name="settings_general_standalone_chat_summary">在任何项目外开始新聊天</string>
+
+    <string name="settings_general_group_notifications">通知</string>
+    <string name="settings_general_turn_notifications">轮次完成通知</string>
+    <string name="settings_general_turn_notifications_summary">设置 ChatGPT 完成后何时提醒你</string>
+    <string name="settings_general_notify_off">从不</string>
+    <string name="settings_general_notify_unfocused">仅在未聚焦时</string>
+    <string name="settings_general_permission_notifications">启用权限通知</string>
+    <string name="settings_general_permission_notifications_summary">在需要通知权限时显示提醒</string>
+    <string name="settings_general_question_notifications">启用问题通知</string>
+    <string name="settings_general_question_notifications_summary">在需要回答问题才能继续时显示通知</string>
+    <string name="settings_general_dot_notifications">Enable dot notifications</string>
+    <string name="settings_general_dot_notifications_summary">Show alerts when your dot sends you a message</string>
+    <string name="settings_general_notification_sound">通知提示音</string>
+    <string name="settings_general_notification_sound_summary">任务完成、请求权限和提问时的提示音</string>
+    <string name="settings_general_notification_sound_default">默认</string>
+
+    <string name="settings_general_group_experiments">趣味实验</string>
+    <string name="settings_general_confetti">彩纸礼炮</string>
+    <string name="settings_general_confetti_summary">让 Codex 根据你的要求在应用内放彩纸！</string>
+
+    <string name="settings_import_group_sync">自动同步</string>
+    <string name="settings_import_keep_sync">保持导入同步</string>
+    <string name="settings_import_keep_sync_summary">同步已暂停。你选择的内容已保存</string>
+    <string name="settings_import_sync_content">要同步的内容</string>
+    <string name="settings_import_sync_content_summary">首次导入后可用</string>
+    <string name="settings_import_sync_custom">自定义</string>
+    <string name="settings_import_group_from_other">从其他 AI 应用导入</string>
+    <string name="settings_import_from_other_summary">检测到可添加到 ChatGPT 的配置</string>
+    <string name="settings_import_claude_code">Claude Code</string>
+</resources>

@@ -6,6 +6,7 @@ import androidx.compose.ui.res.stringResource
 import com.cy.codex.R
 import com.cy.codex.SlashCommands
 import com.cy.codex.ThreadListState
+import com.cy.codex.protocol.protocol.v2.Thread
 
 /**
  * Session model, mirroring the TUI's side panel (`codex-rs/tui/src/chatwidget/side.rs` and
@@ -35,21 +36,38 @@ object SidebarModel {
         threads.grouped().mapNotNull { group ->
             val sessions = group.threads
                 .filter { includeArchived || it.id !in threads.archivedIds }
-                .map { thread ->
-                    SidebarSession(
-                        id = thread.id,
-                        title = thread.name ?: thread.preview.ifBlank { thread.id.takeLast(6) },
-                        date = relativeTime(thread.updatedAt),
-                        archived = thread.id in threads.archivedIds,
-                        running = thread.status is com.cy.codex.protocol.protocol.v2.ThreadStatus.Active,
-                    )
-                }
+                .map { thread -> sessionOf(thread, thread.id in threads.archivedIds) }
             if (sessions.isEmpty()) {
                 null
             } else {
                 SidebarProject(group.id, group.name, group.path.orEmpty(), sessions)
             }
         }
+
+    /**
+     * The thread library by recency, for the home menu's 最近 group.
+     *
+     * The grouping is dropped on purpose: 最近 is where a thread is reopened, so a thread filed under
+     * a project is listed here as well, and only `updatedAt` orders the two.
+     */
+    @Composable
+    @ReadOnlyComposable
+    fun recent(threads: ThreadListState, includeArchived: Boolean): List<SidebarSession> =
+        threads.threads
+            .filter { includeArchived || it.id !in threads.archivedIds }
+            .sortedByDescending { it.updatedAt }
+            .map { thread -> sessionOf(thread, thread.id in threads.archivedIds) }
+
+    @Composable
+    @ReadOnlyComposable
+    private fun sessionOf(thread: Thread, archived: Boolean): SidebarSession =
+        SidebarSession(
+            id = thread.id,
+            title = thread.name ?: thread.preview.ifBlank { thread.id.takeLast(6) },
+            date = relativeTime(thread.updatedAt),
+            archived = archived,
+            running = thread.status is com.cy.codex.protocol.protocol.v2.ThreadStatus.Active,
+        )
 
     /** Coarse relative time in the TUI's session-picker buckets. */
     @Composable

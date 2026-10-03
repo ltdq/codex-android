@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- chatwidget/settings_pages.kt: the settings sidebar of the desktop app — four groups and the
+     nineteen pages under them. Titles are the desktop's, verbatim. -->
+<resources>
+    <string name="settings_group_personal">Personal</string>
+    <string name="settings_group_integrations">Integrations</string>
+    <string name="settings_group_coding">Coding</string>
+    <string name="settings_group_archived">Archived</string>
+
+    <string name="settings_page_general">General</string>
+    <string name="settings_page_import">Import</string>
+    <string name="settings_page_import_summary">Bring settings, projects and chats over from other AI apps</string>
+    <string name="settings_page_appearance">Appearance</string>
+    <string name="settings_page_voice">Voice</string>
+    <string name="settings_page_agent">Configuration</string>
+    <string name="settings_page_agent_summary">Configure permissions, web access and agent replies for new chats</string>
+    <string name="settings_page_personalization">Personalization</string>
+    <string name="settings_page_pets">Mini and virtual pets</string>
+    <string name="settings_page_shortcuts">Keyboard shortcuts</string>
+    <string name="settings_page_plugins">Plugins</string>
+    <string name="settings_page_plugins_summary">Manage plugins, skills and MCP</string>
+    <string name="settings_page_computer">Computer control</string>
+    <string name="settings_page_snapshots">App snapshots</string>
+    <string name="settings_page_browser">Browser</string>
+    <string name="settings_page_hooks">Hooks</string>
+    <string name="settings_page_hooks_summary">Manage lifecycle hooks through configuration and enabled plugins.</string>
+    <string name="settings_page_connections">Connections</string>
+    <string name="settings_page_review">Code review</string>
+    <string name="settings_page_git">Git</string>
+    <string name="settings_page_environment">Environment</string>
+    <string name="settings_page_environment_summary">Local environments tell ChatGPT how to set up worktrees for a project.</string>
+    <string name="settings_page_worktrees">Worktrees</string>
+    <string name="settings_page_archived_chats">Archived chats</string>
+</resources>

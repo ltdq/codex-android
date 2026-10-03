@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- app/scheduled.kt: 导航栏「定时任务」页，桌面截图里是空态。 -->
+<resources>
+    <string name="scheduled_empty_title">安排任务</string>
+    <string name="scheduled_empty_detail">ChatGPT 可以帮你处理持续性任务，让你无需亲力亲为。</string>
+</resources>

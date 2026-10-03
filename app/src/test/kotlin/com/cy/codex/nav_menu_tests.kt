@@ -1,5 +1,6 @@
 package com.cy.codex
 
+import com.cy.codex.chatwidget.SettingsGroup
 import com.cy.codex.chatwidget.SettingsSection
 import com.cy.codex.chatwidget.SidebarProject
 import com.cy.codex.chatwidget.SidebarSession
@@ -12,22 +13,19 @@ import kotlin.test.assertTrue
 class NavMenuTest {
 
     private val labels = NavMenuLabels(
-        newSession = "New session",
-        homeGroup = "Session",
+        newChat = "New chat",
         projects = "Projects",
-        conversationsGroup = "Conversations",
-        allConversations = "All conversations",
+        recentGroup = "Recent",
+        showMore = "Show more",
         sessionToolsGroup = "Current task",
         sessionTools = DestinationCatalog.SessionTools.map { "tool-$it" },
-        archivedGroup = "Archived",
-        archivedConversations = "Archived chats",
-        pluginsExtensionsGroup = "Extensions",
-        pluginsSharesGroup = "Sharing",
-        pluginMenu = List(6) { "plugin-$it" },
-        settingsGroup = "General",
-        settingsSections = SettingsSection.entries.map { it.name },
-        settingsPages = List(8) { "page-$it" },
-        accountGroup = "Account and data",
+        allSessions = "All sessions",
+        newTask = "New task",
+        scheduledGroup = "Upcoming",
+        scheduledEmpty = "Nothing scheduled yet",
+        customize = DestinationCatalog.CustomizeMenu.map { "customize-$it" },
+        settingsGroups = SettingsGroup.entries.map { it.name },
+        settingsPages = SettingsGroup.entries.map { group -> SettingsSection.of(group).map { it.name } },
     )
 
     private fun rows(
@@ -36,8 +34,31 @@ class NavMenuTest {
         expandedProjects: Set<String> = emptySet(),
         selectedThreadId: String = "",
         selectedRowId: String? = null,
+        recent: List<SidebarSession> = emptyList(),
     ): List<NavMenuRow> =
-        navMenuRows(section, labels, projects, expandedProjects, selectedThreadId, selectedRowId)
+        navMenuRows(
+            section,
+            labels,
+            projects,
+            expandedProjects,
+            selectedThreadId,
+            selectedRowId,
+            recent,
+        )
+
+    @Test
+    fun `the rail is the desktop app's five items, settings last`() {
+        assertEquals(
+            listOf(
+                NavSection.Home,
+                NavSection.Scheduled,
+                NavSection.Customize,
+                NavSection.Projects,
+                NavSection.Settings,
+            ),
+            NavSection.entries,
+        )
+    }
 
     @Test
     fun `every rail item opens a menu`() {
@@ -50,111 +71,137 @@ class NavMenuTest {
                 "$section opened an empty menu",
             )
         }
-        // Projects is the one menu whose rows are the tree itself: with no projects it holds the
-        // group title and the action that adds the first workspace, then the library.
-        val empty = rows(NavSection.Projects)
-        assertEquals(DestinationCatalog.Id.Workspace, (empty.first() as NavMenuRow.Header).action)
-        assertTrue(empty.none { it is NavMenuRow.Project || it is NavMenuRow.Session })
     }
 
     @Test
-    fun `every menu names its rows under a group title`() {
-        NavSection.entries.forEach { section ->
-            val rows = rows(section, projects = listOf(SidebarProject("p1", "Box", "/tmp/box", emptyList())))
-            assertEquals(
-                NavMenuRow.Header::class,
-                rows.first()::class,
-                "$section does not open with a group title",
-            )
-            rows.forEachIndexed { index, row ->
-                if (row is NavMenuRow.Header) {
-                    // A title that ends the list has to carry its own action; otherwise it names
-                    // rows that are not there.
-                    if (index == rows.lastIndex) {
-                        assertTrue(row.action != null, "$section ends with a group title")
-                    } else {
-                        assertTrue(
-                            rows[index + 1] !is NavMenuRow.Header,
-                            "$section has two group titles in a row",
-                        )
-                    }
-                }
-            }
-        }
-    }
+    fun `the home menu is 新聊天, the project tree, the recent threads and the session tools`() {
+        val project = SidebarProject("p1", "Box", "/tmp/box", listOf(SidebarSession("t1", "Fix", "now")))
+        val recent = listOf(SidebarSession("t9", "Recent", "now"))
+        val menu = rows(NavSection.Home, projects = listOf(project), recent = recent)
 
-    @Test
-    fun `the project group carries the action that adds a workspace`() {
-        NavSection.entries.forEach { section ->
-            val group = rows(section).filterIsInstance<NavMenuRow.Header>().firstOrNull {
-                it.title == labels.projects
-            }
-            if (section == NavSection.Home || section == NavSection.Projects) {
-                assertEquals(
-                    DestinationCatalog.Id.Workspace,
-                    group?.action,
-                    "$section does not offer the workspace action on its project group",
-                )
-            } else {
-                assertNull(group, "$section lists projects")
-            }
-        }
-    }
-
-    @Test
-    fun `the chat menu lists the whole library and the session tools`() {
-        val rows = rows(NavSection.Home)
-        val ids = rows.filterIsInstance<NavMenuRow.Entry>().map { it.id }
-        assertEquals(listOf(DestinationCatalog.Id.New), ids.take(1))
-        assertEquals(DestinationCatalog.Id.Sessions, ids[1])
+        assertEquals(
+            DestinationCatalog.Id.New,
+            menu.filterIsInstance<NavMenuRow.Entry>().first().id,
+        )
+        val titles = menu.filterIsInstance<NavMenuRow.Header>().map { it.title }
+        assertEquals(listOf(labels.projects, labels.recentGroup, labels.sessionToolsGroup), titles)
+        assertEquals(
+            DestinationCatalog.Id.Workspace,
+            menu.filterIsInstance<NavMenuRow.Header>().first().action,
+            "the project group does not carry the workspace action",
+        )
+        assertEquals(
+            DestinationCatalog.Id.Sessions,
+            menu.filterIsInstance<NavMenuRow.Header>()
+                .single { it.title == labels.recentGroup }
+                .action,
+            "the recent group does not carry the action that opens the whole library",
+        )
         assertEquals(
             DestinationCatalog.SessionTools,
-            ids.drop(2).toSet(),
+            menu.filterIsInstance<NavMenuRow.Entry>().map { it.id }.filter {
+                it != DestinationCatalog.Id.New
+            }.toSet(),
             "the tools that act on the open session are not the chat menu's rows",
         )
-        // 全部对话 stands under the project tree, and the tools under a group of their own.
-        val projectsAt = rows.indexOfFirst { it is NavMenuRow.Header && it.title == labels.projects }
-        val conversationsAt = rows.indexOfFirst { it is NavMenuRow.Header && it.title == labels.conversationsGroup }
-        val toolsAt = rows.indexOfFirst { it is NavMenuRow.Header && it.title == labels.sessionToolsGroup }
-        assertTrue(projectsAt in 0 until conversationsAt, "全部对话 is not under 项目")
-        assertTrue(conversationsAt < toolsAt, "the session tools are not the last group")
+    }
+
+    @Test
+    fun `the recent group lists the library by recency and truncates it under 展开显示`() {
+        val recent = List(8) { SidebarSession("t$it", "Thread $it", "now") }
+        val menu = rows(NavSection.Home, recent = recent)
+
+        val listed = menu.filterIsInstance<NavMenuRow.Session>().map { it.session.id }
+        assertTrue(listed.size < recent.size, "the recent group is not truncated")
+        assertEquals(recent.take(listed.size).map { it.id }, listed)
+        val more = menu.filterIsInstance<NavMenuRow.ShowMore>().single()
+        assertEquals(DestinationCatalog.Id.Sessions, more.id)
+        assertEquals(labels.showMore, more.title)
+
+        // A list that fits keeps no 展开显示 row.
+        assertTrue(rows(NavSection.Home, recent = recent.take(2)).none { it is NavMenuRow.ShowMore })
+    }
+
+    @Test
+    fun `the settings menu is four groups of pages and the archived chats`() {
+        val menu = rows(NavSection.Settings)
+        val entries = menu.filterIsInstance<NavMenuRow.Entry>()
+
+        assertEquals(
+            SettingsSection.entries,
+            entries.mapNotNull { settingsSectionOfRow(it.id) },
+            "the settings menu does not list every page of the catalog, in catalog order",
+        )
+        assertEquals(
+            SettingsGroup.entries.map { it.name },
+            menu.filterIsInstance<NavMenuRow.Header>().map { it.title },
+            "the page groups are not the desktop's four",
+        )
+        assertEquals(
+            settingsRowId(SettingsSection.ArchivedChats),
+            entries.last().id,
+            "the archived chats are not the last row of the last group",
+        )
+    }
+
+    @Test
+    fun `no two rows of a menu share a key`() {
+        val home = rows(NavSection.Home, recent = listOf(SidebarSession("t1", "Fix", "now")))
+        val menus = NavSection.entries.associateWith { section ->
+            if (section == NavSection.Home) home else rows(section)
+        }
+
+        menus.forEach { (section, menu) ->
+            val keys = menu.map { it.key }
+            assertEquals(keys.size, keys.toSet().size, "$section lists a duplicate row key: $keys")
+        }
+    }
+
+    @Test
+    fun `every settings page belongs to exactly one group`() {
+        val grouped = SettingsGroup.entries.flatMap { SettingsSection.of(it) }
+        assertEquals(SettingsSection.entries.toSet(), grouped.toSet())
+        assertEquals(SettingsSection.entries.size, grouped.size)
+        assertEquals(
+            SettingsSection.entries.size,
+            SettingsGroup.entries.sumOf { SettingsSection.of(it).size },
+        )
+    }
+
+    @Test
+    fun `the customize menu covers the catalogs its rail item owns`() {
+        val rows = rows(NavSection.Customize).filterIsInstance<NavMenuRow.Entry>().map { it.id }.toSet()
+        assertEquals(DestinationCatalog.CustomizeMenu, rows)
+    }
+
+    @Test
+    fun `the scheduled menu offers a task that cannot be created yet`() {
+        val menu = rows(NavSection.Scheduled)
+        val entry = menu.filterIsInstance<NavMenuRow.Entry>().single()
+        assertEquals(DestinationCatalog.Id.NewTask, entry.id)
+        assertTrue(!entry.enabled, "新建任务 is offered as if it worked")
+        assertEquals(labels.scheduledGroup, menu.filterIsInstance<NavMenuRow.Header>().single().title)
+        assertEquals(labels.scheduledEmpty, menu.filterIsInstance<NavMenuRow.Note>().single().text)
     }
 
     @Test
     fun `the archived chats are a page of the settings menu`() {
         val settings = rows(NavSection.Settings)
         val archived =
-            settings.filterIsInstance<NavMenuRow.Entry>().single { it.id == DestinationCatalog.Id.Archived }
-        assertEquals(labels.archivedConversations, archived.title)
+            settings.filterIsInstance<NavMenuRow.Entry>()
+                .single { it.id == settingsRowId(SettingsSection.ArchivedChats) }
+        assertEquals(SettingsSection.ArchivedChats.name, archived.title)
         assertEquals(
             NavSection.Settings,
             sectionOf(Surface.Archived),
             "the archived page does not belong to the section that lists it",
         )
-        assertEquals(DestinationCatalog.Id.Archived, navRowIdOf(Surface.Archived, SettingsSection.Model))
-    }
-
-    @Test
-    fun `plugins and settings menus cover the pages the catalog owns`() {
-        val plugins =
-            rows(NavSection.Plugins).filterIsInstance<NavMenuRow.Entry>().map { it.id }.toSet()
-        assertEquals(DestinationCatalog.PluginsMenu, plugins)
-
-        val settings = rows(NavSection.Settings).filterIsInstance<NavMenuRow.Entry>()
         assertEquals(
-            SettingsSection.entries,
-            settings.mapNotNull { settingsSectionOfRow(it.id) },
+            settingsRowId(SettingsSection.ArchivedChats),
+            navRowIdOf(Surface.Archived, SettingsSection.General),
+            "the page that lists the archived chats does not mark the row that opened it",
         )
-        assertEquals(
-            DestinationCatalog.SettingsMenu,
-            settings.filter { settingsSectionOfRow(it.id) == null }.map { it.id }.toSet(),
-        )
-        assertEquals(
-            DestinationCatalog.HomeMenu,
-            rows(NavSection.Home).filterIsInstance<NavMenuRow.Entry>().map { it.id }
-                .filter { it == DestinationCatalog.Id.New || it == DestinationCatalog.Id.Sessions }
-                .toSet(),
-        )
+        assertEquals(SettingsSection.ArchivedChats, settingsSectionOfRow(archived.id))
     }
 
     @Test
@@ -192,12 +239,13 @@ class NavMenuTest {
                 selectedThreadId = "t2",
             ).filterIsInstance<NavMenuRow.Session>()
 
+        // No recent threads are passed, so the only session rows are the project's own.
         assertEquals(listOf("t1", "t2"), expanded.map { it.session.id })
         assertEquals(listOf(false, true), expanded.map { it.selected })
     }
 
     @Test
-    fun `settings rows round trip to their section`() {
+    fun `settings rows round trip to their page`() {
         SettingsSection.entries.forEach { section ->
             assertEquals(section, settingsSectionOfRow(settingsRowId(section)))
         }
@@ -209,10 +257,13 @@ class NavMenuTest {
         NavSection.entries.forEach { section ->
             assertEquals(section, sectionOf(sectionRoot(section)))
         }
-        assertEquals(NavSection.Plugins, sectionOf(Surface.McpServers))
-        assertEquals(NavSection.Plugins, sectionOf(Surface.McpToolbox("server")))
+        assertEquals(NavSection.Customize, sectionOf(Surface.McpServers))
+        assertEquals(NavSection.Customize, sectionOf(Surface.McpToolbox("server")))
+        assertEquals(NavSection.Customize, sectionOf(Surface.Plugins))
         assertEquals(NavSection.Projects, sectionOf(Surface.EnvironmentDetail("env")))
+        assertEquals(NavSection.Scheduled, sectionOf(Surface.Scheduled))
         assertEquals(NavSection.Settings, sectionOf(Surface.Settings))
+        assertEquals(NavSection.Settings, sectionOf(Surface.Hooks))
         // Session-scoped pages stay under the chat, wherever they were opened from.
         assertEquals(NavSection.Home, sectionOf(Surface.FileBrowser("/tmp")))
         assertEquals(NavSection.Home, sectionOf(Surface.Diff))
@@ -220,18 +271,23 @@ class NavMenuTest {
 
     @Test
     fun `the open page marks its menu row`() {
-        val permissions = settingsRowId(SettingsSection.Permissions)
+        val general = settingsRowId(SettingsSection.General)
         val marked =
-            rows(NavSection.Settings, selectedRowId = permissions)
+            rows(NavSection.Settings, selectedRowId = general)
                 .filterIsInstance<NavMenuRow.Entry>()
                 .single { it.selected }
-        assertEquals(permissions, marked.id)
+        assertEquals(general, marked.id)
+        assertEquals(general, navRowIdOf(Surface.Settings, SettingsSection.General))
         assertEquals(
-            permissions,
-            navRowIdOf(Surface.Settings, SettingsSection.Permissions),
+            DestinationCatalog.Id.Mcp,
+            navRowIdOf(Surface.McpToolbox("server"), SettingsSection.General),
         )
-        assertEquals(DestinationCatalog.Id.Mcp, navRowIdOf(Surface.McpToolbox("server"), SettingsSection.Model))
-        assertNull(navRowIdOf(Surface.Chat, SettingsSection.Model))
+        assertEquals(
+            settingsRowId(SettingsSection.Hooks),
+            navRowIdOf(Surface.Hooks, SettingsSection.General),
+            "the hooks page is a settings page, so it marks its own row",
+        )
+        assertNull(navRowIdOf(Surface.Chat, SettingsSection.General))
     }
 
     @Test
@@ -270,10 +326,10 @@ class NavMenuTest {
     @Test
     fun `a search narrows an option menu without its group titles`() {
         val rows = rows(NavSection.Settings)
-        val matched = filterMenuRows(rows, labels.settingsPages[3])
+        val matched = filterMenuRows(rows, labels.settingsPages[0][2])
 
         assertEquals(
-            listOf(DestinationCatalog.SettingsMenu.elementAt(3)),
+            listOf(settingsRowId(SettingsSection.Appearance)),
             matched.filterIsInstance<NavMenuRow.Entry>().map { it.id },
         )
         assertEquals(1, matched.count { it is NavMenuRow.Header })
@@ -281,9 +337,10 @@ class NavMenuTest {
 
     @Test
     fun `a page of the open section swaps the top in place`() {
+        // 插件 and MCP are two pages of the same rail item, so each replaces the other.
         assertEquals(
-            listOf(Surface.Chat, Surface.Hooks),
-            sectionPageSwap(listOf(Surface.Chat, Surface.Skills), Surface.Hooks),
+            listOf(Surface.Chat, Surface.McpServers),
+            sectionPageSwap(listOf(Surface.Chat, Surface.Skills), Surface.McpServers),
         )
         assertEquals(
             listOf(Surface.Chat, Surface.Settings, Surface.RemoteControl),

@@ -1,23 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- NavRail.kt -->
-    <string name="nav_rail_home">首页</string>
-    <string name="nav_rail_plugins">插件</string>
+    <!-- NavRail.kt: 桌面应用导航栏的五个入口，设置固定在底部。 -->
+    <string name="nav_rail_home">主页</string>
+    <string name="nav_rail_scheduled">定时任务</string>
+    <string name="nav_rail_customize">自定义</string>
     <string name="nav_rail_projects">项目</string>
     <string name="nav_rail_settings">设置</string>
     <string name="nav_rail_show_menu">显示该栏菜单</string>
 
     <!-- NavMenuPanel.kt -->
     <string name="nav_menu_title">Codex</string>
-    <string name="nav_menu_home_group">会话</string>
-    <string name="nav_menu_conversations_group">对话</string>
-    <string name="nav_menu_all_conversations">全部对话</string>
-    <string name="nav_menu_archived_group">已归档</string>
-    <string name="nav_menu_archived_conversations">已归档的聊天</string>
-    <string name="nav_menu_extensions_group">扩展</string>
-    <string name="nav_menu_shares_group">共享</string>
-    <string name="nav_menu_settings_group">常规</string>
-    <string name="nav_menu_account_group">账户与数据</string>
+    <string name="nav_menu_new_chat">新聊天</string>
+    <string name="nav_menu_recent_group">最近</string>
+    <string name="nav_menu_show_more">展开显示</string>
+    <string name="nav_menu_new_task">新建任务</string>
+    <string name="nav_menu_scheduled_group">即将执行</string>
+    <string name="nav_menu_scheduled_empty">暂无已安排的任务</string>
     <string name="nav_menu_search">搜索</string>
     <string name="nav_menu_no_matches">无匹配项</string>
     <string name="nav_menu_empty">暂无内容</string>

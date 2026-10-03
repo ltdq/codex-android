@@ -42,6 +42,7 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.selected
@@ -49,27 +50,39 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.unit.DpSize
 import com.cy.codex.chatwidget.SidebarProject
 import com.cy.codex.chatwidget.SidebarSession
 import com.cy.codex.theme.RoundedIndication
+import top.yukonga.miuix.kmp.basic.Button
+import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CardDefaults
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.RadioButton
 import top.yukonga.miuix.kmp.basic.Switch
 import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.basic.Close
 import top.yukonga.miuix.kmp.icon.extended.ChevronBackward
 import top.yukonga.miuix.kmp.icon.extended.ChevronForward
+import top.yukonga.miuix.kmp.icon.extended.ExpandMore
 import top.yukonga.miuix.kmp.icon.extended.FolderFill
 import top.yukonga.miuix.kmp.icon.extended.Search
+import top.yukonga.miuix.kmp.preference.RadioButtonPreference
+import top.yukonga.miuix.kmp.squircle.squircleBackground
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+import top.yukonga.miuix.kmp.window.WindowBottomSheet
 
 /**
  * The list grid every page and menu is drawn on.
@@ -409,11 +422,13 @@ fun CodexValueRow(
     modifier: Modifier = Modifier,
     summary: String? = null,
     monospace: Boolean = true,
+    enabled: Boolean = true,
 ) {
     CodexRow(
         title = title,
         modifier = modifier,
         summary = summary,
+        enabled = enabled,
         endAction = { CodexValue(value, monospace = monospace) },
     )
 }
@@ -437,6 +452,73 @@ fun CodexValue(text: String, monospace: Boolean = true) {
 fun CodexEmptyRow(text: String, modifier: Modifier = Modifier) {
     CodexSection(modifier = modifier) {
         CodexRow(title = text, enabled = false)
+    }
+}
+
+/**
+ * A card that carries a page's empty state: the glyph, what is missing, and the action that would
+ * fill it when the app has one.
+ */
+@Composable
+fun CodexEmptyState(
+    icon: ImageVector,
+    title: String,
+    description: String,
+    modifier: Modifier = Modifier,
+    actionLabel: String? = null,
+    onAction: (() -> Unit)? = null,
+) {
+    CodexSection(modifier = modifier) {
+        Column(
+            modifier =
+                Modifier.fillMaxWidth()
+                    .padding(vertical = UiConsts.Space24, horizontal = UiConsts.Space16),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Box(
+                modifier =
+                    Modifier.size(UiConsts.IconBoxLarge)
+                        .squircleBackground(
+                            color = raisedSurface(),
+                            cornerRadius = UiConsts.CornerCard,
+                        ),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    modifier = Modifier.size(UiConsts.IconHeader),
+                    tint = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                )
+            }
+            Spacer(Modifier.height(UiConsts.Space12))
+            Text(
+                text = title,
+                fontSize = UiType.RowTitle,
+                lineHeight = UiType.RowTitleLine,
+                fontWeight = FontWeight.Medium,
+                color = MiuixTheme.colorScheme.onSurface,
+                textAlign = TextAlign.Center,
+            )
+            Spacer(Modifier.height(UiConsts.Space4))
+            Text(
+                text = description,
+                fontSize = UiType.Meta,
+                lineHeight = UiType.MetaLine,
+                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                textAlign = TextAlign.Center,
+            )
+            if (actionLabel != null) {
+                Spacer(Modifier.height(UiConsts.Space16))
+                Button(
+                    onClick = { onAction?.invoke() },
+                    enabled = onAction != null,
+                    colors = ButtonDefaults.buttonColorsPrimary(),
+                ) {
+                    Text(text = actionLabel, maxLines = 1)
+                }
+            }
+        }
     }
 }
 
@@ -519,6 +601,7 @@ fun CodexMenuRow(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     trailing: (@Composable () -> Unit)? = null,
+    enabled: Boolean = true,
 ) {
     val colors = MiuixTheme.colorScheme
     val interactionSource = remember { MutableInteractionSource() }
@@ -526,6 +609,7 @@ fun CodexMenuRow(
     val shape = squircleShape(UiConsts.CornerControl)
     val fill =
         when {
+            !enabled -> Color.Transparent
             selected -> colors.surfaceContainerHigh
             hovered -> colors.onBackground.copy(alpha = 0.05f)
             else -> Color.Transparent
@@ -537,11 +621,17 @@ fun CodexMenuRow(
                 .padding(horizontal = UiConsts.MenuRowInset)
                 .clip(shape)
                 .background(fill)
-                .clickable(
-                    interactionSource = interactionSource,
-                    indication = null,
-                    role = Role.Tab,
-                    onClick = onClick,
+                .then(
+                    if (enabled) {
+                        Modifier.clickable(
+                            interactionSource = interactionSource,
+                            indication = null,
+                            role = Role.Tab,
+                            onClick = onClick,
+                        )
+                    } else {
+                        Modifier
+                    }
                 )
                 .height(UiConsts.MenuRowHeight)
                 .padding(horizontal = UiConsts.MenuRowPadding)
@@ -552,7 +642,12 @@ fun CodexMenuRow(
             imageVector = icon,
             contentDescription = null,
             modifier = Modifier.size(UiConsts.IconRow),
-            tint = if (selected) colors.primary else colors.onSurfaceSecondary,
+            tint =
+                when {
+                    !enabled -> colors.disabledOnSurface
+                    selected -> colors.primary
+                    else -> colors.onSurfaceSecondary
+                },
         )
         Spacer(Modifier.width(UiConsts.Space10))
         Text(
@@ -561,7 +656,12 @@ fun CodexMenuRow(
             fontSize = UiType.Action,
             lineHeight = UiType.ActionLine,
             fontWeight = if (selected) FontWeight.Medium else FontWeight.Normal,
-            color = if (selected) colors.onBackground else colors.onBackgroundVariant,
+            color =
+                when {
+                    !enabled -> colors.disabledOnSurface
+                    selected -> colors.onBackground
+                    else -> colors.onBackgroundVariant
+                },
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
@@ -570,6 +670,33 @@ fun CodexMenuRow(
             trailing()
         }
     }
+}
+
+/**
+ * A line of text where a group of the menu has nothing to list.
+ *
+ * Sits on the menu rows' own rail rather than the cards': the note belongs to the group title above
+ * it, and a card would read as a row that can be pressed.
+ */
+@Composable
+fun CodexMenuNoteRow(text: String, modifier: Modifier = Modifier) {
+    Text(
+        text = text,
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .padding(
+                    start = UiConsts.MenuRowInset + UiConsts.MenuRowPadding + UiConsts.RowIndent,
+                    end = UiConsts.MenuRowInset + UiConsts.MenuRowPadding,
+                    top = UiConsts.Space2,
+                    bottom = UiConsts.Space4,
+                ),
+        fontSize = UiType.Meta,
+        lineHeight = UiType.MetaLine,
+        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+        maxLines = 2,
+        overflow = TextOverflow.Ellipsis,
+    )
 }
 
 /** A project of the home menu: its folder, its name, and the sessions under it once unfolded. */
@@ -834,6 +961,297 @@ fun CodexCatalogCard(
         if (footer != null) {
             Spacer(Modifier.height(UiConsts.Space8))
             footer()
+        }
+    }
+}
+
+/**
+ * The rows the desktop app's settings pages are built from.
+ *
+ * A desktop settings row is one of a few controls: a switch, a picker, a segmented pick, a field or
+ * a button. [CodexRow] and its siblings carry the switch and the page-opening row; the four below
+ * carry the rest, so a ported page reads as its copy and nothing else.
+ */
+
+/**
+ * A row that reports one value and opens the list it is picked from.
+ *
+ * [CodexValueRow] is the reading: this one is a control, which is what the trailing chevron says.
+ * [value] is what the row shows, so a picker whose options are ids can report a display name.
+ */
+@Composable
+fun CodexSelectRow(
+    title: String,
+    options: List<String>,
+    selected: Int,
+    onSelect: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+    value: String = options.getOrElse(selected) { "" },
+    summary: String? = null,
+    enabled: Boolean = true,
+) {
+    var open by remember { mutableStateOf(false) }
+    CodexRow(
+        title = title,
+        modifier = modifier,
+        summary = summary,
+        enabled = enabled,
+        onClick = if (enabled) { { open = true } } else null,
+        endAction = {
+            CodexValue(value, monospace = false)
+            Spacer(Modifier.width(UiConsts.Space4))
+            Icon(
+                imageVector = MiuixIcons.ExpandMore,
+                contentDescription = null,
+                modifier = Modifier.size(UiConsts.IconChevron),
+                tint = MiuixTheme.colorScheme.onSurfaceVariantActions,
+            )
+        },
+    )
+    if (open) {
+        CodexOptionsSheet(
+            title = title,
+            options = options,
+            selected = selected,
+            onSelect = {
+                onSelect(it)
+                open = false
+            },
+            onDismiss = { open = false },
+        )
+    }
+}
+
+/** The choices of a [CodexSelectRow], as a sheet: the row's own title over one row per option. */
+@Composable
+fun CodexOptionsSheet(
+    title: String,
+    options: List<String>,
+    selected: Int,
+    onSelect: (Int) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    WindowBottomSheet(
+        show = true,
+        onDismissRequest = onDismiss,
+        onDismissFinished = onDismiss,
+        title = title,
+        backgroundColor = sheetColor(),
+        cornerRadius = UiConsts.SheetCorner,
+        sheetMaxWidth = UiConsts.SheetMaxWidth,
+        outsideMargin = DpSize(sheetSideMargin(), 0.dp),
+        insideMargin = DpSize(UiConsts.SheetPadding, 0.dp),
+    ) {
+        Column(
+            modifier =
+                Modifier.fillMaxWidth()
+                    .heightIn(max = LocalWindowInfo.current.containerDpSize.height * UiConsts.SheetHeightFraction)
+                    .verticalScroll(rememberScrollState())
+        ) {
+            options.forEachIndexed { index, option ->
+                RadioButtonPreference(
+                    title = option,
+                    selected = index == selected,
+                    onClick = { onSelect(index) },
+                )
+            }
+        }
+    }
+}
+
+/**
+ * A row whose trailing control is a segmented picker.
+ *
+ * Every option is on screen, so a two- or three-way choice shows what is not chosen as well; a set
+ * too wide for the row belongs in a [CodexSelectRow] instead.
+ */
+@Composable
+fun CodexSegmentedRow(
+    title: String,
+    options: List<String>,
+    selected: Int,
+    onSelect: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+    summary: String? = null,
+    enabled: Boolean = true,
+) {
+    val colors = MiuixTheme.colorScheme
+    CodexRow(
+        title = title,
+        modifier = modifier,
+        summary = summary,
+        enabled = enabled,
+        endAction = {
+            Row(
+                modifier =
+                    Modifier.clip(squircleShape(UiConsts.CornerChip))
+                        .background(colors.surfaceContainerHigh)
+                        .padding(UiConsts.Space2),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                options.forEachIndexed { index, option ->
+                    val picked = index == selected
+                    Box(
+                        modifier =
+                            Modifier.clip(squircleShape(UiConsts.CornerChip))
+                                .then(if (picked) Modifier.background(raisedSurface()) else Modifier)
+                                .then(
+                                    if (enabled) {
+                                        Modifier.clickable(role = Role.RadioButton) { onSelect(index) }
+                                    } else {
+                                        Modifier
+                                    }
+                                )
+                                .padding(horizontal = UiConsts.Space10, vertical = UiConsts.Space4),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = option,
+                            fontSize = UiType.Chip,
+                            lineHeight = UiType.ChipLine,
+                            color =
+                                when {
+                                    !enabled -> colors.disabledOnSurface
+                                    picked -> colors.primary
+                                    else -> colors.onSurfaceVariantSummary
+                                },
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+            }
+        },
+    )
+}
+
+/** A row whose trailing control is a button: an action that is neither a switch nor a choice. */
+@Composable
+fun CodexButtonRow(
+    title: String,
+    actionLabel: String,
+    onAction: () -> Unit,
+    modifier: Modifier = Modifier,
+    summary: String? = null,
+    enabled: Boolean = true,
+    destructive: Boolean = false,
+) {
+    val colors = MiuixTheme.colorScheme
+    CodexRow(
+        title = title,
+        modifier = modifier,
+        summary = summary,
+        enabled = enabled,
+        endAction = {
+            Button(
+                onClick = onAction,
+                enabled = enabled,
+                colors =
+                    if (destructive) {
+                        ButtonDefaults.buttonColors(
+                            color = Color.Transparent,
+                            contentColor = colors.error,
+                        )
+                    } else {
+                        ButtonDefaults.buttonColorsPrimary()
+                    },
+            ) {
+                Text(text = actionLabel, fontSize = UiType.Action, maxLines = 1)
+            }
+        },
+    )
+}
+
+/**
+ * A row that reports a value the user types, and opens the field for it.
+ *
+ * The row keeps the value on its trailing edge and the sheet keeps the keyboard, so a page of
+ * settings never has a text field competing with the rows around it for focus.
+ */
+@Composable
+fun CodexFieldRow(
+    title: String,
+    value: String,
+    onCommit: (String) -> Unit,
+    confirmLabel: String,
+    modifier: Modifier = Modifier,
+    summary: String? = null,
+    placeholder: String? = null,
+    enabled: Boolean = true,
+) {
+    var open by remember { mutableStateOf(false) }
+    CodexRow(
+        title = title,
+        modifier = modifier,
+        summary = summary,
+        enabled = enabled,
+        onClick = if (enabled) { { open = true } } else null,
+        endAction = {
+            CodexValue(value.ifEmpty { placeholder.orEmpty() }, monospace = false)
+            Spacer(Modifier.width(UiConsts.Space4))
+            Icon(
+                imageVector = MiuixIcons.ExpandMore,
+                contentDescription = null,
+                modifier = Modifier.size(UiConsts.IconChevron),
+                tint = MiuixTheme.colorScheme.onSurfaceVariantActions,
+            )
+        },
+    )
+    if (open) {
+        CodexFieldSheet(
+            title = title,
+            initial = value,
+            placeholder = placeholder.orEmpty(),
+            confirmLabel = confirmLabel,
+            onSubmit = {
+                onCommit(it)
+                open = false
+            },
+            onDismiss = { open = false },
+        )
+    }
+}
+
+/** The one-field editor a [CodexFieldRow] opens. */
+@Composable
+fun CodexFieldSheet(
+    title: String,
+    initial: String,
+    placeholder: String,
+    confirmLabel: String,
+    onSubmit: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var text by remember(initial) { mutableStateOf(initial) }
+    WindowBottomSheet(
+        show = true,
+        onDismissRequest = onDismiss,
+        onDismissFinished = onDismiss,
+        title = title,
+        backgroundColor = sheetColor(),
+        cornerRadius = UiConsts.SheetCorner,
+        sheetMaxWidth = UiConsts.SheetMaxWidth,
+        outsideMargin = DpSize(sheetSideMargin(), 0.dp),
+        insideMargin = DpSize(UiConsts.SheetPadding, 0.dp),
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            TextField(
+                value = text,
+                onValueChange = { text = it },
+                modifier = Modifier.fillMaxWidth(),
+                label = placeholder,
+                useLabelAsPlaceholder = true,
+                singleLine = true,
+                keyboardOptions = KeyboardOptions.Default,
+            )
+            Spacer(Modifier.height(UiConsts.Space12))
+            Button(
+                onClick = { onSubmit(text.trim()) },
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColorsPrimary(),
+            ) {
+                Text(text = confirmLabel, maxLines = 1)
+            }
         }
     }
 }

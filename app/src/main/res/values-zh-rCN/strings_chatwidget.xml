@@ -8,7 +8,7 @@
     <string name="chat_transcript_assistant_label">Codex</string>
     <string name="transcript_load_earlier">加载更早的消息</string>
     <string name="transcript_load_earlier_loading">正在加载更早的消息…</string>
-    <string name="chat_composer_hint_open">向 Codex 发送消息…</string>
+    <string name="chat_composer_hint_open">随心输入</string>
     <string name="chat_composer_hint_empty">选择一个会话开始</string>
 
     <!-- TurnActivityBar.kt -->
@@ -43,7 +43,7 @@
     <string name="sidebar_add_workspace">添加工作区</string>
     <string name="sidebar_library_all_sessions">全部会话</string>
     <string name="sidebar_library_mcp_servers">MCP 服务器</string>
-    <string name="sidebar_library_skills">Skill</string>
+    <string name="sidebar_library_skills">技能</string>
     <string name="sidebar_library_plugins">插件</string>
     <string name="sidebar_library_hooks">Hook</string>
     <string name="sidebar_library_apps">App</string>

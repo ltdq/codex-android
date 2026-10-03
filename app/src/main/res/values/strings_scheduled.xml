@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- app/scheduled.kt: the rail's 定时任务 page, which the desktop capture shows empty. -->
+<resources>
+    <string name="scheduled_empty_title">Schedule a task</string>
+    <string name="scheduled_empty_detail">ChatGPT can take on ongoing tasks for you, so you do not have to do them yourself.</string>
+</resources>

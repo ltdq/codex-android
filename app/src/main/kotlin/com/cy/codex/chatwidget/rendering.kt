@@ -1011,6 +1011,7 @@ internal fun openSurfaceFor(app: CodexApp, id: String, inSection: Boolean = fals
             open(Surface.Archived)
         }
         "projects" -> open(Surface.Projects)
+        "scheduled" -> open(Surface.Scheduled)
         "remote_control" -> open(Surface.RemoteControl)
         "verification" -> open(Surface.UserVerification)
         "plugin_shares" -> open(Surface.PluginShares)

@@ -8,7 +8,7 @@
     <string name="chat_transcript_assistant_label">Codex</string>
     <string name="transcript_load_earlier">Load earlier messages</string>
     <string name="transcript_load_earlier_loading">Loading earlier messages…</string>
-    <string name="chat_composer_hint_open">Ask Codex to do anything</string>
+    <string name="chat_composer_hint_open">Ask anything</string>
     <string name="chat_composer_hint_empty">Select a session to start</string>
     <string name="chat_composer_hint_shell">Run a shell command in the session shell</string>
     <string name="chat_composer_hint_parent_owned">Viewing sub-agent — direct input is disabled</string>

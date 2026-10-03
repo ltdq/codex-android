@@ -5,21 +5,20 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
+import com.cy.codex.chatwidget.SettingsGroup
 import com.cy.codex.chatwidget.SettingsSection
 import com.cy.codex.chatwidget.SidebarProject
 import com.cy.codex.chatwidget.SidebarSession
 import top.yukonga.miuix.kmp.icon.MiuixIcons
+import top.yukonga.miuix.kmp.icon.extended.Alarm
 import top.yukonga.miuix.kmp.icon.extended.Blocklist
 import top.yukonga.miuix.kmp.icon.extended.Community
-import top.yukonga.miuix.kmp.icon.extended.ConvertFile
+import top.yukonga.miuix.kmp.icon.extended.Create
 import top.yukonga.miuix.kmp.icon.extended.File
 import top.yukonga.miuix.kmp.icon.extended.Folder
-import top.yukonga.miuix.kmp.icon.extended.Info
+import top.yukonga.miuix.kmp.icon.extended.Home
 import top.yukonga.miuix.kmp.icon.extended.Link
-import top.yukonga.miuix.kmp.icon.extended.Lock
-import top.yukonga.miuix.kmp.icon.extended.Messages
 import top.yukonga.miuix.kmp.icon.extended.Mic
-import top.yukonga.miuix.kmp.icon.extended.Notes
 import top.yukonga.miuix.kmp.icon.extended.Refresh
 import top.yukonga.miuix.kmp.icon.extended.Search
 import top.yukonga.miuix.kmp.icon.extended.Settings
@@ -28,14 +27,16 @@ import top.yukonga.miuix.kmp.icon.extended.Store
 import top.yukonga.miuix.kmp.icon.extended.Tasks
 import top.yukonga.miuix.kmp.icon.extended.Th1
 import top.yukonga.miuix.kmp.icon.extended.Timer
-import top.yukonga.miuix.kmp.icon.extended.Tune
 
 /**
  * What the rail offers, top to bottom; settings comes last, being chrome rather than a page.
+ *
+ * The items are the desktop app's five: 主页, 定时任务, 自定义, 项目, and 设置 on the rail's floor.
  */
 enum class NavSection(@StringRes val titleRes: Int, val icon: ImageVector) {
-    Home(R.string.nav_rail_home, MiuixIcons.Messages),
-    Plugins(R.string.nav_rail_plugins, MiuixIcons.Store),
+    Home(R.string.nav_rail_home, MiuixIcons.Home),
+    Scheduled(R.string.nav_rail_scheduled, MiuixIcons.Alarm),
+    Customize(R.string.nav_rail_customize, MiuixIcons.Community),
     Projects(R.string.nav_rail_projects, MiuixIcons.Folder),
     Settings(R.string.nav_rail_settings, MiuixIcons.Settings),
 }
@@ -48,14 +49,16 @@ fun sectionOf(surface: Surface): NavSection = when (surface) {
     Surface.Chat,
     Surface.Sessions,
     -> NavSection.Home
+
+    Surface.Scheduled -> NavSection.Scheduled
+
     Surface.Skills,
     Surface.McpServers,
     is Surface.McpToolbox,
     Surface.Plugins,
     Surface.Apps,
-    Surface.Hooks,
     Surface.PluginShares,
-    -> NavSection.Plugins
+    -> NavSection.Customize
 
     Surface.Projects,
     is Surface.EnvironmentDetail,
@@ -71,6 +74,7 @@ fun sectionOf(surface: Surface): NavSection = when (surface) {
     Surface.WindowsSandbox,
     Surface.Diagnostics,
     Surface.SessionStatus,
+    Surface.Hooks,
     -> NavSection.Settings
 
     // Everything else acts on the open session, so it belongs to the chat.
@@ -80,23 +84,26 @@ fun sectionOf(surface: Surface): NavSection = when (surface) {
 /** Page a rail item opens; the menu lists what else its section holds. */
 fun sectionRoot(section: NavSection): Surface = when (section) {
     NavSection.Home -> Surface.Chat
-    NavSection.Plugins -> Surface.Skills
+    NavSection.Scheduled -> Surface.Scheduled
+    NavSection.Customize -> Surface.Plugins
     NavSection.Projects -> Surface.Projects
     NavSection.Settings -> Surface.Settings
 }
 
 /** The menu row that marks [surface], or `null` when no row names it. */
 fun navRowIdOf(surface: Surface, settingsSection: SettingsSection): String? = when (surface) {
+    Surface.Plugins -> DestinationCatalog.Id.Plugins
     Surface.Skills -> DestinationCatalog.Id.Skills
     Surface.McpServers, is Surface.McpToolbox -> DestinationCatalog.Id.Mcp
-    Surface.Plugins -> DestinationCatalog.Id.Plugins
     Surface.Apps -> DestinationCatalog.Id.Apps
-    Surface.Hooks -> DestinationCatalog.Id.Hooks
     Surface.PluginShares -> DestinationCatalog.Id.PluginShares
+    Surface.Scheduled -> DestinationCatalog.Id.Scheduled
     // The settings body carries its section in the shell, not in the route.
     Surface.Settings -> settingsRowId(settingsSection)
     Surface.Sessions -> DestinationCatalog.Id.Sessions
-    Surface.Archived -> DestinationCatalog.Id.Archived
+    // The page that lists the archived chats owns the list they are read in.
+    Surface.Archived -> settingsRowId(SettingsSection.ArchivedChats)
+    Surface.Hooks -> settingsRowId(SettingsSection.Hooks)
     // The session tools are rows of the chat's own menu, so the open tool marks its row there.
     Surface.ThreadHistory -> DestinationCatalog.Id.History
     is Surface.FileBrowser -> DestinationCatalog.Id.Files
@@ -117,7 +124,7 @@ fun navRowIdOf(surface: Surface, settingsSection: SettingsSection): String? = wh
     else -> null
 }
 
-/** The row a settings section answers to; [settingsSectionOfRow] reads it back. */
+/** The row a settings page answers to; [settingsSectionOfRow] reads it back. */
 internal fun settingsRowId(section: SettingsSection): String = "settings:${section.name}"
 
 internal fun settingsSectionOfRow(id: String): SettingsSection? {
@@ -144,6 +151,7 @@ sealed interface NavMenuRow {
         val title: String,
         val icon: ImageVector,
         val selected: Boolean = false,
+        val enabled: Boolean = true,
     ) : NavMenuRow {
         override val key: String = "entry-$id"
     }
@@ -155,54 +163,65 @@ sealed interface NavMenuRow {
     data class Session(val session: SidebarSession, val selected: Boolean) : NavMenuRow {
         override val key: String = "session-${session.id}"
     }
+
+    /**
+     * The row a truncated list ends with, which is the desktop's 展开显示: the rest of the list is
+     * behind it rather than in the card.
+     */
+    data class ShowMore(val id: String, val title: String) : NavMenuRow {
+        override val key: String = "more-$id"
+    }
+
+    /** A line of text where a group has nothing to list; not pressable, so it is not an [Entry]. */
+    data class Note(val text: String) : NavMenuRow {
+        override val key: String = "note-$text"
+    }
 }
 
 /** Row titles the menu needs; resolved in the composition so [navMenuRows] stays testable. */
 data class NavMenuLabels(
-    val newSession: String,
-    val homeGroup: String,
+    val newChat: String,
     val projects: String,
-    val conversationsGroup: String,
-    val allConversations: String,
+    val recentGroup: String,
+    val showMore: String,
     val sessionToolsGroup: String,
     val sessionTools: List<String>,
-    val archivedGroup: String,
-    val archivedConversations: String,
-    val pluginsExtensionsGroup: String,
-    val pluginsSharesGroup: String,
-    val pluginMenu: List<String>,
-    val settingsGroup: String,
-    val settingsSections: List<String>,
-    val settingsPages: List<String>,
-    val accountGroup: String,
+    val allSessions: String,
+    val newTask: String,
+    val scheduledGroup: String,
+    val scheduledEmpty: String,
+    val customize: List<String>,
+    val settingsGroups: List<String>,
+    val settingsPages: List<List<String>>,
 )
 
 @Composable
 @ReadOnlyComposable
 fun navMenuLabels(): NavMenuLabels = NavMenuLabels(
-    newSession = stringResource(R.string.runtime_new_thread),
-    homeGroup = stringResource(R.string.nav_menu_home_group),
+    newChat = stringResource(R.string.nav_menu_new_chat),
     projects = stringResource(R.string.sidebar_projects_header),
-    conversationsGroup = stringResource(R.string.nav_menu_conversations_group),
-    allConversations = stringResource(R.string.nav_menu_all_conversations),
+    recentGroup = stringResource(R.string.nav_menu_recent_group),
+    showMore = stringResource(R.string.nav_menu_show_more),
     sessionToolsGroup = stringResource(R.string.sidebar_session_tools_header),
     sessionTools = SessionToolSpecs.map { stringResource(it.titleRes) },
-    archivedGroup = stringResource(R.string.nav_menu_archived_group),
-    archivedConversations = stringResource(R.string.nav_menu_archived_conversations),
-    pluginsExtensionsGroup = stringResource(R.string.nav_menu_extensions_group),
-    pluginsSharesGroup = stringResource(R.string.nav_menu_shares_group),
-    pluginMenu = PluginsMenuSpecs.map { stringResource(it.titleRes) },
-    settingsGroup = stringResource(R.string.nav_menu_settings_group),
-    settingsSections = SettingsSection.entries.map { stringResource(it.titleRes) },
-    settingsPages = SettingsPageSpecs.map { stringResource(it.titleRes) },
-    accountGroup = stringResource(R.string.nav_menu_account_group),
+    allSessions = stringResource(R.string.sidebar_library_all_sessions),
+    newTask = stringResource(R.string.nav_menu_new_task),
+    scheduledGroup = stringResource(R.string.nav_menu_scheduled_group),
+    scheduledEmpty = stringResource(R.string.nav_menu_scheduled_empty),
+    customize = CustomizeMenuSpecs.map { stringResource(it.titleRes) },
+    settingsGroups = SettingsGroup.entries.map { stringResource(it.titleRes) },
+    settingsPages =
+        SettingsGroup.entries.map { group ->
+            SettingsSection.of(group).map { stringResource(it.titleRes) }
+        },
 )
 
 /**
  * The tools that act on the open session, listed under the chat's own menu.
  *
- * They used to be a popup hanging off a chip in the page's corner; the menu beside the page is the
- * same list on the shell's own grid, so the chip is gone and these are its rows.
+ * The desktop's sidebar has no such group — it reaches these from the composer and the tab bar —
+ * and the app's session has no other entry to the filesystem, the exec page or the background
+ * terminals, so the port keeps them as a group of the home menu rather than losing them.
  */
 private val SessionToolSpecs = listOf(
     MenuSpec(DestinationCatalog.Id.History, R.string.sidebar_library_history, MiuixIcons.Refresh),
@@ -216,29 +235,13 @@ private val SessionToolSpecs = listOf(
     MenuSpec(DestinationCatalog.Id.Realtime, R.string.sidebar_library_realtime, MiuixIcons.Mic),
 )
 
-/** What the rail's plugins item opens: the extension pages, skills and MCP first. */
-private val PluginsMenuSpecs = listOf(
+/** What the rail's 自定义 item opens: the desktop's plugins pane lists 插件 and 技能 first. */
+private val CustomizeMenuSpecs = listOf(
+    MenuSpec(DestinationCatalog.Id.Plugins, R.string.settings_page_plugins, MiuixIcons.Store),
     MenuSpec(DestinationCatalog.Id.Skills, R.string.sidebar_library_skills, MiuixIcons.Tasks),
     MenuSpec(DestinationCatalog.Id.Mcp, R.string.sidebar_library_mcp_servers, MiuixIcons.Link),
-    MenuSpec(DestinationCatalog.Id.Plugins, R.string.sidebar_library_plugins, MiuixIcons.Store),
     MenuSpec(DestinationCatalog.Id.Apps, R.string.sidebar_library_apps, MiuixIcons.Community),
-    MenuSpec(DestinationCatalog.Id.Hooks, R.string.sidebar_library_hooks, MiuixIcons.Refresh),
     MenuSpec(DestinationCatalog.Id.PluginShares, R.string.sidebar_library_shares, MiuixIcons.Share),
-)
-
-/** The plugin rows that stay under the extension group; the rest hang off the share group. */
-private const val PluginExtensionCount = 5
-
-/** Pages that configure the account rather than the open session; they hang off the settings menu. */
-private val SettingsPageSpecs = listOf(
-    MenuSpec(DestinationCatalog.Id.Account, R.string.sidebar_library_account, MiuixIcons.Info),
-    MenuSpec(DestinationCatalog.Id.Memories, R.string.sidebar_library_memories, MiuixIcons.Notes),
-    MenuSpec(DestinationCatalog.Id.Migration, R.string.sidebar_library_migration, MiuixIcons.ConvertFile),
-    MenuSpec(DestinationCatalog.Id.RemoteControl, R.string.sidebar_library_remote, MiuixIcons.Link),
-    MenuSpec(DestinationCatalog.Id.Verification, R.string.sidebar_library_verification, MiuixIcons.Lock),
-    MenuSpec(DestinationCatalog.Id.Sandbox, R.string.sidebar_library_sandbox, MiuixIcons.Tune),
-    MenuSpec(DestinationCatalog.Id.Diagnostics, R.string.sidebar_library_diagnostics, MiuixIcons.Search),
-    MenuSpec(DestinationCatalog.Id.Status, R.string.session_status_title, MiuixIcons.Tasks),
 )
 
 private class MenuSpec(val id: String, @StringRes val titleRes: Int, val icon: ImageVector)
@@ -328,8 +331,14 @@ internal fun sectionPageSwap(stack: List<Surface>, next: Surface): List<Surface>
     return stack.dropLast(1) + next
 }
 
+/** How many threads the 最近 group lists before it hands the rest to 展开显示. */
+private const val RecentSessionLimit = 5
+
 /**
  * Rows the rail item's menu shows; [selectedRowId] marks the row that names the open page.
+ *
+ * The home menu is the desktop's sidebar: 新聊天, the project tree, and the recent threads under
+ * 展开显示. [recent] is the thread library by recency, which the app folds itself.
  */
 internal fun navMenuRows(
     section: NavSection,
@@ -338,83 +347,88 @@ internal fun navMenuRows(
     expandedProjects: Set<String>,
     selectedThreadId: String,
     selectedRowId: String?,
+    recent: List<SidebarSession> = emptyList(),
 ): List<NavMenuRow> = buildList {
     when (section) {
         NavSection.Home -> {
-            add(NavMenuRow.Header(labels.homeGroup))
-            add(NavMenuRow.Entry(DestinationCatalog.Id.New, labels.newSession, MiuixIcons.Messages))
+            add(
+                NavMenuRow.Entry(
+                    id = DestinationCatalog.Id.New,
+                    title = labels.newChat,
+                    icon = MiuixIcons.Create,
+                )
+            )
             addProjectTree(labels.projects, projects, expandedProjects, selectedThreadId)
-            addConversations(labels)
+            addRecent(labels, recent, selectedThreadId)
             addSessionTools(labels, selectedRowId)
         }
 
-        NavSection.Plugins ->
-            PluginsMenuSpecs.forEachIndexed { index, spec ->
-                if (index == PluginExtensionCount) add(NavMenuRow.Header(labels.pluginsSharesGroup))
-                else if (index == 0) add(NavMenuRow.Header(labels.pluginsExtensionsGroup))
-                add(
-                    NavMenuRow.Entry(
-                        id = spec.id,
-                        title = labels.pluginMenu.getOrElse(index) { spec.id },
-                        icon = spec.icon,
-                        selected = selectedRowId == spec.id,
-                    )
-                )
-            }
-
-        NavSection.Projects -> {
-            addProjectTree(labels.projects, projects, expandedProjects, selectedThreadId)
-            addConversations(labels)
-        }
-
-        NavSection.Settings -> {
-            add(NavMenuRow.Header(labels.settingsGroup))
-            SettingsSection.entries.forEachIndexed { index, settings ->
-                val id = settingsRowId(settings)
-                add(
-                    NavMenuRow.Entry(
-                        id = id,
-                        title = labels.settingsSections.getOrElse(index) { settings.name },
-                        icon = settings.icon,
-                        selected = selectedRowId == id,
-                    )
-                )
-            }
-            add(NavMenuRow.Header(labels.accountGroup))
-            SettingsPageSpecs.forEachIndexed { index, spec ->
-                add(
-                    NavMenuRow.Entry(
-                        id = spec.id,
-                        title = labels.settingsPages.getOrElse(index) { spec.id },
-                        icon = spec.icon,
-                        selected = selectedRowId == spec.id,
-                    )
-                )
-            }
-            // The archived chats are a page of the settings menu, not a mode of the session list.
-            add(NavMenuRow.Header(labels.archivedGroup))
+        NavSection.Scheduled -> {
             add(
                 NavMenuRow.Entry(
-                    id = DestinationCatalog.Id.Archived,
-                    title = labels.archivedConversations,
-                    icon = MiuixIcons.Blocklist,
-                    selected = selectedRowId == DestinationCatalog.Id.Archived,
+                    id = DestinationCatalog.Id.NewTask,
+                    title = labels.newTask,
+                    icon = MiuixIcons.Create,
+                    enabled = false,
                 )
             )
+            add(NavMenuRow.Header(labels.scheduledGroup))
+            add(NavMenuRow.Note(labels.scheduledEmpty))
+        }
+
+        NavSection.Customize ->
+            CustomizeMenuSpecs.forEachIndexed { index, spec ->
+                add(
+                    NavMenuRow.Entry(
+                        id = spec.id,
+                        title = labels.customize.getOrElse(index) { spec.id },
+                        icon = spec.icon,
+                        selected = selectedRowId == spec.id,
+                    )
+                )
+            }
+
+        NavSection.Projects ->
+            addProjectTree(labels.projects, projects, expandedProjects, selectedThreadId)
+
+        NavSection.Settings -> {
+            // The archived chats are the fourth group's only page, so the groups carry every row and
+            // a second header for them would repeat both the title and the row.
+            SettingsGroup.entries.forEachIndexed { index, group ->
+                add(NavMenuRow.Header(labels.settingsGroups.getOrElse(index) { group.name }))
+                SettingsSection.of(group).forEachIndexed { pageIndex, page ->
+                    val id = settingsRowId(page)
+                    add(
+                        NavMenuRow.Entry(
+                            id = id,
+                            title = labels.settingsPages.getOrNull(index)?.getOrElse(pageIndex) { page.name }
+                                ?: page.name,
+                            icon = page.icon,
+                            selected = selectedRowId == id,
+                        )
+                    )
+                }
+            }
         }
     }
 }
 
-/** The whole thread library under the project tree: what the tree's own sessions do not cover. */
-private fun MutableList<NavMenuRow>.addConversations(labels: NavMenuLabels) {
-    add(NavMenuRow.Header(labels.conversationsGroup))
-    add(
-        NavMenuRow.Entry(
-            id = DestinationCatalog.Id.Sessions,
-            title = labels.allConversations,
-            icon = MiuixIcons.Messages,
-        )
-    )
+/**
+ * The recent threads, truncated to [RecentSessionLimit].
+ *
+ * The list is the library by recency, so a thread that is also under its project is listed here as
+ * well: the desktop's 最近 group is where a thread is reopened, and the tree is where it is filed.
+ */
+private fun MutableList<NavMenuRow>.addRecent(
+    labels: NavMenuLabels,
+    recent: List<SidebarSession>,
+    selectedThreadId: String,
+) {
+    add(NavMenuRow.Header(labels.recentGroup, action = DestinationCatalog.Id.Sessions))
+    recent.take(RecentSessionLimit).forEach { add(NavMenuRow.Session(it, it.id == selectedThreadId)) }
+    if (recent.size > RecentSessionLimit) {
+        add(NavMenuRow.ShowMore(DestinationCatalog.Id.Sessions, labels.showMore))
+    }
 }
 
 /** The tools that act on the open session, under a group of their own. */
@@ -448,6 +462,20 @@ internal fun filterMenuRows(rows: List<NavMenuRow>, query: String): List<NavMenu
                 is NavMenuRow.Header -> header = row
 
                 is NavMenuRow.Entry ->
+                    if (row.title.contains(needle, ignoreCase = true)) {
+                        header?.let { add(it) }
+                        header = null
+                        add(row)
+                    }
+
+                is NavMenuRow.Note ->
+                    if (row.text.contains(needle, ignoreCase = true)) {
+                        header?.let { add(it) }
+                        header = null
+                        add(row)
+                    }
+
+                is NavMenuRow.ShowMore ->
                     if (row.title.contains(needle, ignoreCase = true)) {
                         header?.let { add(it) }
                         header = null

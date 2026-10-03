@@ -13,17 +13,17 @@ class RailMenuTest {
 
     @Test
     fun `a pointer on an item floats that section over the page`() {
-        val menu = RailMenu().hover(NavSection.Plugins)
+        val menu = RailMenu().hover(NavSection.Customize)
 
         assertTrue(menu.shown)
         assertTrue(menu.detached)
-        assertEquals(NavSection.Plugins, menu.floating)
-        assertEquals(NavSection.Plugins, menu.section(NavSection.Home))
+        assertEquals(NavSection.Customize, menu.floating)
+        assertEquals(NavSection.Customize, menu.section(NavSection.Home))
     }
 
     @Test
     fun `moving along the rail swaps the rows without taking the panel down`() {
-        val menu = RailMenu().hover(NavSection.Plugins).hover(NavSection.Projects)
+        val menu = RailMenu().hover(NavSection.Customize).hover(NavSection.Projects)
 
         assertTrue(menu.detached)
         assertEquals(NavSection.Projects, menu.floating)
@@ -31,17 +31,17 @@ class RailMenuTest {
 
     @Test
     fun `the pointer leaving the segments spends the pick and leaves the panel its rows`() {
-        val menu = RailMenu().hover(NavSection.Plugins).leave()
+        val menu = RailMenu().hover(NavSection.Customize).leave()
 
         assertFalse(menu.shown)
         assertFalse(menu.detached)
         // The panel is still fading, so the section it lists outlives the pick that put it up.
-        assertEquals(NavSection.Plugins, menu.section(NavSection.Home))
+        assertEquals(NavSection.Customize, menu.section(NavSection.Home))
     }
 
     @Test
     fun `a click pins the pick into the window's second column`() {
-        val menu = RailMenu().hover(NavSection.Plugins).pin()
+        val menu = RailMenu().hover(NavSection.Customize).pin()
 
         assertTrue(menu.shown)
         assertFalse(menu.detached)
@@ -52,7 +52,7 @@ class RailMenuTest {
 
     @Test
     fun `a pinned column is not floated by the pointer`() {
-        val menu = RailMenu(pinned = true).hover(NavSection.Plugins)
+        val menu = RailMenu(pinned = true).hover(NavSection.Customize)
 
         assertTrue(menu.pinned)
         assertFalse(menu.detached)
@@ -106,10 +106,10 @@ class RailMenuTest {
 
     @Test
     fun `the pointer coming back to the rail floats again once it has been clear`() {
-        val menu = RailMenu(pinned = true).unpin().leave().hover(NavSection.Plugins)
+        val menu = RailMenu(pinned = true).unpin().leave().hover(NavSection.Customize)
 
         assertTrue(menu.detached)
-        assertEquals(NavSection.Plugins, menu.floating)
+        assertEquals(NavSection.Customize, menu.floating)
     }
 
     @Test
@@ -133,12 +133,12 @@ class RailMenuTest {
     @Test
     fun `a click on the open section's item only puts its menu up or down`() {
         val shut =
-            RailMenu(pinned = true).click(current = NavSection.Plugins, tapped = NavSection.Plugins)
+            RailMenu(pinned = true).click(current = NavSection.Customize, tapped = NavSection.Customize)
         assertFalse(shut.pinned)
         assertNull(shut.opens)
 
         val up =
-            RailMenu(pinned = false).click(current = NavSection.Plugins, tapped = NavSection.Plugins)
+            RailMenu(pinned = false).click(current = NavSection.Customize, tapped = NavSection.Customize)
         assertTrue(up.pinned)
         assertNull(up.opens)
     }
@@ -146,7 +146,7 @@ class RailMenuTest {
     @Test
     fun `a click on another rail item moves the page to that section`() {
         val click =
-            RailMenu(pinned = false).click(current = NavSection.Plugins, tapped = NavSection.Projects)
+            RailMenu(pinned = false).click(current = NavSection.Customize, tapped = NavSection.Projects)
 
         assertTrue(click.pinned)
         assertEquals(NavSection.Projects, click.opens)

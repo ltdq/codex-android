@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- chatwidget/settings_integrations.kt: the 集成 group's four pages. The catalog rows reuse the
+     sidebar's labels and the plugin header's copy is the desktop app's, verbatim; no capture covers
+     电脑操控, 应用快照 or 浏览器, so those pages state where the setting lives. -->
+<resources>
+    <string name="settings_plugins_catalog_group">Catalog</string>
+    <string name="settings_plugins_header_group">Page actions</string>
+    <string name="settings_plugins_browse">Browse directory</string>
+    <string name="settings_plugins_browse_action">Browse</string>
+    <string name="settings_plugins_add">Add</string>
+    <string name="settings_plugins_add_action">Add</string>
+
+    <string name="settings_computer_unavailable">Computer control is configured in the desktop app; there is nothing to set on this device</string>
+    <string name="settings_snapshots_unavailable">App snapshots are configured in the desktop app; there is nothing to set on this device</string>
+    <string name="settings_browser_unavailable">The browser is configured in the desktop app; there is nothing to set on this device</string>
+</resources>

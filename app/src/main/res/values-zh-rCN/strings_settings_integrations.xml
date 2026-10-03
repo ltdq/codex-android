@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- chatwidget/settings_integrations.kt: 集成 组的四个页面。目录各行沿用侧栏文案，插件页其余
+     文案取自桌面应用；电脑操控、应用快照、浏览器 三页截图未覆盖，只写缺口说明。 -->
+<resources>
+    <string name="settings_plugins_catalog_group">目录</string>
+    <string name="settings_plugins_header_group">页面操作</string>
+    <string name="settings_plugins_browse">浏览目录</string>
+    <string name="settings_plugins_browse_action">浏览</string>
+    <string name="settings_plugins_add">添加</string>
+    <string name="settings_plugins_add_action">添加</string>
+
+    <string name="settings_computer_unavailable">电脑操控的设置在桌面应用里，此设备上没有对应项</string>
+    <string name="settings_snapshots_unavailable">应用快照的设置在桌面应用里，此设备上没有对应项</string>
+    <string name="settings_browser_unavailable">浏览器的设置在桌面应用里，此设备上没有对应项</string>
+</resources>

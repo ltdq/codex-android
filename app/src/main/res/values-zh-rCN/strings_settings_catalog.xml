@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- chatwidget/settings_pages.kt: 桌面应用的设置侧栏——四个分组与其下十九个页面，标题逐字对齐。 -->
+<resources>
+    <string name="settings_group_personal">个人</string>
+    <string name="settings_group_integrations">集成</string>
+    <string name="settings_group_coding">编码</string>
+    <string name="settings_group_archived">已归档</string>
+
+    <string name="settings_page_general">常规</string>
+    <string name="settings_page_import">导入</string>
+    <string name="settings_page_import_summary">将其他 AI 应用的设置、项目和聊天导入 ChatGPT</string>
+    <string name="settings_page_appearance">外观</string>
+    <string name="settings_page_voice">语音</string>
+    <string name="settings_page_agent">配置</string>
+    <string name="settings_page_agent_summary">配置新聊天的权限、网页访问和智能体回复</string>
+    <string name="settings_page_personalization">个性化</string>
+    <string name="settings_page_pets">Mini 与虚拟宠物</string>
+    <string name="settings_page_shortcuts">键盘快捷键</string>
+    <string name="settings_page_plugins">插件</string>
+    <string name="settings_page_plugins_summary">管理插件、技能和 MCP</string>
+    <string name="settings_page_computer">电脑操控</string>
+    <string name="settings_page_snapshots">应用快照</string>
+    <string name="settings_page_browser">浏览器</string>
+    <string name="settings_page_hooks">钩子</string>
+    <string name="settings_page_hooks_summary">通过配置和已启用的插件管理生命周期钩子。</string>
+    <string name="settings_page_connections">连接</string>
+    <string name="settings_page_review">代码审查</string>
+    <string name="settings_page_git">Git</string>
+    <string name="settings_page_environment">环境</string>
+    <string name="settings_page_environment_summary">本地环境用于指导 ChatGPT 如何为项目设置工作树。</string>
+    <string name="settings_page_worktrees">Worktrees</string>
+    <string name="settings_page_archived_chats">已归档的聊天</string>
+</resources>

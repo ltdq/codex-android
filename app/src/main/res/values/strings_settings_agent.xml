@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- chatwidget/settings_agent.kt: 配置, 个性化, Mini 与虚拟宠物 and 键盘快捷键. Copy is the desktop
+     app's, verbatim where it has the row; the two pages no capture covers carry app wording. -->
+<resources>
+    <string name="settings_agent_group_defaults">Agent defaults</string>
+    <string name="settings_agent_user_configuration">User configuration</string>
+    <string name="settings_agent_user">User</string>
+    <string name="settings_agent_open_config">Open config.toml</string>
+    <string name="settings_agent_open">Open</string>
+    <string name="settings_agent_approval_policy">Approval policy</string>
+    <string name="settings_agent_approval_policy_summary">Choose when ChatGPT asks for approval</string>
+    <string name="settings_agent_sandbox">Sandbox</string>
+    <string name="settings_agent_sandbox_summary">Choose how much ChatGPT may do when it runs commands</string>
+    <string name="settings_agent_web_search">Web search</string>
+    <string name="settings_agent_web_search_summary">How ChatGPT reaches the network</string>
+    <string name="settings_agent_web_search_off">Off</string>
+    <string name="settings_agent_web_search_cached">Cached</string>
+    <string name="settings_agent_web_search_live">Live</string>
+    <string name="settings_agent_verbosity">Output verbosity</string>
+    <string name="settings_agent_verbosity_summary">How much detail ChatGPT\'s replies carry</string>
+    <string name="settings_agent_verbosity_model_default">Model default</string>
+    <string name="settings_agent_verbosity_low">Low</string>
+    <string name="settings_agent_verbosity_medium">Medium</string>
+    <string name="settings_agent_verbosity_high">High</string>
+    <string name="settings_agent_reasoning_summary">Reasoning summaries</string>
+    <string name="settings_agent_reasoning_summary_summary">How ChatGPT summarizes its reasoning</string>
+    <string name="settings_agent_reasoning_summary_auto">Auto</string>
+    <string name="settings_agent_reasoning_summary_concise">Concise</string>
+    <string name="settings_agent_reasoning_summary_detailed">Detailed</string>
+    <string name="settings_agent_reasoning_summary_off">Off</string>
+
+    <string name="settings_agent_group_model_features">Model features</string>
+    <string name="settings_agent_available_efforts">Available reasoning effort</string>
+    <string name="settings_agent_available_efforts_summary">Choose which reasoning effort levels appear in the model control. Availability varies by model</string>
+
+    <string name="settings_agent_group_workspace_dependencies">Workspace dependencies</string>
+    <string name="settings_agent_dependencies">Codex dependencies</string>
+    <string name="settings_agent_dependencies_summary">Let ChatGPT install and serve the bundled Node.js and Python tools</string>
+    <string name="settings_agent_diagnose">Diagnose problems in the Codex workspace</string>
+    <string name="settings_agent_diagnose_summary">Inspect the current bundle and record a diagnostic log</string>
+    <string name="settings_agent_diagnose_action">Diagnose</string>
+    <string name="settings_agent_reset_workspace">Reset and install the workspace</string>
+    <string name="settings_agent_reset_workspace_summary">Download a fresh package, install it and reload the tools</string>
+    <string name="settings_agent_reinstall_action">Reinstall</string>
+    <string name="settings_agent_current_version">Current version</string>
+
+    <string name="settings_personalization_group_memory">Codex memory</string>
+    <string name="settings_personalization_group_memory_summary">Configure how Codex manages memories on Local.</string>
+    <string name="settings_personalization_use_memories">Enable Codex memory</string>
+    <string name="settings_personalization_use_memories_summary">Create memories from chats on Local, and use them to personalize future chats on Local</string>
+    <string name="settings_personalization_generate_memories">Allow memory generation from chats that used tools</string>
+    <string name="settings_personalization_generate_memories_summary">Generate memories from chats that used MCP tools or web search</string>
+    <string name="settings_personalization_delete_memories">Delete Codex memory</string>
+    <string name="settings_personalization_delete_memories_summary">Delete every Codex memory on Local</string>
+    <string name="settings_personalization_delete_action">Delete</string>
+    <string name="settings_personalization_group_instructions">Custom instructions</string>
+    <string name="settings_personalization_instructions">Codex instructions</string>
+    <!-- The desktop's own sentence, kept in English in both locales. -->
+    <string name="settings_personalization_instructions_summary">Edit the AGENTS.md file on the selected machine. Repository instructions may also apply.</string>
+
+    <string name="settings_pets_unavailable">Virtual pets are a desktop-only shape, and there is nothing to configure on this device</string>
+</resources>
